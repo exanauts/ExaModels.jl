@@ -1,0 +1,4 @@
+# MadDiffModels
+```@autodocs
+Modules = [MadDiffModels]
+```

@@ -1,0 +1,4 @@
+name = "SIMDModels"
+uuid = "5e5a44d9-c542-4126-bec5-825d42a5b973"
+authors = ["Sungho Shin <sshin@anl.gov>"]
+version = "0.1.0"

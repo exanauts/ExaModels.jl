@@ -1,0 +1,4 @@
+# MadDiffMOI
+```@autodocs
+Modules = [MadDiffMOI]
+```
