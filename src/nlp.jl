@@ -283,8 +283,9 @@ function NLPModels.obj(
 
     m.counters.neval_obj += 1
     m.counters.teval_obj += @elapsed begin
-        _obj(m.objs,x)
-    end    
+        result = _obj(m.objs,x)
+    end
+    return result
 end
 
 _obj(objs,x) = _obj(objs.inner,x) + sum(objs.f.f(k,x) for k in objs.itr)
@@ -295,18 +296,18 @@ function NLPModels.cons!(
     x::V,
     g::V
     ) where {M <: Model, V <: AbstractVector}
+    m.counters.neval_cons += 1
+    m.counters.teval_cons += @elapsed begin
 
-    fill!(g, zero(eltype(g)))
-    _cons!(m.cons,x,g)
+        fill!(g, zero(eltype(g)))
+        _cons!(m.cons,x,g)
+    end
 end
 
 function _cons!(cons,x,g)
-    m.counters.neval_cons += 1
-    m.counters.teval_cons += @elapsed begin
-        _cons!(cons.inner,x,g)
-        @simd for i in eachindex(cons.itr)
-            g[offset0(cons,i)] += cons.f.f(cons.itr[i],x)
-        end
+    _cons!(cons.inner,x,g)
+    @simd for i in eachindex(cons.itr)
+        g[offset0(cons,i)] += cons.f.f(cons.itr[i],x)
     end
 end
 _cons!(cons::ConstraintNull,x,g) = nothing
