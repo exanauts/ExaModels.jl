@@ -281,8 +281,10 @@ function NLPModels.obj(
     x::V
     ) where {M <: Model, V <: AbstractVector}
 
-    _obj(m.objs,x)
-    
+    m.counters.neval_obj += 1
+    m.counters.teval_obj += @elapsed begin
+        _obj(m.objs,x)
+    end    
 end
 
 _obj(objs,x) = _obj(objs.inner,x) + sum(objs.f.f(k,x) for k in objs.itr)
@@ -299,9 +301,12 @@ function NLPModels.cons!(
 end
 
 function _cons!(cons,x,g)
-    _cons!(cons.inner,x,g)
-    @simd for i in eachindex(cons.itr)
-        g[offset0(cons,i)] += cons.f.f(cons.itr[i],x)
+    m.counters.neval_cons += 1
+    m.counters.teval_cons += @elapsed begin
+        _cons!(cons.inner,x,g)
+        @simd for i in eachindex(cons.itr)
+            g[offset0(cons,i)] += cons.f.f(cons.itr[i],x)
+        end
     end
 end
 _cons!(cons::ConstraintNull,x,g) = nothing
@@ -314,8 +319,12 @@ function NLPModels.grad!(
     f::V
     ) where {M <: Model, V <: AbstractVector}
 
-    fill!(f,zero(eltype(f)))
-    _grad!(m.objs,x,f)
+    m.counters.neval_grad += 1
+    m.counters.teval_grad += @elapsed begin
+        fill!(f,zero(eltype(f)))
+        _grad!(m.objs,x,f)
+    end
+    
 end
 
 function _grad!(objs,x,f)
@@ -330,8 +339,11 @@ function NLPModels.jac_coord!(
     jac::V
     ) where {M <: Model, V <: AbstractVector}
 
-    fill!(jac,zero(eltype(jac)))
-    _jac_coord!(m.cons,x,jac)
+    m.counters.neval_jac += 1
+    m.counters.teval_jac += @elapsed begin
+        fill!(jac,zero(eltype(jac)))
+        _jac_coord!(m.cons,x,jac)
+    end
 end
 
 _jac_coord!(cons::ConstraintNull,x,jac) = nothing
@@ -348,11 +360,13 @@ function NLPModels.hess_coord!(
     obj_weight = one(eltype(x))
     ) where {M <: Model, V <: AbstractVector}
 
+    m.counters.neval_hess += 1
+    m.counters.teval_hess += @elapsed begin
 
-    fill!(hess,zero(eltype(hess)))
-    
-    _obj_hess_coord!(m.objs, x,y,hess,obj_weight)
-    _con_hess_coord!(m.cons, x,y,hess,obj_weight)
+        fill!(hess,zero(eltype(hess)))    
+        _obj_hess_coord!(m.objs, x,y,hess,obj_weight)
+        _con_hess_coord!(m.cons, x,y,hess,obj_weight)
+    end
 end
 _obj_hess_coord!(objs::ObjectiveNull, x,y,hess,obj_weight) = nothing
 function _obj_hess_coord!(objs, x,y,hess,obj_weight)
