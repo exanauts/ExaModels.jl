@@ -11,8 +11,8 @@ include("function.jl")
 include("gradient.jl")
 include("jacobian.jl")
 include("hessian.jl")
-include("helper.jl")
 include("nlp.jl")
+include("templates.jl")
 
 export data, variable, objective, constraint, constraint!, WrapperModel
 

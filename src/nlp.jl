@@ -240,10 +240,10 @@ end
 function extension(args...) end
 
 function NLPModels.jac_structure!(
-    m::M,
-    rows::V,
-    cols::V
-    ) where {M <: Model, V <: AbstractVector}
+    m::Model,
+    rows::AbstractVector,
+    cols::AbstractVector
+    )
     
     _jac_structure!(m.cons, rows, cols)
 end
@@ -255,10 +255,10 @@ function _jac_structure!(cons, rows, cols)
 end
 
 function NLPModels.hess_structure!(
-    m::M,
-    rows::V,
-    cols::V
-    ) where {M <: Model, V <: AbstractVector}
+    m::Model,
+    rows::AbstractVector,
+    cols::AbstractVector
+    )
 
     _obj_hess_structure!(m.objs, rows, cols)
     _con_hess_structure!(m.cons, rows, cols)
@@ -277,9 +277,9 @@ function _con_hess_structure!(cons, rows, cols)
 end
 
 function NLPModels.obj(
-    m::M,
-    x::V
-    ) where {M <: Model, V <: AbstractVector}
+    m::Model,
+    x::AbstractVector
+    ) 
 
     m.counters.neval_obj += 1
     m.counters.teval_obj += @elapsed begin
@@ -292,10 +292,10 @@ _obj(objs,x) = _obj(objs.inner,x) + sum(objs.f.f(k,x) for k in objs.itr)
 _obj(objs::ObjectiveNull,x) = zero(eltype(x))
 
 function NLPModels.cons!(
-    m::M,
-    x::V,
-    g::V
-    ) where {M <: Model, V <: AbstractVector}
+    m::Model,
+    x::AbstractVector,
+    g::AbstractVector
+    ) 
     m.counters.neval_cons += 1
     m.counters.teval_cons += @elapsed begin
 
@@ -315,10 +315,10 @@ _cons!(cons::ConstraintNull,x,g) = nothing
 
 
 function NLPModels.grad!(
-    m::M,
-    x::V,
-    f::V
-    ) where {M <: Model, V <: AbstractVector}
+    m::Model,
+    x::AbstractVector,
+    f::AbstractVector
+    )
 
     m.counters.neval_grad += 1
     m.counters.teval_grad += @elapsed begin
@@ -335,10 +335,10 @@ end
 _grad!(objs::ObjectiveNull,x,f) = nothing
 
 function NLPModels.jac_coord!(
-    m::M,
-    x::V,
-    jac::V
-    ) where {M <: Model, V <: AbstractVector}
+    m::Model,
+    x::AbstractVector,
+    jac::AbstractVector
+    )
 
     m.counters.neval_jac += 1
     m.counters.teval_jac += @elapsed begin
@@ -354,12 +354,12 @@ function _jac_coord!(cons,x,jac)
 end
 
 function NLPModels.hess_coord!(
-    m::M,
-    x::V,
-    y::V,
-    hess::V;
+    m::Model,
+    x::AbstractVector,
+    y::AbstractVector,
+    hess::AbstractVector;
     obj_weight = one(eltype(x))
-    ) where {M <: Model, V <: AbstractVector}
+    )
 
     m.counters.neval_hess += 1
     m.counters.teval_hess += @elapsed begin
