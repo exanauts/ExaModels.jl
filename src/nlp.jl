@@ -78,6 +78,8 @@ SIMDiff.Core(S::Type)
 Returns `SIMDiff.Core` for creating `SIMDiff.Model{T,VT}`, where VT <: S
 """
 Core(::Nothing) = Core()
+Core(::Type{T},::Nothing) where T <: AbstractFloat = Core(x0=zeros(T,0))
+Core(::Type{T}) where T <: AbstractFloat = Core(T, nothing)
 
 """
 SIMDiff.Model <: NLPModels.AbstractNLPModel
