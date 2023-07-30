@@ -1,3 +1,6 @@
-using Test, SIMDiff, ADNLPModels, NLPModelsIpopt
+using Test, SIMDiff
 
-include("nlp.jl")
+include("NLPTest/NLPTest.jl")
+
+NLPTest.runtests()
+

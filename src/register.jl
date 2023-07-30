@@ -3,10 +3,10 @@ macro register_univariate(f,df,ddf)
         quote
             @inline $f(n::N) where {N <: SIMDiff.AbstractNode} =
                 SIMDiff.Node1($f,n)
-            @inline $f(d::D) where {D <: SIMDiff.AbstractDual} =
-                SIMDiff.Dual1($f,$f(d.x), $df(d.x), d)
-            @inline $f(t::T) where {T <: SIMDiff.AbstractTriple} =
-                SIMDiff.Triple1($f,$f(t.x), $df(t.x), $ddf(t.x), t)
+            @inline $f(d::D) where {D <: SIMDiff.AbstractAdjointNode} =
+                SIMDiff.AdjointNode1($f,$f(d.x), $df(d.x), d)
+            @inline $f(t::T) where {T <: SIMDiff.AbstractSecondAdjointNode} =
+                SIMDiff.SecondAdjointNode1($f,$f(t.x), $df(t.x), $ddf(t.x), t)
             
             @inbounds @inline (n::SIMDiff.Node1{typeof($f),I})(i,x) where I = $f(n.inner(i,x))
         end
@@ -42,13 +42,13 @@ macro register_bivariate(f,df1,df2,ddf11,ddf12,ddf22)
             end
 
             @inline function $f(d1::D1, d2::D2) where {
-                D1 <: SIMDiff.AbstractDual,
-                D2 <: SIMDiff.AbstractDual
+                D1 <: SIMDiff.AbstractAdjointNode,
+                D2 <: SIMDiff.AbstractAdjointNode
                 }
                 
                 x1 = d1.x
                 x2 = d2.x
-                SIMDiff.Dual2(
+                SIMDiff.AdjointNode2(
                     $f,
                     $f(x1,x2),
                     $df1(x1,x2),
@@ -58,14 +58,14 @@ macro register_bivariate(f,df1,df2,ddf11,ddf12,ddf22)
                 )
             end
             @inline function $f(d1::D1, d2::D2) where {
-                D1 <: SIMDiff.AbstractDual,
+                D1 <: SIMDiff.AbstractAdjointNode,
                 D2 <: Real
                 }
                 
                 x1 = d1.x
                 x2 = d2
 
-                SIMDiff.Dual1(
+                SIMDiff.AdjointNode1(
                     $f,
                     $f(x1,x2),
                     $df1(x1,x2),
@@ -74,12 +74,12 @@ macro register_bivariate(f,df1,df2,ddf11,ddf12,ddf22)
             end
             @inline function $f(d1::D1, d2::D2) where {
                 D1 <: Real,
-                D2 <: SIMDiff.AbstractDual
+                D2 <: SIMDiff.AbstractAdjointNode
                 }
                 
                 x1 = d1
                 x2 = d2.x
-                SIMDiff.Dual1(
+                SIMDiff.AdjointNode1(
                     $f,
                     $f(x1,x2),
                     $df2(x1,x2),
@@ -88,13 +88,13 @@ macro register_bivariate(f,df1,df2,ddf11,ddf12,ddf22)
             end
 
             @inline function $f(t1::T1, t2::T2) where {
-                T1 <: SIMDiff.AbstractTriple,
-                T2 <: SIMDiff.AbstractTriple
+                T1 <: SIMDiff.AbstractSecondAdjointNode,
+                T2 <: SIMDiff.AbstractSecondAdjointNode
                 }
                 
                 x1 = t1.x
                 x2 = t2.x
-                SIMDiff.Triple2(
+                SIMDiff.SecondAdjointNode2(
                     $f,
                     $f(x1,x2),
                     $df1(x1,x2),
@@ -107,13 +107,13 @@ macro register_bivariate(f,df1,df2,ddf11,ddf12,ddf22)
                 )
             end
             @inline function $f(t1::T1, t2::T2) where {
-                T1 <: SIMDiff.AbstractTriple,
+                T1 <: SIMDiff.AbstractSecondAdjointNode,
                 T2 <: Real
                 }
                 
                 x1 = t1.x
                 x2 = t2
-                SIMDiff.Triple1(
+                SIMDiff.SecondAdjointNode1(
                     SIMDiff.SecondFixed($f),
                     $f(x1,x2),
                     $df1(x1,x2),
@@ -123,12 +123,12 @@ macro register_bivariate(f,df1,df2,ddf11,ddf12,ddf22)
             end
             @inline function $f(t1::T1, t2::T2) where {
                 T1 <: Real,
-                T2 <: SIMDiff.AbstractTriple
+                T2 <: SIMDiff.AbstractSecondAdjointNode
                 }
                 
                 x1 = t1
                 x2 = t2.x
-                SIMDiff.Triple1(
+                SIMDiff.SecondAdjointNode1(
                     SIMDiff.FirstFixed($f),
                     $f(x1,x2),
                     $df2(x1,x2),

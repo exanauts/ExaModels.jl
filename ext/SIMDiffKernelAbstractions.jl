@@ -250,22 +250,22 @@ end
 
 @kernel function kerh(y1,y2,@Const(f),@Const(itr),@Const(x),@Const(adj1),@Const(adj2))
     I = @index(Global)
-    SIMDiff.hrpass0(f.f(itr[I], SIMDiff.TripleSource(x)), f.comp2, y1, y2, SIMDiff.offset2(f,I), 0, adj1, adj2)
+    SIMDiff.hrpass0(f.f(itr[I], SIMDiff.SecondAdjointNodeSource(x)), f.comp2, y1, y2, SIMDiff.offset2(f,I), 0, adj1, adj2)
 end
 
 @kernel function kerh2(y1,y2,@Const(f),@Const(itr),@Const(x),@Const(adjs1),@Const(adj2))
     I = @index(Global)
-    SIMDiff.hrpass0(f.f(itr[I], SIMDiff.TripleSource(x)), f.comp2, y1, y2, SIMDiff.offset2(f,I), 0, adjs1[SIMDiff.offset0(f,itr,I)], adj2)
+    SIMDiff.hrpass0(f.f(itr[I], SIMDiff.SecondAdjointNodeSource(x)), f.comp2, y1, y2, SIMDiff.offset2(f,I), 0, adjs1[SIMDiff.offset0(f,itr,I)], adj2)
 end
 
 @kernel function kerj(y1,y2,@Const(f),@Const(itr),@Const(x),@Const(adj))
     I = @index(Global)
-    SIMDiff.jrpass(f.f(itr[I], SIMDiff.DualSource(x)), f.comp1, SIMDiff.offset0(f,itr,I), y1, y2, SIMDiff.offset1(f,I), 0, adj)
+    SIMDiff.jrpass(f.f(itr[I], SIMDiff.AdjointNodeSource(x)), f.comp1, SIMDiff.offset0(f,itr,I), y1, y2, SIMDiff.offset1(f,I), 0, adj)
 end
 
 @kernel function kerg(y,@Const(f),@Const(itr),@Const(x),@Const(adj))
     I = @index(Global)
-    SIMDiff.grpass(f.f(itr[I], SIMDiff.DualSource(x)), f.comp1, y, SIMDiff.offset1(f,I), 0, adj)
+    SIMDiff.grpass(f.f(itr[I], SIMDiff.AdjointNodeSource(x)), f.comp1, y, SIMDiff.offset1(f,I), 0, adj)
 end
 
 @kernel function kerf(y,@Const(f),@Const(itr),@Const(x))

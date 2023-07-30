@@ -182,7 +182,7 @@ function variable(
 end
 
 function objective(c::C,gen) where C <: Core
-    f = Func(
+    f = SIMDFunction(
         gen, c.nobj, c.nnzg, c.nnzh
     )
 
@@ -204,7 +204,7 @@ function constraint(
     ucon = (zero(T) for i in 1:length(gen))
     ) where {T, C <: Core{T}}
 
-    f = Func(
+    f = SIMDFunction(
         gen, c.ncon, c.nnzj, c.nnzh
     )
     nitr = length(gen.iter)
@@ -222,7 +222,7 @@ function constraint(
 end
 
 function constraint!(c::C,c1,gen) where C <: Core
-    f = Func(
+    f = SIMDFunction(
         gen, offset0(c1,0), c.nnzj, c.nnzh
     )
     oa = c.nconaug
@@ -387,8 +387,8 @@ end
 @inbounds @inline offset1(a,i) = offset1(a.f, i)
 @inbounds @inline offset2(a,i) = offset2(a.f, i)
 @inbounds @inline offset0(f,itr,i) = offset0(f,i)
-@inbounds @inline offset0(f::F,i) where F <: Func = f.o0 + i
-@inbounds @inline offset1(f::F,i) where F <: Func = f.o1 + f.o1step * (i-1)
-@inbounds @inline offset2(f::F,i) where F <: Func = f.o2 + f.o2step * (i-1)
+@inbounds @inline offset0(f::F,i) where F <: SIMDFunction = f.o0 + i
+@inbounds @inline offset1(f::F,i) where F <: SIMDFunction = f.o1 + f.o1step * (i-1)
+@inbounds @inline offset2(f::F,i) where F <: SIMDFunction = f.o2 + f.o2step * (i-1)
 @inbounds @inline offset0(a::C,i) where C <: ConstraintAug = offset0(a.f,a.itr,i)
-@inbounds @inline offset0(f::F,itr,i) where {P <: Pair, F <: Func{P}} = f.o0 + f.f.first(itr[i],nothing)
+@inbounds @inline offset0(f::F,itr,i) where {P <: Pair, F <: SIMDFunction{P}} = f.o0 + f.f.first(itr[i],nothing)

@@ -1,4 +1,4 @@
-# MadDiffCore
+# SIMDiff
 ```@autodocs
-Modules = [MadDiffCore]
+Modules = [SIMDiff]
 ```

@@ -1,4 +1,0 @@
-# MadDiffMOI
-```@autodocs
-Modules = [MadDiffSpecialFunctions]
-```

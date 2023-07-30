@@ -3,7 +3,9 @@
 struct Compressor{I}
     inner::I
 end
-struct Func{F,C1,C2}
+@inbounds @inline (i::Compressor{I})(n) where I = i.inner[n]
+
+struct SIMDFunction{F,C1,C2}
     f::F
     comp1::C1
     comp2::C2
@@ -13,17 +15,17 @@ struct Func{F,C1,C2}
     o1step::Int
     o2step::Int
 end
-function Func(gen::Base.Generator, o0=0, o1=0, o2=0)
+function SIMDFunction(gen::Base.Generator, o0=0, o1=0, o2=0)
 
     p = Par(eltype(gen.iter))
     f = gen.f(p)
 
     
-    d = f(Identity(),DualSource(NaNSource{Float16}()))
+    d = f(Identity(),AdjointNodeSource(NaNSource{Float16}()))
     y1 = []
     SIMDiff.grpass(d,nothing,y1,nothing,0,NaN16)
 
-    t = f(Identity(),TripleSource(NaNSource{Float16}()))
+    t = f(Identity(),SecondAdjointNodeSource(NaNSource{Float16}()))
     y2 = []
     SIMDiff.hrpass0(t,nothing,y2,nothing,nothing,0,NaN16,NaN16)
 
@@ -35,10 +37,8 @@ function Func(gen::Base.Generator, o0=0, o1=0, o2=0)
     o2step = length(a2)
     c2 = Compressor(Tuple(findfirst(isequal(i), a2) for i in y2))
     
-    Func(f,c1, c2, o0, o1, o2, o1step, o2step)
+    SIMDFunction(f,c1, c2, o0, o1, o2, o1step, o2step)
 end
-
-@inbounds @inline (i::Compressor{I})(n) where I = i.inner[n]
 
 
 

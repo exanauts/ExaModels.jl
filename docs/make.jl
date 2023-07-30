@@ -1,20 +1,14 @@
-using Documenter, MadDiff, Literate
+using Documenter, SIMDiff, Literate
 
 const _PAGES = [
     "Introduction" => "index.md",
     "Quick Start"=>"guide.md",
-    "How it Works" => "tutorial.md",
-    "API Manual" => [
-        "MadDiffCore" => "core.md",
-        "MadDiffSpecialFunctions" => "special.md",
-        "MadDiffModels" => "models.md",
-        "MadDiffMOI" => "moi.md",
-    ]
+    "API Manual" => "core.md",
 ]
 
 const _JL_FILENAMES = [
     "guide.jl",
-    "tutorial.jl"
+    # "tutorial.jl"
 ]
 
 for jl_filename in _JL_FILENAMES
@@ -30,15 +24,15 @@ end
 
 
 makedocs(
-    sitename = "MadDiff",
+    sitename = "SIMDiff.jl",
     authors = "Sungho Shin",
     format = Documenter.LaTeX(platform="docker"),
     pages = _PAGES
 )
 
 makedocs(
-    sitename = "MadDiff",
-    modules = [MadDiff],
+    sitename = "SIMDiff.jl",
+    modules = [SIMDiff],
     authors = "Sungho Shin",
     format = Documenter.HTML(
         prettyurls = get(ENV, "CI", nothing) == "true",
@@ -51,6 +45,6 @@ makedocs(
 
 
 deploydocs(
-    repo = "github.com/sshin23/MadDiff.jl.git"
+    repo = "github.com/sshin23/SIMDiff.jl.git"
 )
 
