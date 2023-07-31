@@ -26,9 +26,21 @@ N = 100
 
 m=JuMP.Model()
 
-JuMP.@variable(jm,x[i=1:N], start= mod(i,2)==1 ? -1.2 : 1.)
-JuMP.@NLconstraint(jm,[i=1:N-2], 3x[i+1]^3+2x[i+2]-5+sin(x[i+1]-x[i+2])sin(x[i+1]+x[i+2])+4x[i+1]-x[i]exp(x[i]-x[i+1])-3==0.)
-JuMP.@NLobjective(jm,Min,sum(100(x[i-1]^2-x[i])^2+(x[i-1]-1)^2 for i=2:N))
+JuMP.@variable(
+    m,
+    x[i=1:N],
+    start= mod(i,2)==1 ? -1.2 : 1.
+)
+JuMP.@NLconstraint(
+    m,
+    [i=1:N-2],
+    3x[i+1]^3+2x[i+2]-5+sin(x[i+1]-x[i+2])sin(x[i+1]+x[i+2])+4x[i+1]-x[i]exp(x[i]-x[i+1])-3==0.
+)
+JuMP.@NLobjective(
+    m,
+    Min,
+    sum(100(x[i-1]^2-x[i])^2+(x[i-1]-1)^2 for i=2:N)
+)
 ```
 can be translated into the following `ExaModels.Model`
 ```julia
@@ -43,8 +55,12 @@ x = ExaModels.variable(
 ExaModels.constraint(
     c,
     3x[i+1]^3+2*x[i+2]-5+sin(x[i+1]-x[i+2])sin(x[i+1]+x[i+2])+4x[i+1]-x[i]exp(x[i]-x[i+1])-3
-    for i in 1:N-2)
-ExaModels.objective(c, 100*(x[i-1]^2-x[i])^2+(x[i-1]-1)^2 for i in 2:N)
+    for i in 1:N-2
+)
+ExaModels.objective(c,
+    100*(x[i-1]^2-x[i])^2+(x[i-1]-1)^2
+    for i in 2:N
+)
 m = ExaModels.Model(c)
 ```
 Any nonlinear optimization solver in the [JuliaSmoothOptimizers](https://github.com/JuliaSmoothOptimizers) ecosystem can solve the problem. For example, 
