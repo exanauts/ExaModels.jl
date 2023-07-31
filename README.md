@@ -13,6 +13,45 @@ ExaModels.jl is different from other algebraic modeling tools, such as JuMP or A
 - **Performance**: ExaModels.jl compiles (via Julia's compiler) derivative evaluation codes that are specific to each computation pattern, based on reverse-mode automatic differentiation. This makes the speed of derivative evaluation (even on the CPU) significantly faster than other existing tools.
 - **Portability**: ExaModels.jl can evaluate derivatives on GPU accelerators. The code is currently only tested for NVIDIA GPUs, but GPU code is implemented mostly based on the portable programming paradigm, KernelAbstractions.jl. In the future, we are interested in supporting Intel, AMD, and Apple GPUs.
 
+## Quick Start
+### Installation
+```juliaimport Pkg
+Pkg.add("ExaModels.jl")
+```
+### Usage
+The following `JuMP.Model` 
+```julia
+using JuMP
+N = 100
+
+m=JuMP.Model()
+
+JuMP.@variable(jm,x[i=1:N], start= mod(i,2)==1 ? -1.2 : 1.)
+JuMP.@NLconstraint(jm,[i=1:N-2], 3x[i+1]^3+2x[i+2]-5+sin(x[i+1]-x[i+2])sin(x[i+1]+x[i+2])+4x[i+1]-x[i]exp(x[i]-x[i+1])-3==0.)
+JuMP.@NLobjective(jm,Min,sum(100(x[i-1]^2-x[i])^2+(x[i-1]-1)^2 for i=2:N))
+```
+can be translated into the following `ExaModels.Model`
+```julia
+using ExaModels
+N= 100
+
+c = ExaModels.Core()
+x = ExaModels.variable(
+    c, N;
+    start = (mod(i,2)==1 ? -1.2 : 1. for i=1:N)
+)
+ExaModels.constraint(
+    c,
+    3x[i+1]^3+2*x[i+2]-5+sin(x[i+1]-x[i+2])sin(x[i+1]+x[i+2])+4x[i+1]-x[i]exp(x[i]-x[i+1])-3
+    for i in 1:N-2)
+ExaModels.objective(c, 100*(x[i-1]^2-x[i])^2+(x[i-1]-1)^2 for i in 2:N)
+m = ExaModels.Model(c)
+```
+Any nonlinear optimization solver in the [JuliaSmoothOptimizers](https://github.com/JuliaSmoothOptimizers) ecosystem can solve the problem. For example, 
+```julia
+using NLPModelsIpopt
+result = ipopt(m)
+```
 ## Supporting ExaModels.jl
 - Please report issues and feature requests via the [GitHub issue tracker](https://github.com/sshin/ExaModels.jl/issues).
 - Questions are welcome at [GitHub discussion forum](https://github.com/sshin23/ExaModels.jl/discussions).
