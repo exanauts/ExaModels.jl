@@ -10,7 +10,8 @@ ExaModels.jl employs what we call **[SIMD](https://en.wikipedia.org/wiki/Single_
 
 ExaModels.jl is different from other algebraic modeling tools, such as [JuMP](https://github.com/jump-dev/JuMP.jl) or [AMPL](https://ampl.com/), in the following ways:
 - **Modeling Interface**: ExaModels.jl enforces users to specify the model equations always in the form of `Generator`s. This allows ExaModels.jl toarallel [reverse-mode automatic differentiation]()**ructure in the model equations.
-- **Performance**: ExaModels.jl compiles uate derivatives either on multi-core CPUs or GPU accelerators. The code is currently only tested for NVIDIA GPUs, but GPU code is implemented mostly based on the portable programming paradigm, [KernelAbstractions.jl](https://github.com/JuliaGPU/KernelAbstractions.jl). In the future, we are interested in supporting Intel, AMD, and Apple GPUs.
+- **Performance**: ExaModels.jl compiles (via Julia's compiler) derivative evaluation codes that are specific to each computation pattern, based on reverse-mode automatic differentiation. This makes the speed of derivative evaluation (even on the CPU) significantly faster than other existing tools.
+- **Portability**: ExaModels.jl can evaluate derivatives on GPU accelerators. The code is currently only tested for NVIDIA GPUs, but GPU code is implemented mostly based on the portable programming paradigm, [KernelAbstractions.jl](https://github.com/JuliaGPU/KernelAbstractions.jl). In the future, we are interested in supporting Intel, AMD, and Apple GPUs.
 
 ## Quick Start
 ### Installation
