@@ -30,8 +30,8 @@ function ADBenchmarkModel(m)
         ADBenchmarkStats()
     )
 end
-function ADBenchmarkModel(c::SIMDiff.Core; kwargs...)
-    m = SIMDiff.Model(c;kwargs...)
+function ADBenchmarkModel(c::ExaModels.Core; kwargs...)
+    m = ExaModels.Model(c;kwargs...)
     return ADBenchmarkModel(m)
 end
 

@@ -24,15 +24,15 @@ end
 
 function luksan_vlcek_simdiff_model(backend, N)
     
-    c = SIMDiff.Core(backend)
-    x = SIMDiff.variable(
+    c = SIMDModels.Core(backend)
+    x = SIMDModels.variable(
         c, N;
         start = (luksan_vlcek_x0(i) for i=1:N)
     )
-    SIMDiff.constraint(
+    SIMDModels.constraint(
         c,
         luksan_vlcek_con(x,i)
         for i in 1:N-2)
-    SIMDiff.objective(c, luksan_vlcek_obj(x,i) for i in 2:N)
-    return SIMDiff.Model(c)
+    SIMDModels.objective(c, luksan_vlcek_obj(x,i) for i in 2:N)
+    return SIMDModels.Model(c)
 end

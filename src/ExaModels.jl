@@ -1,4 +1,4 @@
-module SIMDiff
+module ExaModels
 
 import NLPModels
 
@@ -14,4 +14,4 @@ include("templates.jl")
 
 export data, variable, objective, constraint, constraint!
 
-end # module SIMDiffes
+end # module ExaModelses

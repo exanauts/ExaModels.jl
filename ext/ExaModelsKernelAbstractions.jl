@@ -1,10 +1,10 @@
-module SIMDiffKernelAbstractions
+module ExaModelsKernelAbstractions
 
-using SIMDiff: SIMDiff, NLPModels
+using ExaModels: ExaModels, NLPModels
 using KernelAbstractions
 
-function SIMDiff.data(
-    c::SIMDiff.Core{T,VT,B}, gen
+function ExaModels.data(
+    c::ExaModels.Core{T,VT,B}, gen
     ) where {T,VT,B <: KernelAbstractions.Backend}
     y = similar(c.x0, Base.@default_eltype(gen), size(gen))
     itr = getitr(gen.iter)
@@ -25,7 +25,7 @@ end
     y[itr[I]...] = f(itr[I])
 end
 
-SIMDiff.Core(backend::KernelAbstractions.CPU) = SIMDiff.Core(backend=backend)
+ExaModels.Core(backend::KernelAbstractions.CPU) = ExaModels.Core(backend=backend)
 
 function getptr(backend,array)
     bitarray = similar(array,Bool,length(array)+1)
@@ -47,7 +47,7 @@ struct KAExtension{T,VT <: AbstractVector{T}, VI1, VI2, B}
     conaugptr::VI2
 end
 
-function SIMDiff.extension(w::C) where {T,VT,B <: KernelAbstractions.Backend, C <: SIMDiff.Core{T,VT,B}}
+function ExaModels.extension(w::C) where {T,VT,B <: KernelAbstractions.Backend, C <: ExaModels.Core{T,VT,B}}
 
     gsparsity = similar(w.x0,Tuple{Int,Int},w.nnzg)
 
@@ -77,54 +77,54 @@ function _conaug_structure!(backend, cons, sparsity)
     _conaug_structure!(backend, cons.inner, sparsity)
     synchronize(backend)
 end
-function _conaug_structure!(backend, cons::SIMDiff.Constraint, sparsity)
+function _conaug_structure!(backend, cons::ExaModels.Constraint, sparsity)
     _conaug_structure!(backend, cons.inner, sparsity)
 end
-function _conaug_structure!(backend, cons::SIMDiff.ConstraintNull, sparsity) end
+function _conaug_structure!(backend, cons::ExaModels.ConstraintNull, sparsity) end
 @kernel function kers(sparsity,@Const(f),@Const(itr),@Const(oa))
     I = @index(Global)
-    sparsity[oa+I] = (SIMDiff.offset0(f,itr,I), oa+I)
+    sparsity[oa+I] = (ExaModels.offset0(f,itr,I), oa+I)
 end
 
 
 
 function _grad_structure!(backend, objs, gsparsity)
-    SIMDiff.sgradient!(backend, gsparsity, objs, nothing, NaN16)
+    ExaModels.sgradient!(backend, gsparsity, objs, nothing, NaN16)
     _grad_structure!(backend, objs.inner, gsparsity)
     synchronize(backend)
 end
-function _grad_structure!(backend, objs::SIMDiff.ObjectiveNull, gsparsity) end
+function _grad_structure!(backend, objs::ExaModels.ObjectiveNull, gsparsity) end
 
-function NLPModels.jac_structure!(m::SIMDiff.Model{T,VT,E} where {T, VT, E <: KAExtension}, rows::V, cols::V) where V <: AbstractVector
+function NLPModels.jac_structure!(m::ExaModels.Model{T,VT,E} where {T, VT, E <: KAExtension}, rows::V, cols::V) where V <: AbstractVector
     _jac_structure!(m.ext.backend, m.cons, rows, cols)
 end
 function _jac_structure!(backend, cons, rows, cols)
-    SIMDiff.sjacobian!(backend, rows, cols, cons, nothing, NaN16)
+    ExaModels.sjacobian!(backend, rows, cols, cons, nothing, NaN16)
     _jac_structure!(backend, cons.inner, rows, cols)
     synchronize(backend)
 end
-function _jac_structure!(backend, cons::SIMDiff.ConstraintNull, rows, cols) end
+function _jac_structure!(backend, cons::ExaModels.ConstraintNull, rows, cols) end
 
-function NLPModels.hess_structure!(m::SIMDiff.Model{T,VT,E} where {T, VT, E <: KAExtension}, rows::V, cols::V) where V <: AbstractVector
+function NLPModels.hess_structure!(m::ExaModels.Model{T,VT,E} where {T, VT, E <: KAExtension}, rows::V, cols::V) where V <: AbstractVector
     _obj_hess_structure!(m.ext.backend, m.objs, rows, cols)
     _con_hess_structure!(m.ext.backend, m.cons, rows, cols)
 end
 
 function _obj_hess_structure!(backend, objs, rows, cols)
-    SIMDiff.shessian!(backend, rows, cols, objs, nothing, NaN16, NaN16)
+    ExaModels.shessian!(backend, rows, cols, objs, nothing, NaN16, NaN16)
     _obj_hess_structure!(backend, objs.inner, rows, cols)
     synchronize(backend)
 end
-function _obj_hess_structure!(backend, objs::SIMDiff.ObjectiveNull, rows, cols) end
+function _obj_hess_structure!(backend, objs::ExaModels.ObjectiveNull, rows, cols) end
 function _con_hess_structure!(backend, cons, rows, cols)
-    SIMDiff.shessian!(backend, rows, cols, cons, nothing, NaN16, NaN16)
+    ExaModels.shessian!(backend, rows, cols, cons, nothing, NaN16, NaN16)
     _con_hess_structure!(backend, cons.inner, rows, cols)
     synchronize(backend)
 end
-function _con_hess_structure!(backend, cons::SIMDiff.ConstraintNull, rows, cols) end
+function _con_hess_structure!(backend, cons::ExaModels.ConstraintNull, rows, cols) end
 
 
-function NLPModels.obj(m::SIMDiff.Model{T,VT,E} where {T, VT, E <: KAExtension}, x::V) where V <: AbstractVector
+function NLPModels.obj(m::ExaModels.Model{T,VT,E} where {T, VT, E <: KAExtension}, x::V) where V <: AbstractVector
     m.counters.neval_obj += 1
     m.counters.teval_obj += @elapsed begin
         _obj(m.ext.backend,m.ext.objbuffer,m.objs,x)
@@ -137,9 +137,9 @@ function _obj(backend,objbuffer, obj, x)
     _obj(backend,objbuffer,obj.inner,x)
     synchronize(backend)
 end
-function _obj(backend, objbuffer, f::SIMDiff.ObjectiveNull, x) end
+function _obj(backend, objbuffer, f::ExaModels.ObjectiveNull, x) end
 
-function NLPModels.cons!(m::SIMDiff.Model{T,VT,E} where {T, VT, E <: KAExtension}, x::V, y::V) where V <: AbstractVector
+function NLPModels.cons!(m::ExaModels.Model{T,VT,E} where {T, VT, E <: KAExtension}, x::V, y::V) where V <: AbstractVector
     m.counters.neval_cons += 1    
     m.counters.teval_cons += @elapsed begin
         _cons!(m.ext.backend,y,m.cons,x)
@@ -153,29 +153,29 @@ function NLPModels.cons!(m::SIMDiff.Model{T,VT,E} where {T, VT, E <: KAExtension
         end
     end
 end
-function _cons!(backend,y, con::SIMDiff.Constraint, x)
+function _cons!(backend,y, con::ExaModels.Constraint, x)
     kerf(backend)(y, con.f, con.itr, x; ndrange=length(con.itr))
     _cons!(backend,y,con.inner,x)
     synchronize(backend)
 end
-function _cons!(backend, y, con::SIMDiff.ConstraintNull, x) end
-function _cons!(backend,y, con::SIMDiff.ConstraintAug, x)
+function _cons!(backend, y, con::ExaModels.ConstraintNull, x) end
+function _cons!(backend,y, con::ExaModels.ConstraintAug, x)
     _cons!(backend,y,con.inner,x)
 end 
 
 
 
-function _conaugs!(backend,y, con::SIMDiff.ConstraintAug, x)
+function _conaugs!(backend,y, con::ExaModels.ConstraintAug, x)
     kerf2(backend)(y, con.f, con.itr, x, con.oa; ndrange=length(con.itr))
     _conaugs!(backend,y,con.inner,x)
     synchronize(backend)
 end
-function _conaugs!(backend,y, con::SIMDiff.Constraint, x)
+function _conaugs!(backend,y, con::ExaModels.Constraint, x)
     _conaugs!(backend,y,con.inner,x)
 end
-function _conaugs!(backend, y, con::SIMDiff.ConstraintNull, x) end
+function _conaugs!(backend, y, con::ExaModels.ConstraintNull, x) end
 
-function NLPModels.grad!(m::SIMDiff.Model{T,VT,E} where {T, VT, E <: KAExtension}, x::V, y::V) where V <: AbstractVector
+function NLPModels.grad!(m::ExaModels.Model{T,VT,E} where {T, VT, E <: KAExtension}, x::V, y::V) where V <: AbstractVector
     m.counters.neval_grad += 1
     m.counters.teval_grad += @elapsed begin
         gradbuffer = m.ext.gradbuffer
@@ -190,13 +190,13 @@ function NLPModels.grad!(m::SIMDiff.Model{T,VT,E} where {T, VT, E <: KAExtension
     end
 end
 function _grad!(backend,y,objs,x)
-    SIMDiff.sgradient!(backend,y,objs,x,one(eltype(y)))
+    ExaModels.sgradient!(backend,y,objs,x,one(eltype(y)))
     _grad!(backend,y,objs.inner,x)
     synchronize(backend)
 end
-function _grad!(backend,y,objs::SIMDiff.ObjectiveNull,x) end
+function _grad!(backend,y,objs::ExaModels.ObjectiveNull,x) end
 
-function NLPModels.jac_coord!(m::SIMDiff.Model{T,VT,E} where {T, VT, E <: KAExtension}, x::V, y::V) where V <: AbstractVector
+function NLPModels.jac_coord!(m::ExaModels.Model{T,VT,E} where {T, VT, E <: KAExtension}, x::V, y::V) where V <: AbstractVector
     m.counters.neval_jac += 1
     m.counters.teval_jac += @elapsed begin
         fill!(y,zero(eltype(y)))
@@ -204,13 +204,13 @@ function NLPModels.jac_coord!(m::SIMDiff.Model{T,VT,E} where {T, VT, E <: KAExte
     end
 end
 function _jac_coord!(backend, y, cons, x)
-    SIMDiff.sjacobian!(backend, y, nothing, cons, x, one(eltype(y)))
+    ExaModels.sjacobian!(backend, y, nothing, cons, x, one(eltype(y)))
     _jac_coord!(backend, y, cons.inner, x)
     synchronize(backend)    
 end
-function _jac_coord!(backend, y, cons::SIMDiff.ConstraintNull, x) end
+function _jac_coord!(backend, y, cons::ExaModels.ConstraintNull, x) end
 
-function NLPModels.hess_coord!(m::SIMDiff.Model{T,VT,E} where {T, VT, E <: KAExtension}, x::V, y::V, hess::V; obj_weight = one(eltype(y))) where V <: AbstractVector
+function NLPModels.hess_coord!(m::ExaModels.Model{T,VT,E} where {T, VT, E <: KAExtension}, x::V, y::V, hess::V; obj_weight = one(eltype(y))) where V <: AbstractVector
     m.counters.neval_hess += 1
     m.counters.teval_hess += @elapsed begin
         fill!(hess,zero(eltype(hess)))
@@ -219,58 +219,58 @@ function NLPModels.hess_coord!(m::SIMDiff.Model{T,VT,E} where {T, VT, E <: KAExt
     end
 end
 function _obj_hess_coord!(backend, hess, objs, x, obj_weight)
-    SIMDiff.shessian!(backend, hess, nothing, objs, x, obj_weight, zero(eltype(hess)))
+    ExaModels.shessian!(backend, hess, nothing, objs, x, obj_weight, zero(eltype(hess)))
     _obj_hess_coord!(backend, hess, objs.inner, x, obj_weight)
     synchronize(backend)
 end
-function _obj_hess_coord!(backend, hess, objs::SIMDiff.ObjectiveNull, x, obj_weight) end
+function _obj_hess_coord!(backend, hess, objs::ExaModels.ObjectiveNull, x, obj_weight) end
 function _con_hess_coord!(backend, hess, cons, x, y)
-    SIMDiff.shessian!(backend, hess, nothing, cons, x, y, zero(eltype(hess))) 
+    ExaModels.shessian!(backend, hess, nothing, cons, x, y, zero(eltype(hess))) 
     _con_hess_coord!(backend, hess, cons.inner, x, y)
     synchronize(backend)
 end
-function _con_hess_coord!(backend, hess, cons::SIMDiff.ConstraintNull, x, y) end
+function _con_hess_coord!(backend, hess, cons::ExaModels.ConstraintNull, x, y) end
 
 
-function SIMDiff.sgradient!(backend::B,y,f,x,adj) where B <: KernelAbstractions.Backend
+function ExaModels.sgradient!(backend::B,y,f,x,adj) where B <: KernelAbstractions.Backend
     return kerg(backend)(y, f.f, f.itr, x, adj; ndrange = length(f.itr))
 end
 
-function SIMDiff.sjacobian!(backend::B, y1, y2, f, x, adj) where B <: KernelAbstractions.Backend
+function ExaModels.sjacobian!(backend::B, y1, y2, f, x, adj) where B <: KernelAbstractions.Backend
     return kerj(backend)(y1, y2, f.f, f.itr, x, adj; ndrange=length(f.itr))
 end
 
-function SIMDiff.shessian!(backend::B, y1, y2, f, x, adj, adj2) where B <: KernelAbstractions.Backend
+function ExaModels.shessian!(backend::B, y1, y2, f, x, adj, adj2) where B <: KernelAbstractions.Backend
     return kerh(backend)(y1, y2, f.f, f.itr, x, adj, adj2; ndrange=length(f.itr))
 end
 
-function SIMDiff.shessian!(backend::B, y1, y2, f, x, adj::V, adj2) where {B <: KernelAbstractions.Backend, V <: AbstractVector}
+function ExaModels.shessian!(backend::B, y1, y2, f, x, adj::V, adj2) where {B <: KernelAbstractions.Backend, V <: AbstractVector}
     return kerh2(backend)(y1, y2, f.f, f.itr, x, adj, adj2; ndrange=length(f.itr))
 end
 
 @kernel function kerh(y1,y2,@Const(f),@Const(itr),@Const(x),@Const(adj1),@Const(adj2))
     I = @index(Global)
-    SIMDiff.hrpass0(f.f(itr[I], SIMDiff.SecondAdjointNodeSource(x)), f.comp2, y1, y2, SIMDiff.offset2(f,I), 0, adj1, adj2)
+    ExaModels.hrpass0(f.f(itr[I], ExaModels.SecondAdjointNodeSource(x)), f.comp2, y1, y2, ExaModels.offset2(f,I), 0, adj1, adj2)
 end
 
 @kernel function kerh2(y1,y2,@Const(f),@Const(itr),@Const(x),@Const(adjs1),@Const(adj2))
     I = @index(Global)
-    SIMDiff.hrpass0(f.f(itr[I], SIMDiff.SecondAdjointNodeSource(x)), f.comp2, y1, y2, SIMDiff.offset2(f,I), 0, adjs1[SIMDiff.offset0(f,itr,I)], adj2)
+    ExaModels.hrpass0(f.f(itr[I], ExaModels.SecondAdjointNodeSource(x)), f.comp2, y1, y2, ExaModels.offset2(f,I), 0, adjs1[ExaModels.offset0(f,itr,I)], adj2)
 end
 
 @kernel function kerj(y1,y2,@Const(f),@Const(itr),@Const(x),@Const(adj))
     I = @index(Global)
-    SIMDiff.jrpass(f.f(itr[I], SIMDiff.AdjointNodeSource(x)), f.comp1, SIMDiff.offset0(f,itr,I), y1, y2, SIMDiff.offset1(f,I), 0, adj)
+    ExaModels.jrpass(f.f(itr[I], ExaModels.AdjointNodeSource(x)), f.comp1, ExaModels.offset0(f,itr,I), y1, y2, ExaModels.offset1(f,I), 0, adj)
 end
 
 @kernel function kerg(y,@Const(f),@Const(itr),@Const(x),@Const(adj))
     I = @index(Global)
-    SIMDiff.grpass(f.f(itr[I], SIMDiff.AdjointNodeSource(x)), f.comp1, y, SIMDiff.offset1(f,I), 0, adj)
+    ExaModels.grpass(f.f(itr[I], ExaModels.AdjointNodeSource(x)), f.comp1, y, ExaModels.offset1(f,I), 0, adj)
 end
 
 @kernel function kerf(y,@Const(f),@Const(itr),@Const(x))
     I = @index(Global)
-    y[SIMDiff.offset0(f,itr,I)] = f.f(itr[I],x)
+    y[ExaModels.offset0(f,itr,I)] = f.f(itr[I],x)
 end
 @kernel function kerf2(y,@Const(f),@Const(itr),@Const(x),@Const(oa))
     I = @index(Global)
@@ -304,4 +304,4 @@ end
     end
 end
 
-end # module SIMDiffKernelAbstractions
+end # module ExaModelsKernelAbstractions

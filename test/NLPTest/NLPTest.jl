@@ -1,6 +1,6 @@
 module NLPTest
 
-using SIMDiff, Test, ADNLPModels, NLPModels, NLPModelsIpopt, KernelAbstractions, CUDA
+using SIMDModels, Test, ADNLPModels, NLPModels, NLPModelsIpopt, KernelAbstractions, CUDA
 
 const NLP_TEST_ARGUMENTS = [
     (

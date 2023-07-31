@@ -1,10 +1,10 @@
-module SIMDiffOneAPI
+module ExaModelsOneAPI
 
-import SIMDiff, oneAPI
+import ExaModels, oneAPI
 
-SIMDiff.Core(backend::oneAPI.oneAPIBackend) = SIMDiff.Core(x0 = oneAPI.zeros(Float64,0), backend = backend)
+ExaModels.Core(backend::oneAPI.oneAPIBackend) = ExaModels.Core(x0 = oneAPI.zeros(Float64,0), backend = backend)
 
-function SIMDiff.myappend!(a::A,b) where A <: oneAPI.oneVector
+function ExaModels.myappend!(a::A,b) where A <: oneAPI.oneVector
     la = length(a);
     lb = length(b);
     a = similar(a, la+lb);
