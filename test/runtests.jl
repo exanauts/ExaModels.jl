@@ -1,4 +1,4 @@
-using Test, SIMDiff
+using Test, ExaModels
 
 include("NLPTest/NLPTest.jl")
 

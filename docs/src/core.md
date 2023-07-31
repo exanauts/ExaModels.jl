@@ -1,4 +1,4 @@
-# SIMDiff
+# ExaModels
 ```@autodocs
-Modules = [SIMDiff]
+Modules = [ExaModels]
 ```

@@ -43,13 +43,13 @@ end
 
 
 """
-SIMDiff.Core
+ExaModels.Core
 
-A core data object used for creating `SIMDiff.Model`.
+A core data object used for creating `ExaModels.Model`.
 
-SIMDiff.Core()
+ExaModels.Core()
 
-Returns `SIMDiff.Core` for creating `SIMDiff.Model{Float64,Vector{Float64}}`
+Returns `ExaModels.Core` for creating `ExaModels.Model{Float64,Vector{Float64}}`
 """
 Base.@kwdef mutable struct Core{T, VT <: AbstractVector{T}, B}
     obj::AbstractObjective = ObjectiveNull()
@@ -73,18 +73,18 @@ end
 
 
 """
-SIMDiff.Core(S::Type)
+ExaModels.Core(S::Type)
 
-Returns `SIMDiff.Core` for creating `SIMDiff.Model{T,VT}`, where VT <: S
+Returns `ExaModels.Core` for creating `ExaModels.Model{T,VT}`, where VT <: S
 """
 Core(::Nothing) = Core()
 Core(::Type{T},::Nothing) where T <: AbstractFloat = Core(x0=zeros(T,0))
 Core(::Type{T}) where T <: AbstractFloat = Core(T, nothing)
 
 """
-SIMDiff.Model <: NLPModels.AbstractNLPModel
+ExaModels.Model <: NLPModels.AbstractNLPModel
 
-An NLP model with SIMDiff backend
+An NLP model with ExaModels backend
 """
 struct Model{T,VT,E,O,C} <: NLPModels.AbstractNLPModel{T,VT}
     objs::O
@@ -95,7 +95,7 @@ struct Model{T,VT,E,O,C} <: NLPModels.AbstractNLPModel{T,VT}
 end
 
 """
-SIMDiff.Model(core)
+ExaModels.Model(core)
 
 """
 function Model(c::C) where C <: Core

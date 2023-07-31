@@ -1,6 +1,6 @@
-module SIMDiffExamples
+module ExaModelsExamples
 
-import SIMDiff: SIMDiff, NLPModels
+import ExaModels: ExaModels, NLPModels
 import PowerModels: PowerModels, silence
 using JuMP, NLPModelsJuMP
 
@@ -63,4 +63,4 @@ function parse_log(file)
     end
 end
 
-end # module SIMDiffExamples
+end # module ExaModelsExamples

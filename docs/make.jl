@@ -1,4 +1,4 @@
-using Documenter, SIMDiff, Literate
+using Documenter, ExaModels, Literate
 
 const _PAGES = [
     "Introduction" => "index.md",
@@ -23,16 +23,16 @@ for jl_filename in _JL_FILENAMES
 end
 
 
-makedocs(
-    sitename = "SIMDiff.jl",
-    authors = "Sungho Shin",
-    format = Documenter.LaTeX(platform="docker"),
-    pages = _PAGES
-)
+# makedocs(
+#     sitename = "ExaModels.jl",
+#     authors = "Sungho Shin",
+#     format = Documenter.LaTeX(platform="docker"),
+#     pages = _PAGES
+# )
 
 makedocs(
-    sitename = "SIMDiff.jl",
-    modules = [SIMDiff],
+    sitename = "ExaModels.jl",
+    modules = [ExaModels],
     authors = "Sungho Shin",
     format = Documenter.HTML(
         prettyurls = get(ENV, "CI", nothing) == "true",
@@ -45,6 +45,6 @@ makedocs(
 
 
 deploydocs(
-    repo = "github.com/sshin23/SIMDiff.jl.git"
+    repo = "github.com/sshin23/ExaModels.jl.git"
 )
 
