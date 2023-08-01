@@ -3,7 +3,7 @@
 
 | **License** | **Documentation** | **Build Status** | **Coverage** | **Citation** |
 |:-----------------:|:----------------:|:----------------:|:----------------:|:----------------:|
-| [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT) | [![doc](https://img.shields.io/badge/docs-dev-blue.svg)](https://sshin23.github.io/ExaModels.jl/)  | [![build](https://github.com/sshin23/ExaModels.jl/actions/workflows/test.yml/badge.svg)](https://github.com/sshin23/ExaModels.jl/actions/workflows/test.yml) | [![codecov](https://codecov.io/gh/sshin23/ExaModels.jl/branch/main/graph/badge.svg?token=8ViJWBWnZt)](https://codecov.io/gh/sshin23/ExaModels.jl) |
+| [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT) | [![doc](https://img.shields.io/badge/docs-dev-blue.svg)](https://sshin23.github.io/ExaModels.jl/)  | [![build](https://github.com/sshin23/ExaModels.jl/actions/workflows/test.yml/badge.svg)](https://github.com/sshin23/ExaModels.jl/actions/workflows/test.yml) | [![codecov](https://codecov.io/gh/sshin23/ExaModels.jl/branch/main/graph/badge.svg?token=8ViJWBWnZt)](https://codecov.io/gh/sshin23/ExaModels.jl) | [![arXiv](https://img.shields.io/badge/arXiv-2307.16830-b31b1b.svg)](https://arxiv.org/abs/2307.16830) |
 
 ## Introduction
 ExaModels.jl employs what we call **SIMD abstraction for nonlinear programs** (NLPs), which allows for the **preservation of the parallelizable structure** within the model equations, facilitating **efficient, parallel derivative evaluations** on the **GPU**.
