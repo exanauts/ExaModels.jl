@@ -19,6 +19,7 @@ ExaModelsOneAPI = "oneAPI"
 ExaModelsSpecialFunctions = "SpecialFunctions"
 
 [compat]
+NLPModels = "0.20"
 KernelAbstractions = "0.9"
 julia = "1.9"
 
