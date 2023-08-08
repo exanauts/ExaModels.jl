@@ -43,15 +43,15 @@ end
 
 
 """
-ExaModels.Core
+ExaCore
 
-A core data object used for creating `ExaModels.Model`.
+A core data object used for creating `ExaModel`.
 
-ExaModels.Core()
+ExaCore()
 
-Returns `ExaModels.Core` for creating `ExaModels.Model{Float64,Vector{Float64}}`
+Returns `ExaCore` for creating `ExaModel{Float64,Vector{Float64}}`
 """
-Base.@kwdef mutable struct Core{T, VT <: AbstractVector{T}, B}
+Base.@kwdef mutable struct ExaCore{T, VT <: AbstractVector{T}, B}
     obj::AbstractObjective = ObjectiveNull()
     con::AbstractConstraint = ConstraintNull()
     nvar::Int = 0
@@ -73,20 +73,20 @@ end
 
 
 """
-ExaModels.Core(S::Type)
+ExaCore(S::Type)
 
-Returns `ExaModels.Core` for creating `ExaModels.Model{T,VT}`, where VT <: S
+Returns `ExaCore` for creating `ExaModel{T,VT}`, where VT <: S
 """
-Core(::Nothing) = Core()
-Core(::Type{T},::Nothing) where T <: AbstractFloat = Core(x0=zeros(T,0))
-Core(::Type{T}) where T <: AbstractFloat = Core(T, nothing)
+ExaCore(::Nothing) = ExaCore()
+ExaCore(::Type{T},::Nothing) where T <: AbstractFloat = ExaCore(x0=zeros(T,0))
+ExaCore(::Type{T}) where T <: AbstractFloat = ExaCore(T, nothing)
 
 """
-ExaModels.Model <: NLPModels.AbstractNLPModel
+ExaModel <: NLPModels.AbstractNLPModel
 
 An NLP model with ExaModels backend
 """
-struct Model{T,VT,E,O,C} <: NLPModels.AbstractNLPModel{T,VT}
+struct ExaModel{T,VT,E,O,C} <: NLPModels.AbstractNLPModel{T,VT}
     objs::O
     cons::C
     meta::NLPModels.NLPModelMeta{T, VT}
@@ -95,11 +95,11 @@ struct Model{T,VT,E,O,C} <: NLPModels.AbstractNLPModel{T,VT}
 end
 
 """
-ExaModels.Model(core)
+ExaModel(core)
 
 """
-function Model(c::C) where C <: Core
-    return Model(
+function ExaModel(c::C) where C <: ExaCore
+    return ExaModel(
         c.obj, c.con, 
         NLPModels.NLPModelMeta(
             c.nvar,
@@ -151,11 +151,8 @@ size(ns) = Tuple(_length(n) for n in ns)
 _start(n::Int) = 1
 _start(n::UnitRange) = n.start
 
-# redo(x::AbstractArray,ns) = x
-# redo(x::Real,ns) = fill(x,size(ns))
-
 function data(
-    c::Core{T,VT,B}, gen
+    c::ExaCore{T,VT,B}, gen
     ) where {T, VT, B}
     return collect(gen)
 end
@@ -165,7 +162,7 @@ function variable(
     start = (zero(T) for i in 1:total(ns)),
     lvar = (T(-Inf) for i in 1:total(ns)),
     uvar = (T( Inf) for i in 1:total(ns))
-    ) where {T, C <: Core{T}}
+    ) where {T, C <: ExaCore{T}}
 
     # start = redo(start, ns)
     # lvar = redo(lvar, ns)
@@ -181,7 +178,7 @@ function variable(
     
 end
 
-function objective(c::C,gen) where C <: Core
+function objective(c::C,gen) where C <: ExaCore
     f = SIMDFunction(
         gen, c.nobj, c.nnzg, c.nnzh
     )
@@ -202,7 +199,7 @@ function constraint(
     start = (zero(T) for i in 1:length(gen)),
     lcon = (zero(T) for i in 1:length(gen)),
     ucon = (zero(T) for i in 1:length(gen))
-    ) where {T, C <: Core{T}}
+    ) where {T, C <: ExaCore{T}}
 
     f = SIMDFunction(
         gen, c.ncon, c.nnzj, c.nnzh
@@ -221,7 +218,7 @@ function constraint(
     )
 end
 
-function constraint!(c::C,c1,gen) where C <: Core
+function constraint!(c::C,c1,gen) where C <: ExaCore
     f = SIMDFunction(
         gen, offset0(c1,0), c.nnzj, c.nnzh
     )
@@ -242,7 +239,7 @@ end
 function extension(args...) end
 
 function NLPModels.jac_structure!(
-    m::Model,
+    m::ExaModel,
     rows::AbstractVector,
     cols::AbstractVector
     )
@@ -257,7 +254,7 @@ function _jac_structure!(cons, rows, cols)
 end
 
 function NLPModels.hess_structure!(
-    m::Model,
+    m::ExaModel,
     rows::AbstractVector,
     cols::AbstractVector
     )
@@ -279,7 +276,7 @@ function _con_hess_structure!(cons, rows, cols)
 end
 
 function NLPModels.obj(
-    m::Model,
+    m::ExaModel,
     x::AbstractVector
     ) 
 
@@ -294,7 +291,7 @@ _obj(objs,x) = _obj(objs.inner,x) + sum(objs.f.f(k,x) for k in objs.itr)
 _obj(objs::ObjectiveNull,x) = zero(eltype(x))
 
 function NLPModels.cons!(
-    m::Model,
+    m::ExaModel,
     x::AbstractVector,
     g::AbstractVector
     ) 
@@ -317,7 +314,7 @@ _cons!(cons::ConstraintNull,x,g) = nothing
 
 
 function NLPModels.grad!(
-    m::Model,
+    m::ExaModel,
     x::AbstractVector,
     f::AbstractVector
     )
@@ -337,7 +334,7 @@ end
 _grad!(objs::ObjectiveNull,x,f) = nothing
 
 function NLPModels.jac_coord!(
-    m::Model,
+    m::ExaModel,
     x::AbstractVector,
     jac::AbstractVector
     )
@@ -356,7 +353,7 @@ function _jac_coord!(cons,x,jac)
 end
 
 function NLPModels.hess_coord!(
-    m::Model,
+    m::ExaModel,
     x::AbstractVector,
     y::AbstractVector,
     hess::AbstractVector;

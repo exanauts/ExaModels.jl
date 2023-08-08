@@ -1,3 +1,10 @@
+"""
+    ExaModels
+
+An algebraic modeling and automatic differentiation tool in Julia Language, specialized for SIMD abstraction of nonlinear programs.
+
+For more information, please visit https://github.com/sshin23/ExaModels.jl
+"""
 module ExaModels
 
 import NLPModels
@@ -12,6 +19,13 @@ include("hessian.jl")
 include("nlp.jl")
 include("templates.jl")
 
-export data, variable, objective, constraint, constraint!
+export
+    ExaModel,
+    ExaCore,
+    data,
+    variable,
+    objective,
+    constraint,
+    constraint!
 
-end # module ExaModelses
+end # module ExaModels

@@ -2,7 +2,7 @@ module ExaModelsOneAPI
 
 import ExaModels, oneAPI
 
-ExaModels.Core(backend::oneAPI.oneAPIBackend) = ExaModels.Core(x0 = oneAPI.zeros(Float64,0), backend = backend)
+ExaModels.ExaCore(backend::oneAPI.oneAPIBackend) = ExaModels.ExaCore(x0 = oneAPI.zeros(Float64,0), backend = backend)
 
 function ExaModels.myappend!(a::A,b) where A <: oneAPI.oneVector
     la = length(a);

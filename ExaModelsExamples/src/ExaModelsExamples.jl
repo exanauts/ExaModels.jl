@@ -1,10 +1,9 @@
 module ExaModelsExamples
 
 import ExaModels: ExaModels, NLPModels
+import JuMP, NLPModelsJuMP
 import PowerModels: PowerModels, silence
-using JuMP, NLPModelsJuMP
 
-include("adbenchmarkmodel.jl")
 include("opf.jl")
 include("luksanvlcek.jl")
 include("distillation.jl")
@@ -62,5 +61,11 @@ function parse_log(file)
         return t1,t2
     end
 end
+
+for name in filter(names(ExaModelsExamples; all=true)) do x
+    endswith(string(x), "model")
+end
+    @eval export $name
+end 
 
 end # module ExaModelsExamples

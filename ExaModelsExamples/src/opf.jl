@@ -217,7 +217,7 @@ function ac_power_model(
 
     data = parse_ac_power_data(filename, backend) 
     
-    w = ExaModels.Core(T, backend)
+    w = ExaModels.ExaCore(T, backend)
 
     va = ExaModels.variable(
         w, length(data.bus);
@@ -350,6 +350,7 @@ function ac_power_model(
         g.bus =>-qg[g.i]
         for g in data.gen)
     
-    return ExaModels.Model(w)
+    return ExaModels.ExaModel(w)
     
 end
+

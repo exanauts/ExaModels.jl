@@ -1,10 +1,10 @@
 module ExaModelsCUDA
 
-using ExaModels: ExaModels, NLPModels
-using CUDA
+import ExaModels: ExaModels, NLPModels
+import CUDA: CUDA, CUDABackend, CuArray
 
-ExaModels.Core(backend::CUDABackend) = ExaModels.Core(Float64, backend)
-ExaModels.Core(T, backend::CUDABackend) = ExaModels.Core(x0 = CUDA.zeros(T,0), backend = backend)
+ExaModels.ExaCore(backend::CUDABackend) = ExaModels.ExaCore(Float64, backend)
+ExaModels.ExaCore(T, backend::CUDABackend) = ExaModels.ExaCore(x0 = CUDA.zeros(T,0), backend = backend)
 ExaModels.convert_array(v, backend::CUDABackend) = CuArray(v)
 
 end

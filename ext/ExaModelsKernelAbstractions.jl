@@ -1,10 +1,10 @@
 module ExaModelsKernelAbstractions
 
-using ExaModels: ExaModels, NLPModels
-using KernelAbstractions
+import ExaModels: ExaModels, NLPModels
+import KernelAbstractions: KernelAbstractions, @kernel, @index, @Const, synchronize
 
 function ExaModels.data(
-    c::ExaModels.Core{T,VT,B}, gen
+    c::ExaModels.ExaCore{T,VT,B}, gen
     ) where {T,VT,B <: KernelAbstractions.Backend}
     y = similar(c.x0, Base.@default_eltype(gen), size(gen))
     itr = getitr(gen.iter)
@@ -25,7 +25,7 @@ end
     y[itr[I]...] = f(itr[I])
 end
 
-ExaModels.Core(backend::KernelAbstractions.CPU) = ExaModels.Core(backend=backend)
+ExaModels.ExaCore(backend::KernelAbstractions.CPU) = ExaModels.ExaCore(backend=backend)
 
 function getptr(backend,array)
     bitarray = similar(array,Bool,length(array)+1)
@@ -47,7 +47,7 @@ struct KAExtension{T,VT <: AbstractVector{T}, VI1, VI2, B}
     conaugptr::VI2
 end
 
-function ExaModels.extension(w::C) where {T,VT,B <: KernelAbstractions.Backend, C <: ExaModels.Core{T,VT,B}}
+function ExaModels.extension(w::C) where {T,VT,B <: KernelAbstractions.Backend, C <: ExaModels.ExaCore{T,VT,B}}
 
     gsparsity = similar(w.x0,Tuple{Int,Int},w.nnzg)
 
@@ -95,7 +95,7 @@ function _grad_structure!(backend, objs, gsparsity)
 end
 function _grad_structure!(backend, objs::ExaModels.ObjectiveNull, gsparsity) end
 
-function NLPModels.jac_structure!(m::ExaModels.Model{T,VT,E} where {T, VT, E <: KAExtension}, rows::V, cols::V) where V <: AbstractVector
+function NLPModels.jac_structure!(m::ExaModels.ExaModel{T,VT,E} where {T, VT, E <: KAExtension}, rows::V, cols::V) where V <: AbstractVector
     _jac_structure!(m.ext.backend, m.cons, rows, cols)
 end
 function _jac_structure!(backend, cons, rows, cols)
@@ -105,7 +105,7 @@ function _jac_structure!(backend, cons, rows, cols)
 end
 function _jac_structure!(backend, cons::ExaModels.ConstraintNull, rows, cols) end
 
-function NLPModels.hess_structure!(m::ExaModels.Model{T,VT,E} where {T, VT, E <: KAExtension}, rows::V, cols::V) where V <: AbstractVector
+function NLPModels.hess_structure!(m::ExaModels.ExaModel{T,VT,E} where {T, VT, E <: KAExtension}, rows::V, cols::V) where V <: AbstractVector
     _obj_hess_structure!(m.ext.backend, m.objs, rows, cols)
     _con_hess_structure!(m.ext.backend, m.cons, rows, cols)
 end
@@ -124,7 +124,7 @@ end
 function _con_hess_structure!(backend, cons::ExaModels.ConstraintNull, rows, cols) end
 
 
-function NLPModels.obj(m::ExaModels.Model{T,VT,E} where {T, VT, E <: KAExtension}, x::V) where V <: AbstractVector
+function NLPModels.obj(m::ExaModels.ExaModel{T,VT,E} where {T, VT, E <: KAExtension}, x::V) where V <: AbstractVector
     m.counters.neval_obj += 1
     m.counters.teval_obj += @elapsed begin
         _obj(m.ext.backend,m.ext.objbuffer,m.objs,x)
@@ -139,7 +139,7 @@ function _obj(backend,objbuffer, obj, x)
 end
 function _obj(backend, objbuffer, f::ExaModels.ObjectiveNull, x) end
 
-function NLPModels.cons!(m::ExaModels.Model{T,VT,E} where {T, VT, E <: KAExtension}, x::V, y::V) where V <: AbstractVector
+function NLPModels.cons!(m::ExaModels.ExaModel{T,VT,E} where {T, VT, E <: KAExtension}, x::V, y::V) where V <: AbstractVector
     m.counters.neval_cons += 1    
     m.counters.teval_cons += @elapsed begin
         _cons!(m.ext.backend,y,m.cons,x)
@@ -175,7 +175,7 @@ function _conaugs!(backend,y, con::ExaModels.Constraint, x)
 end
 function _conaugs!(backend, y, con::ExaModels.ConstraintNull, x) end
 
-function NLPModels.grad!(m::ExaModels.Model{T,VT,E} where {T, VT, E <: KAExtension}, x::V, y::V) where V <: AbstractVector
+function NLPModels.grad!(m::ExaModels.ExaModel{T,VT,E} where {T, VT, E <: KAExtension}, x::V, y::V) where V <: AbstractVector
     m.counters.neval_grad += 1
     m.counters.teval_grad += @elapsed begin
         gradbuffer = m.ext.gradbuffer
@@ -196,7 +196,7 @@ function _grad!(backend,y,objs,x)
 end
 function _grad!(backend,y,objs::ExaModels.ObjectiveNull,x) end
 
-function NLPModels.jac_coord!(m::ExaModels.Model{T,VT,E} where {T, VT, E <: KAExtension}, x::V, y::V) where V <: AbstractVector
+function NLPModels.jac_coord!(m::ExaModels.ExaModel{T,VT,E} where {T, VT, E <: KAExtension}, x::V, y::V) where V <: AbstractVector
     m.counters.neval_jac += 1
     m.counters.teval_jac += @elapsed begin
         fill!(y,zero(eltype(y)))
@@ -210,7 +210,7 @@ function _jac_coord!(backend, y, cons, x)
 end
 function _jac_coord!(backend, y, cons::ExaModels.ConstraintNull, x) end
 
-function NLPModels.hess_coord!(m::ExaModels.Model{T,VT,E} where {T, VT, E <: KAExtension}, x::V, y::V, hess::V; obj_weight = one(eltype(y))) where V <: AbstractVector
+function NLPModels.hess_coord!(m::ExaModels.ExaModel{T,VT,E} where {T, VT, E <: KAExtension}, x::V, y::V, hess::V; obj_weight = one(eltype(y))) where V <: AbstractVector
     m.counters.neval_hess += 1
     m.counters.teval_hess += @elapsed begin
         fill!(hess,zero(eltype(hess)))

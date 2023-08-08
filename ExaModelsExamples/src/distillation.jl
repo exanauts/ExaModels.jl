@@ -18,7 +18,7 @@ function distillation_column_model(T, S = Array, device = nothing)
     itr1 = S(collect(Iterators.product(1:T,FT+1:NT)))
     itr2 = S(collect(Iterators.product(0:T,0:NT+1)))
 
-    c = ExaModels.Core(S)
+    c = ExaModels.ExaCore(S)
 
     xA  = ExaModels.variable(c, 0:T, 0:NT+1; start = .5)
     yA  = ExaModels.variable(c, 0:T, 0:NT+1; start = .5)
@@ -61,7 +61,7 @@ function distillation_column_model(T, S = Array, device = nothing)
     ExaModels.constraint(c, yA[t,i] * (1-xA[t,i]) - alpha * xA[t,i] * (1-yA[t,i]) for (t,i) in itr2)
 
     # Iterators.product
-    return ExaModels.Model(
+    return ExaModels.ExaModel(
         c; device = device
     )
 end
@@ -85,8 +85,6 @@ function jump_distillation_column_model(T)
     itr0 = collect(Iterators.product(1:T,1:FT-1))
     itr1 = collect(Iterators.product(1:T,FT+1:NT))
     itr2 = collect(Iterators.product(0:T,0:NT+1))
-
-    # c = ExaModels.Core()
 
     # xA  = ExaModels.variable(c, 0:T, 0:NT+1; start = .5)
     # yA  = ExaModels.variable(c, 0:T, 0:NT+1; start = .5)
