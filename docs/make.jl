@@ -23,12 +23,12 @@ for jl_filename in _JL_FILENAMES
 end
 
 
-# makedocs(
-#     sitename = "ExaModels.jl",
-#     authors = "Sungho Shin",
-#     format = Documenter.LaTeX(platform="docker"),
-#     pages = _PAGES
-# )
+makedocs(
+    sitename = "ExaModels.jl",
+    authors = "Sungho Shin",
+    format = Documenter.LaTeX(platform="docker"),
+    pages = _PAGES
+)
 
 makedocs(
     sitename = "ExaModels.jl",

@@ -7,51 +7,103 @@ struct ObjectiveNull <: AbstractObjective end
 struct ConstraintNull <: AbstractConstraint end
 
 struct Variable{S,O} <: AbstractVariable
-    # itr::I
     size::S
     offset::O
 end
+Base.show(io::IO, v::Variable) = print(io, """
+Variable
+
+  x ∈ R^{$(join(size(v.size)," × "))}
+""")
+
+
 struct Objective{R,F,I} <: AbstractObjective
     inner::R
     f::F
     itr::I
 end
-struct Constraint{R,F,I} <: AbstractConstraint
+Base.show(io::IO, v::Objective) = print(io, """
+Objective
+
+  min (...) + ∑_{p ∈ P} f(x,p)
+
+  where |P| = $(length(v.itr))
+""")
+
+struct Constraint{R,F,I,O} <: AbstractConstraint
     inner::R
     f::F
     itr::I
+    offset::O
 end
+Base.show(io::IO, v::Constraint) = print(io, """
+Constraint
+
+  s.t. (...)
+       g♭ ≤ [g(x,p)]_{p ∈ P} ≤ g♯
+
+  where |P| = $(length(v.itr))
+""")
+
 struct ConstraintAug{R,F,I} <: AbstractConstraint
     inner::R
     f::F
     itr::I
     oa::Int
 end
+Base.show(io::IO, v::ConstraintAug) = print(io, """
+Constrant Augmentation
 
-@kwdef mutable struct Counters
-    neval_obj::Int = 0
-    neval_cons::Int = 0
-    neval_grad::Int = 0
-    neval_jac::Int = 0
-    neval_hess::Int = 0
-    teval_obj::Float64 = 0.
-    teval_cons::Float64 = 0.
-    teval_grad::Float64 = 0.
-    teval_jac::Float64 = 0.
-    teval_hess::Float64 = 0.
-end
+  s.t. (...)
+       g♭ ≤ (...) + ∑_{p ∈ P} h(x,p) ≤ g♯
+
+  where |P| = $(length(v.itr))
+""")
 
 
 """
-ExaModels.Core
+ExaCore([array_type::Type, backend])
 
-A core data object used for creating `ExaModels.Model`.
+Returns an intermediate data object `ExaCore`, which later can be used for creating `ExaModel`
 
-ExaModels.Core()
+## Example
+```jldoctest
+julia> using ExaModels
 
-Returns `ExaModels.Core` for creating `ExaModels.Model{Float64,Vector{Float64}}`
+julia> c = ExaCore()
+An ExaCore
+
+  Float type: ...................... Float64
+  Array type: ...................... Vector{Float64}
+  Backend: ......................... Nothing
+
+  number of objective patterns: .... 0
+  number of constraint patterns: ... 0
+
+julia> c = ExaCore(Float32)
+An ExaCore
+
+  Float type: ...................... Float32
+  Array type: ...................... Vector{Float32}
+  Backend: ......................... Nothing
+
+  number of objective patterns: .... 0
+  number of constraint patterns: ... 0
+
+julia> using CUDA
+
+julia> c = ExaCore(Float32, CUDABackend())
+An ExaCore
+
+  Float type: ...................... Float32
+  Array type: ...................... CUDA.CuArray{Float32, 1, CUDA.Mem.DeviceBuffer}
+  Backend: ......................... CUDA.CUDAKernels.CUDABackend
+
+  number of objective patterns: .... 0
+  number of constraint patterns: ... 0
+```
 """
-Base.@kwdef mutable struct Core{T, VT <: AbstractVector{T}, B}
+Base.@kwdef mutable struct ExaCore{T, VT <: AbstractVector{T}, B}
     obj::AbstractObjective = ObjectiveNull()
     con::AbstractConstraint = ConstraintNull()
     nvar::Int = 0
@@ -70,36 +122,80 @@ Base.@kwdef mutable struct Core{T, VT <: AbstractVector{T}, B}
     ucon::VT = similar(x0)
     backend::B = nothing
 end
+ExaCore(::Nothing) = ExaCore()
+ExaCore(::Type{T},::Nothing) where T <: AbstractFloat = ExaCore(x0=zeros(T,0))
+ExaCore(::Type{T}) where T <: AbstractFloat = ExaCore(T, nothing)
+depth(a) = depth(a.inner) + 1
+depth(a::ObjectiveNull) = 0
+depth(a::ConstraintNull) = 0
+
+Base.show(io::IO, c::ExaCore{T,VT,B}) where {T, VT, B} = print(io, """
+An ExaCore
+
+  Float type: ...................... $T
+  Array type: ...................... $VT
+  Backend: ......................... $B
+
+  number of objective patterns: .... $(depth(c.obj))
+  number of constraint patterns: ... $(depth(c.con))
+""")
 
 
-"""
-ExaModels.Core(S::Type)
 
-Returns `ExaModels.Core` for creating `ExaModels.Model{T,VT}`, where VT <: S
-"""
-Core(::Nothing) = Core()
-Core(::Type{T},::Nothing) where T <: AbstractFloat = Core(x0=zeros(T,0))
-Core(::Type{T}) where T <: AbstractFloat = Core(T, nothing)
 
-"""
-ExaModels.Model <: NLPModels.AbstractNLPModel
-
-An NLP model with ExaModels backend
-"""
-struct Model{T,VT,E,O,C} <: NLPModels.AbstractNLPModel{T,VT}
+struct ExaModel{T,VT,E,O,C} <: NLPModels.AbstractNLPModel{T,VT}
     objs::O
     cons::C
     meta::NLPModels.NLPModelMeta{T, VT}
-    counters::Counters
     ext::E
 end
 
-"""
-ExaModels.Model(core)
+function Base.show(io::IO, c::ExaModel) 
+    println(io, "An ExaModel\n")
+    Base.show(io, c.meta)
+end
 
 """
-function Model(c::C) where C <: Core
-    return Model(
+    ExaModel(core)
+
+Returns an `ExaModel` object, which can be solved by nonlinear
+optimization solvers within `JuliaSmoothOptimizer` ecosystem, such as
+`NLPModelsIpopt` or `MadNLP`.
+
+## Example
+```jldoctest
+julia> using ExaModels
+
+julia> c = ExaCore();                      # create an ExaCore object
+
+julia> x = variable(c, 1:10);              # create variables
+
+julia> objective(c, x[i]^2 for i in 1:10); # set objective function
+
+julia> m = ExaModel(c)                     # creat an ExaModel object
+An ExaModel
+
+  Problem name: Generic
+   All variables: ████████████████████ 10     All constraints: ⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅ 0
+            free: ████████████████████ 10                free: ⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅ 0
+           lower: ⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅ 0                lower: ⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅ 0
+           upper: ⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅ 0                upper: ⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅ 0
+         low/upp: ⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅ 0              low/upp: ⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅ 0
+           fixed: ⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅ 0                fixed: ⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅ 0
+          infeas: ⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅ 0               infeas: ⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅ 0
+            nnzh: ( 81.82% sparsity)   10              linear: ⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅ 0
+                                                    nonlinear: ⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅ 0
+                                                         nnzj: (------% sparsity)
+
+julia> using NLPModelsIpopt
+
+julia> result = ipopt(m; print_level=0)    # solve the problem
+"Execution stats: first-order stationary"
+
+```
+"""
+function ExaModel(c::C) where C <: ExaCore
+    return ExaModel(
         c.obj, c.con, 
         NLPModels.NLPModelMeta(
             c.nvar,
@@ -113,7 +209,6 @@ function Model(c::C) where C <: Core
             lcon = c.lcon,
             ucon = c.ucon
         ),
-        Counters(),
         extension(c) 
     )
 end
@@ -127,19 +222,27 @@ end
     )
 )
 
-function myappend!(a,b::Base.Generator)
+function myappend!(a,b::Base.Generator,lb)
+    
     la = length(a);
-    lb = length(b);
     resize!(a, la+lb);
     map!(b.f, view(a,(la+1):(la+lb)) , b.iter)
     return a
 end
 
-function myappend!(a,b::AbstractArray)
+function myappend!(a,b::AbstractArray,lb)
+    
     la = length(a);
-    lb = length(b);
     resize!(a, la+lb);
     map!(identity, view(a,(la+1):(la+lb)) , b)
+    return a
+end
+
+function myappend!(a,b::Number,lb)
+    
+    la = length(a);
+    resize!(a, la+lb);
+    fill!(view(a,(la+1):(la+lb)) , b)
     return a
 end
 
@@ -151,37 +254,74 @@ size(ns) = Tuple(_length(n) for n in ns)
 _start(n::Int) = 1
 _start(n::UnitRange) = n.start
 
-# redo(x::AbstractArray,ns) = x
-# redo(x::Real,ns) = fill(x,size(ns))
+"""
+    variable(core, dims...; start = 0, lvar = -Inf, uvar = Inf)
 
-function data(
-    c::Core{T,VT,B}, gen
-    ) where {T, VT, B}
-    return collect(gen)
-end
+Adds variables with dimensions specified by `dims` to `core`, and returns `Variable` object. `dims` can be either `Integer` or `UnitRange`.
 
+## Keyword Arguments
+- `start`: The initial guess of the solution. Can either be `Number`, `AbstractArray`, or `Generator`.
+- `lvar` : The variable lower bound. Can either be `Number`, `AbstractArray`, or `Generator`.
+- `uvar` : The variable upper bound. Can either be `Number`, `AbstractArray`, or `Generator`.
+
+
+## Example
+```jldoctest
+julia> using ExaModels
+
+julia> c = ExaCore();
+
+julia> x = variable(c, 10; start = (sin(i) for i=1:10))
+Variable
+
+  x ∈ R^{10}
+
+julia> y = variable(c, 2:10, 3:5; lvar = zeros(9,3), uvar = ones(9,3))
+Variable
+
+  x ∈ R^{9 × 3}
+
+```
+"""
 function variable(
     c::C, ns...;
-    start = (zero(T) for i in 1:total(ns)),
-    lvar = (T(-Inf) for i in 1:total(ns)),
-    uvar = (T( Inf) for i in 1:total(ns))
-    ) where {T, C <: Core{T}}
-
-    # start = redo(start, ns)
-    # lvar = redo(lvar, ns)
-    # uvar = redo(uvar, ns)
+    start = zero(T),
+    lvar = T(-Inf),
+    uvar = T( Inf)
+    ) where {T, C <: ExaCore{T}}
 
     o = c.nvar
     c.nvar += total(ns)
-    c.x0 = myappend!(c.x0, start)
-    c.lvar = myappend!(c.lvar, lvar)
-    c.uvar = myappend!(c.uvar, uvar)
+    c.x0 = myappend!(c.x0, start, total(ns))
+    c.lvar = myappend!(c.lvar, lvar, total(ns))
+    c.uvar = myappend!(c.uvar, uvar, total(ns))
     
     return Variable(ns,o)
     
 end
 
-function objective(c::C,gen) where C <: Core
+"""
+    objective(core::ExaCore, generator)
+
+Adds objective terms specified by a `generator` to `core`, and returns an `Objective` object. 
+
+## Example
+```jldoctest
+julia> using ExaModels
+
+julia> c = ExaCore();
+
+julia> x = variable(c, 10);
+
+julia> objective(c, x[i]^2 for i=1:10)
+Objective
+
+  min (...) + ∑_{p ∈ P} f(x,p)
+
+  where |P| = 10
+```
+"""
+function objective(c::C,gen) where C <: ExaCore
     f = SIMDFunction(
         gen, c.nobj, c.nnzg, c.nnzh
     )
@@ -196,32 +336,60 @@ function objective(c::C,gen) where C <: Core
     )
 end
 
+"""
+    constraint(core, generator; start = 0, lcon = 0,  ucon = 0)
+
+Adds constraints specified by a `generator` to `core`, and returns an `Constraint` object. 
+
+## Keyword Arguments
+- `start`: The initial guess of the solution. Can either be `Number`, `AbstractArray`, or `Generator`.
+- `lcon` : The constraint lower bound. Can either be `Number`, `AbstractArray`, or `Generator`.
+- `ucon` : The constraint upper bound. Can either be `Number`, `AbstractArray`, or `Generator`.
+
+## Example
+```jldoctest
+julia> using ExaModels
+
+julia> c = ExaCore();
+
+julia> x = variable(c, 10);
+
+julia> constraint(c, x[i] + x[i+1] for i=1:9; lcon = -1, ucon = (1+i for i=1:9))
+Constraint
+
+  s.t. (...)
+       g♭ ≤ [g(x,p)]_{p ∈ P} ≤ g♯
+
+  where |P| = 9
+```
+"""
 function constraint(
     c::C,
     gen::Base.Generator;
-    start = (zero(T) for i in 1:length(gen)),
-    lcon = (zero(T) for i in 1:length(gen)),
-    ucon = (zero(T) for i in 1:length(gen))
-    ) where {T, C <: Core{T}}
+    start = zero(T),
+    lcon = zero(T),
+    ucon = zero(T)
+    ) where {T, C <: ExaCore{T}}
 
     f = SIMDFunction(
         gen, c.ncon, c.nnzj, c.nnzh
     )
     nitr = length(gen.iter)
+    o = c.ncon
     c.ncon += nitr
     c.nnzj += nitr * f.o1step
     c.nnzh += nitr * f.o2step
     
-    c.y0 = myappend!(c.y0, start)
-    c.lcon = myappend!(c.lcon, lcon)
-    c.ucon = myappend!(c.ucon, ucon)
+    c.y0 = myappend!(c.y0, start, nitr)
+    c.lcon = myappend!(c.lcon, lcon, nitr)
+    c.ucon = myappend!(c.ucon, ucon, nitr)
     
     c.con = Constraint(
-        c.con, f, gen.iter
+        c.con, f, gen.iter, o
     )
 end
 
-function constraint!(c::C,c1,gen) where C <: Core
+function constraint!(c::C,c1,gen) where C <: ExaCore
     f = SIMDFunction(
         gen, offset0(c1,0), c.nnzj, c.nnzh
     )
@@ -242,7 +410,7 @@ end
 function extension(args...) end
 
 function NLPModels.jac_structure!(
-    m::Model,
+    m::ExaModel,
     rows::AbstractVector,
     cols::AbstractVector
     )
@@ -257,7 +425,7 @@ function _jac_structure!(cons, rows, cols)
 end
 
 function NLPModels.hess_structure!(
-    m::Model,
+    m::ExaModel,
     rows::AbstractVector,
     cols::AbstractVector
     )
@@ -279,31 +447,24 @@ function _con_hess_structure!(cons, rows, cols)
 end
 
 function NLPModels.obj(
-    m::Model,
+    m::ExaModel,
     x::AbstractVector
     ) 
 
-    m.counters.neval_obj += 1
-    m.counters.teval_obj += @elapsed begin
-        result = _obj(m.objs,x)
-    end
-    return result
+    _obj(m.objs,x)
 end
 
 _obj(objs,x) = _obj(objs.inner,x) + sum(objs.f.f(k,x) for k in objs.itr)
 _obj(objs::ObjectiveNull,x) = zero(eltype(x))
 
 function NLPModels.cons!(
-    m::Model,
+    m::ExaModel,
     x::AbstractVector,
     g::AbstractVector
-    ) 
-    m.counters.neval_cons += 1
-    m.counters.teval_cons += @elapsed begin
-
-        fill!(g, zero(eltype(g)))
-        _cons!(m.cons,x,g)
-    end
+    )
+    
+    fill!(g, zero(eltype(g)))
+    _cons!(m.cons,x,g)
 end
 
 function _cons!(cons,x,g)
@@ -317,17 +478,13 @@ _cons!(cons::ConstraintNull,x,g) = nothing
 
 
 function NLPModels.grad!(
-    m::Model,
+    m::ExaModel,
     x::AbstractVector,
     f::AbstractVector
     )
 
-    m.counters.neval_grad += 1
-    m.counters.teval_grad += @elapsed begin
-        fill!(f,zero(eltype(f)))
-        _grad!(m.objs,x,f)
-    end
-    
+    fill!(f,zero(eltype(f)))
+    _grad!(m.objs,x,f)
 end
 
 function _grad!(objs,x,f)
@@ -337,16 +494,13 @@ end
 _grad!(objs::ObjectiveNull,x,f) = nothing
 
 function NLPModels.jac_coord!(
-    m::Model,
+    m::ExaModel,
     x::AbstractVector,
     jac::AbstractVector
     )
 
-    m.counters.neval_jac += 1
-    m.counters.teval_jac += @elapsed begin
-        fill!(jac,zero(eltype(jac)))
-        _jac_coord!(m.cons,x,jac)
-    end
+    fill!(jac,zero(eltype(jac)))
+    _jac_coord!(m.cons,x,jac)
 end
 
 _jac_coord!(cons::ConstraintNull,x,jac) = nothing
@@ -356,20 +510,16 @@ function _jac_coord!(cons,x,jac)
 end
 
 function NLPModels.hess_coord!(
-    m::Model,
+    m::ExaModel,
     x::AbstractVector,
     y::AbstractVector,
     hess::AbstractVector;
     obj_weight = one(eltype(x))
     )
 
-    m.counters.neval_hess += 1
-    m.counters.teval_hess += @elapsed begin
-
-        fill!(hess,zero(eltype(hess)))    
-        _obj_hess_coord!(m.objs, x,y,hess,obj_weight)
-        _con_hess_coord!(m.cons, x,y,hess,obj_weight)
-    end
+    fill!(hess,zero(eltype(hess)))    
+    _obj_hess_coord!(m.objs, x,y,hess,obj_weight)
+    _con_hess_coord!(m.cons, x,y,hess,obj_weight)
 end
 _obj_hess_coord!(objs::ObjectiveNull, x,y,hess,obj_weight) = nothing
 function _obj_hess_coord!(objs, x,y,hess,obj_weight)
@@ -392,3 +542,79 @@ end
 @inbounds @inline offset2(f::F,i) where F <: SIMDFunction = f.o2 + f.o2step * (i-1)
 @inbounds @inline offset0(a::C,i) where C <: ConstraintAug = offset0(a.f,a.itr,i)
 @inbounds @inline offset0(f::F,itr,i) where {P <: Pair, F <: SIMDFunction{P}} = f.o0 + f.f.first(itr[i],nothing)
+
+for (thing, val) in [
+    (:solution, 1),
+    (:multipliers_L, 0),
+    (:multipliers_U, 2)
+    ]
+    @eval begin
+"""
+    $(string($thing))(x, result)
+
+Returns the $(string($thing)) for variable `x` associated with `result`, obtained by solving the model.
+
+## Example
+```jldoctest
+julia> using ExaModels, NLPModelsIpopt
+
+julia> c = ExaCore();                     
+
+julia> x = variable(c, 1:10, lvar = -1, uvar = 1);
+
+julia> objective(c, (x[i]-2)^2 for i in 1:10);
+
+julia> m = ExaModel(c);                   
+
+julia> result = ipopt(m; print_level=0);
+
+julia> val = $(string($thing))(x, result);
+
+julia> isapprox(val, fill($(string($val)), 10), atol=sqrt(eps(Float64)), rtol=Inf)
+true
+```
+"""
+        function $thing(x::Variable, result::SolverCore.AbstractExecutionStats)  
+            o = x.offset
+            len = total(x.size)
+            s = size(x.size)
+            return reshape(view(result.$thing, o+1:o+len), s...)
+        end
+    end
+end
+
+
+"""
+    multipliers(y, result)
+
+Returns the multipliers for constraints `y` associated with `result`, obtained by solving the model.
+
+## Example
+```jldoctest
+julia> using ExaModels, NLPModelsIpopt
+
+julia> c = ExaCore();                     
+
+julia> x = variable(c, 1:10, lvar = -1, uvar = 1);
+
+julia> objective(c, (x[i]-2)^2 for i in 1:10);
+
+julia> y = constraint(c, x[i] + x[i+1] for i=1:9; lcon = -1, ucon = (1+i for i=1:9));
+
+julia> m = ExaModel(c);                   
+
+julia> result = ipopt(m; print_level=0);
+
+julia> val = multipliers(y, result);
+
+julia> val[1] ≈ 0.81933930
+true
+```
+"""
+function multipliers(y::Constraint, result::SolverCore.AbstractExecutionStats)
+    o = y.offset
+    len = length(y.itr)
+    return view(result.multipliers, o+1:o+len)
+end
+
+

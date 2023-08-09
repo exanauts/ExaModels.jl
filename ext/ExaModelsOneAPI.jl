@@ -2,11 +2,10 @@ module ExaModelsOneAPI
 
 import ExaModels, oneAPI
 
-ExaModels.Core(backend::oneAPI.oneAPIBackend) = ExaModels.Core(x0 = oneAPI.zeros(Float64,0), backend = backend)
+ExaModels.ExaCore(backend::oneAPI.oneAPIBackend) = ExaModels.ExaCore(x0 = oneAPI.zeros(Float64,0), backend = backend)
 
-function ExaModels.myappend!(a::A,b) where A <: oneAPI.oneVector
+function ExaModels.myappend!(a::A,b,lb) where A <: oneAPI.oneVector
     la = length(a);
-    lb = length(b);
     a = similar(a, la+lb);
     map!(b.f, view(a,(la+1):(la+lb)) , b.iter)
     return a
