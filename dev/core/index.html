@@ -1,2 +1,159 @@
 <!DOCTYPE html>
-<html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/><title>API Manual · ExaModels.jl</title><script data-outdated-warner src="../assets/warner.js"></script><link href="https://cdnjs.cloudflare.com/ajax/libs/lato-font/3.0.0/css/lato-font.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/juliamono/0.045/juliamono.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/fontawesome.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/solid.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/brands.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.13.24/katex.min.css" rel="stylesheet" type="text/css"/><script>documenterBaseURL=".."</script><script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js" data-main="../assets/documenter.js"></script><script src="../siteinfo.js"></script><script src="../../versions.js"></script><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/documenter-dark.css" data-theme-name="documenter-dark" data-theme-primary-dark/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/documenter-light.css" data-theme-name="documenter-light" data-theme-primary/><script src="../assets/themeswap.js"></script></head><body><div id="documenter"><nav class="docs-sidebar"><div class="docs-package-name"><span class="docs-autofit"><a href="../">ExaModels.jl</a></span></div><form class="docs-search" action="../search/"><input class="docs-search-query" id="documenter-search-query" name="q" type="text" placeholder="Search docs"/></form><ul class="docs-menu"><li><a class="tocitem" href="../">Introduction</a></li><li><a class="tocitem" href="../guide/">Quick Start</a></li><li class="is-active"><a class="tocitem" href>API Manual</a></li></ul><div class="docs-version-selector field has-addons"><div class="control"><span class="docs-label button is-static is-size-7">Version</span></div><div class="docs-selector control is-expanded"><div class="select is-fullwidth is-size-7"><select id="documenter-version-selector"></select></div></div></div></nav><div class="docs-main"><header class="docs-navbar"><nav class="breadcrumb"><ul class="is-hidden-mobile"><li class="is-active"><a href>API Manual</a></li></ul><ul class="is-hidden-tablet"><li class="is-active"><a href>API Manual</a></li></ul></nav><div class="docs-right"><a class="docs-edit-link" href="https://github.com/sshin23/ExaModels.jl/blob/main/docs/src/core.md" title="Edit on GitHub"><span class="docs-icon fab"></span><span class="docs-label is-hidden-touch">Edit on GitHub</span></a><a class="docs-settings-button fas fa-cog" id="documenter-settings-button" href="#" title="Settings"></a><a class="docs-sidebar-button fa fa-bars is-hidden-desktop" id="documenter-sidebar-button" href="#"></a></div></header><article class="content" id="documenter-page"><h1 id="ExaModels"><a class="docs-heading-anchor" href="#ExaModels">ExaModels</a><a id="ExaModels-1"></a><a class="docs-heading-anchor-permalink" href="#ExaModels" title="Permalink"></a></h1><article class="docstring"><header><a class="docstring-binding" id="ExaModels.Core" href="#ExaModels.Core"><code>ExaModels.Core</code></a> — <span class="docstring-category">Type</span></header><section><div><p>ExaModels.Core</p><p>A core data object used for creating <code>ExaModels.Model</code>.</p><p>ExaModels.Core()</p><p>Returns <code>ExaModels.Core</code> for creating <code>ExaModels.Model{Float64,Vector{Float64}}</code></p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/sshin23/ExaModels.jl/blob/52701ee068620bbf351b19825024c4a1856b3675/src/nlp.jl#L45-L53">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="ExaModels.Core-Tuple{Nothing}" href="#ExaModels.Core-Tuple{Nothing}"><code>ExaModels.Core</code></a> — <span class="docstring-category">Method</span></header><section><div><p>ExaModels.Core(S::Type)</p><p>Returns <code>ExaModels.Core</code> for creating <code>ExaModels.Model{T,VT}</code>, where VT &lt;: S</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/sshin23/ExaModels.jl/blob/52701ee068620bbf351b19825024c4a1856b3675/src/nlp.jl#L75-L79">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="ExaModels.Model" href="#ExaModels.Model"><code>ExaModels.Model</code></a> — <span class="docstring-category">Type</span></header><section><div><p>ExaModels.Model &lt;: NLPModels.AbstractNLPModel</p><p>An NLP model with ExaModels backend</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/sshin23/ExaModels.jl/blob/52701ee068620bbf351b19825024c4a1856b3675/src/nlp.jl#L84-L88">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="ExaModels.Model-Tuple{C} where C&lt;:ExaModels.Core" href="#ExaModels.Model-Tuple{C} where C&lt;:ExaModels.Core"><code>ExaModels.Model</code></a> — <span class="docstring-category">Method</span></header><section><div><p>ExaModels.Model(core)</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/sshin23/ExaModels.jl/blob/52701ee068620bbf351b19825024c4a1856b3675/src/nlp.jl#L97-L100">source</a></section></article></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../guide/">« Quick Start</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 0.27.25 on <span class="colophon-date" title="Monday 7 August 2023 18:57">Monday 7 August 2023</span>. Using Julia version 1.9.2.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
+<html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/><title>API Manual · ExaModels.jl</title><script data-outdated-warner src="../assets/warner.js"></script><link href="https://cdnjs.cloudflare.com/ajax/libs/lato-font/3.0.0/css/lato-font.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/juliamono/0.045/juliamono.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/fontawesome.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/solid.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/brands.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.13.24/katex.min.css" rel="stylesheet" type="text/css"/><script>documenterBaseURL=".."</script><script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js" data-main="../assets/documenter.js"></script><script src="../siteinfo.js"></script><script src="../../versions.js"></script><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/documenter-dark.css" data-theme-name="documenter-dark" data-theme-primary-dark/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/documenter-light.css" data-theme-name="documenter-light" data-theme-primary/><script src="../assets/themeswap.js"></script></head><body><div id="documenter"><nav class="docs-sidebar"><div class="docs-package-name"><span class="docs-autofit"><a href="../">ExaModels.jl</a></span></div><form class="docs-search" action="../search/"><input class="docs-search-query" id="documenter-search-query" name="q" type="text" placeholder="Search docs"/></form><ul class="docs-menu"><li><a class="tocitem" href="../">Introduction</a></li><li><a class="tocitem" href="../guide/">Quick Start</a></li><li class="is-active"><a class="tocitem" href>API Manual</a></li></ul><div class="docs-version-selector field has-addons"><div class="control"><span class="docs-label button is-static is-size-7">Version</span></div><div class="docs-selector control is-expanded"><div class="select is-fullwidth is-size-7"><select id="documenter-version-selector"></select></div></div></div></nav><div class="docs-main"><header class="docs-navbar"><nav class="breadcrumb"><ul class="is-hidden-mobile"><li class="is-active"><a href>API Manual</a></li></ul><ul class="is-hidden-tablet"><li class="is-active"><a href>API Manual</a></li></ul></nav><div class="docs-right"><a class="docs-edit-link" href="https://github.com/sshin23/ExaModels.jl/blob/main/docs/src/core.md" title="Edit on GitHub"><span class="docs-icon fab"></span><span class="docs-label is-hidden-touch">Edit on GitHub</span></a><a class="docs-settings-button fas fa-cog" id="documenter-settings-button" href="#" title="Settings"></a><a class="docs-sidebar-button fa fa-bars is-hidden-desktop" id="documenter-sidebar-button" href="#"></a></div></header><article class="content" id="documenter-page"><h1 id="ExaModels"><a class="docs-heading-anchor" href="#ExaModels">ExaModels</a><a id="ExaModels-1"></a><a class="docs-heading-anchor-permalink" href="#ExaModels" title="Permalink"></a></h1><article class="docstring"><header><a class="docstring-binding" id="ExaModels.ExaModels" href="#ExaModels.ExaModels"><code>ExaModels.ExaModels</code></a> — <span class="docstring-category">Module</span></header><section><div><pre><code class="language-julia hljs">ExaModels</code></pre><p>An algebraic modeling and automatic differentiation tool in Julia Language, specialized for SIMD abstraction of nonlinear programs.</p><p>For more information, please visit https://github.com/sshin23/ExaModels.jl</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/sshin23/ExaModels.jl/blob/7b8ae4d57350a51866aa3e8ba67d564a150e33e0/src/ExaModels.jl#L1-L7">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="ExaModels.ExaCore" href="#ExaModels.ExaCore"><code>ExaModels.ExaCore</code></a> — <span class="docstring-category">Type</span></header><section><div><p>ExaCore([array_type::Type, backend])</p><p>Returns an intermediate data object <code>ExaCore</code>, which later can be used for creating <code>ExaModel</code></p><p><strong>Example</strong></p><pre><code class="language-julia-repl hljs">julia&gt; using ExaModels
+
+julia&gt; c = ExaCore()
+An ExaCore
+
+  Float type: ...................... Float64
+  Array type: ...................... Vector{Float64}
+  Backend: ......................... Nothing
+
+  number of objective patterns: .... 0
+  number of constraint patterns: ... 0
+
+julia&gt; c = ExaCore(Float32)
+An ExaCore
+
+  Float type: ...................... Float32
+  Array type: ...................... Vector{Float32}
+  Backend: ......................... Nothing
+
+  number of objective patterns: .... 0
+  number of constraint patterns: ... 0
+
+julia&gt; using CUDA
+
+julia&gt; c = ExaCore(Float32, CUDABackend())
+An ExaCore
+
+  Float type: ...................... Float32
+  Array type: ...................... CUDA.CuArray{Float32, 1, CUDA.Mem.DeviceBuffer}
+  Backend: ......................... CUDA.CUDAKernels.CUDABackend
+
+  number of objective patterns: .... 0
+  number of constraint patterns: ... 0</code></pre></div><a class="docs-sourcelink" target="_blank" href="https://github.com/sshin23/ExaModels.jl/blob/7b8ae4d57350a51866aa3e8ba67d564a150e33e0/src/nlp.jl#L64-L105">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="ExaModels.ExaModel-Tuple{C} where C&lt;:ExaCore" href="#ExaModels.ExaModel-Tuple{C} where C&lt;:ExaCore"><code>ExaModels.ExaModel</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">ExaModel(core)</code></pre><p>Returns an <code>ExaModel</code> object, which can be solved by nonlinear optimization solvers within <code>JuliaSmoothOptimizer</code> ecosystem, such as <code>NLPModelsIpopt</code> or <code>MadNLP</code>.</p><p><strong>Example</strong></p><pre><code class="language-julia-repl hljs">julia&gt; using ExaModels
+
+julia&gt; c = ExaCore();                      # create an ExaCore object
+
+julia&gt; x = variable(c, 1:10);              # create variables
+
+julia&gt; objective(c, x[i]^2 for i in 1:10); # set objective function
+
+julia&gt; m = ExaModel(c)                     # creat an ExaModel object
+An ExaModel
+
+  Problem name: Generic
+   All variables: ████████████████████ 10     All constraints: ⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅ 0
+            free: ████████████████████ 10                free: ⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅ 0
+           lower: ⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅ 0                lower: ⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅ 0
+           upper: ⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅ 0                upper: ⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅ 0
+         low/upp: ⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅ 0              low/upp: ⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅ 0
+           fixed: ⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅ 0                fixed: ⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅ 0
+          infeas: ⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅ 0               infeas: ⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅ 0
+            nnzh: ( 81.82% sparsity)   10              linear: ⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅ 0
+                                                    nonlinear: ⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅ 0
+                                                         nnzj: (------% sparsity)
+
+julia&gt; using NLPModelsIpopt
+
+julia&gt; result = ipopt(m; print_level=0)    # solve the problem
+&quot;Execution stats: first-order stationary&quot;
+</code></pre></div><a class="docs-sourcelink" target="_blank" href="https://github.com/sshin23/ExaModels.jl/blob/7b8ae4d57350a51866aa3e8ba67d564a150e33e0/src/nlp.jl#L158-L196">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="ExaModels.constraint-Union{Tuple{C}, Tuple{T}, Tuple{C, Base.Generator}} where {T, C&lt;:(ExaCore{T, VT} where VT&lt;:AbstractVector{T})}" href="#ExaModels.constraint-Union{Tuple{C}, Tuple{T}, Tuple{C, Base.Generator}} where {T, C&lt;:(ExaCore{T, VT} where VT&lt;:AbstractVector{T})}"><code>ExaModels.constraint</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">constraint(core, generator; start = 0, lcon = 0,  ucon = 0)</code></pre><p>Adds constraints specified by a <code>generator</code> to <code>core</code>, and returns an <code>Constraint</code> object. </p><p><strong>Keyword Arguments</strong></p><ul><li><code>start</code>: The initial guess of the solution. Can either be <code>Number</code>, <code>AbstractArray</code>, or <code>Generator</code>.</li><li><code>lcon</code> : The constraint lower bound. Can either be <code>Number</code>, <code>AbstractArray</code>, or <code>Generator</code>.</li><li><code>ucon</code> : The constraint upper bound. Can either be <code>Number</code>, <code>AbstractArray</code>, or <code>Generator</code>.</li></ul><p><strong>Example</strong></p><pre><code class="language-julia-repl hljs">julia&gt; using ExaModels
+
+julia&gt; c = ExaCore();
+
+julia&gt; x = variable(c, 10);
+
+julia&gt; constraint(c, x[i] + x[i+1] for i=1:9; lcon = -1, ucon = (1+i for i=1:9))
+Constraint
+
+  s.t. (...)
+       g♭ ≤ [g(x,p)]_{p ∈ P} ≤ g♯
+
+  where |P| = 9</code></pre></div><a class="docs-sourcelink" target="_blank" href="https://github.com/sshin23/ExaModels.jl/blob/7b8ae4d57350a51866aa3e8ba67d564a150e33e0/src/nlp.jl#L339-L365">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="ExaModels.multipliers-Tuple{ExaModels.Constraint, SolverCore.AbstractExecutionStats}" href="#ExaModels.multipliers-Tuple{ExaModels.Constraint, SolverCore.AbstractExecutionStats}"><code>ExaModels.multipliers</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">multipliers(y, result)</code></pre><p>Returns the multipliers for constraints <code>y</code> associated with <code>result</code>, obtained by solving the model.</p><p><strong>Example</strong></p><pre><code class="language-julia-repl hljs">julia&gt; using ExaModels, NLPModelsIpopt
+
+julia&gt; c = ExaCore();                     
+
+julia&gt; x = variable(c, 1:10, lvar = -1, uvar = 1);
+
+julia&gt; objective(c, (x[i]-2)^2 for i in 1:10);
+
+julia&gt; y = constraint(c, x[i] + x[i+1] for i=1:9; lcon = -1, ucon = (1+i for i=1:9));
+
+julia&gt; m = ExaModel(c);                   
+
+julia&gt; result = ipopt(m; print_level=0);
+
+julia&gt; val = multipliers(y, result);
+
+julia&gt; val[1] ≈ 0.81933930
+true</code></pre></div><a class="docs-sourcelink" target="_blank" href="https://github.com/sshin23/ExaModels.jl/blob/7b8ae4d57350a51866aa3e8ba67d564a150e33e0/src/nlp.jl#L587-L613">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="ExaModels.multipliers_L-Tuple{ExaModels.Variable, SolverCore.AbstractExecutionStats}" href="#ExaModels.multipliers_L-Tuple{ExaModels.Variable, SolverCore.AbstractExecutionStats}"><code>ExaModels.multipliers_L</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">multipliers_L(x, result)</code></pre><p>Returns the multipliers_L for variable <code>x</code> associated with <code>result</code>, obtained by solving the model.</p><p><strong>Example</strong></p><pre><code class="language-julia-repl hljs">julia&gt; using ExaModels, NLPModelsIpopt
+
+julia&gt; c = ExaCore();                     
+
+julia&gt; x = variable(c, 1:10, lvar = -1, uvar = 1);
+
+julia&gt; objective(c, (x[i]-2)^2 for i in 1:10);
+
+julia&gt; m = ExaModel(c);                   
+
+julia&gt; result = ipopt(m; print_level=0);
+
+julia&gt; val = multipliers_L(x, result);
+
+julia&gt; isapprox(val, fill(0, 10), atol=sqrt(eps(Float64)), rtol=Inf)
+true</code></pre></div><a class="docs-sourcelink" target="_blank" href="https://github.com/sshin23/ExaModels.jl/blob/7b8ae4d57350a51866aa3e8ba67d564a150e33e0/src/nlp.jl#L552-L576">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="ExaModels.multipliers_U-Tuple{ExaModels.Variable, SolverCore.AbstractExecutionStats}" href="#ExaModels.multipliers_U-Tuple{ExaModels.Variable, SolverCore.AbstractExecutionStats}"><code>ExaModels.multipliers_U</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">multipliers_U(x, result)</code></pre><p>Returns the multipliers_U for variable <code>x</code> associated with <code>result</code>, obtained by solving the model.</p><p><strong>Example</strong></p><pre><code class="language-julia-repl hljs">julia&gt; using ExaModels, NLPModelsIpopt
+
+julia&gt; c = ExaCore();                     
+
+julia&gt; x = variable(c, 1:10, lvar = -1, uvar = 1);
+
+julia&gt; objective(c, (x[i]-2)^2 for i in 1:10);
+
+julia&gt; m = ExaModel(c);                   
+
+julia&gt; result = ipopt(m; print_level=0);
+
+julia&gt; val = multipliers_U(x, result);
+
+julia&gt; isapprox(val, fill(2, 10), atol=sqrt(eps(Float64)), rtol=Inf)
+true</code></pre></div><a class="docs-sourcelink" target="_blank" href="https://github.com/sshin23/ExaModels.jl/blob/7b8ae4d57350a51866aa3e8ba67d564a150e33e0/src/nlp.jl#L552-L576">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="ExaModels.objective-Union{Tuple{C}, Tuple{C, Any}} where C&lt;:ExaCore" href="#ExaModels.objective-Union{Tuple{C}, Tuple{C, Any}} where C&lt;:ExaCore"><code>ExaModels.objective</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">objective(core::ExaCore, generator)</code></pre><p>Adds objective terms specified by a <code>generator</code> to <code>core</code>, and returns an <code>Objective</code> object. </p><p><strong>Example</strong></p><pre><code class="language-julia-repl hljs">julia&gt; using ExaModels
+
+julia&gt; c = ExaCore();
+
+julia&gt; x = variable(c, 10);
+
+julia&gt; objective(c, x[i]^2 for i=1:10)
+Objective
+
+  min (...) + ∑_{p ∈ P} f(x,p)
+
+  where |P| = 10</code></pre></div><a class="docs-sourcelink" target="_blank" href="https://github.com/sshin23/ExaModels.jl/blob/7b8ae4d57350a51866aa3e8ba67d564a150e33e0/src/nlp.jl#L303-L323">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="ExaModels.solution-Tuple{ExaModels.Variable, SolverCore.AbstractExecutionStats}" href="#ExaModels.solution-Tuple{ExaModels.Variable, SolverCore.AbstractExecutionStats}"><code>ExaModels.solution</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">solution(x, result)</code></pre><p>Returns the solution for variable <code>x</code> associated with <code>result</code>, obtained by solving the model.</p><p><strong>Example</strong></p><pre><code class="language-julia-repl hljs">julia&gt; using ExaModels, NLPModelsIpopt
+
+julia&gt; c = ExaCore();                     
+
+julia&gt; x = variable(c, 1:10, lvar = -1, uvar = 1);
+
+julia&gt; objective(c, (x[i]-2)^2 for i in 1:10);
+
+julia&gt; m = ExaModel(c);                   
+
+julia&gt; result = ipopt(m; print_level=0);
+
+julia&gt; val = solution(x, result);
+
+julia&gt; isapprox(val, fill(1, 10), atol=sqrt(eps(Float64)), rtol=Inf)
+true</code></pre></div><a class="docs-sourcelink" target="_blank" href="https://github.com/sshin23/ExaModels.jl/blob/7b8ae4d57350a51866aa3e8ba67d564a150e33e0/src/nlp.jl#L552-L576">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="ExaModels.variable-Union{Tuple{C}, Tuple{T}, Tuple{C, Vararg{Any}}} where {T, C&lt;:(ExaCore{T, VT} where VT&lt;:AbstractVector{T})}" href="#ExaModels.variable-Union{Tuple{C}, Tuple{T}, Tuple{C, Vararg{Any}}} where {T, C&lt;:(ExaCore{T, VT} where VT&lt;:AbstractVector{T})}"><code>ExaModels.variable</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">variable(core, dims...; start = 0, lvar = -Inf, uvar = Inf)</code></pre><p>Adds variables with dimensions specified by <code>dims</code> to <code>core</code>, and returns <code>Variable</code> object. <code>dims</code> can be either <code>Integer</code> or <code>UnitRange</code>.</p><p><strong>Keyword Arguments</strong></p><ul><li><code>start</code>: The initial guess of the solution. Can either be <code>Number</code>, <code>AbstractArray</code>, or <code>Generator</code>.</li><li><code>lvar</code> : The variable lower bound. Can either be <code>Number</code>, <code>AbstractArray</code>, or <code>Generator</code>.</li><li><code>uvar</code> : The variable upper bound. Can either be <code>Number</code>, <code>AbstractArray</code>, or <code>Generator</code>.</li></ul><p><strong>Example</strong></p><pre><code class="language-julia-repl hljs">julia&gt; using ExaModels
+
+julia&gt; c = ExaCore();
+
+julia&gt; x = variable(c, 10; start = (sin(i) for i=1:10))
+Variable
+
+  x ∈ R^{10}
+
+julia&gt; y = variable(c, 2:10, 3:5; lvar = zeros(9,3), uvar = ones(9,3))
+Variable
+
+  x ∈ R^{9 × 3}
+</code></pre></div><a class="docs-sourcelink" target="_blank" href="https://github.com/sshin23/ExaModels.jl/blob/7b8ae4d57350a51866aa3e8ba67d564a150e33e0/src/nlp.jl#L257-L285">source</a></section></article></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../guide/">« Quick Start</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 0.27.25 on <span class="colophon-date" title="Wednesday 9 August 2023 21:27">Wednesday 9 August 2023</span>. Using Julia version 1.9.2.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>

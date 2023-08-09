@@ -13,29 +13,29 @@ using ExaModels
 N = 10000
 
 # First, we create a `ExaModels.Core`.
-c = ExaModels.Core()
+c = ExaCore()
 
 # The variables can be created as follows:
 
-x = ExaModels.variable(
+x = variable(
     c, N;
     start = (mod(i,2)==1 ? -1.2 : 1. for i=1:N)
 )
 
 # The objective can be set as follows:
-ExaModels.objective(c, 100*(x[i-1]^2-x[i])^2+(x[i-1]-1)^2 for i in 2:N)
+objective(c, 100*(x[i-1]^2-x[i])^2+(x[i-1]-1)^2 for i in 2:N)
 
 # The constraints can be set as follows:
-ExaModels.constraint(
+constraint(
     c,
     3x[i+1]^3+2*x[i+2]-5+sin(x[i+1]-x[i+2])sin(x[i+1]+x[i+2])+4x[i+1]-x[i]exp(x[i]-x[i+1])-3
     for i in 1:N-2)
 
 # Finally, we create an NLPModel.
-m = ExaModels.Model(c)
+m = ExaModel(c)
 
 # To solve the problem with `Ipopt`,
 using NLPModelsIpopt
-sol = ipopt(m);
+sol = ipopt(m)
 
 # The solution `sol` contains the field `sol.solution` holding the optimized parameters.
