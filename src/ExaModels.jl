@@ -7,7 +7,7 @@ For more information, please visit https://github.com/sshin23/ExaModels.jl
 """
 module ExaModels
 
-import NLPModels
+import NLPModels, SolverCore
 
 include("graph.jl")
 include("register.jl")
@@ -26,6 +26,10 @@ export
     variable,
     objective,
     constraint,
-    constraint!
+    constraint!,
+    solution,
+    multipliers,
+    multipliers_L,
+    multipliers_U
 
 end # module ExaModels

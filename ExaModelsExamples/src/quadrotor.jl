@@ -1,5 +1,4 @@
-function quadrotor_model(N,device=nothing)
-    S = Array
+function quadrotor_model(N,backend=nothing)
     
     n = 9
     p = 4
@@ -10,12 +9,12 @@ function quadrotor_model(N,device=nothing)
     Q = [1,0,1,0,1,0,1,1,1]
     Qf= [1,0,1,0,1,0,1,1,1]/dt
     
-    c = ExaModels.ExaCore(device)
+    c = ExaModels.ExaCore(backend)
     
-    x0s = ExaModels.data(c, (i,0.) for i=1:n)
-    itr0 = ExaModels.data(c, (i,j,R[j]) for (i,j) in Base.product(1:N,1:p))
-    itr1 = S([(i,j,Q[j],d(i,j,N)) for (i,j) in Base.product(1:N,1:n)])
-    itr2 = S([(j,Qf[j],d(N+1,j,N)) for j in 1:n])
+    x0s  = ExaModels.convert_array([(i,0.) for i=1:n], backend)
+    itr0 = ExaModels.convert_array([(i,j,R[j]) for (i,j) in Base.product(1:N,1:p)], backend)
+    itr1 = ExaModels.convert_array([(i,j,Q[j],d(i,j,N)) for (i,j) in Base.product(1:N,1:n)], backend)
+    itr2 = ExaModels.convert_array([(j,Qf[j],d(N+1,j,N)) for j in 1:n], backend)
 
     x= ExaModels.variable(c,1:N+1,1:n)
     u= ExaModels.variable(c,1:N,1:p)

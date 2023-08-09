@@ -29,57 +29,80 @@ N = 10000
 First, we create a `ExaModels.Core`.
 
 ````julia
-c = ExaModels.Core()
+c = ExaCore()
 ````
 
 ````
-ExaModels.Core{Float64, Vector{Float64}, Nothing}(ExaModels.ObjectiveNull(), ExaModels.ConstraintNull(), 0, 0, 0, 0, 0, 0, 0, 0, Float64[], Float64[], Float64[], Float64[], Float64[], Float64[], nothing)
+An ExaCore
+
+  Float type: ...................... Float64
+  Array type: ...................... Vector{Float64}
+  Backend: ......................... Nothing
+
+  number of objective patterns: .... 0
+  number of constraint patterns: ... 0
+
 ````
 
 The variables can be created as follows:
 
 ````julia
-x = ExaModels.variable(
+x = variable(
     c, N;
     start = (mod(i,2)==1 ? -1.2 : 1. for i=1:N)
 )
 ````
 
 ````
-ExaModels.Variable{Tuple{Int64}, Int64}((10000,), 0)
+Variable
+
+  x ∈ R^{10000}
+
 ````
 
 The objective can be set as follows:
 
 ````julia
-ExaModels.objective(c, 100*(x[i-1]^2-x[i])^2+(x[i-1]-1)^2 for i in 2:N)
+objective(c, 100*(x[i-1]^2-x[i])^2+(x[i-1]-1)^2 for i in 2:N)
 ````
 
 ````
-ExaModels.Objective{ExaModels.ObjectiveNull, ExaModels.SIMDFunction{ExaModels.Node2{typeof(+), ExaModels.Node2{typeof(*), Int64, ExaModels.Node2{typeof(^), ExaModels.Node2{typeof(-), ExaModels.Node2{typeof(^), ExaModels.Var{ExaModels.Node2{typeof(+), ExaModels.Node2{typeof(-), ExaModels.Par, Int64}, Int64}}, Int64}, ExaModels.Var{ExaModels.Node2{typeof(+), ExaModels.Par, Int64}}}, Int64}}, ExaModels.Node2{typeof(^), ExaModels.Node2{typeof(-), ExaModels.Var{ExaModels.Node2{typeof(+), ExaModels.Node2{typeof(-), ExaModels.Par, Int64}, Int64}}, Int64}, Int64}}, ExaModels.Compressor{Tuple{Int64, Int64, Int64}}, ExaModels.Compressor{NTuple{4, Int64}}}, UnitRange{Int64}}(ExaModels.ObjectiveNull(), ExaModels.SIMDFunction{ExaModels.Node2{typeof(+), ExaModels.Node2{typeof(*), Int64, ExaModels.Node2{typeof(^), ExaModels.Node2{typeof(-), ExaModels.Node2{typeof(^), ExaModels.Var{ExaModels.Node2{typeof(+), ExaModels.Node2{typeof(-), ExaModels.Par, Int64}, Int64}}, Int64}, ExaModels.Var{ExaModels.Node2{typeof(+), ExaModels.Par, Int64}}}, Int64}}, ExaModels.Node2{typeof(^), ExaModels.Node2{typeof(-), ExaModels.Var{ExaModels.Node2{typeof(+), ExaModels.Node2{typeof(-), ExaModels.Par, Int64}, Int64}}, Int64}, Int64}}, ExaModels.Compressor{Tuple{Int64, Int64, Int64}}, ExaModels.Compressor{NTuple{4, Int64}}}(ExaModels.Node2{typeof(+), ExaModels.Node2{typeof(*), Int64, ExaModels.Node2{typeof(^), ExaModels.Node2{typeof(-), ExaModels.Node2{typeof(^), ExaModels.Var{ExaModels.Node2{typeof(+), ExaModels.Node2{typeof(-), ExaModels.Par, Int64}, Int64}}, Int64}, ExaModels.Var{ExaModels.Node2{typeof(+), ExaModels.Par, Int64}}}, Int64}}, ExaModels.Node2{typeof(^), ExaModels.Node2{typeof(-), ExaModels.Var{ExaModels.Node2{typeof(+), ExaModels.Node2{typeof(-), ExaModels.Par, Int64}, Int64}}, Int64}, Int64}}(ExaModels.Node2{typeof(*), Int64, ExaModels.Node2{typeof(^), ExaModels.Node2{typeof(-), ExaModels.Node2{typeof(^), ExaModels.Var{ExaModels.Node2{typeof(+), ExaModels.Node2{typeof(-), ExaModels.Par, Int64}, Int64}}, Int64}, ExaModels.Var{ExaModels.Node2{typeof(+), ExaModels.Par, Int64}}}, Int64}}(100, ExaModels.Node2{typeof(^), ExaModels.Node2{typeof(-), ExaModels.Node2{typeof(^), ExaModels.Var{ExaModels.Node2{typeof(+), ExaModels.Node2{typeof(-), ExaModels.Par, Int64}, Int64}}, Int64}, ExaModels.Var{ExaModels.Node2{typeof(+), ExaModels.Par, Int64}}}, Int64}(ExaModels.Node2{typeof(-), ExaModels.Node2{typeof(^), ExaModels.Var{ExaModels.Node2{typeof(+), ExaModels.Node2{typeof(-), ExaModels.Par, Int64}, Int64}}, Int64}, ExaModels.Var{ExaModels.Node2{typeof(+), ExaModels.Par, Int64}}}(ExaModels.Node2{typeof(^), ExaModels.Var{ExaModels.Node2{typeof(+), ExaModels.Node2{typeof(-), ExaModels.Par, Int64}, Int64}}, Int64}(ExaModels.Var{ExaModels.Node2{typeof(+), ExaModels.Node2{typeof(-), ExaModels.Par, Int64}, Int64}}(ExaModels.Node2{typeof(+), ExaModels.Node2{typeof(-), ExaModels.Par, Int64}, Int64}(ExaModels.Node2{typeof(-), ExaModels.Par, Int64}(ExaModels.Par(), 1), 0)), 2), ExaModels.Var{ExaModels.Node2{typeof(+), ExaModels.Par, Int64}}(ExaModels.Node2{typeof(+), ExaModels.Par, Int64}(ExaModels.Par(), 0))), 2)), ExaModels.Node2{typeof(^), ExaModels.Node2{typeof(-), ExaModels.Var{ExaModels.Node2{typeof(+), ExaModels.Node2{typeof(-), ExaModels.Par, Int64}, Int64}}, Int64}, Int64}(ExaModels.Node2{typeof(-), ExaModels.Var{ExaModels.Node2{typeof(+), ExaModels.Node2{typeof(-), ExaModels.Par, Int64}, Int64}}, Int64}(ExaModels.Var{ExaModels.Node2{typeof(+), ExaModels.Node2{typeof(-), ExaModels.Par, Int64}, Int64}}(ExaModels.Node2{typeof(+), ExaModels.Node2{typeof(-), ExaModels.Par, Int64}, Int64}(ExaModels.Node2{typeof(-), ExaModels.Par, Int64}(ExaModels.Par(), 1), 0)), 1), 2)), ExaModels.Compressor{Tuple{Int64, Int64, Int64}}((1, 2, 1)), ExaModels.Compressor{NTuple{4, Int64}}((1, 2, 3, 1)), 0, 0, 0, 2, 3), 2:10000)
+Objective
+
+  min (...) + ∑_{p ∈ P} f(x,p)
+
+  where |P| = 9999
+
 ````
 
 The constraints can be set as follows:
 
 ````julia
-ExaModels.constraint(
+constraint(
     c,
     3x[i+1]^3+2*x[i+2]-5+sin(x[i+1]-x[i+2])sin(x[i+1]+x[i+2])+4x[i+1]-x[i]exp(x[i]-x[i+1])-3
     for i in 1:N-2)
 ````
 
 ````
-ExaModels.Constraint{ExaModels.ConstraintNull, ExaModels.SIMDFunction{ExaModels.Node2{typeof(-), ExaModels.Node2{typeof(-), ExaModels.Node2{typeof(+), ExaModels.Node2{typeof(+), ExaModels.Node2{typeof(-), ExaModels.Node2{typeof(+), ExaModels.Node2{typeof(*), Int64, ExaModels.Node2{typeof(^), ExaModels.Var{ExaModels.Node2{typeof(+), ExaModels.Node2{typeof(+), ExaModels.Par, Int64}, Int64}}, Int64}}, ExaModels.Node2{typeof(*), Int64, ExaModels.Var{ExaModels.Node2{typeof(+), ExaModels.Node2{typeof(+), ExaModels.Par, Int64}, Int64}}}}, Int64}, ExaModels.Node2{typeof(*), ExaModels.Node1{typeof(sin), ExaModels.Node2{typeof(-), ExaModels.Var{ExaModels.Node2{typeof(+), ExaModels.Node2{typeof(+), ExaModels.Par, Int64}, Int64}}, ExaModels.Var{ExaModels.Node2{typeof(+), ExaModels.Node2{typeof(+), ExaModels.Par, Int64}, Int64}}}}, ExaModels.Node1{typeof(sin), ExaModels.Node2{typeof(+), ExaModels.Var{ExaModels.Node2{typeof(+), ExaModels.Node2{typeof(+), ExaModels.Par, Int64}, Int64}}, ExaModels.Var{ExaModels.Node2{typeof(+), ExaModels.Node2{typeof(+), ExaModels.Par, Int64}, Int64}}}}}}, ExaModels.Node2{typeof(*), Int64, ExaModels.Var{ExaModels.Node2{typeof(+), ExaModels.Node2{typeof(+), ExaModels.Par, Int64}, Int64}}}}, ExaModels.Node2{typeof(*), ExaModels.Var{ExaModels.Node2{typeof(+), ExaModels.Par, Int64}}, ExaModels.Node1{typeof(exp), ExaModels.Node2{typeof(-), ExaModels.Var{ExaModels.Node2{typeof(+), ExaModels.Par, Int64}}, ExaModels.Var{ExaModels.Node2{typeof(+), ExaModels.Node2{typeof(+), ExaModels.Par, Int64}, Int64}}}}}}, Int64}, ExaModels.Compressor{NTuple{10, Int64}}, ExaModels.Compressor{NTuple{17, Int64}}}, UnitRange{Int64}}(ExaModels.ConstraintNull(), ExaModels.SIMDFunction{ExaModels.Node2{typeof(-), ExaModels.Node2{typeof(-), ExaModels.Node2{typeof(+), ExaModels.Node2{typeof(+), ExaModels.Node2{typeof(-), ExaModels.Node2{typeof(+), ExaModels.Node2{typeof(*), Int64, ExaModels.Node2{typeof(^), ExaModels.Var{ExaModels.Node2{typeof(+), ExaModels.Node2{typeof(+), ExaModels.Par, Int64}, Int64}}, Int64}}, ExaModels.Node2{typeof(*), Int64, ExaModels.Var{ExaModels.Node2{typeof(+), ExaModels.Node2{typeof(+), ExaModels.Par, Int64}, Int64}}}}, Int64}, ExaModels.Node2{typeof(*), ExaModels.Node1{typeof(sin), ExaModels.Node2{typeof(-), ExaModels.Var{ExaModels.Node2{typeof(+), ExaModels.Node2{typeof(+), ExaModels.Par, Int64}, Int64}}, ExaModels.Var{ExaModels.Node2{typeof(+), ExaModels.Node2{typeof(+), ExaModels.Par, Int64}, Int64}}}}, ExaModels.Node1{typeof(sin), ExaModels.Node2{typeof(+), ExaModels.Var{ExaModels.Node2{typeof(+), ExaModels.Node2{typeof(+), ExaModels.Par, Int64}, Int64}}, ExaModels.Var{ExaModels.Node2{typeof(+), ExaModels.Node2{typeof(+), ExaModels.Par, Int64}, Int64}}}}}}, ExaModels.Node2{typeof(*), Int64, ExaModels.Var{ExaModels.Node2{typeof(+), ExaModels.Node2{typeof(+), ExaModels.Par, Int64}, Int64}}}}, ExaModels.Node2{typeof(*), ExaModels.Var{ExaModels.Node2{typeof(+), ExaModels.Par, Int64}}, ExaModels.Node1{typeof(exp), ExaModels.Node2{typeof(-), ExaModels.Var{ExaModels.Node2{typeof(+), ExaModels.Par, Int64}}, ExaModels.Var{ExaModels.Node2{typeof(+), ExaModels.Node2{typeof(+), ExaModels.Par, Int64}, Int64}}}}}}, Int64}, ExaModels.Compressor{NTuple{10, Int64}}, ExaModels.Compressor{NTuple{17, Int64}}}(ExaModels.Node2{typeof(-), ExaModels.Node2{typeof(-), ExaModels.Node2{typeof(+), ExaModels.Node2{typeof(+), ExaModels.Node2{typeof(-), ExaModels.Node2{typeof(+), ExaModels.Node2{typeof(*), Int64, ExaModels.Node2{typeof(^), ExaModels.Var{ExaModels.Node2{typeof(+), ExaModels.Node2{typeof(+), ExaModels.Par, Int64}, Int64}}, Int64}}, ExaModels.Node2{typeof(*), Int64, ExaModels.Var{ExaModels.Node2{typeof(+), ExaModels.Node2{typeof(+), ExaModels.Par, Int64}, Int64}}}}, Int64}, ExaModels.Node2{typeof(*), ExaModels.Node1{typeof(sin), ExaModels.Node2{typeof(-), ExaModels.Var{ExaModels.Node2{typeof(+), ExaModels.Node2{typeof(+), ExaModels.Par, Int64}, Int64}}, ExaModels.Var{ExaModels.Node2{typeof(+), ExaModels.Node2{typeof(+), ExaModels.Par, Int64}, Int64}}}}, ExaModels.Node1{typeof(sin), ExaModels.Node2{typeof(+), ExaModels.Var{ExaModels.Node2{typeof(+), ExaModels.Node2{typeof(+), ExaModels.Par, Int64}, Int64}}, ExaModels.Var{ExaModels.Node2{typeof(+), ExaModels.Node2{typeof(+), ExaModels.Par, Int64}, Int64}}}}}}, ExaModels.Node2{typeof(*), Int64, ExaModels.Var{ExaModels.Node2{typeof(+), ExaModels.Node2{typeof(+), ExaModels.Par, Int64}, Int64}}}}, ExaModels.Node2{typeof(*), ExaModels.Var{ExaModels.Node2{typeof(+), ExaModels.Par, Int64}}, ExaModels.Node1{typeof(exp), ExaModels.Node2{typeof(-), ExaModels.Var{ExaModels.Node2{typeof(+), ExaModels.Par, Int64}}, ExaModels.Var{ExaModels.Node2{typeof(+), ExaModels.Node2{typeof(+), ExaModels.Par, Int64}, Int64}}}}}}, Int64}(ExaModels.Node2{typeof(-), ExaModels.Node2{typeof(+), ExaModels.Node2{typeof(+), ExaModels.Node2{typeof(-), ExaModels.Node2{typeof(+), ExaModels.Node2{typeof(*), Int64, ExaModels.Node2{typeof(^), ExaModels.Var{ExaModels.Node2{typeof(+), ExaModels.Node2{typeof(+), ExaModels.Par, Int64}, Int64}}, Int64}}, ExaModels.Node2{typeof(*), Int64, ExaModels.Var{ExaModels.Node2{typeof(+), ExaModels.Node2{typeof(+), ExaModels.Par, Int64}, Int64}}}}, Int64}, ExaModels.Node2{typeof(*), ExaModels.Node1{typeof(sin), ExaModels.Node2{typeof(-), ExaModels.Var{ExaModels.Node2{typeof(+), ExaModels.Node2{typeof(+), ExaModels.Par, Int64}, Int64}}, ExaModels.Var{ExaModels.Node2{typeof(+), ExaModels.Node2{typeof(+), ExaModels.Par, Int64}, Int64}}}}, ExaModels.Node1{typeof(sin), ExaModels.Node2{typeof(+), ExaModels.Var{ExaModels.Node2{typeof(+), ExaModels.Node2{typeof(+), ExaModels.Par, Int64}, Int64}}, ExaModels.Var{ExaModels.Node2{typeof(+), ExaModels.Node2{typeof(+), ExaModels.Par, Int64}, Int64}}}}}}, ExaModels.Node2{typeof(*), Int64, ExaModels.Var{ExaModels.Node2{typeof(+), ExaModels.Node2{typeof(+), ExaModels.Par, Int64}, Int64}}}}, ExaModels.Node2{typeof(*), ExaModels.Var{ExaModels.Node2{typeof(+), ExaModels.Par, Int64}}, ExaModels.Node1{typeof(exp), ExaModels.Node2{typeof(-), ExaModels.Var{ExaModels.Node2{typeof(+), ExaModels.Par, Int64}}, ExaModels.Var{ExaModels.Node2{typeof(+), ExaModels.Node2{typeof(+), ExaModels.Par, Int64}, Int64}}}}}}(ExaModels.Node2{typeof(+), ExaModels.Node2{typeof(+), ExaModels.Node2{typeof(-), ExaModels.Node2{typeof(+), ExaModels.Node2{typeof(*), Int64, ExaModels.Node2{typeof(^), ExaModels.Var{ExaModels.Node2{typeof(+), ExaModels.Node2{typeof(+), ExaModels.Par, Int64}, Int64}}, Int64}}, ExaModels.Node2{typeof(*), Int64, ExaModels.Var{ExaModels.Node2{typeof(+), ExaModels.Node2{typeof(+), ExaModels.Par, Int64}, Int64}}}}, Int64}, ExaModels.Node2{typeof(*), ExaModels.Node1{typeof(sin), ExaModels.Node2{typeof(-), ExaModels.Var{ExaModels.Node2{typeof(+), ExaModels.Node2{typeof(+), ExaModels.Par, Int64}, Int64}}, ExaModels.Var{ExaModels.Node2{typeof(+), ExaModels.Node2{typeof(+), ExaModels.Par, Int64}, Int64}}}}, ExaModels.Node1{typeof(sin), ExaModels.Node2{typeof(+), ExaModels.Var{ExaModels.Node2{typeof(+), ExaModels.Node2{typeof(+), ExaModels.Par, Int64}, Int64}}, ExaModels.Var{ExaModels.Node2{typeof(+), ExaModels.Node2{typeof(+), ExaModels.Par, Int64}, Int64}}}}}}, ExaModels.Node2{typeof(*), Int64, ExaModels.Var{ExaModels.Node2{typeof(+), ExaModels.Node2{typeof(+), ExaModels.Par, Int64}, Int64}}}}(ExaModels.Node2{typeof(+), ExaModels.Node2{typeof(-), ExaModels.Node2{typeof(+), ExaModels.Node2{typeof(*), Int64, ExaModels.Node2{typeof(^), ExaModels.Var{ExaModels.Node2{typeof(+), ExaModels.Node2{typeof(+), ExaModels.Par, Int64}, Int64}}, Int64}}, ExaModels.Node2{typeof(*), Int64, ExaModels.Var{ExaModels.Node2{typeof(+), ExaModels.Node2{typeof(+), ExaModels.Par, Int64}, Int64}}}}, Int64}, ExaModels.Node2{typeof(*), ExaModels.Node1{typeof(sin), ExaModels.Node2{typeof(-), ExaModels.Var{ExaModels.Node2{typeof(+), ExaModels.Node2{typeof(+), ExaModels.Par, Int64}, Int64}}, ExaModels.Var{ExaModels.Node2{typeof(+), ExaModels.Node2{typeof(+), ExaModels.Par, Int64}, Int64}}}}, ExaModels.Node1{typeof(sin), ExaModels.Node2{typeof(+), ExaModels.Var{ExaModels.Node2{typeof(+), ExaModels.Node2{typeof(+), ExaModels.Par, Int64}, Int64}}, ExaModels.Var{ExaModels.Node2{typeof(+), ExaModels.Node2{typeof(+), ExaModels.Par, Int64}, Int64}}}}}}(ExaModels.Node2{typeof(-), ExaModels.Node2{typeof(+), ExaModels.Node2{typeof(*), Int64, ExaModels.Node2{typeof(^), ExaModels.Var{ExaModels.Node2{typeof(+), ExaModels.Node2{typeof(+), ExaModels.Par, Int64}, Int64}}, Int64}}, ExaModels.Node2{typeof(*), Int64, ExaModels.Var{ExaModels.Node2{typeof(+), ExaModels.Node2{typeof(+), ExaModels.Par, Int64}, Int64}}}}, Int64}(ExaModels.Node2{typeof(+), ExaModels.Node2{typeof(*), Int64, ExaModels.Node2{typeof(^), ExaModels.Var{ExaModels.Node2{typeof(+), ExaModels.Node2{typeof(+), ExaModels.Par, Int64}, Int64}}, Int64}}, ExaModels.Node2{typeof(*), Int64, ExaModels.Var{ExaModels.Node2{typeof(+), ExaModels.Node2{typeof(+), ExaModels.Par, Int64}, Int64}}}}(ExaModels.Node2{typeof(*), Int64, ExaModels.Node2{typeof(^), ExaModels.Var{ExaModels.Node2{typeof(+), ExaModels.Node2{typeof(+), ExaModels.Par, Int64}, Int64}}, Int64}}(3, ExaModels.Node2{typeof(^), ExaModels.Var{ExaModels.Node2{typeof(+), ExaModels.Node2{typeof(+), ExaModels.Par, Int64}, Int64}}, Int64}(ExaModels.Var{ExaModels.Node2{typeof(+), ExaModels.Node2{typeof(+), ExaModels.Par, Int64}, Int64}}(ExaModels.Node2{typeof(+), ExaModels.Node2{typeof(+), ExaModels.Par, Int64}, Int64}(ExaModels.Node2{typeof(+), ExaModels.Par, Int64}(ExaModels.Par(), 1), 0)), 3)), ExaModels.Node2{typeof(*), Int64, ExaModels.Var{ExaModels.Node2{typeof(+), ExaModels.Node2{typeof(+), ExaModels.Par, Int64}, Int64}}}(2, ExaModels.Var{ExaModels.Node2{typeof(+), ExaModels.Node2{typeof(+), ExaModels.Par, Int64}, Int64}}(ExaModels.Node2{typeof(+), ExaModels.Node2{typeof(+), ExaModels.Par, Int64}, Int64}(ExaModels.Node2{typeof(+), ExaModels.Par, Int64}(ExaModels.Par(), 2), 0)))), 5), ExaModels.Node2{typeof(*), ExaModels.Node1{typeof(sin), ExaModels.Node2{typeof(-), ExaModels.Var{ExaModels.Node2{typeof(+), ExaModels.Node2{typeof(+), ExaModels.Par, Int64}, Int64}}, ExaModels.Var{ExaModels.Node2{typeof(+), ExaModels.Node2{typeof(+), ExaModels.Par, Int64}, Int64}}}}, ExaModels.Node1{typeof(sin), ExaModels.Node2{typeof(+), ExaModels.Var{ExaModels.Node2{typeof(+), ExaModels.Node2{typeof(+), ExaModels.Par, Int64}, Int64}}, ExaModels.Var{ExaModels.Node2{typeof(+), ExaModels.Node2{typeof(+), ExaModels.Par, Int64}, Int64}}}}}(ExaModels.Node1{typeof(sin), ExaModels.Node2{typeof(-), ExaModels.Var{ExaModels.Node2{typeof(+), ExaModels.Node2{typeof(+), ExaModels.Par, Int64}, Int64}}, ExaModels.Var{ExaModels.Node2{typeof(+), ExaModels.Node2{typeof(+), ExaModels.Par, Int64}, Int64}}}}(ExaModels.Node2{typeof(-), ExaModels.Var{ExaModels.Node2{typeof(+), ExaModels.Node2{typeof(+), ExaModels.Par, Int64}, Int64}}, ExaModels.Var{ExaModels.Node2{typeof(+), ExaModels.Node2{typeof(+), ExaModels.Par, Int64}, Int64}}}(ExaModels.Var{ExaModels.Node2{typeof(+), ExaModels.Node2{typeof(+), ExaModels.Par, Int64}, Int64}}(ExaModels.Node2{typeof(+), ExaModels.Node2{typeof(+), ExaModels.Par, Int64}, Int64}(ExaModels.Node2{typeof(+), ExaModels.Par, Int64}(ExaModels.Par(), 1), 0)), ExaModels.Var{ExaModels.Node2{typeof(+), ExaModels.Node2{typeof(+), ExaModels.Par, Int64}, Int64}}(ExaModels.Node2{typeof(+), ExaModels.Node2{typeof(+), ExaModels.Par, Int64}, Int64}(ExaModels.Node2{typeof(+), ExaModels.Par, Int64}(ExaModels.Par(), 2), 0)))), ExaModels.Node1{typeof(sin), ExaModels.Node2{typeof(+), ExaModels.Var{ExaModels.Node2{typeof(+), ExaModels.Node2{typeof(+), ExaModels.Par, Int64}, Int64}}, ExaModels.Var{ExaModels.Node2{typeof(+), ExaModels.Node2{typeof(+), ExaModels.Par, Int64}, Int64}}}}(ExaModels.Node2{typeof(+), ExaModels.Var{ExaModels.Node2{typeof(+), ExaModels.Node2{typeof(+), ExaModels.Par, Int64}, Int64}}, ExaModels.Var{ExaModels.Node2{typeof(+), ExaModels.Node2{typeof(+), ExaModels.Par, Int64}, Int64}}}(ExaModels.Var{ExaModels.Node2{typeof(+), ExaModels.Node2{typeof(+), ExaModels.Par, Int64}, Int64}}(ExaModels.Node2{typeof(+), ExaModels.Node2{typeof(+), ExaModels.Par, Int64}, Int64}(ExaModels.Node2{typeof(+), ExaModels.Par, Int64}(ExaModels.Par(), 1), 0)), ExaModels.Var{ExaModels.Node2{typeof(+), ExaModels.Node2{typeof(+), ExaModels.Par, Int64}, Int64}}(ExaModels.Node2{typeof(+), ExaModels.Node2{typeof(+), ExaModels.Par, Int64}, Int64}(ExaModels.Node2{typeof(+), ExaModels.Par, Int64}(ExaModels.Par(), 2), 0)))))), ExaModels.Node2{typeof(*), Int64, ExaModels.Var{ExaModels.Node2{typeof(+), ExaModels.Node2{typeof(+), ExaModels.Par, Int64}, Int64}}}(4, ExaModels.Var{ExaModels.Node2{typeof(+), ExaModels.Node2{typeof(+), ExaModels.Par, Int64}, Int64}}(ExaModels.Node2{typeof(+), ExaModels.Node2{typeof(+), ExaModels.Par, Int64}, Int64}(ExaModels.Node2{typeof(+), ExaModels.Par, Int64}(ExaModels.Par(), 1), 0)))), ExaModels.Node2{typeof(*), ExaModels.Var{ExaModels.Node2{typeof(+), ExaModels.Par, Int64}}, ExaModels.Node1{typeof(exp), ExaModels.Node2{typeof(-), ExaModels.Var{ExaModels.Node2{typeof(+), ExaModels.Par, Int64}}, ExaModels.Var{ExaModels.Node2{typeof(+), ExaModels.Node2{typeof(+), ExaModels.Par, Int64}, Int64}}}}}(ExaModels.Var{ExaModels.Node2{typeof(+), ExaModels.Par, Int64}}(ExaModels.Node2{typeof(+), ExaModels.Par, Int64}(ExaModels.Par(), 0)), ExaModels.Node1{typeof(exp), ExaModels.Node2{typeof(-), ExaModels.Var{ExaModels.Node2{typeof(+), ExaModels.Par, Int64}}, ExaModels.Var{ExaModels.Node2{typeof(+), ExaModels.Node2{typeof(+), ExaModels.Par, Int64}, Int64}}}}(ExaModels.Node2{typeof(-), ExaModels.Var{ExaModels.Node2{typeof(+), ExaModels.Par, Int64}}, ExaModels.Var{ExaModels.Node2{typeof(+), ExaModels.Node2{typeof(+), ExaModels.Par, Int64}, Int64}}}(ExaModels.Var{ExaModels.Node2{typeof(+), ExaModels.Par, Int64}}(ExaModels.Node2{typeof(+), ExaModels.Par, Int64}(ExaModels.Par(), 0)), ExaModels.Var{ExaModels.Node2{typeof(+), ExaModels.Node2{typeof(+), ExaModels.Par, Int64}, Int64}}(ExaModels.Node2{typeof(+), ExaModels.Node2{typeof(+), ExaModels.Par, Int64}, Int64}(ExaModels.Node2{typeof(+), ExaModels.Par, Int64}(ExaModels.Par(), 1), 0)))))), 3), ExaModels.Compressor{NTuple{10, Int64}}((1, 2, 1, 2, 1, 2, 1, 3, 3, 1)), ExaModels.Compressor{NTuple{17, Int64}}((1, 1, 2, 3, 1, 2, 3, 1, 3, 4, 2, 5, 5, 1, 6, 5, 6)), 0, 0, 29997, 3, 6), 1:9998)
+Constraint
+
+  s.t. (...)
+       g♭ ≤ [g(x,p)]_{p ∈ P} ≤ g♯
+
+  where |P| = 9998
+
 ````
 
 Finally, we create an NLPModel.
 
 ````julia
-m = ExaModels.Model(c)
+m = ExaModel(c)
 ````
 
 ````
-ExaModels.Model{Float64, Vector{Float64}, Nothing, ExaModels.Objective{ExaModels.ObjectiveNull, ExaModels.SIMDFunction{ExaModels.Node2{typeof(+), ExaModels.Node2{typeof(*), Int64, ExaModels.Node2{typeof(^), ExaModels.Node2{typeof(-), ExaModels.Node2{typeof(^), ExaModels.Var{ExaModels.Node2{typeof(+), ExaModels.Node2{typeof(-), ExaModels.Par, Int64}, Int64}}, Int64}, ExaModels.Var{ExaModels.Node2{typeof(+), ExaModels.Par, Int64}}}, Int64}}, ExaModels.Node2{typeof(^), ExaModels.Node2{typeof(-), ExaModels.Var{ExaModels.Node2{typeof(+), ExaModels.Node2{typeof(-), ExaModels.Par, Int64}, Int64}}, Int64}, Int64}}, ExaModels.Compressor{Tuple{Int64, Int64, Int64}}, ExaModels.Compressor{NTuple{4, Int64}}}, UnitRange{Int64}}, ExaModels.Constraint{ExaModels.ConstraintNull, ExaModels.SIMDFunction{ExaModels.Node2{typeof(-), ExaModels.Node2{typeof(-), ExaModels.Node2{typeof(+), ExaModels.Node2{typeof(+), ExaModels.Node2{typeof(-), ExaModels.Node2{typeof(+), ExaModels.Node2{typeof(*), Int64, ExaModels.Node2{typeof(^), ExaModels.Var{ExaModels.Node2{typeof(+), ExaModels.Node2{typeof(+), ExaModels.Par, Int64}, Int64}}, Int64}}, ExaModels.Node2{typeof(*), Int64, ExaModels.Var{ExaModels.Node2{typeof(+), ExaModels.Node2{typeof(+), ExaModels.Par, Int64}, Int64}}}}, Int64}, ExaModels.Node2{typeof(*), ExaModels.Node1{typeof(sin), ExaModels.Node2{typeof(-), ExaModels.Var{ExaModels.Node2{typeof(+), ExaModels.Node2{typeof(+), ExaModels.Par, Int64}, Int64}}, ExaModels.Var{ExaModels.Node2{typeof(+), ExaModels.Node2{typeof(+), ExaModels.Par, Int64}, Int64}}}}, ExaModels.Node1{typeof(sin), ExaModels.Node2{typeof(+), ExaModels.Var{ExaModels.Node2{typeof(+), ExaModels.Node2{typeof(+), ExaModels.Par, Int64}, Int64}}, ExaModels.Var{ExaModels.Node2{typeof(+), ExaModels.Node2{typeof(+), ExaModels.Par, Int64}, Int64}}}}}}, ExaModels.Node2{typeof(*), Int64, ExaModels.Var{ExaModels.Node2{typeof(+), ExaModels.Node2{typeof(+), ExaModels.Par, Int64}, Int64}}}}, ExaModels.Node2{typeof(*), ExaModels.Var{ExaModels.Node2{typeof(+), ExaModels.Par, Int64}}, ExaModels.Node1{typeof(exp), ExaModels.Node2{typeof(-), ExaModels.Var{ExaModels.Node2{typeof(+), ExaModels.Par, Int64}}, ExaModels.Var{ExaModels.Node2{typeof(+), ExaModels.Node2{typeof(+), ExaModels.Par, Int64}, Int64}}}}}}, Int64}, ExaModels.Compressor{NTuple{10, Int64}}, ExaModels.Compressor{NTuple{17, Int64}}}, UnitRange{Int64}}}
+An ExaModel
+
   Problem name: Generic
    All variables: ████████████████████ 10000  All constraints: ████████████████████ 9998  
             free: ████████████████████ 10000             free: ⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅ 0     
@@ -92,71 +115,18 @@ ExaModels.Model{Float64, Vector{Float64}, Nothing, ExaModels.Objective{ExaModels
                                                     nonlinear: ████████████████████ 9998  
                                                          nnzj: ( 99.97% sparsity)   29994 
 
-ExaModels.Counters(0, 0, 0, 0, 0, 0.0, 0.0, 0.0, 0.0, 0.0)
+
 ````
 
 To solve the problem with `Ipopt`,
 
 ````julia
 using NLPModelsIpopt
-sol = ipopt(m);
+sol = ipopt(m)
 ````
 
 ````
-
-******************************************************************************
-This program contains Ipopt, a library for large-scale nonlinear optimization.
- Ipopt is released as open source code under the Eclipse Public License (EPL).
-         For more information visit https://github.com/coin-or/Ipopt
-******************************************************************************
-
-This is Ipopt version 3.13.3, running with linear solver ma27.
-
-Number of nonzeros in equality constraint Jacobian...:    29994
-Number of nonzeros in inequality constraint Jacobian.:        0
-Number of nonzeros in Lagrangian Hessian.............:    89985
-
-Total number of variables............................:    10000
-                     variables with only lower bounds:        0
-                variables with lower and upper bounds:        0
-                     variables with only upper bounds:        0
-Total number of equality constraints.................:     9998
-Total number of inequality constraints...............:        0
-        inequality constraints with only lower bounds:        0
-   inequality constraints with lower and upper bounds:        0
-        inequality constraints with only upper bounds:        0
-
-iter    objective    inf_pr   inf_du lg(mu)  ||d||  lg(rg) alpha_du alpha_pr  ls
-   0  2.5405160e+06 2.48e+01 2.73e+01  -1.0 0.00e+00    -  0.00e+00 0.00e+00   0
-   1  1.3512419e+06 1.49e+01 8.27e+01  -1.0 2.20e+00    -  1.00e+00 1.00e+00f  1
-   2  1.5156131e+05 4.28e+00 1.36e+02  -1.0 1.43e+00    -  1.00e+00 1.00e+00f  1
-   3  6.6755024e+01 3.09e-01 2.18e+01  -1.0 5.63e-01    -  1.00e+00 1.00e+00f  1
-   4  6.2338933e+00 1.73e-02 8.47e-01  -1.0 2.10e-01    -  1.00e+00 1.00e+00h  1
-   5  6.2324586e+00 1.15e-05 8.16e-04  -1.7 3.35e-03    -  1.00e+00 1.00e+00h  1
-   6  6.2324586e+00 8.36e-12 7.97e-10  -5.7 2.00e-06    -  1.00e+00 1.00e+00h  1
-
-Number of Iterations....: 6
-
-                                   (scaled)                 (unscaled)
-Objective...............:   7.8692659500479645e-01    6.2324586324379885e+00
-Dual infeasibility......:   7.9743417311426394e-10    6.3156786510649713e-09
-Constraint violation....:   8.3555384833289281e-12    8.3555384833289281e-12
-Complementarity.........:   0.0000000000000000e+00    0.0000000000000000e+00
-Overall NLP error.......:   7.9743417311426394e-10    6.3156786510649713e-09
-
-
-Number of objective function evaluations             = 7
-Number of objective gradient evaluations             = 7
-Number of equality constraint evaluations            = 7
-Number of inequality constraint evaluations          = 0
-Number of equality constraint Jacobian evaluations   = 7
-Number of inequality constraint Jacobian evaluations = 0
-Number of Lagrangian Hessian evaluations             = 6
-Total CPU secs in IPOPT (w/o function evaluations)   =      0.430
-Total CPU secs in NLP function evaluations           =      0.246
-
-EXIT: Optimal Solution Found.
-
+"Execution stats: first-order stationary"
 ````
 
 The solution `sol` contains the field `sol.solution` holding the optimized parameters.
