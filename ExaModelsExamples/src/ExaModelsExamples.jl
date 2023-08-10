@@ -18,7 +18,7 @@ include("distillation.jl")
 include("quadrotor.jl")
 include("extras.jl")
 
-const NAMES = filter(names(ExaModelsExamples; all=true)) do x
+const NAMES = filter(names(ExaModelsExamples; all = true)) do x
     str = string(x)
     endswith(str, "model") && !startswith(str, "#")
 end
@@ -37,7 +37,7 @@ function __compile__()
     for name in NAMES
         @eval begin
             m = $name()
-            ipopt(m; print_level=0)
+            ipopt(m; print_level = 0)
         end
     end
 end

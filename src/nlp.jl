@@ -10,11 +10,14 @@ struct Variable{S,O} <: AbstractVariable
     size::S
     offset::O
 end
-Base.show(io::IO, v::Variable) = print(io, """
+Base.show(io::IO, v::Variable) = print(
+    io,
+    """
 Variable
 
   x ∈ R^{$(join(size(v.size)," × "))}
-""")
+""",
+)
 
 
 struct Objective{R,F,I} <: AbstractObjective
@@ -22,13 +25,16 @@ struct Objective{R,F,I} <: AbstractObjective
     f::F
     itr::I
 end
-Base.show(io::IO, v::Objective) = print(io, """
+Base.show(io::IO, v::Objective) = print(
+    io,
+    """
 Objective
 
   min (...) + ∑_{p ∈ P} f(x,p)
 
   where |P| = $(length(v.itr))
-""")
+""",
+)
 
 struct Constraint{R,F,I,O} <: AbstractConstraint
     inner::R
@@ -36,14 +42,17 @@ struct Constraint{R,F,I,O} <: AbstractConstraint
     itr::I
     offset::O
 end
-Base.show(io::IO, v::Constraint) = print(io, """
+Base.show(io::IO, v::Constraint) = print(
+    io,
+    """
 Constraint
 
   s.t. (...)
        g♭ ≤ [g(x,p)]_{p ∈ P} ≤ g♯
 
   where |P| = $(length(v.itr))
-""")
+""",
+)
 
 struct ConstraintAug{R,F,I} <: AbstractConstraint
     inner::R
@@ -51,14 +60,17 @@ struct ConstraintAug{R,F,I} <: AbstractConstraint
     itr::I
     oa::Int
 end
-Base.show(io::IO, v::ConstraintAug) = print(io, """
+Base.show(io::IO, v::ConstraintAug) = print(
+    io,
+    """
 Constrant Augmentation
 
   s.t. (...)
        g♭ ≤ (...) + ∑_{p ∈ P} h(x,p) ≤ g♯
 
   where |P| = $(length(v.itr))
-""")
+""",
+)
 
 
 """
@@ -103,7 +115,7 @@ An ExaCore
   number of constraint patterns: ... 0
 ```
 """
-Base.@kwdef mutable struct ExaCore{T, VT <: AbstractVector{T}, B}
+Base.@kwdef mutable struct ExaCore{T,VT<:AbstractVector{T},B}
     obj::AbstractObjective = ObjectiveNull()
     con::AbstractConstraint = ConstraintNull()
     nvar::Int = 0
@@ -123,13 +135,15 @@ Base.@kwdef mutable struct ExaCore{T, VT <: AbstractVector{T}, B}
     backend::B = nothing
 end
 ExaCore(::Nothing) = ExaCore()
-ExaCore(::Type{T},::Nothing) where T <: AbstractFloat = ExaCore(x0=zeros(T,0))
-ExaCore(::Type{T}) where T <: AbstractFloat = ExaCore(T, nothing)
+ExaCore(::Type{T}, ::Nothing) where {T<:AbstractFloat} = ExaCore(x0 = zeros(T, 0))
+ExaCore(::Type{T}) where {T<:AbstractFloat} = ExaCore(T, nothing)
 depth(a) = depth(a.inner) + 1
 depth(a::ObjectiveNull) = 0
 depth(a::ConstraintNull) = 0
 
-Base.show(io::IO, c::ExaCore{T,VT,B}) where {T, VT, B} = print(io, """
+Base.show(io::IO, c::ExaCore{T,VT,B}) where {T,VT,B} = print(
+    io,
+    """
 An ExaCore
 
   Float type: ...................... $T
@@ -138,7 +152,8 @@ An ExaCore
 
   number of objective patterns: .... $(depth(c.obj))
   number of constraint patterns: ... $(depth(c.con))
-""")
+""",
+)
 
 
 
@@ -146,11 +161,11 @@ An ExaCore
 struct ExaModel{T,VT,E,O,C} <: NLPModels.AbstractNLPModel{T,VT}
     objs::O
     cons::C
-    meta::NLPModels.NLPModelMeta{T, VT}
+    meta::NLPModels.NLPModelMeta{T,VT}
     ext::E
 end
 
-function Base.show(io::IO, c::ExaModel) 
+function Base.show(io::IO, c::ExaModel)
     println(io, "An ExaModel\n")
     Base.show(io, c.meta)
 end
@@ -194,9 +209,10 @@ julia> result = ipopt(m; print_level=0)    # solve the problem
 
 ```
 """
-function ExaModel(c::C) where C <: ExaCore
+function ExaModel(c::C) where {C<:ExaCore}
     return ExaModel(
-        c.obj, c.con, 
+        c.obj,
+        c.con,
         NLPModels.NLPModelMeta(
             c.nvar,
             ncon = c.ncon,
@@ -207,42 +223,41 @@ function ExaModel(c::C) where C <: ExaCore
             uvar = c.uvar,
             y0 = c.y0,
             lcon = c.lcon,
-            ucon = c.ucon
+            ucon = c.ucon,
         ),
-        extension(c) 
+        extension(c),
     )
 end
 
-@inline Base.getindex(v::V,i) where V <: Variable = Var(i + (v.offset - _start(v.size[1]) + 1))
-@inline Base.getindex(v::V,i,j) where V <: Variable = Var(
-    i
-    + j * _length(v.size[1])
-    + (
-        v.offset  - _start(v.size[1]) + 1  - _start(v.size[2])  * _length(v.size[1])
-    )
+@inline Base.getindex(v::V, i) where {V<:Variable} =
+    Var(i + (v.offset - _start(v.size[1]) + 1))
+@inline Base.getindex(v::V, i, j) where {V<:Variable} = Var(
+    i +
+    j * _length(v.size[1]) +
+    (v.offset - _start(v.size[1]) + 1 - _start(v.size[2]) * _length(v.size[1])),
 )
 
-function myappend!(a,b::Base.Generator,lb)
-    
-    la = length(a);
-    resize!(a, la+lb);
-    map!(b.f, view(a,(la+1):(la+lb)) , b.iter)
+function myappend!(a, b::Base.Generator, lb)
+
+    la = length(a)
+    resize!(a, la + lb)
+    map!(b.f, view(a, (la+1):(la+lb)), b.iter)
     return a
 end
 
-function myappend!(a,b::AbstractArray,lb)
-    
-    la = length(a);
-    resize!(a, la+lb);
-    map!(identity, view(a,(la+1):(la+lb)) , b)
+function myappend!(a, b::AbstractArray, lb)
+
+    la = length(a)
+    resize!(a, la + lb)
+    map!(identity, view(a, (la+1):(la+lb)), b)
     return a
 end
 
-function myappend!(a,b::Number,lb)
-    
-    la = length(a);
-    resize!(a, la+lb);
-    fill!(view(a,(la+1):(la+lb)) , b)
+function myappend!(a, b::Number, lb)
+
+    la = length(a)
+    resize!(a, la + lb)
+    fill!(view(a, (la+1):(la+lb)), b)
     return a
 end
 
@@ -284,20 +299,21 @@ Variable
 ```
 """
 function variable(
-    c::C, ns...;
+    c::C,
+    ns...;
     start = zero(T),
     lvar = T(-Inf),
-    uvar = T( Inf)
-    ) where {T, C <: ExaCore{T}}
+    uvar = T(Inf),
+) where {T,C<:ExaCore{T}}
 
     o = c.nvar
     c.nvar += total(ns)
     c.x0 = myappend!(c.x0, start, total(ns))
     c.lvar = myappend!(c.lvar, lvar, total(ns))
     c.uvar = myappend!(c.uvar, uvar, total(ns))
-    
-    return Variable(ns,o)
-    
+
+    return Variable(ns, o)
+
 end
 
 """
@@ -321,19 +337,15 @@ Objective
   where |P| = 10
 ```
 """
-function objective(c::C,gen) where C <: ExaCore
-    f = SIMDFunction(
-        gen, c.nobj, c.nnzg, c.nnzh
-    )
+function objective(c::C, gen) where {C<:ExaCore}
+    f = SIMDFunction(gen, c.nobj, c.nnzg, c.nnzh)
 
     nitr = length(gen.iter)
     c.nobj += nitr
     c.nnzg += nitr * f.o1step
     c.nnzh += nitr * f.o2step
 
-    c.obj = Objective(
-        c.obj, f, gen.iter
-    )
+    c.obj = Objective(c.obj, f, gen.iter)
 end
 
 """
@@ -368,31 +380,25 @@ function constraint(
     gen::Base.Generator;
     start = zero(T),
     lcon = zero(T),
-    ucon = zero(T)
-    ) where {T, C <: ExaCore{T}}
+    ucon = zero(T),
+) where {T,C<:ExaCore{T}}
 
-    f = SIMDFunction(
-        gen, c.ncon, c.nnzj, c.nnzh
-    )
+    f = SIMDFunction(gen, c.ncon, c.nnzj, c.nnzh)
     nitr = length(gen.iter)
     o = c.ncon
     c.ncon += nitr
     c.nnzj += nitr * f.o1step
     c.nnzh += nitr * f.o2step
-    
+
     c.y0 = myappend!(c.y0, start, nitr)
     c.lcon = myappend!(c.lcon, lcon, nitr)
     c.ucon = myappend!(c.ucon, ucon, nitr)
-    
-    c.con = Constraint(
-        c.con, f, gen.iter, o
-    )
+
+    c.con = Constraint(c.con, f, gen.iter, o)
 end
 
-function constraint!(c::C,c1,gen) where C <: ExaCore
-    f = SIMDFunction(
-        gen, offset0(c1,0), c.nnzj, c.nnzh
-    )
+function constraint!(c::C, c1, gen) where {C<:ExaCore}
+    f = SIMDFunction(gen, offset0(c1, 0), c.nnzj, c.nnzh)
     oa = c.nconaug
 
     nitr = length(gen.iter)
@@ -401,20 +407,14 @@ function constraint!(c::C,c1,gen) where C <: ExaCore
     c.nnzj += nitr * f.o1step
     c.nnzh += nitr * f.o2step
 
-    c.con = ConstraintAug(
-        c.con, f, gen.iter, oa
-    )
+    c.con = ConstraintAug(c.con, f, gen.iter, oa)
 end
 
 
 function extension(args...) end
 
-function NLPModels.jac_structure!(
-    m::ExaModel,
-    rows::AbstractVector,
-    cols::AbstractVector
-    )
-    
+function NLPModels.jac_structure!(m::ExaModel, rows::AbstractVector, cols::AbstractVector)
+
     _jac_structure!(m.cons, rows, cols)
 end
 
@@ -424,11 +424,7 @@ function _jac_structure!(cons, rows, cols)
     sjacobian!(rows, cols, cons, nothing, NaN16)
 end
 
-function NLPModels.hess_structure!(
-    m::ExaModel,
-    rows::AbstractVector,
-    cols::AbstractVector
-    )
+function NLPModels.hess_structure!(m::ExaModel, rows::AbstractVector, cols::AbstractVector)
 
     _obj_hess_structure!(m.objs, rows, cols)
     _con_hess_structure!(m.cons, rows, cols)
@@ -437,74 +433,59 @@ end
 _obj_hess_structure!(objs::ObjectiveNull, rows, cols) = nothing
 function _obj_hess_structure!(objs, rows, cols)
     _obj_hess_structure!(objs.inner, rows, cols)
-    shessian!(rows,cols, objs, nothing, NaN16, NaN16)
+    shessian!(rows, cols, objs, nothing, NaN16, NaN16)
 end
 
 _con_hess_structure!(cons::ConstraintNull, rows, cols) = nothing
 function _con_hess_structure!(cons, rows, cols)
     _con_hess_structure!(cons.inner, rows, cols)
-    shessian!(rows,cols, cons, nothing, NaN16, NaN16)
+    shessian!(rows, cols, cons, nothing, NaN16, NaN16)
 end
 
-function NLPModels.obj(
-    m::ExaModel,
-    x::AbstractVector
-    ) 
+function NLPModels.obj(m::ExaModel, x::AbstractVector)
 
-    _obj(m.objs,x)
+    _obj(m.objs, x)
 end
 
-_obj(objs,x) = _obj(objs.inner,x) + sum(objs.f.f(k,x) for k in objs.itr)
-_obj(objs::ObjectiveNull,x) = zero(eltype(x))
+_obj(objs, x) = _obj(objs.inner, x) + sum(objs.f.f(k, x) for k in objs.itr)
+_obj(objs::ObjectiveNull, x) = zero(eltype(x))
 
-function NLPModels.cons!(
-    m::ExaModel,
-    x::AbstractVector,
-    g::AbstractVector
-    )
-    
+function NLPModels.cons!(m::ExaModel, x::AbstractVector, g::AbstractVector)
+
     fill!(g, zero(eltype(g)))
-    _cons!(m.cons,x,g)
+    _cons!(m.cons, x, g)
 end
 
-function _cons!(cons,x,g)
-    _cons!(cons.inner,x,g)
+function _cons!(cons, x, g)
+    _cons!(cons.inner, x, g)
     @simd for i in eachindex(cons.itr)
-        g[offset0(cons,i)] += cons.f.f(cons.itr[i],x)
+        g[offset0(cons, i)] += cons.f.f(cons.itr[i], x)
     end
 end
-_cons!(cons::ConstraintNull,x,g) = nothing
+_cons!(cons::ConstraintNull, x, g) = nothing
 
 
 
-function NLPModels.grad!(
-    m::ExaModel,
-    x::AbstractVector,
-    f::AbstractVector
-    )
+function NLPModels.grad!(m::ExaModel, x::AbstractVector, f::AbstractVector)
 
-    fill!(f,zero(eltype(f)))
-    _grad!(m.objs,x,f)
+    fill!(f, zero(eltype(f)))
+    _grad!(m.objs, x, f)
 end
 
-function _grad!(objs,x,f)
-    _grad!(objs.inner,x,f)
+function _grad!(objs, x, f)
+    _grad!(objs.inner, x, f)
     gradient!(f, objs, x, one(eltype(f)))
 end
-_grad!(objs::ObjectiveNull,x,f) = nothing
+_grad!(objs::ObjectiveNull, x, f) = nothing
 
-function NLPModels.jac_coord!(
-    m::ExaModel,
-    x::AbstractVector,
-    jac::AbstractVector
-    )
+function NLPModels.jac_coord!(m::ExaModel, x::AbstractVector, jac::AbstractVector)
 
-    fill!(jac,zero(eltype(jac)))
-    _jac_coord!(m.cons,x,jac)
+    fill!(jac, zero(eltype(jac)))
+    _jac_coord!(m.cons, x, jac)
 end
 
-_jac_coord!(cons::ConstraintNull,x,jac) = nothing
-function _jac_coord!(cons,x,jac)
+_jac_coord!(cons::ConstraintNull, x, jac) = nothing
+function _jac_coord!(cons, x, jac)
     _jac_coord!(cons.inner, x, jac)
     sjacobian!(jac, nothing, cons, x, one(eltype(jac)))
 end
@@ -514,67 +495,64 @@ function NLPModels.hess_coord!(
     x::AbstractVector,
     y::AbstractVector,
     hess::AbstractVector;
-    obj_weight = one(eltype(x))
-    )
+    obj_weight = one(eltype(x)),
+)
 
-    fill!(hess,zero(eltype(hess)))    
-    _obj_hess_coord!(m.objs, x,y,hess,obj_weight)
-    _con_hess_coord!(m.cons, x,y,hess,obj_weight)
+    fill!(hess, zero(eltype(hess)))
+    _obj_hess_coord!(m.objs, x, y, hess, obj_weight)
+    _con_hess_coord!(m.cons, x, y, hess, obj_weight)
 end
-_obj_hess_coord!(objs::ObjectiveNull, x,y,hess,obj_weight) = nothing
-function _obj_hess_coord!(objs, x,y,hess,obj_weight)
-    _obj_hess_coord!(objs.inner, x,y,hess,obj_weight)
+_obj_hess_coord!(objs::ObjectiveNull, x, y, hess, obj_weight) = nothing
+function _obj_hess_coord!(objs, x, y, hess, obj_weight)
+    _obj_hess_coord!(objs.inner, x, y, hess, obj_weight)
     shessian!(hess, nothing, objs, x, obj_weight, zero(eltype(hess)))
 end
 
-_con_hess_coord!(cons::ConstraintNull, x,y,hess,obj_weight) = nothing
-function _con_hess_coord!(cons, x,y,hess,obj_weight)
-    _con_hess_coord!(cons.inner, x,y,hess,obj_weight)
+_con_hess_coord!(cons::ConstraintNull, x, y, hess, obj_weight) = nothing
+function _con_hess_coord!(cons, x, y, hess, obj_weight)
+    _con_hess_coord!(cons.inner, x, y, hess, obj_weight)
     shessian!(hess, nothing, cons, x, y, zero(eltype(hess)))
 end
 
-@inbounds @inline offset0(a,i) = offset0(a.f, i)
-@inbounds @inline offset1(a,i) = offset1(a.f, i)
-@inbounds @inline offset2(a,i) = offset2(a.f, i)
-@inbounds @inline offset0(f,itr,i) = offset0(f,i)
-@inbounds @inline offset0(f::F,i) where F <: SIMDFunction = f.o0 + i
-@inbounds @inline offset1(f::F,i) where F <: SIMDFunction = f.o1 + f.o1step * (i-1)
-@inbounds @inline offset2(f::F,i) where F <: SIMDFunction = f.o2 + f.o2step * (i-1)
-@inbounds @inline offset0(a::C,i) where C <: ConstraintAug = offset0(a.f,a.itr,i)
-@inbounds @inline offset0(f::F,itr,i) where {P <: Pair, F <: SIMDFunction{P}} = f.o0 + f.f.first(itr[i],nothing)
+@inbounds @inline offset0(a, i) = offset0(a.f, i)
+@inbounds @inline offset1(a, i) = offset1(a.f, i)
+@inbounds @inline offset2(a, i) = offset2(a.f, i)
+@inbounds @inline offset0(f, itr, i) = offset0(f, i)
+@inbounds @inline offset0(f::F, i) where {F<:SIMDFunction} = f.o0 + i
+@inbounds @inline offset1(f::F, i) where {F<:SIMDFunction} = f.o1 + f.o1step * (i - 1)
+@inbounds @inline offset2(f::F, i) where {F<:SIMDFunction} = f.o2 + f.o2step * (i - 1)
+@inbounds @inline offset0(a::C, i) where {C<:ConstraintAug} = offset0(a.f, a.itr, i)
+@inbounds @inline offset0(f::F, itr, i) where {P<:Pair,F<:SIMDFunction{P}} =
+    f.o0 + f.f.first(itr[i], nothing)
 
-for (thing, val) in [
-    (:solution, 1),
-    (:multipliers_L, 0),
-    (:multipliers_U, 2)
-    ]
+for (thing, val) in [(:solution, 1), (:multipliers_L, 0), (:multipliers_U, 2)]
     @eval begin
-"""
-    $(string($thing))(x, result)
+        """
+            $(string($thing))(x, result)
 
-Returns the $(string($thing)) for variable `x` associated with `result`, obtained by solving the model.
+        Returns the $(string($thing)) for variable `x` associated with `result`, obtained by solving the model.
 
-## Example
-```jldoctest
-julia> using ExaModels, NLPModelsIpopt
+        ## Example
+        ```jldoctest
+        julia> using ExaModels, NLPModelsIpopt
 
-julia> c = ExaCore();                     
+        julia> c = ExaCore();                     
 
-julia> x = variable(c, 1:10, lvar = -1, uvar = 1);
+        julia> x = variable(c, 1:10, lvar = -1, uvar = 1);
 
-julia> objective(c, (x[i]-2)^2 for i in 1:10);
+        julia> objective(c, (x[i]-2)^2 for i in 1:10);
 
-julia> m = ExaModel(c);                   
+        julia> m = ExaModel(c);                   
 
-julia> result = ipopt(m; print_level=0);
+        julia> result = ipopt(m; print_level=0);
 
-julia> val = $(string($thing))(x, result);
+        julia> val = $(string($thing))(x, result);
 
-julia> isapprox(val, fill($(string($val)), 10), atol=sqrt(eps(Float64)), rtol=Inf)
-true
-```
-"""
-        function $thing(x::Variable, result::SolverCore.AbstractExecutionStats)  
+        julia> isapprox(val, fill($(string($val)), 10), atol=sqrt(eps(Float64)), rtol=Inf)
+        true
+        ```
+        """
+        function $thing(x::Variable, result::SolverCore.AbstractExecutionStats)
             o = x.offset
             len = total(x.size)
             s = size(x.size)
@@ -616,5 +594,3 @@ function multipliers(y::Constraint, result::SolverCore.AbstractExecutionStats)
     len = length(y.itr)
     return view(result.multipliers, o+1:o+len)
 end
-
-

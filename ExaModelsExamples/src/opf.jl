@@ -508,7 +508,7 @@ function ampl_ac_power_model(filename = default_filename())
     )
 end
 
-function default_filename()
+function default_filename();
     if !isfile("pglib_opf_case118_ieee.m")
         @info "Downloading pglib_opf_case118_ieee.m"
         Downloads.download(

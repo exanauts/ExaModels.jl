@@ -17,19 +17,17 @@ c = ExaCore()
 
 # The variables can be created as follows:
 
-x = variable(
-    c, N;
-    start = (mod(i,2)==1 ? -1.2 : 1. for i=1:N)
-)
+x = variable(c, N; start = (mod(i, 2) == 1 ? -1.2 : 1.0 for i = 1:N))
 
 # The objective can be set as follows:
-objective(c, 100*(x[i-1]^2-x[i])^2+(x[i-1]-1)^2 for i in 2:N)
+objective(c, 100 * (x[i-1]^2 - x[i])^2 + (x[i-1] - 1)^2 for i = 2:N)
 
 # The constraints can be set as follows:
 constraint(
     c,
-    3x[i+1]^3+2*x[i+2]-5+sin(x[i+1]-x[i+2])sin(x[i+1]+x[i+2])+4x[i+1]-x[i]exp(x[i]-x[i+1])-3
-    for i in 1:N-2)
+    3x[i+1]^3 + 2 * x[i+2] - 5 + sin(x[i+1] - x[i+2])sin(x[i+1] + x[i+2]) + 4x[i+1] -
+    x[i]exp(x[i] - x[i+1]) - 3 for i = 1:N-2
+)
 
 # Finally, we create an NLPModel.
 m = ExaModel(c)

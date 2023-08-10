@@ -19,8 +19,7 @@ include("hessian.jl")
 include("nlp.jl")
 include("templates.jl")
 
-export
-    ExaModel,
+export ExaModel,
     ExaCore,
     data,
     variable,
