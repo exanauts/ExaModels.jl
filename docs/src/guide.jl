@@ -10,7 +10,7 @@
 using ExaModels
 
 # We set
-N = 10000
+N = 10000;
 
 # First, we create a `ExaModels.Core`.
 c = ExaCore()

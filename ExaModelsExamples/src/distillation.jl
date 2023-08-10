@@ -126,5 +126,120 @@ function jump_distillation_column_model(T)
         yA[t,i] * (1-xA[t,i]) - alpha * xA[t,i] * (1-yA[t,i]) == 0
     )
 
-    return m
+    return MathOptNLPModel(m)
+end
+
+function ampl_distillation_column_model(T)
+    nlfile = tempname()*  ".nl"
+
+    py"""
+    from pyomo.environ import *
+
+    # Create a ConcreteModel
+    m = ConcreteModel()
+
+    # Constants
+    T = $T
+    NT = 30
+    FT = 17
+    Ac = 0.5
+    At = 0.25
+    Ar = 1.0
+    D  = 0.2
+    F  = 0.4
+    ybar = .8958
+    ubar = 2.0
+    alpha= 1.6
+    dt = 10/T
+    xAf = 0.5
+    xA0s = {i: 0.5 for i in range(NT+2)}  
+
+    # Define the decision variables
+    m.xA = Var(range(T+1), range(NT+2), initialize=0.5)
+    m.yA = Var(range(T+1), range(NT+2), initialize=0.5)
+    m.u = Var(range(T+1), initialize=1.0)
+    m.V = Var(range(T+1), initialize=1.0)
+    m.L2 = Var(range(T+1), initialize=1.0)
+
+    # Define the objective function
+    m.obj = Objective(
+        expr=sum((m.yA[t, 1] - ybar)**2 for t in range(T+1)) +
+             sum((m.u[t] - ubar)**2 for t in range(T+1)),
+        sense=minimize
+    )
+
+    # Define the constraints
+    m.constr1 = ConstraintList()
+    for i in range(NT+2):
+        m.constr1.add(expr=m.xA[0, i] - xA0s[i] == 0)
+
+    m.constr2 = ConstraintList()
+    for t in range(1, T+1):
+        m.constr2.add(
+            expr=(m.xA[t, 0] - m.xA[t-1, 0]) / dt - (1/Ac) * (m.yA[t, 1] - m.xA[t, 0]) == 0
+        )
+
+    m.constr3 = ConstraintList()
+    for t in range(1, T+1):
+        for i in range(1, FT):
+            m.constr3.add(
+                expr=(
+                    (m.xA[t, i] - m.xA[t-1, i]) / dt -
+                    (1/At) * (
+                        m.u[t] * D * (m.yA[t, i-1] - m.xA[t, i]) - m.V[t] * (m.yA[t, i] - m.yA[t, i+1])
+                    ) == 0
+                )
+            )
+            
+    m.constr4 = ConstraintList()
+    for t in range(1, T+1):
+        m.constr4.add(
+            expr=(
+                (m.xA[t, FT] - m.xA[t-1, FT]) / dt -
+                (1/At) * (
+                    F * xAf + m.u[t] * D * m.xA[t, FT-1] - m.L2[t] * m.xA[t, FT]
+                    - m.V[t] * (m.yA[t, FT] - m.yA[t, FT+1])
+                ) == 0
+            )
+        )
+
+    m.constr5 = ConstraintList()
+    for t in range(1, T+1):
+        for i in range(FT+1, NT+1):
+            m.constr5.add(
+                expr=(
+                    (m.xA[t, i] - m.xA[t-1, i]) / dt -
+                    (1/At) * (
+                        m.L2[t] * (m.yA[t, i-1] - m.xA[t, i]) - m.V[t] * (m.yA[t, i] - m.yA[t, i+1])
+                    ) == 0
+                )
+            )
+
+    m.constr6 = ConstraintList()
+    for t in range(1, T+1):
+        m.constr6.add(
+            expr=(
+                (m.xA[t, NT+1] - m.xA[t-1, NT+1]) / dt -
+                (1/Ar) * (
+                    m.L2[t] * m.xA[t, NT] - (F - D) * m.xA[t, NT+1] - m.V[t] * m.yA[t, NT+1]
+                ) == 0
+            )
+        )
+
+    m.constr7 = ConstraintList()
+    for t in range(T+1):
+        m.constr7.add(expr=m.V[t] - m.u[t] * D - D == 0)
+
+    m.constr8 = ConstraintList()
+    for t in range(T+1):
+        m.constr8.add(expr=m.L2[t] - m.u[t] * D - F == 0)
+
+    m.constr9 = ConstraintList()
+    for t in range(T+1):
+        for i in range(NT+2):
+            m.constr9.add(expr=m.yA[t, i] * (1 - m.xA[t, i]) - alpha * m.xA[t, i] * (1 - m.yA[t, i]) == 0)
+    m.write($nlfile)
+    """
+
+    return AmplNLReader.AmplModel(nlfile)
 end

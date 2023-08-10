@@ -3,12 +3,23 @@ module ExaModelsExamples
 import ExaModels: ExaModels, NLPModels
 import JuMP, NLPModelsJuMP
 import PowerModels: PowerModels, silence
+import PyCall: @py_str
+import MadNLP
+import AmplNLReader
+import CPUTime: @CPUtime
+
+silence()
 
 include("opf.jl")
 include("luksanvlcek.jl")
 include("distillation.jl")
 include("quadrotor.jl")
 
+function project!(l,x,u; marg = 1e-4)
+    map!(x,l,x,u) do l,x,u
+        max(l+marg, min(u-marg,x) )
+    end
+end
 
 function compile_callbacks(m)
     nvar = m.meta.nvar
@@ -27,22 +38,46 @@ function compile_callbacks(m)
     hrows = similar(m.meta.x0, Int, nnzh)
     hcols = similar(m.meta.x0, Int, nnzh)
 
-    println("Objective evaluation")
-    @time NLPModels.obj(m,x)
-    println("Constraints evaluation")
-    @time NLPModels.cons!(m,x,c)
-    println("Gradient evaluation")
-    @time NLPModels.grad!(m,x,g)
-    println("Jacobian evaluation")
-    @time NLPModels.jac_coord!(m,x,jac)
-    println("Hessian evaluation")
-    @time NLPModels.hess_coord!(m,x,y,hess)
-    println("Jacobina sparsity evaluation")
-    @time NLPModels.jac_structure!(m,jrows,jcols)
-    println("Hessian sparsity evaluation")
-    @time NLPModels.hess_structure!(m,hrows,hcols)
+    project!(m.meta.lvar, x, m.meta.uvar)
 
-    return
+    # println("Objective evaluation")
+    tobj = @elapsed for t=1:100
+        NLPModels.obj(m,x)
+    end
+    # println("Constraints evaluation")
+    tcon = @elapsed for t=1:100
+        NLPModels.cons!(m,x,c)
+    end
+    # println("Gradient evaluation")
+    tgrad = @elapsed for t=1:100
+        NLPModels.grad!(m,x,g)
+    end
+    # println("Jacobian evaluation")
+    tjac = @elapsed for t=1:100
+        NLPModels.jac_coord!(m,x,jac)
+    end
+    # println("Hessian evaluation")
+    thess = @elapsed for t=1:100
+        NLPModels.hess_coord!(m,x,y,hess)
+    end
+    # println("Jacobina sparsity evaluation")
+    tjacs = @elapsed for t=1:100
+        NLPModels.jac_structure!(m,jrows,jcols)
+    end
+    # println("Hessian sparsity evaluation")
+    thesss = @elapsed for t=1:100
+        NLPModels.hess_structure!(m,hrows,hcols)
+    end
+
+    return (
+        tobj = tobj,
+        tcon = tcon,
+        tgrad = tgrad,
+        tjac = tjac,
+        thess = thess,
+        tjacs = tjacs,
+        thesss = thesss,
+    )
 end
 
 

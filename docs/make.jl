@@ -1,7 +1,8 @@
 using Documenter, ExaModels, Literate
 
 const _PAGES = [
-    "Introduction" => "index.md",
+    "Introduction" =>"index.md",
+    "SIMD Abstraction"=>"simd.md",
     "Quick Start"=>"guide.md",
     "API Manual" => "core.md",
 ]
@@ -24,7 +25,7 @@ end
 
 
 makedocs(
-    sitename = "ExaModels.jl",
+    sitename = "ExaModels",
     authors = "Sungho Shin",
     format = Documenter.LaTeX(platform="docker"),
     pages = _PAGES
@@ -35,7 +36,7 @@ makedocs(
     modules = [ExaModels],
     authors = "Sungho Shin",
     format = Documenter.HTML(
-        prettyurls = get(ENV, "CI", nothing) == "true",
+        prettyurls = true,
         sidebar_sitename = true,
         collapselevel = 1,
     ),
