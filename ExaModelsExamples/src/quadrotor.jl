@@ -1,4 +1,4 @@
-function quadrotor_model(N,backend=nothing)
+function quadrotor_model(N=3, backend=nothing)
     
     n = 9
     p = 4
@@ -33,10 +33,12 @@ function quadrotor_model(N,backend=nothing)
     ExaModels.objective(c, .5*Q*(x[i,j]-d)^2 for (i,j,Q,d) in itr1)
     ExaModels.objective(c, .5*Qf*(x[N+1,j]-d)^2 for (j,Qf,d) in itr2)
     
-    return ExaModels.ExaModel(c)
+    return ADBenchmarkModel(
+        ExaModels.ExaModel(c)
+    )
 end
 
-function jump_quadrotor_model(N)
+function jump_quadrotor_model(N= 3)
     n = 9
     p = 4
     nd= 9
@@ -62,10 +64,12 @@ function jump_quadrotor_model(N)
     JuMP.@NLconstraint(m,[i=1:N], x[i+1,9] == x[i,9] + (u[i,2]*cos(x[i,7])*tan(x[i,8])+u[i,3]*sin(x[i,7])*tan(x[i,8])+u[i,4])*dt)
     JuMP.@objective(m,Min, .5*sum(Q[j]*(x[i,j]-d(i,j,N))^2 for i=1:N for j=1:n) + .5*sum(R[j]*(u[i,j]^2) for i=1:N for j=1:p)
                + .5*sum(Qf[j]*(x[N+1,j]-d(N+1,j,N))^2 for j=1:n))
-    return MathOptNLPModel(m)
+    return ADBenchmarkModel(
+        MathOptNLPModel(m)
+    )
 end
 
-function ampl_quadrotor_model(N)
+function ampl_quadrotor_model(N = 3)
     nlfile = tempname()*  ".nl"
     py"""
     N = $N
@@ -188,6 +192,8 @@ function ampl_quadrotor_model(N)
     m.write($nlfile)
     """
 
-    return AmplNLReader.AmplModel(nlfile)
+    return ADBenchmarkModel(
+        AmplNLReader.AmplModel(nlfile)
+    )
 
 end

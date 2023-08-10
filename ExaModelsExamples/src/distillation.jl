@@ -1,4 +1,4 @@
-function distillation_column_model(T, backend = nothing)
+function distillation_column_model(T = 3, backend = nothing)
 
     NT = 30
     FT = 17
@@ -60,10 +60,12 @@ function distillation_column_model(T, backend = nothing)
     ExaModels.constraint(c, L2[t]- u[t] * D - F for t in 0:T)
     ExaModels.constraint(c, yA[t,i] * (1-xA[t,i]) - alpha * xA[t,i] * (1-yA[t,i]) for (t,i) in itr2)
 
-    return ExaModels.ExaModel(c)
+    return ADBenchmarkModel(
+        ExaModels.ExaModel(c)
+    )
 end
 
-function jump_distillation_column_model(T)
+function jump_distillation_column_model(T = 3)
 
     NT = 30
     FT = 17
@@ -126,10 +128,12 @@ function jump_distillation_column_model(T)
         yA[t,i] * (1-xA[t,i]) - alpha * xA[t,i] * (1-yA[t,i]) == 0
     )
 
-    return MathOptNLPModel(m)
+    return ADBenchmarkModel(
+        MathOptNLPModel(m)
+    )
 end
 
-function ampl_distillation_column_model(T)
+function ampl_distillation_column_model(T = 3)
     nlfile = tempname()*  ".nl"
 
     py"""
@@ -241,5 +245,7 @@ function ampl_distillation_column_model(T)
     m.write($nlfile)
     """
 
-    return AmplNLReader.AmplModel(nlfile)
+    return ADBenchmarkModel(
+        AmplNLReader.AmplModel(nlfile)
+    )
 end

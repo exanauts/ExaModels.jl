@@ -16,8 +16,8 @@
 
 # THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-function get_power_data_ref(file_name)
-    data = PowerModels.parse_file(file_name)
+function get_power_data_ref(filename)
+    data = PowerModels.parse_file(filename)
     PowerModels.standardize_cost_terms!(data, order=2)
     PowerModels.calc_thermal_limits!(data)
     return PowerModels.build_ref(data)[:it][:pm][:nw][0]
@@ -40,9 +40,9 @@ function ampl_data(filename)
     return data, bus_gens, bus_arcs
 end
 
-function jump_ac_power_model(file_name)
+function jump_ac_power_model(filename = default_filename())
     
-    ref = get_power_data_ref(file_name)
+    ref = get_power_data_ref(filename)
 
     model = JuMP.Model()
     #JuMP.set_optimizer_attribute(model, "print_level", 0)
@@ -120,7 +120,9 @@ function jump_ac_power_model(file_name)
         JuMP.@constraint(model, p_to^2 + q_to^2 <= branch["rate_a"]^2)
     end
 
-    return MathOptNLPModel(model)
+    return ADBenchmarkModel(
+        MathOptNLPModel(model)
+    )
 end
  
 convert_data(data::N, backend) where {names, N <: NamedTuple{names}} = NamedTuple{names}(ExaModels.convert_array(d,backend) for d in data)
@@ -226,12 +228,10 @@ function parse_ac_power_data(filename)
     )
 end
 
-ac_power_model(filename::String, backend = nothing) = ac_power_model(Float64, filename, backend)
-    
 function ac_power_model(
-    T,
-    filename::String,
+    filename = default_filename(),
     backend = nothing,
+    T = Float64
     )
 
     data = parse_ac_power_data(filename, backend) 
@@ -369,12 +369,14 @@ function ac_power_model(
         g.bus =>-qg[g.i]
         for g in data.gen)
     
-    return ExaModels.ExaModel(w)
+    return ADBenchmarkModel(
+        ExaModels.ExaModel(w)
+    )
     
 end
 
 
-function ampl_ac_power_model(filename)
+function ampl_ac_power_model(filename = default_filename())
     nlfile = tempname()*  ".nl"
 
     py"""
@@ -501,5 +503,18 @@ function ampl_ac_power_model(filename)
     m.write($nlfile)
     """
     
-    return AmplNLReader.AmplModel(nlfile)
+    return ADBenchmarkModel(
+        AmplNLReader.AmplModel(nlfile)
+    )
+end
+
+function default_filename()
+    if !isfile("pglib_opf_case118_ieee.m")
+        @info "Downloading pglib_opf_case118_ieee.m"
+        Downloads.download(
+            "https://raw.githubusercontent.com/power-grid-lib/pglib-opf/dc6be4b2f85ca0e776952ec22cbd4c22396ea5a3/pglib_opf_case118_ieee.m",
+            "pglib_opf_case118_ieee.m"
+        )
+    end
+    return "pglib_opf_case118_ieee.m"
 end
