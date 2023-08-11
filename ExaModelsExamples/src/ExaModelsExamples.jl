@@ -11,6 +11,8 @@ import SnoopPrecompile
 import NLPModelsIpopt: ipopt
 import Downloads
 import Printf: @printf
+import CUDA: CUDA, CUDABackend
+import KernelAbstractions: CPU
 
 include("opf.jl")
 include("luksanvlcek.jl")

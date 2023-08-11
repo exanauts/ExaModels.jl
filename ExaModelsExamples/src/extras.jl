@@ -1,3 +1,179 @@
+using LibGit2, Downloads, CpuId, Printf
+
+const POWERS = (
+    "pglib_opf_case118_ieee.m",
+    "pglib_opf_case1354_pegase.m",
+    "pglib_opf_case9241_pegase.m",
+)
+
+# Obtain power system data
+for power in POWERS
+    if !isfile(power)
+        Downloads.download(
+            "https://raw.githubusercontent.com/power-grid-lib/pglib-opf/dc6be4b2f85ca0e776952ec22cbd4c22396ea5a3/$power",
+            power
+        )
+    end
+end
+
+const CASES = [
+    (
+        "LV",
+        jump_luksan_vlcek_model,
+        ampl_luksan_vlcek_model,
+        luksan_vlcek_model,
+        (100, 1000, 10000)
+    ),
+    (
+        "QR",
+        jump_quadrotor_model,
+        ampl_quadrotor_model,
+        quadrotor_model,
+        (50, 500, 5000)
+    ),
+    (
+        "DC",
+        jump_distillation_column_model,
+        ampl_distillation_column_model,
+        distillation_column_model,
+        (5, 50, 500)
+    ),
+    (
+        "PF",
+        jump_ac_power_model,
+        ampl_ac_power_model,
+        ac_power_model,
+        POWERS
+    ),
+]
+
+function benchmark(cases = CASES; neval = 3)
+    
+    result = BenchmarkResult()
+
+    try 
+        GC.enable(false)
+        for (name, jump_model, ampl_model, exa_model, args) in cases
+            for (cnt, arg) in enumerate(args)
+                
+                @info "Benchmarking $name$cnt"
+                
+                m = jump_model(arg)
+                tj = ExaModelsExamples.benchmark_callbacks(m; N = neval)
+                
+                m = ampl_model(arg)
+                ta = ExaModelsExamples.benchmark_callbacks(m; N = neval)
+
+                m = exa_model(arg)
+                te = ExaModelsExamples.benchmark_callbacks(m; N = neval)
+
+                m = exa_model(arg, CPU())
+                tec = ExaModelsExamples.benchmark_callbacks(m; N = neval)
+
+                m = exa_model(arg, CUDABackend())
+                teg = ExaModelsExamples.benchmark_callbacks(m; N = neval)
+
+                push!(
+                    result, (
+                        name = "$name$cnt",
+                        nvar = m.meta.nvar,
+                        ncon = m.meta.ncon,
+                        tj = tj,
+                        ta = ta,
+                        te = te,
+                        tec = tec,
+                        teg = teg
+                    )
+                )
+            end
+        end
+    catch e
+        throw(e)
+    finally
+        GC.enable(true)
+    end
+
+    return result
+end
+
+function deploy(result)
+    # Define the repository URL and the branch to deploy to
+    repo_url = "git@github.com:sshin23/ExaModels.jl.git"
+    branch = "benchmark-results"
+
+    # Clone the repository into a temporary directory
+    tmp_dir = mktempdir()
+    run(`git clone --depth 1 --branch $branch $repo_url $tmp_dir`)
+    write(
+        joinpath(temp_dir, result.commit),
+        string(result)
+    )
+
+    # Commit and push the changes
+    cd(tmp_dir) do
+        run(`git add -A`)
+        run(`git commit -m "Deploy benchmark result"`)
+        run(`git push origin $branch`)
+    end
+
+    # Clean up the temporary directory
+    rm(tmp_dir; recursive=true)
+
+end
+
+@kwdef struct BenchmarkResult
+    data::Vector{Any} = Vector{Any}(undef,0)
+    commit::String = string(
+        LibGit2.GitHash(
+            LibGit2.GitRepo(
+                joinpath(dirname(pathof(ExaModels)), "..")
+            ),
+            "HEAD"
+        )
+    )
+    cpuinfo::String = "$(cpubrand()) (nthreads = $(Threads.nthreads()))"
+    gpuinfo::String = "$(CUDA.name(CUDA.device()))"
+end
+Base.push!(result::BenchmarkResult, a) = Base.push!(result.data, a)
+function Base.show(io::IO, result::BenchmarkResult)
+    print(io, Base.string(result))
+end
+function Base.string(result::BenchmarkResult)
+    data1 = join(
+        (@sprintf(
+            " %4s |%1.1e %1.1e %1.1e %1.1e %1.1e|%1.1e %1.1e %1.1e %1.1e %1.1e|%1.1e %1.1e %1.1e %1.1e %1.1e|",
+            d.name,
+            d.te.tobj, d.te.tcon, d.te.tgrad, d.te.tjac, d.te.thess,
+            d.tec.tobj, d.tec.tcon, d.tec.tgrad, d.tec.tjac, d.tec.thess,
+            d.teg.tobj, d.teg.tcon, d.teg.tgrad, d.teg.tjac, d.teg.thess
+        )
+         for d in result.data), "\n") 
+    data2 = join(
+        (@sprintf(
+            " %4s |%1.1e %1.1e %1.1e %1.1e %1.1e|%1.1e %1.1e %1.1e %1.1e %1.1e|",
+            d.name,
+            d.tj.tobj, d.tj.tcon, d.tj.tgrad, d.tj.tjac, d.tj.thess,
+            d.ta.tobj, d.ta.tcon, d.ta.tgrad, d.ta.tjac, d.ta.thess
+        )
+         for d in result.data), "\n")
+    return """
+    ===============================================================================================================================
+     Case |          ExaModels (single)           |          ExaModels (multi)            |           ExaModels (gpu)             |
+          |  obj     con    grad     jac    hess  |  obj     con    grad     jac    hess  |  obj     con    grad     jac    hess  |
+    ===============================================================================================================================
+    $data1
+    ===============================================================================================================================
+     Case |                 JuMP                  |                 AMPL                  |
+          |  obj     con    grad     jac    hess  |  obj     con    grad     jac    hess  |
+    =======================================================================================
+    $data2
+    =======================================================================================
+      * commit : $(result.commit)
+      * CPU    : $(result.cpuinfo)
+      * GPU    : $(result.gpuinfo)
+    """
+end
+
 function project!(l, x, u; marg = 1e-4)
     map!(x, l, x, u) do l, x, u
         max(l + marg, min(u - marg, x))
