@@ -1,8 +1,8 @@
 ```@meta
-EditURL = "<unknown>/src/guide.jl"
+EditURL = "<unknown>/src/quad.jl"
 ```
 
-# Getting Started
+# Quadrotor Optimal Control
 ExaModels can create nonlinear prgogramming models and allows solving the created models using NLP solvers (in particular, those that are interfaced with `NLPModels`, such as [NLPModelsIpopt](https://github.com/JuliaSmoothOptimizers/NLPModelsIpopt.jl). We now use `ExaModels` to model the following nonlinear program:
 ```math
 \begin{aligned}

@@ -4,12 +4,14 @@ const _PAGES = [
     "Introduction" => "index.md",
     "SIMD Abstraction" => "simd.md",
     "Quick Start" => "guide.md",
+    "Examples" => ["quad.md", "opf.md"],
     "API Manual" => "core.md",
 ]
 
 const _JL_FILENAMES = [
     "guide.jl",
-    # "tutorial.jl"
+    "quad.jl",
+    "opf.jl"
 ]
 
 for jl_filename in _JL_FILENAMES

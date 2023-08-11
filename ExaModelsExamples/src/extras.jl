@@ -103,9 +103,9 @@ function deploy(result)
 
     # Clone the repository into a temporary directory
     tmp_dir = mktempdir()
-    run(`git clone --depth 1 --branch $branch $repo_url $tmp_dir`)
+    run(`git clone --depth 1 --branch $branch $repo_url $tmp_dir`) 
     write(
-        joinpath(temp_dir, result.commit),
+        joinpath(tmp_dir, result.commit),
         string(result)
     )
 
@@ -138,40 +138,86 @@ Base.push!(result::BenchmarkResult, a) = Base.push!(result.data, a)
 function Base.show(io::IO, result::BenchmarkResult)
     print(io, Base.string(result))
 end
+
+function varcon(n)
+    if n < 1000
+        @sprintf("%3i ", n)
+    elseif n < 1000000'
+        @sprintf("%3.0fk", n/1000)
+    else
+        @sprintf("%3.0fm", n/1000000)
+    end
+end
+
 function Base.string(result::BenchmarkResult)
     data1 = join(
         (@sprintf(
-            " %4s |%1.1e %1.1e %1.1e %1.1e %1.1e|%1.1e %1.1e %1.1e %1.1e %1.1e|%1.1e %1.1e %1.1e %1.1e %1.1e|",
-            d.name,
+            "| %4s | %4s %4s | %1.1e %1.1e %1.1e %1.1e %1.1e |",
+            d.name, varcon(d.nvar), varcon(d.ncon),
             d.te.tobj, d.te.tcon, d.te.tgrad, d.te.tjac, d.te.thess,
-            d.tec.tobj, d.tec.tcon, d.tec.tgrad, d.tec.tjac, d.tec.thess,
-            d.teg.tobj, d.teg.tcon, d.teg.tgrad, d.teg.tjac, d.teg.thess
         )
-         for d in result.data), "\n") 
+         for d in result.data), "\n")
     data2 = join(
         (@sprintf(
-            " %4s |%1.1e %1.1e %1.1e %1.1e %1.1e|%1.1e %1.1e %1.1e %1.1e %1.1e|",
-            d.name,
-            d.tj.tobj, d.tj.tcon, d.tj.tgrad, d.tj.tjac, d.tj.thess,
+            "| %4s | %4s %4s | %1.1e %1.1e %1.1e %1.1e %1.1e |",
+            d.name, varcon(d.nvar), varcon(d.ncon),
+            d.tec.tobj, d.tec.tcon, d.tec.tgrad, d.tec.tjac, d.tec.thess,
+        )
+         for d in result.data), "\n")
+    data3 = join(
+        (@sprintf(
+            "| %4s | %4s %4s | %1.1e %1.1e %1.1e %1.1e %1.1e |",
+            d.name, varcon(d.nvar), varcon(d.ncon),
+            d.teg.tobj, d.teg.tcon, d.teg.tgrad, d.teg.tjac, d.teg.thess,
+        )
+         for d in result.data), "\n")
+    data4 = join(
+        (@sprintf(
+            "| %4s | %4s %4s | %1.1e %1.1e %1.1e %1.1e %1.1e |",
+            d.name, varcon(d.nvar), varcon(d.ncon),
             d.ta.tobj, d.ta.tcon, d.ta.tgrad, d.ta.tjac, d.ta.thess
         )
          for d in result.data), "\n")
+    data5 = join(
+        (@sprintf(
+            "| %4s | %4s %4s | %1.1e %1.1e %1.1e %1.1e %1.1e |",
+            d.name, varcon(d.nvar), varcon(d.ncon),
+            d.tj.tobj, d.tj.tcon, d.tj.tgrad, d.tj.tjac, d.tj.thess,
+        )
+         for d in result.data), "\n")
     return """
-    ===============================================================================================================================
-     Case |          ExaModels (single)           |          ExaModels (multi)            |           ExaModels (gpu)             |
-          |  obj     con    grad     jac    hess  |  obj     con    grad     jac    hess  |  obj     con    grad     jac    hess  |
-    ===============================================================================================================================
-    $data1
-    ===============================================================================================================================
-     Case |                 JuMP                  |                 AMPL                  |
-          |  obj     con    grad     jac    hess  |  obj     con    grad     jac    hess  |
-    =======================================================================================
-    $data2
-    =======================================================================================
-      * commit : $(result.commit)
-      * CPU    : $(result.cpuinfo)
-      * GPU    : $(result.gpuinfo)
-    """
+==============================================================
+|                 Evaluation Wall Time (sec)                 |
+==============================================================
+|      |           |           ExaModels (single)            |
+| case | nvar ncon |   obj     con    grad     jac    hess   |
+--------------------------------------------------------------
+$data1
+==============================================================
+|      |           |           ExaModels (multli)            |
+| case | nvar ncon |   obj     con    grad     jac    hess   |
+--------------------------------------------------------------
+$data2
+==============================================================
+|      |           |           ExaModels (gpu)               |
+| case | nvar ncon |   obj     con    grad     jac    hess   |
+--------------------------------------------------------------
+$data3
+==============================================================
+|      |           |                  JuMP                   |
+| case | nvar ncon |   obj     con    grad     jac    hess   |
+--------------------------------------------------------------
+| $data4
+==============================================================
+|      |           |                  AMPL                   |
+| case | nvar ncon |   obj     con    grad     jac    hess   |
+--------------------------------------------------------------
+$data5
+==============================================================
+ * commit : $(result.commit)
+ * CPU    : $(result.cpuinfo)
+ * GPU    : $(result.gpuinfo)
+"""
 end
 
 function project!(l, x, u; marg = 1e-4)
