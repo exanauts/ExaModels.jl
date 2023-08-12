@@ -37,7 +37,12 @@ makedocs(
     sitename = "ExaModels.jl",
     modules = [ExaModels],
     authors = "Sungho Shin",
-    format = Documenter.HTML(prettyurls = true, sidebar_sitename = true, collapselevel = 1),
+    format = Documenter.HTML(
+        assets = ["assets/favicon.ico"],
+        prettyurls = true,
+        sidebar_sitename = true,
+        collapselevel = 1
+    ),
     pages = _PAGES,
     clean = false,
 )
