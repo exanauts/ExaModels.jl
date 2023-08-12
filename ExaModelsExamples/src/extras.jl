@@ -122,7 +122,6 @@ function deploy(result)
 
     # Clean up the temporary directory
     rm(tmp_dir; recursive=true)
-
 end
 
 export benchmark, deploy
