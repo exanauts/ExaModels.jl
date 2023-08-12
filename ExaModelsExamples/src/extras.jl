@@ -47,7 +47,7 @@ const CASES = [
     ),
 ]
 
-function benchmark(cases = CASES; neval = 3)
+function benchmark(cases = CASES; neval = 3, deploy = false)
     
     result = BenchmarkResult()
 
@@ -59,19 +59,19 @@ function benchmark(cases = CASES; neval = 3)
                 @info "Benchmarking $name$cnt"
                 
                 m = jump_model(arg)
-                tj = ExaModelsExamples.benchmark_callbacks(m; N = neval)
+                tj = benchmark_callbacks(m; N = neval)
                 
                 m = ampl_model(arg)
-                ta = ExaModelsExamples.benchmark_callbacks(m; N = neval)
+                ta = benchmark_callbacks(m; N = neval)
 
                 m = exa_model(arg)
-                te = ExaModelsExamples.benchmark_callbacks(m; N = neval)
+                te = benchmark_callbacks(m; N = neval)
 
                 m = exa_model(arg, CPU())
-                tec = ExaModelsExamples.benchmark_callbacks(m; N = neval)
+                tec = benchmark_callbacks(m; N = neval)
 
                 m = exa_model(arg, CUDABackend())
-                teg = ExaModelsExamples.benchmark_callbacks(m; N = neval)
+                teg = benchmark_callbacks(m; N = neval)
 
                 push!(
                     result, (
@@ -91,6 +91,10 @@ function benchmark(cases = CASES; neval = 3)
         throw(e)
     finally
         GC.enable(true)
+    end
+
+    if deploy
+        ExaModelsExamples.deploy(result)
     end
 
     return result
@@ -120,6 +124,8 @@ function deploy(result)
     rm(tmp_dir; recursive=true)
 
 end
+
+export benchmark, deploy
 
 @kwdef struct BenchmarkResult
     data::Vector{Any} = Vector{Any}(undef,0)
@@ -191,27 +197,27 @@ function Base.string(result::BenchmarkResult)
 ==============================================================
 |      |           |           ExaModels (single)            |
 | case | nvar ncon |   obj     con    grad     jac    hess   |
---------------------------------------------------------------
+==============================================================
 $data1
 ==============================================================
 |      |           |           ExaModels (multli)            |
 | case | nvar ncon |   obj     con    grad     jac    hess   |
---------------------------------------------------------------
+==============================================================
 $data2
 ==============================================================
 |      |           |           ExaModels (gpu)               |
 | case | nvar ncon |   obj     con    grad     jac    hess   |
---------------------------------------------------------------
+==============================================================
 $data3
 ==============================================================
 |      |           |                  JuMP                   |
 | case | nvar ncon |   obj     con    grad     jac    hess   |
---------------------------------------------------------------
-| $data4
+==============================================================
+$data4 
 ==============================================================
 |      |           |                  AMPL                   |
 | case | nvar ncon |   obj     con    grad     jac    hess   |
---------------------------------------------------------------
+==============================================================
 $data5
 ==============================================================
  * commit : $(result.commit)

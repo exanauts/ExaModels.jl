@@ -42,3 +42,4 @@ jobs:
         with:
           file: lcov.info
           token: ${{ secrets.CODECOV_TOKEN }}
+      - run: julia -t 8 --project=ExaModelsExamples -e 'using ExaModelsExamples; benchmark(); benchmark(;deploy=true);'
