@@ -528,7 +528,7 @@ end
 for (thing, val) in [(:solution, 1), (:multipliers_L, 0), (:multipliers_U, 2)]
     @eval begin
         """
-            $(string($thing))(x, result)
+            $(string($thing))(result, x)
 
         Returns the $(string($thing)) for variable `x` associated with `result`, obtained by solving the model.
 
@@ -546,13 +546,13 @@ for (thing, val) in [(:solution, 1), (:multipliers_L, 0), (:multipliers_U, 2)]
 
         julia> result = ipopt(m; print_level=0);
 
-        julia> val = $(string($thing))(x, result);
+        julia> val = $(string($thing))(result, x);
 
         julia> isapprox(val, fill($(string($val)), 10), atol=sqrt(eps(Float64)), rtol=Inf)
         true
         ```
         """
-        function $thing(x::Variable, result::SolverCore.AbstractExecutionStats)
+        function $thing(result::SolverCore.AbstractExecutionStats, x)
             o = x.offset
             len = total(x.size)
             s = size(x.size)
@@ -563,7 +563,7 @@ end
 
 
 """
-    multipliers(y, result)
+    multipliers(result, y)
 
 Returns the multipliers for constraints `y` associated with `result`, obtained by solving the model.
 
@@ -583,13 +583,13 @@ julia> m = ExaModel(c);
 
 julia> result = ipopt(m; print_level=0);
 
-julia> val = multipliers(y, result);
+julia> val = multipliers(result, y);
 
 julia> val[1] ≈ 0.81933930
 true
 ```
 """
-function multipliers(y::Constraint, result::SolverCore.AbstractExecutionStats)
+function multipliers(result::SolverCore.AbstractExecutionStats, y::Constraint)
     o = y.offset
     len = length(y.itr)
     return view(result.multipliers, o+1:o+len)

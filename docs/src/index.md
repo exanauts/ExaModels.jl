@@ -6,18 +6,34 @@ Welcome to the documentation of [ExaModels.jl](https://github.com/sshin23/ExaMod
     This documentation is also available in PDF format: [ExaModels.pdf](ExaModels.pdf).
 
 !!! warning
-	ExaModels.jl is in the early stage of development, and you may encounter unintended behaviors or missing documentations. Please help us improve ExaModels.jl as well as this documentation. If you find anything is not working as intended or documentation is missing, please [open issues](https://github.com/sshin/ExaModels.jl/issues) or [pull requests](https://github.com/sshin/ExaModels.jl/pulls) or start [discussions](https://github.com/sshin/ExaModels.jl/discussions). 
+	**Please help us improve ExaModels.jl and this documentation!** ExaModels.jl is in the early stage of development, and you may encounter unintended behaviors or missing documentations. If you find anything is not working as intended or documentation is missing, please [open issues](https://github.com/sshin/ExaModels.jl/issues) or [pull requests](https://github.com/sshin/ExaModels.jl/pulls) or start [discussions](https://github.com/sshin/ExaModels.jl/discussions). 
 
 ## What is ExaModels.jl?
-ExaModels.jl is an [algebraic modeling](https://en.wikipedia.org/wiki/Algebraic_modeling_language) and [automatic differentiation](https://en.wikipedia.org/wiki/Automatic_differentiation) tool in [Julia Language](https://julialang.org/), specialized for [SIMD](https://en.wikipedia.org/wiki/Single_instruction,_multiple_data) abstraction of [nonlinear programs](https://en.wikipedia.org/wiki/Nonlinear_programming). ExaModels.jl employs what we call [SIMD](https://en.wikipedia.org/wiki/Single_instruction,_multiple_data) abstraction for [nonlinear programs](https://en.wikipedia.org/wiki/Nonlinear_programming) (NLPs), which allows for the preservation of the parallelizable structure within the model equations, facilitating efficient, parallel [reverse-mode automatic differentiation](https://en.wikipedia.org/wiki/Automatic_differentiation) on the [GPU](https://en.wikipedia.org/wiki/Graphics_processing_unit) accelerators. More details about SIMD abstraction can be found [here](/simd).
+ExaModels.jl is an [algebraic modeling](https://en.wikipedia.org/wiki/Algebraic_modeling_language) and [automatic differentiation](https://en.wikipedia.org/wiki/Automatic_differentiation) tool in [Julia Language](https://julialang.org/), specialized for [SIMD](https://en.wikipedia.org/wiki/Single_instruction,_multiple_data) abstraction of [nonlinear programs](https://en.wikipedia.org/wiki/Nonlinear_programming). ExaModels.jl employs what we call [SIMD](https://en.wikipedia.org/wiki/Single_instruction,_multiple_data) abstraction for [nonlinear programs](https://en.wikipedia.org/wiki/Nonlinear_programming) (NLPs), which allows for the preservation of the parallelizable structure within the model equations, facilitating efficient [automatic differentiation](https://en.wikipedia.org/wiki/Automatic_differentiation) either on the single-thread CPUs, multi-threaded CPUs, as well as [GPU accelerators](https://en.wikipedia.org/wiki/Graphics_processing_unit). More details about SIMD abstraction can be found [here](/simd).
 
-## Key differences from other tools
+## Documentation Structure
+This documentation is structured in the following way.
+- The remainder of [this page](.) highlights several key aspects of ExaModels.jl.
+- The mathematical abstraction---SIMD abstraction of nonlinear programming---of ExaModels.jl is discussed in [Mathematical Abstraction page](./simd).
+- The step-by-step tutorial of using ExaModels.jl can be found in [Tutorial page](./guide).
+- This documentation does not intend to discuss the engineering behind the implementation of ExaModels.jl. Some high-level idea is discussed in [a recent publication](https://arxiv.org/abs/2307.16830), but the full details of the engineering behind it will be discussed in the future publications.
+
+## Key differences from other algebraic modeling tools
 ExaModels.jl is different from other algebraic modeling tools, such as [JuMP](https://github.com/jump-dev/JuMP.jl) or [AMPL](https://ampl.com/), in the following ways:
 - **Modeling Interface**: ExaModels.jl enforces users to specify the model equations always in the form of `Generator`. This allows ExaModels.jl to preserve the SIMD-compatible structure in the model equations.
 - **Performance**: ExaModels.jl compiles (via Julia's compiler) derivative evaluation codes that are specific to each computation pattern, based on reverse-mode automatic differentiation. This makes the speed of derivative evaluation (even on the CPU) significantly faster than other existing tools.
 - **Portability**: ExaModels.jl can evaluate derivatives on GPU accelerators. The code is currently only tested for NVIDIA GPUs, but GPU code is implemented mostly based on the portable programming paradigm, [KernelAbstractions.jl](https://github.com/JuliaGPU/KernelAbstractions.jl). In the future, we are interested in supporting Intel, AMD, and Apple GPUs.
 
-## Highlights
+## When I should use ExaModels.jl?
+ExaModels.jl shines when your model has
+- nonlinear objective and constraints;
+- a large number of variables and constraints;
+- highly repetitive structure;
+- sparse Hessian and Jacobian.
+These features are often exhibited in optimization problems associated with first-principle physics-based models. Primary examples include optimal control problems formulated with direct subscription method [biegler2010nonlinear](@cite) and network system optimization problems, such as optimal power flow [coffrin2018powermodels](@cite) and gas network control/estimation problems.
+
+
+## Performance
 For the nonlinear optimization problems that are suitable for SIMD abstraction, ExaModels.jl greatly accelerate the performance of derivative evaluations. The following is a recent benchmark result. Remarkably, for the AC OPF problem for a 9241 bus system, derivative evalution using ExaModels.jl on GPUs can be up to 2 orders of magnitudes faster than JuMP or AMPL.
 ```
 ==============================================================
@@ -124,3 +140,8 @@ If you use ExaModels.jl in your research, we would greatly appreciate your citin
 ## Supporting ExaModels.jl
 - Please report issues and feature requests via the [GitHub issue tracker](https://github.com/sshin/ExaModels.jl/issues).
 - Questions are welcome at [GitHub discussion forum](https://github.com/sshin23/ExaModels.jl/discussions).
+
+## References
+
+```@bibliography
+```

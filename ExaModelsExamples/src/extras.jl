@@ -329,14 +329,15 @@ Base.@kwdef mutable struct ADBenchmarkStats
 end
 
 struct ADBenchmarkModel{T,VT,I<:NLPModels.AbstractNLPModel{T,VT}} <:
-       NLPModels.AbstractNLPModel{T,VT}
+    NLPModels.AbstractNLPModel{T,VT}
     inner::I
     meta::NLPModels.AbstractNLPModelMeta{T,VT}
     stats::ADBenchmarkStats
+    counters::NLPModels.Counters
 end
 
 function ADBenchmarkModel(m)
-    return ADBenchmarkModel(m, m.meta, ADBenchmarkStats())
+    return ADBenchmarkModel(m, m.meta, ADBenchmarkStats(), NLPModels.Counters())
 end
 function ADBenchmarkModel(c::ExaModels.ExaCore; kwargs...)
     m = ExaModels.Model(c; kwargs...)
@@ -367,7 +368,7 @@ function NLPModels.hess_structure!(
     m.stats.hess_structure_time += time() - t
 end
 
-function NLPModels.obj(m::M, x::V) where {M<:ADBenchmarkModel,V<:AbstractVector}
+function NLPModels.obj(m::ADBenchmarkModel, x::AbstractVector)
 
     m.stats.obj_cnt += 1
     t = time()
@@ -375,7 +376,7 @@ function NLPModels.obj(m::M, x::V) where {M<:ADBenchmarkModel,V<:AbstractVector}
     m.stats.obj_time += time() - t
     return o
 end
-function NLPModels.cons!(m::M, x::V, g::V) where {M<:ADBenchmarkModel,V<:AbstractVector}
+function NLPModels.cons!(m::ADBenchmarkModel, x::AbstractVector, g::AbstractVector)
 
     m.stats.cons_cnt += 1
     t = time()
@@ -383,7 +384,7 @@ function NLPModels.cons!(m::M, x::V, g::V) where {M<:ADBenchmarkModel,V<:Abstrac
     m.stats.cons_time += time() - t
     return
 end
-function NLPModels.grad!(m::M, x::V, f::V) where {M<:ADBenchmarkModel,V<:AbstractVector}
+function NLPModels.grad!(m::ADBenchmarkModel, x::AbstractVector, f::AbstractVector)
 
     m.stats.grad_cnt += 1
     t = time()
@@ -392,10 +393,10 @@ function NLPModels.grad!(m::M, x::V, f::V) where {M<:ADBenchmarkModel,V<:Abstrac
     return
 end
 function NLPModels.jac_coord!(
-    m::M,
-    x::V,
-    jac::V,
-) where {M<:ADBenchmarkModel,V<:AbstractVector}
+    m::ADBenchmarkModel,
+    x::AbstractVector,
+    jac::AbstractVector,
+)
 
     m.stats.jac_coord_cnt += 1
     t = time()
@@ -404,12 +405,12 @@ function NLPModels.jac_coord!(
     return
 end
 function NLPModels.hess_coord!(
-    m::M,
-    x::V,
-    y::V,
-    hess::V;
+    m::ADBenchmarkModel,
+    x::AbstractVector,
+    y::AbstractVector,
+    hess::AbstractVector;
     obj_weight = one(eltype(x)),
-) where {M<:ADBenchmarkModel,V<:AbstractVector}
+)
 
     m.stats.hess_coord_cnt += 1
     t = time()
@@ -422,7 +423,7 @@ end
 function Base.print(io::IO, e::ADBenchmarkModel)
     tot = 0.0
     for f in fieldnames(ADBenchmarkStats)
-        if endswith(string(f), "cnt")
+        if endswith(string(f), "cnt") 
             @printf "%20s:  %13i times\n" f getfield(e.stats, f)
         else
             t = getfield(e.stats, f)

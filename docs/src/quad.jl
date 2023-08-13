@@ -1,39 +1,51 @@
-# # Quadrotor Optimal Control
-# ExaModels can create nonlinear prgogramming models and allows solving the created models using NLP solvers (in particular, those that are interfaced with `NLPModels`, such as [NLPModelsIpopt](https://github.com/JuliaSmoothOptimizers/NLPModelsIpopt.jl). We now use `ExaModels` to model the following nonlinear program:
-# ```math
-# \begin{aligned}
-# \min_{\{x_i\}_{i=0}^N} &\sum_{i=2}^N  100(x_{i-1}^2-x_i)^2+(x_{i-1}-1)^2\\
-# \text{s.t.} &  3x_{i+1}^3+2x_{i+2}-5+\sin(x_{i+1}-x_{i+2})\sin(x_{i+1}+x_{i+2})+4x_{i+1}-x_i e^{x_i-x_{i+1}}-3 = 0
-# \end{aligned}
-# ```
-# We model the problem with:
+# # Example: Quadrotor
+# First, import ExaModels.jl
 using ExaModels
 
-# We set
-N = 10000;
+N= 100
 
-# First, we create a `ExaModels.Core`.
+n = 9
+p = 4
+nd= 9
+d(i,j,N) = (j==1 ? 1*sin(2*pi/N*i) : 0.) + (j==3 ? 2*sin(4*pi/N*i) : 0.) + (j==5 ? 2*i/N : 0.)
+dt = .01
+R = fill(1/10,4)
+Q = [1,0,1,0,1,0,1,1,1]
+Qf= [1,0,1,0,1,0,1,1,1]/dt
+
+x0s  = [(i,0.) for i=1:n]
+itr0 = [(i,j,R[j]) for (i,j) in Base.product(1:N,1:p)]
+itr1 = [(i,j,Q[j],d(i,j,N)) for (i,j) in Base.product(1:N,1:n)]
+itr2 = [(j,Qf[j],d(N+1,j,N)) for j in 1:n]
+
 c = ExaCore()
 
-# The variables can be created as follows:
+x= variable(c,1:N+1,1:n)
+u= variable(c,1:N,1:p);
 
-x = variable(c, N; start = (mod(i, 2) == 1 ? -1.2 : 1.0 for i = 1:N))
+constraint(c, x[1,i]-x0 for (i,x0) in x0s)
+constraint(c, -x[i+1,1] + x[i,1] + (x[i,2])*dt for i=1:N)
+constraint(c, -x[i+1,2] + x[i,2] + (u[i,1]*cos(x[i,7])*sin(x[i,8])*cos(x[i,9])+u[i,1]*sin(x[i,7])*sin(x[i,9]))*dt for i=1:N)
+constraint(c, -x[i+1,3] + x[i,3] + (x[i,4])*dt for i=1:N)
+constraint(c, -x[i+1,4] + x[i,4] + (u[i,1]*cos(x[i,7])*sin(x[i,8])*sin(x[i,9])-u[i,1]*sin(x[i,7])*cos(x[i,9]))*dt for i=1:N)
+constraint(c, -x[i+1,5] + x[i,5] + (x[i,6])*dt for i=1:N)
+constraint(c, -x[i+1,6] + x[i,6] + (u[i,1]*cos(x[i,7])*cos(x[i,8])-9.8)*dt for i=1:N)
+constraint(c, -x[i+1,7] + x[i,7] + (u[i,2]*cos(x[i,7])/cos(x[i,8])+u[i,3]*sin(x[i,7])/cos(x[i,8]))*dt for i=1:N)
+constraint(c, -x[i+1,8] + x[i,8] + (-u[i,2]*sin(x[i,7])+u[i,3]*cos(x[i,7]))*dt for i=1:N)
+constraint(c, -x[i+1,9] + x[i,9] + (u[i,2]*cos(x[i,7])*tan(x[i,8])+u[i,3]*sin(x[i,7])*tan(x[i,8])+u[i,4])*dt for i=1:N)
 
-# The objective can be set as follows:
-objective(c, 100 * (x[i-1]^2 - x[i])^2 + (x[i-1] - 1)^2 for i = 2:N)
+objective(c, .5*R*(u[i,j]^2) for (i,j,R) in itr0)
+objective(c, .5*Q*(x[i,j]-d)^2 for (i,j,Q,d) in itr1)
+objective(c, .5*Qf*(x[N+1,j]-d)^2 for (j,Qf,d) in itr2)
 
-# The constraints can be set as follows:
-constraint(
-    c,
-    3x[i+1]^3 + 2 * x[i+2] - 5 + sin(x[i+1] - x[i+2])sin(x[i+1] + x[i+2]) + 4x[i+1] -
-    x[i]exp(x[i] - x[i+1]) - 3 for i = 1:N-2
-)
-
-# Finally, we create an NLPModel.
+# Create a model
 m = ExaModel(c)
 
-# To solve the problem with `Ipopt`,
+# Import Solver
 using NLPModelsIpopt
-sol = ipopt(m)
 
-# The solution `sol` contains the field `sol.solution` holding the optimized parameters.
+# Solve the model
+result = ipopt(m)
+
+# Query the solution
+xsol = solution(result, x)
