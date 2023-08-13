@@ -1,9 +1,17 @@
 using Documenter, DocumenterCitations, ExaModels, Literate
 
 const _PAGES = [
-    "Introduction" => "index.md",
+    "Introduction" => [
+        "index.md",
+        "highlights.md",
+    ],
     "Mathematical Abstraction" => "simd.md",
-    "Tutorial" => ["guide.md", "quad.md", "dist.md", "opf.md"],
+    "Tutorial" => [
+        "guide.md",
+        "quad.md",
+        "dist.md",
+        "opf.md"
+    ],
     "API Manual" => "core.md",
 ]
 
@@ -55,3 +63,4 @@ makedocs(
 
 
 deploydocs(repo = "github.com/sshin23/ExaModels.jl.git")
+

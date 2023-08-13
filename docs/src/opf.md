@@ -1,5 +1,5 @@
 ```@meta
-EditURL = "<unknown>/src/opf.jl"
+EditURL = "opf.jl"
 ```
 
 # Example: Optimal Power Flow
