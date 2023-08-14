@@ -97,7 +97,3 @@ For the nonlinear optimization problems that are suitable for SIMD abstraction, 
  * GPU    : Quadro GV100
 ```
 
-## References
-
-```@bibliography
-```
