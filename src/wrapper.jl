@@ -1,40 +1,41 @@
 struct WrapperNLPModel{
-    T, VT, VI,
-    I <: NLPModels.AbstractNLPModel{T,VT}
-    } <: NLPModels.AbstractNLPModel{Float64,Vector{Float64}}
+    T, VT, T2, VT2 <: AbstractVector{T2}, VI,
+    I <: NLPModels.AbstractNLPModel{T2,VT2}
+    } <: NLPModels.AbstractNLPModel{T,VT}
 
     inner::I
 
-    x_buffer:: VT
-    y_buffer:: VT
+    x_buffer:: VT2
+    y_buffer:: VT2
     
-    cons_buffer::VT
-    grad_buffer::VT
+    cons_buffer::VT2
+    grad_buffer::VT2
     
-    jac_buffer::VT
+    jac_buffer::VT2
     jac_I_buffer::VI
     jac_J_buffer::VI
 
-    hess_buffer::VT
+    hess_buffer::VT2
     hess_I_buffer::VI
     hess_J_buffer::VI
     
-    meta::NLPModels.AbstractNLPModelMeta{Float64,Vector{Float64}}
+    meta::NLPModels.AbstractNLPModelMeta{T,VT}
 end
 
-function WrapperNLPModel(m)
-    nvar = get_nvar(m)
-    ncon = get_ncon(m)
-    nnzj = get_nnzj(m)
-    nnzh = get_nnzh(m)
+WrapperNLPModel(m) = WrapperNLPModel(Vector{Float64},m)
+function WrapperNLPModel(VT,m)
+    nvar = NLPModels.get_nvar(m)
+    ncon = NLPModels.get_ncon(m)
+    nnzj = NLPModels.get_nnzj(m)
+    nnzh = NLPModels.get_nnzh(m)
     
-    x0   = Vector{Float64}(undef, nvar)
-    lvar = Vector{Float64}(undef, nvar)
-    uvar = Vector{Float64}(undef, nvar)
+    x0   = VT(undef, nvar)
+    lvar = VT(undef, nvar)
+    uvar = VT(undef, nvar)
     
-    y0   = Vector{Float64}(undef, ncon)
-    lcon = Vector{Float64}(undef, ncon)
-    ucon = Vector{Float64}(undef, ncon)    
+    y0   = VT(undef, ncon)
+    lcon = VT(undef, ncon)
+    ucon = VT(undef, ncon)    
     
     copyto!(x0, m.meta.x0)
     copyto!(lvar, m.meta.lvar)
@@ -44,16 +45,16 @@ function WrapperNLPModel(m)
     copyto!(lcon, m.meta.lcon)
     copyto!(ucon, m.meta.ucon)
 
-    x_buffer = similar(get_x0(m), nvar)
-    y_buffer = similar(get_x0(m), ncon)
-    cons_buffer = similar(get_x0(m), ncon)
-    grad_buffer = similar(get_x0(m), nvar)
-    jac_buffer  = similar(get_x0(m), nnzj)
-    jac_I_buffer = similar(get_x0(m), Int, nnzj)
-    jac_J_buffer = similar(get_x0(m), Int, nnzj)
-    hess_buffer  = similar(get_x0(m), nnzh)
-    hess_I_buffer = similar(get_x0(m), Int, nnzh)
-    hess_J_buffer = similar(get_x0(m), Int, nnzh)
+    x_buffer = similar(m.meta.x0, nvar)
+    y_buffer = similar(m.meta.x0, ncon)
+    cons_buffer = similar(m.meta.x0, ncon)
+    grad_buffer = similar(m.meta.x0, nvar)
+    jac_buffer  = similar(m.meta.x0, nnzj)
+    jac_I_buffer = similar(m.meta.x0, Int, nnzj)
+    jac_J_buffer = similar(m.meta.x0, Int, nnzj)
+    hess_buffer  = similar(m.meta.x0, nnzh)
+    hess_I_buffer = similar(m.meta.x0, Int, nnzh)
+    hess_J_buffer = similar(m.meta.x0, Int, nnzh)
 
     return WrapperNLPModel(
         m,
@@ -67,7 +68,7 @@ function WrapperNLPModel(m)
         hess_buffer,
         hess_I_buffer,
         hess_J_buffer,
-        NLPModelMeta(
+        NLPModels.NLPModelMeta(
             nvar,
             x0 = x0,
             lvar = lvar,
@@ -89,7 +90,7 @@ function NLPModels.jac_structure!(
     cols::AbstractVector
     )
     
-    jac_structure!(m.inner, m.jac_I_buffer, m.jac_J_buffer)
+    NLPModels.jac_structure!(m.inner, m.jac_I_buffer, m.jac_J_buffer)
     copyto!(rows, m.jac_I_buffer)
     copyto!(cols, m.jac_J_buffer)
 end
@@ -100,7 +101,7 @@ function NLPModels.hess_structure!(
     cols::AbstractVector
     )
 
-    hess_structure!(m.inner, m.hess_I_buffer, m.hess_J_buffer)
+    NLPModels.hess_structure!(m.inner, m.hess_I_buffer, m.hess_J_buffer)
     copyto!(rows, m.hess_I_buffer)
     copyto!(cols, m.hess_J_buffer)
 end

@@ -34,7 +34,6 @@ if CUDA.has_cuda()
     push!(BACKENDS, CUDABackend())
 end
 
-include("utils.jl")
 include("luksan.jl")
 
 function test_nlp(simdiff_model, adnlp_model, solver, backend, args)
