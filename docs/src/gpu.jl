@@ -69,10 +69,12 @@ ipopt(m)
 # import Pkg; Pkg.add("MadNLP"; rev="sparse_condensed_2")
 # ```
 # Then, we can run:
-using CUDA, MadNLP, MadNLPGPU
-
-m = luksan_vlcek_model(10, CUDABackend())
-madnlp(m)
+# ```julia
+# using CUDA, MadNLP, MadNLPGPU
+# 
+# m = luksan_vlcek_model(10, CUDABackend())
+# madnlp(m)
+# ```
 
 
 # In the case we have arrays for the data, what we need to do is to simply convert the array types to the corresponding device array types. In particular,
@@ -101,6 +103,7 @@ function cuda_luksan_vlcek_model(N)
     return ExaModel(c)
 end
 
-
-m = cuda_luksan_vlcek_model(10)
-madnlp(m)
+# ```julia
+# m = cuda_luksan_vlcek_model(10)
+# madnlp(m)
+# ```
