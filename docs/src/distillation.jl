@@ -1,4 +1,7 @@
+# Distillation Column Model
+
 function distillation_column_model(T = 3, backend = nothing)
+
     NT = 30
     FT = 17
     Ac = 0.5

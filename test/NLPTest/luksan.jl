@@ -24,15 +24,15 @@ end
 
 function luksan_vlcek_simdiff_model(backend, N)
     
-    c = ExaModels.Core(backend)
-    x = ExaModels.variable(
+    c = ExaCore(backend)
+    x = variable(
         c, N;
         start = (luksan_vlcek_x0(i) for i=1:N)
     )
-    ExaModels.constraint(
+    constraint(
         c,
         luksan_vlcek_con(x,i)
         for i in 1:N-2)
-    ExaModels.objective(c, luksan_vlcek_obj(x,i) for i in 2:N)
-    return ExaModels.Model(c)
+    objective(c, luksan_vlcek_obj(x,i) for i in 2:N)
+    return ExaModel(c)
 end
