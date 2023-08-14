@@ -1,6 +1,7 @@
 module NLPTest
 
-using ExaModels, Test, ADNLPModels, NLPModels, NLPModelsIpopt, KernelAbstractions, CUDA
+using ExaModels, Test, ADNLPModels, NLPModels, KernelAbstractions, CUDA
+using NLPModelsIpopt, MadNLP
 
 const NLP_TEST_ARGUMENTS = [
     (
@@ -18,20 +19,30 @@ const BACKENDS = Any[
     CPU()
 ]
 
+const SOLVERS = [
+    (
+        "ipopt",
+        nlp -> ipopt(nlp; print_level=0),
+    ),
+    (
+        "madnlp",
+        nlp -> madnlp(nlp; print_level=MadNLP.ERROR)
+    )
+]
+
 if CUDA.has_cuda()
     push!(BACKENDS, CUDABackend())
 end
 
-include("utils.jl")
 include("luksan.jl")
 
-function test_nlp(simdiff_model, adnlp_model, backend, args)
+function test_nlp(simdiff_model, adnlp_model, solver, backend, args)
     
     m1 = WrapperNLPModel(simdiff_model(backend,args...))
     m2 = WrapperNLPModel(adnlp_model(backend,args...))
     
-    result1 = ipopt(m1; print_level = 0)
-    result2 = ipopt(m2; print_level = 0)
+    result1 = solver(m1)
+    result2 = solver(m2)
 
     @test result1.status == result2.status
     
@@ -47,19 +58,21 @@ end
 
 function runtests()
     @testset "NLP tests" begin
-        for (name, args) in NLP_TEST_ARGUMENTS
-            for backend in BACKENDS
-                simdiff_model = getfield(
-                    @__MODULE__,
-                    Symbol(name * "_simdiff_model")
-                )
-                adnlp_model = getfield(
-                    @__MODULE__,
-                    Symbol(name * "_adnlp_model")
-                )
+        for (sname, solver) in SOLVERS
+            for (name, args) in NLP_TEST_ARGUMENTS
+                for backend in BACKENDS
+                    simdiff_model = getfield(
+                        @__MODULE__,
+                        Symbol(name * "_simdiff_model")
+                    )
+                    adnlp_model = getfield(
+                        @__MODULE__,
+                        Symbol(name * "_adnlp_model")
+                    )
 
-                @testset "$name $args $backend" begin
-                    test_nlp(simdiff_model, adnlp_model, backend, args)
+                    @testset "$sname $name $args $backend" begin
+                        test_nlp(simdiff_model, adnlp_model, solver, backend, args)
+                    end
                 end
             end
         end

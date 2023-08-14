@@ -18,9 +18,9 @@ include("jacobian.jl")
 include("hessian.jl")
 include("nlp.jl")
 include("templates.jl")
+include("wrapper.jl")
 
-export
-    ExaModel,
+export ExaModel,
     ExaCore,
     data,
     variable,
@@ -30,6 +30,7 @@ export
     solution,
     multipliers,
     multipliers_L,
-    multipliers_U
+    multipliers_U,
+    WrapperNLPModel
 
 end # module ExaModels

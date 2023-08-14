@@ -16,14 +16,33 @@
 
 # THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-function jump_ac_power_model(file_name)
-    
-    data = PowerModels.parse_file(file_name)
+function get_power_data_ref(filename)
+    data = PowerModels.parse_file(filename)
     PowerModels.standardize_cost_terms!(data, order=2)
     PowerModels.calc_thermal_limits!(data)
-    ref = PowerModels.build_ref(data)[:it][:pm][:nw][0]
+    return PowerModels.build_ref(data)[:it][:pm][:nw][0]
+end
 
+function ampl_data(filename)
+    data = parse_ac_power_data(filename)
+    
+    bus_gens = [Int[] for i=1:length(data.bus)]
+    bus_arcs = [Int[] for i=1:length(data.bus)]
+    
+    for g in data.gen
+        push!(bus_gens[g.bus], g.i)
+    end
+    
+    for a in data.arc
+        push!(bus_arcs[a.bus], a.i)
+    end
+    
+    return data, bus_gens, bus_arcs
+end
 
+function jump_ac_power_model(filename = default_filename())
+    
+    ref = get_power_data_ref(filename)
 
     model = JuMP.Model()
     #JuMP.set_optimizer_attribute(model, "print_level", 0)
@@ -101,7 +120,9 @@ function jump_ac_power_model(file_name)
         JuMP.@constraint(model, p_to^2 + q_to^2 <= branch["rate_a"]^2)
     end
 
-    return model
+    return ADBenchmarkModel(
+        MathOptNLPModel(model)
+    )
 end
  
 convert_data(data::N, backend) where {names, N <: NamedTuple{names}} = NamedTuple{names}(ExaModels.convert_array(d,backend) for d in data)
@@ -207,12 +228,10 @@ function parse_ac_power_data(filename)
     )
 end
 
-ac_power_model(filename::String, backend = nothing) = ac_power_model(Float64, filename, backend)
-    
 function ac_power_model(
-    T,
-    filename::String,
+    filename = default_filename(),
     backend = nothing,
+    T = Float64
     )
 
     data = parse_ac_power_data(filename, backend) 
@@ -350,7 +369,153 @@ function ac_power_model(
         g.bus =>-qg[g.i]
         for g in data.gen)
     
-    return ExaModels.ExaModel(w)
+    return ADBenchmarkModel(
+        ExaModels.ExaModel(w)
+    )
     
+end
+
+
+function ampl_ac_power_model(filename = default_filename())
+    nlfile = tempname()*  ".nl"
+
+    py"""
+    import pyomo.environ as pyo
+    import numpy as np
+    import math
+    import julia
+    from julia import ExaModelsExamples
+
+    ExaModelsExamples.silence()
+
+    data, bus_gens, bus_arcs = ExaModelsExamples.ampl_data($filename)
+
+    nbus = len(data.bus)
+    ngen = len(data.gen)
+    narc = len(data.arc)
+
+    m = pyo.ConcreteModel()
+
+    m.va = pyo.Var(range(nbus))
+
+    m.vm = pyo.Var(
+        range(nbus),
+        initialize = np.ones(nbus),
+        bounds = lambda m,i: (data.vmin[i], data.vmax[i])
+    )
+
+    m.pg = pyo.Var(
+        range(ngen),
+        bounds = lambda m,i: (data.pmin[i], data.pmax[i])
+    )
+
+    m.qg = pyo.Var(
+        range(ngen),
+        bounds = lambda m,i: (data.qmin[i], data.qmax[i])
+    )
+
+    m.p = pyo.Var(
+        range(narc),
+        bounds = lambda m,i: (-data.rate_a[i], data.rate_a[i])
+    )
+
+    m.q = pyo.Var(
+        range(narc),
+        bounds = lambda m,i: (-data.rate_a[i], data.rate_a[i])
+    )
+
+    m.obj = pyo.Objective(
+        expr = sum(g.cost1 * m.pg[g.i-1]**2 + g.cost2 * m.pg[g.i-1] + g.cost3 for g in data.gen),
+        sense=pyo.minimize
+    )
+
+    m.c1 = pyo.ConstraintList()
+    m.c2 = pyo.ConstraintList()
+    m.c3 = pyo.ConstraintList()
+    m.c4 = pyo.ConstraintList()
+    m.c5 = pyo.ConstraintList()
+    m.c6 = pyo.ConstraintList()
+    m.c7 = pyo.ConstraintList()
+    m.c8 = pyo.ConstraintList()
+    m.c9 = pyo.ConstraintList()
+    m.c10= pyo.ConstraintList()
+
+    for i in data.ref_buses:
+        m.c1.add(expr=m.va[i-1] == 0)
+
+    for (b, amin, amax) in zip(data.branch, data.angmin, data.angmax):
+        m.c2.add(
+            expr =
+            m.p[b.f_idx-1]
+            - b.c5*m.vm[b.f_bus-1]**2
+            - b.c3*(m.vm[b.f_bus-1]*m.vm[b.t_bus-1]*pyo.cos(m.va[b.f_bus-1]-m.va[b.t_bus-1]))
+            - b.c4*(m.vm[b.f_bus-1]*m.vm[b.t_bus-1]*pyo.sin(m.va[b.f_bus-1]-m.va[b.t_bus-1]))
+            == 0
+        )
+        m.c3.add(
+            expr = 
+            m.q[b.f_idx-1]
+            + b.c6*m.vm[b.f_bus-1]**2
+            + b.c4*(m.vm[b.f_bus-1]*m.vm[b.t_bus-1]*pyo.cos(m.va[b.f_bus-1]-m.va[b.t_bus-1]))
+            - b.c3*(m.vm[b.f_bus-1]*m.vm[b.t_bus-1]*pyo.sin(m.va[b.f_bus-1]-m.va[b.t_bus-1]))
+            == 0
+        )
+        m.c4.add(
+            m.p[b.t_idx-1]
+            - b.c7*m.vm[b.t_bus-1]**2
+            - b.c1*(m.vm[b.t_bus-1]*m.vm[b.f_bus-1]*pyo.cos(m.va[b.t_bus-1]-m.va[b.f_bus-1]))
+            - b.c2*(m.vm[b.t_bus-1]*m.vm[b.f_bus-1]*pyo.sin(m.va[b.t_bus-1]-m.va[b.f_bus-1]))
+            == 0
+        )
+        m.c5.add(
+            m.q[b.t_idx-1]
+            + b.c8*m.vm[b.t_bus-1]**2 
+            + b.c2*(m.vm[b.t_bus-1]*m.vm[b.f_bus-1]*pyo.cos(m.va[b.t_bus-1]-m.va[b.f_bus-1]))
+            - b.c1*(m.vm[b.t_bus-1]*m.vm[b.f_bus-1]*pyo.sin(m.va[b.t_bus-1]-m.va[b.f_bus-1]))
+            == 0
+        )
+        m.c6.add(
+            (amin, m.va[b.f_bus-1] - m.va[b.t_bus-1], amax)
+        )
+        m.c7.add(
+            (None, m.p[b.f_idx-1]**2 + m.q[b.f_idx-1]**2 - b.rate_a_sq, 0)
+        )
+        m.c8.add(
+            (None, m.p[b.t_idx-1]**2 + m.q[b.t_idx-1]**2 - b.rate_a_sq, 0)
+        )
+
+    for (b,g,a) in zip(data.bus, bus_gens, bus_arcs):
+        m.c9.add(
+            b.pd
+            + sum(m.p[j-1] for j in a)
+            - sum(m.pg[j-1] for j in g)
+            + b.gs * m.vm[b.i-1]**2
+            == 0
+        )
+        m.c10.add(
+            b.qd
+            + sum(m.q[j-1] for j in a)
+            - sum(m.qg[j-1] for j in g)
+            - b.bs * m.vm[b.i-1]**2
+            == 0
+        )
+
+    m.write($nlfile)
+    """
+    
+    return ADBenchmarkModel(
+        AmplNLReader.AmplModel(nlfile)
+    )
+end
+
+function default_filename();
+    if !isfile("pglib_opf_case118_ieee.m")
+        @info "Downloading pglib_opf_case118_ieee.m"
+        Downloads.download(
+            "https://raw.githubusercontent.com/power-grid-lib/pglib-opf/dc6be4b2f85ca0e776952ec22cbd4c22396ea5a3/pglib_opf_case118_ieee.m",
+            "pglib_opf_case118_ieee.m"
+        )
+    end
+    return "pglib_opf_case118_ieee.m"
 end
 
