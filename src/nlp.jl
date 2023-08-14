@@ -162,10 +162,6 @@ An ExaCore
 """,
 )
 
-Base.show(io::IO, c::ExaCore{T,VT,B}) where {T, VT, B} = print(io, """
-An ExaCore
-
-
 
 struct ExaModel{T,VT,E,O,C} <: NLPModels.AbstractNLPModel{T,VT}
     objs::O
@@ -269,15 +265,6 @@ function myappend!(a, b::Number, lb)
     fill!(view(a, (la+1):(la+lb)), b)
     return a
 end
-
-function myappend!(a,b::Number,lb)
-    
-    la = length(a);
-    resize!(a, la+lb);
-    fill!(view(a,(la+1):(la+lb)) , b)
-    return a
-end
-
 
 total(ns) = prod(_length(n) for n in ns)
 _length(n::Int) = n
