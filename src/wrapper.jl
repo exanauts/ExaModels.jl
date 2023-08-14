@@ -20,6 +20,7 @@ struct WrapperNLPModel{
     hess_J_buffer::VI
     
     meta::NLPModels.AbstractNLPModelMeta{T,VT}
+    counters::NLPModels.Counters
 end
 
 WrapperNLPModel(m) = WrapperNLPModel(Vector{Float64},m)
@@ -81,6 +82,7 @@ function WrapperNLPModel(VT,m)
             nnzh = nnzh,
             minimize = m.meta.minimize
         )
+        NLPModels.Counters()
     )
 end
 
