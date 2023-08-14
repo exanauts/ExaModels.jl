@@ -167,6 +167,7 @@ struct ExaModel{T,VT,E,O,C} <: NLPModels.AbstractNLPModel{T,VT}
     objs::O
     cons::C
     meta::NLPModels.NLPModelMeta{T,VT}
+    counters::NLPModels.Counters
     ext::E
 end
 
@@ -230,6 +231,7 @@ function ExaModel(c::C) where {C<:ExaCore}
             lcon = c.lcon,
             ucon = c.ucon,
         ),
+        NLPModels.Counters(),
         extension(c),
     )
 end

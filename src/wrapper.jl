@@ -81,7 +81,7 @@ function WrapperNLPModel(VT,m)
             nnzj = nnzj,
             nnzh = nnzh,
             minimize = m.meta.minimize
-        )
+        ),
         NLPModels.Counters()
     )
 end
