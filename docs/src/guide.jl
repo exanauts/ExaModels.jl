@@ -20,6 +20,7 @@
 using ExaModels
 # Now, all the functions that are necessary for creating model are imported to into `Main`.
 
+
 # An `ExaCore` object can be created simply by (Step 1):
 c = ExaCore()
 # This is where our optimziation model information will be progressively stored. This object is not yet an `NLPModel`, but it will essentially store all the necessary information.
@@ -38,7 +39,6 @@ constraint(
     3x[i+1]^3 + 2 * x[i+2] - 5 + sin(x[i+1] - x[i+2])sin(x[i+1] + x[i+2]) + 4x[i+1] -
     x[i]exp(x[i] - x[i+1]) - 3 for i = 1:N-2
 )
-
 # Finally, we are ready to create an `ExaModel` from the data we have collected in `ExaCore`. Since `ExaCore` includes all the necessary information, we can do this simply by:
 m = ExaModel(c)
 
@@ -64,5 +64,3 @@ sol = solution(result, x)
 # - [Example: Quadrotor](): modeling multiple types of objective values and constraints.
 # - [Example: Distillation Column](): using two-dimensional index sets for variables.
 # - [Example: Optimal Power Flow](): handling complex data and using constraint augmentation.
-
-

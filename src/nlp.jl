@@ -28,6 +28,7 @@ end
 Base.show(io::IO, v::Objective) = print(
     io,
     """
+
 Objective
 
   min (...) + ∑_{p ∈ P} f(x,p)
@@ -35,6 +36,7 @@ Objective
   where |P| = $(length(v.itr))
 """,
 )
+
 
 struct Constraint{R,F,I,O} <: AbstractConstraint
     inner::R
@@ -45,6 +47,7 @@ end
 Base.show(io::IO, v::Constraint) = print(
     io,
     """
+
 Constraint
 
   s.t. (...)
@@ -54,15 +57,18 @@ Constraint
 """,
 )
 
+
 struct ConstraintAug{R,F,I} <: AbstractConstraint
     inner::R
     f::F
     itr::I
     oa::Int
 end
+
 Base.show(io::IO, v::ConstraintAug) = print(
     io,
     """
+
 Constrant Augmentation
 
   s.t. (...)
@@ -71,7 +77,6 @@ Constrant Augmentation
   where |P| = $(length(v.itr))
 """,
 )
-
 
 """
 ExaCore([array_type::Type, backend])
@@ -115,6 +120,7 @@ An ExaCore
   number of constraint patterns: ... 0
 ```
 """
+
 Base.@kwdef mutable struct ExaCore{T,VT<:AbstractVector{T},B}
     obj::AbstractObjective = ObjectiveNull()
     con::AbstractConstraint = ConstraintNull()
@@ -135,6 +141,7 @@ Base.@kwdef mutable struct ExaCore{T,VT<:AbstractVector{T},B}
     backend::B = nothing
 end
 ExaCore(::Nothing) = ExaCore()
+
 ExaCore(::Type{T}, ::Nothing) where {T<:AbstractFloat} = ExaCore(x0 = zeros(T, 0))
 ExaCore(::Type{T}) where {T<:AbstractFloat} = ExaCore(T, nothing)
 depth(a) = depth(a.inner) + 1
@@ -155,6 +162,8 @@ An ExaCore
 """,
 )
 
+Base.show(io::IO, c::ExaCore{T,VT,B}) where {T, VT, B} = print(io, """
+An ExaCore
 
 
 
@@ -261,6 +270,14 @@ function myappend!(a, b::Number, lb)
     return a
 end
 
+function myappend!(a,b::Number,lb)
+    
+    la = length(a);
+    resize!(a, la+lb);
+    fill!(view(a,(la+1):(la+lb)) , b)
+    return a
+end
+
 
 total(ns) = prod(_length(n) for n in ns)
 _length(n::Int) = n
@@ -305,6 +322,7 @@ function variable(
     lvar = T(-Inf),
     uvar = T(Inf),
 ) where {T,C<:ExaCore{T}}
+
 
     o = c.nvar
     c.nvar += total(ns)
@@ -382,7 +400,7 @@ function constraint(
     lcon = zero(T),
     ucon = zero(T),
 ) where {T,C<:ExaCore{T}}
-
+  
     f = SIMDFunction(gen, c.ncon, c.nnzj, c.nnzh)
     nitr = length(gen.iter)
     o = c.ncon
@@ -470,6 +488,7 @@ function NLPModels.grad!(m::ExaModel, x::AbstractVector, f::AbstractVector)
 
     fill!(f, zero(eltype(f)))
     _grad!(m.objs, x, f)
+
 end
 
 function _grad!(objs, x, f)
@@ -482,6 +501,7 @@ function NLPModels.jac_coord!(m::ExaModel, x::AbstractVector, jac::AbstractVecto
 
     fill!(jac, zero(eltype(jac)))
     _jac_coord!(m.cons, x, jac)
+
 end
 
 _jac_coord!(cons::ConstraintNull, x, jac) = nothing
@@ -501,6 +521,7 @@ function NLPModels.hess_coord!(
     fill!(hess, zero(eltype(hess)))
     _obj_hess_coord!(m.objs, x, y, hess, obj_weight)
     _con_hess_coord!(m.cons, x, y, hess, obj_weight)
+
 end
 _obj_hess_coord!(objs::ObjectiveNull, x, y, hess, obj_weight) = nothing
 function _obj_hess_coord!(objs, x, y, hess, obj_weight)
@@ -553,6 +574,7 @@ for (thing, val) in [(:solution, 1), (:multipliers_L, 0), (:multipliers_U, 2)]
         ```
         """
         function $thing(result::SolverCore.AbstractExecutionStats, x)
+
             o = x.offset
             len = total(x.size)
             s = size(x.size)
@@ -584,6 +606,7 @@ julia> m = ExaModel(c);
 julia> result = ipopt(m; print_level=0);
 
 julia> val = multipliers(result, y);
+
 
 julia> val[1] ≈ 0.81933930
 true

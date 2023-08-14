@@ -1,4 +1,4 @@
-function luksan_vlcek_model(N = 3, backend = nothing)
+unction luksan_vlcek_model(N = 3, backend = nothing)
 
     c = ExaModels.ExaCore(backend)
     x = ExaModels.variable(c, N; start = (mod(i, 2) == 1 ? -1.2 : 1.0 for i = 1:N))

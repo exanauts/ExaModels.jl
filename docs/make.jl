@@ -59,6 +59,7 @@ if _LATEX
 )
 end
 
+
 makedocs(
     bib,
     sitename = "ExaModels.jl",

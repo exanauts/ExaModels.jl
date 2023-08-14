@@ -98,6 +98,7 @@ function _jac_structure!(backend, cons, rows, cols)
 end
 function _jac_structure!(backend, cons::ExaModels.ConstraintNull, rows, cols) end
 
+
 function NLPModels.hess_structure!(
     m::ExaModels.ExaModel{T,VT,E} where {T,VT,E<:KAExtension},
     rows::V,

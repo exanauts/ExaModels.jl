@@ -14,6 +14,7 @@ import Printf: @printf
 import CUDA: CUDA, CUDABackend
 import KernelAbstractions: CPU
 
+
 include("opf.jl")
 include("luksanvlcek.jl")
 include("distillation.jl")
@@ -44,6 +45,11 @@ function __compile__()
     end
 end
 
-# SnoopPrecompile.@precompile_all_calls _compile()
+
+for name in filter(names(ExaModelsExamples; all=true)) do x
+    endswith(string(x), "model")
+end
+    @eval export $name
+end 
 
 end # module ExaModelsExamples
