@@ -1,5 +1,5 @@
 ```@meta
-EditURL = "dist.jl"
+EditURL = "<unknown>/src/dist.jl"
 ```
 
 # Example: Distillation Column

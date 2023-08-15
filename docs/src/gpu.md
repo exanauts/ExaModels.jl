@@ -1,5 +1,5 @@
 ```@meta
-EditURL = "gpu.jl"
+EditURL = "<unknown>/src/gpu.jl"
 ```
 
 # Accelerations
@@ -93,17 +93,12 @@ For NVIDIA GPUs, we can use `CUDABackend`. However, currently, there are not man
 import Pkg; Pkg.add("MadNLP"; rev="sparse_condensed_2")
 ```
 Then, we can run:
-
-````julia
+```julia
 using CUDA, MadNLP, MadNLPGPU
 
 m = luksan_vlcek_model(10, CUDABackend())
 madnlp(m)
-````
-
-````
-"Execution stats: Optimal Solution Found (tol = 1.0e-04)."
-````
+```
 
 In the case we have arrays for the data, what we need to do is to simply convert the array types to the corresponding device array types. In particular,
 
@@ -131,15 +126,16 @@ function cuda_luksan_vlcek_model(N)
 
     return ExaModel(c)
 end
+````
 
+````
+cuda_luksan_vlcek_model (generic function with 1 method)
+````
 
+```julia
 m = cuda_luksan_vlcek_model(10)
 madnlp(m)
-````
-
-````
-"Execution stats: Optimal Solution Found (tol = 1.0e-04)."
-````
+```
 
 ---
 
