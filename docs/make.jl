@@ -54,7 +54,7 @@ if _LATEX
     bib, 
     sitename = "ExaModels",
     authors = "Sungho Shin",
-    format = Documenter.LaTeX(platform = "docker"),
+    format = Documenter.LaTeX(),
     pages = _PAGES,
 )
 end
