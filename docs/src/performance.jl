@@ -62,7 +62,7 @@ println("$t seconds elapsed")
 # So, the model creation time can be essentially nothing. Thus, if you care about the model creation time, always make sure to write a function for creating the model, and do not directly create a model from the REPL.
 
 
-# ## Make sure that your array's eltype is concrete.
+# ## Make sure your array's eltype is concrete
 # In order for ExaModels to run for loops over the array you provided without any overhead caused by type inference, the eltype of the data array should always be a concrete type. Furthermore, this is **required** if you want to run ExaModels on GPU accelerators.
 
 # Let's take an example.
