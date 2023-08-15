@@ -66,7 +66,7 @@ ipopt(m)
 
 # For NVIDIA GPUs, we can use `CUDABackend`. However, currently, there are not many optimization solvers that are capable of solving problems on GPUs. The only option right now is using [a development branch in MadNLP.jl](https://github.com/MadNLP/MadNLP.jl/tree/ss/sparse_condensed_2). To use this, first install
 # ```julia
-# import Pkg; Pkg.add("MadNLP"; rev="sparse_condensed_2")
+# import Pkg; Pkg.add(name = "MadNLP", rev="ss/sparse_condensed_2")
 # ```
 # Then, we can run:
 # ```julia
