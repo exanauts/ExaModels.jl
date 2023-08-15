@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/><title>Performance Tips · ExaModels.jl</title><script data-outdated-warner src="../assets/warner.js"></script><link href="https://cdnjs.cloudflare.com/ajax/libs/lato-font/3.0.0/css/lato-font.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/juliamono/0.045/juliamono.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/fontawesome.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/solid.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/brands.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.13.24/katex.min.css" rel="stylesheet" type="text/css"/><script>documenterBaseURL=".."</script><script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js" data-main="../assets/documenter.js"></script><script src="../siteinfo.js"></script><script src="../../versions.js"></script><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/documenter-dark.css" data-theme-name="documenter-dark" data-theme-primary-dark/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/documenter-light.css" data-theme-name="documenter-light" data-theme-primary/><script src="../assets/themeswap.js"></script><link href="../assets/favicon.ico" rel="icon" type="image/x-icon"/><link href="../assets/citations.css" rel="stylesheet" type="text/css"/></head><body><div id="documenter"><nav class="docs-sidebar"><a class="docs-logo" href="../"><img src="../assets/logo.svg" alt="ExaModels.jl logo"/></a><div class="docs-package-name"><span class="docs-autofit"><a href="../">ExaModels.jl</a></span></div><form class="docs-search" action="../search/"><input class="docs-search-query" id="documenter-search-query" name="q" type="text" placeholder="Search docs"/></form><ul class="docs-menu"><li><input class="collapse-toggle" id="menuitem-1" type="checkbox"/><label class="tocitem" for="menuitem-1"><span class="docs-label">Introduction</span><i class="docs-chevron"></i></label><ul class="collapsed"><li><a class="tocitem" href="../">Overview</a></li><li><a class="tocitem" href="../highlights/">Highlights</a></li></ul></li><li><a class="tocitem" href="../simd/">Mathematical Abstraction</a></li><li><input class="collapse-toggle" id="menuitem-3" type="checkbox" checked/><label class="tocitem" for="menuitem-3"><span class="docs-label">Tutorial</span><i class="docs-chevron"></i></label><ul class="collapsed"><li><a class="tocitem" href="../guide/">Getting Started</a></li><li class="is-active"><a class="tocitem" href>Performance Tips</a><ul class="internal"><li><a class="tocitem" href="#Use-a-function-to-create-a-model"><span>Use a function to create a model</span></a></li></ul></li><li><a class="tocitem" href="../gpu/">Accelerations</a></li><li><a class="tocitem" href="../develop/">Developing Extensions</a></li><li><a class="tocitem" href="../quad/">Example: Quadrotor</a></li><li><a class="tocitem" href="../dist/">Example: Distillation Column</a></li><li><a class="tocitem" href="../opf/">Example: Optimal Power Flow</a></li></ul></li><li><a class="tocitem" href="../core/">API Manual</a></li><li><a class="tocitem" href="../ref/">References</a></li></ul><div class="docs-version-selector field has-addons"><div class="control"><span class="docs-label button is-static is-size-7">Version</span></div><div class="docs-selector control is-expanded"><div class="select is-fullwidth is-size-7"><select id="documenter-version-selector"></select></div></div></div></nav><div class="docs-main"><header class="docs-navbar"><nav class="breadcrumb"><ul class="is-hidden-mobile"><li><a class="is-disabled">Tutorial</a></li><li class="is-active"><a href>Performance Tips</a></li></ul><ul class="is-hidden-tablet"><li class="is-active"><a href>Performance Tips</a></li></ul></nav><div class="docs-right"><a class="docs-edit-link" href="https://github.com/sshin23/ExaModels.jl/blob/main/docs/src/performance.jl" title="Edit on GitHub"><span class="docs-icon fab"></span><span class="docs-label is-hidden-touch">Edit on GitHub</span></a><a class="docs-settings-button fas fa-cog" id="documenter-settings-button" href="#" title="Settings"></a><a class="docs-sidebar-button fa fa-bars is-hidden-desktop" id="documenter-sidebar-button" href="#"></a></div></header><article class="content" id="documenter-page"><h1 id="Performance-Tips"><a class="docs-heading-anchor" href="#Performance-Tips">Performance Tips</a><a id="Performance-Tips-1"></a><a class="docs-heading-anchor-permalink" href="#Performance-Tips" title="Permalink"></a></h1><h2 id="Use-a-function-to-create-a-model"><a class="docs-heading-anchor" href="#Use-a-function-to-create-a-model">Use a function to create a model</a><a id="Use-a-function-to-create-a-model-1"></a><a class="docs-heading-anchor-permalink" href="#Use-a-function-to-create-a-model" title="Permalink"></a></h2><p>It is always better to use functions to create ExaModels. This in this way, the functions used for specifing objective/constraint functions are not recreated over all over, and thus, we can take advantage of the previously compiled model creation code. Let&#39;s consider the following example.</p><pre><code class="language-julia hljs">using ExaModels
+<html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/><title>Performance Tips · ExaModels.jl</title><script data-outdated-warner src="../assets/warner.js"></script><link href="https://cdnjs.cloudflare.com/ajax/libs/lato-font/3.0.0/css/lato-font.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/juliamono/0.045/juliamono.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/fontawesome.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/solid.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/brands.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.13.24/katex.min.css" rel="stylesheet" type="text/css"/><script>documenterBaseURL=".."</script><script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js" data-main="../assets/documenter.js"></script><script src="../siteinfo.js"></script><script src="../../versions.js"></script><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/documenter-dark.css" data-theme-name="documenter-dark" data-theme-primary-dark/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/documenter-light.css" data-theme-name="documenter-light" data-theme-primary/><script src="../assets/themeswap.js"></script><link href="../assets/favicon.ico" rel="icon" type="image/x-icon"/><link href="../assets/citations.css" rel="stylesheet" type="text/css"/></head><body><div id="documenter"><nav class="docs-sidebar"><a class="docs-logo" href="../"><img src="../assets/logo.svg" alt="ExaModels.jl logo"/></a><div class="docs-package-name"><span class="docs-autofit"><a href="../">ExaModels.jl</a></span></div><form class="docs-search" action="../search/"><input class="docs-search-query" id="documenter-search-query" name="q" type="text" placeholder="Search docs"/></form><ul class="docs-menu"><li><input class="collapse-toggle" id="menuitem-1" type="checkbox"/><label class="tocitem" for="menuitem-1"><span class="docs-label">Introduction</span><i class="docs-chevron"></i></label><ul class="collapsed"><li><a class="tocitem" href="../">Overview</a></li><li><a class="tocitem" href="../highlights/">Highlights</a></li></ul></li><li><a class="tocitem" href="../simd/">Mathematical Abstraction</a></li><li><input class="collapse-toggle" id="menuitem-3" type="checkbox" checked/><label class="tocitem" for="menuitem-3"><span class="docs-label">Tutorial</span><i class="docs-chevron"></i></label><ul class="collapsed"><li><a class="tocitem" href="../guide/">Getting Started</a></li><li class="is-active"><a class="tocitem" href>Performance Tips</a><ul class="internal"><li><a class="tocitem" href="#Use-a-function-to-create-a-model"><span>Use a function to create a model</span></a></li><li><a class="tocitem" href="#Make-sure-your-array&#39;s-eltype-is-concrete"><span>Make sure your array&#39;s eltype is concrete</span></a></li></ul></li><li><a class="tocitem" href="../gpu/">Accelerations</a></li><li><a class="tocitem" href="../develop/">Developing Extensions</a></li><li><a class="tocitem" href="../quad/">Example: Quadrotor</a></li><li><a class="tocitem" href="../dist/">Example: Distillation Column</a></li><li><a class="tocitem" href="../opf/">Example: Optimal Power Flow</a></li></ul></li><li><a class="tocitem" href="../core/">API Manual</a></li><li><a class="tocitem" href="../ref/">References</a></li></ul><div class="docs-version-selector field has-addons"><div class="control"><span class="docs-label button is-static is-size-7">Version</span></div><div class="docs-selector control is-expanded"><div class="select is-fullwidth is-size-7"><select id="documenter-version-selector"></select></div></div></div></nav><div class="docs-main"><header class="docs-navbar"><nav class="breadcrumb"><ul class="is-hidden-mobile"><li><a class="is-disabled">Tutorial</a></li><li class="is-active"><a href>Performance Tips</a></li></ul><ul class="is-hidden-tablet"><li class="is-active"><a href>Performance Tips</a></li></ul></nav><div class="docs-right"><a class="docs-edit-link" href="https://github.com/sshin23/ExaModels.jl/blob/main/docs/src/performance.jl" title="Edit on GitHub"><span class="docs-icon fab"></span><span class="docs-label is-hidden-touch">Edit on GitHub</span></a><a class="docs-settings-button fas fa-cog" id="documenter-settings-button" href="#" title="Settings"></a><a class="docs-sidebar-button fa fa-bars is-hidden-desktop" id="documenter-sidebar-button" href="#"></a></div></header><article class="content" id="documenter-page"><h1 id="Performance-Tips"><a class="docs-heading-anchor" href="#Performance-Tips">Performance Tips</a><a id="Performance-Tips-1"></a><a class="docs-heading-anchor-permalink" href="#Performance-Tips" title="Permalink"></a></h1><h2 id="Use-a-function-to-create-a-model"><a class="docs-heading-anchor" href="#Use-a-function-to-create-a-model">Use a function to create a model</a><a id="Use-a-function-to-create-a-model-1"></a><a class="docs-heading-anchor-permalink" href="#Use-a-function-to-create-a-model" title="Permalink"></a></h2><p>It is always better to use functions to create ExaModels. This in this way, the functions used for specifing objective/constraint functions are not recreated over all over, and thus, we can take advantage of the previously compiled model creation code. Let&#39;s consider the following example.</p><pre><code class="language-julia hljs">using ExaModels
 
 t = @elapsed begin
     c = ExaCore()
@@ -14,7 +14,7 @@ t = @elapsed begin
     m = ExaModel(c)
 end
 
-println(&quot;$t seconds elapsed&quot;)</code></pre><pre><code class="nohighlight hljs">0.202334848 seconds elapsed
+println(&quot;$t seconds elapsed&quot;)</code></pre><pre><code class="nohighlight hljs">0.116776726 seconds elapsed
 </code></pre><p>Even at the second call,</p><pre><code class="language-julia hljs">t = @elapsed begin
     c = ExaCore()
     N = 10
@@ -28,7 +28,7 @@ println(&quot;$t seconds elapsed&quot;)</code></pre><pre><code class="nohighligh
     m = ExaModel(c)
 end
 
-println(&quot;$t seconds elapsed&quot;)</code></pre><pre><code class="nohighlight hljs">0.201790049 seconds elapsed
+println(&quot;$t seconds elapsed&quot;)</code></pre><pre><code class="nohighlight hljs">0.117271018 seconds elapsed
 </code></pre><p>the model creation time can be slightly reduced but the compilation time is still quite significant.</p><p>But instead, if you create a function, we can significantly reduce the model creation time.</p><pre><code class="language-julia hljs">function luksan_vlcek_model(N)
     c = ExaCore()
     x = variable(c, N; start = (mod(i, 2) == 1 ? -1.2 : 1.0 for i = 1:N))
@@ -42,7 +42,1117 @@ println(&quot;$t seconds elapsed&quot;)</code></pre><pre><code class="nohighligh
 end
 
 t = @elapsed luksan_vlcek_model(N)
-println(&quot;$t seconds elapsed&quot;)</code></pre><pre><code class="nohighlight hljs">0.312333693 seconds elapsed
+println(&quot;$t seconds elapsed&quot;)</code></pre><pre><code class="nohighlight hljs">0.201202923 seconds elapsed
 </code></pre><pre><code class="language-julia hljs">t = @elapsed luksan_vlcek_model(N)
-println(&quot;$t seconds elapsed&quot;)</code></pre><pre><code class="nohighlight hljs">8.34e-5 seconds elapsed
-</code></pre><p>So, the model creation time can be essentially nothing. Thus, if you care about the model creation time, always make sure to write a function for creating the model, and do not directly create a model from the REPL.</p><hr/><p><em>This page was generated using <a href="https://github.com/fredrikekre/Literate.jl">Literate.jl</a>.</em></p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../guide/">« Getting Started</a><a class="docs-footer-nextpage" href="../gpu/">Accelerations »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 0.27.25 on <span class="colophon-date" title="Monday 14 August 2023 04:09">Monday 14 August 2023</span>. Using Julia version 1.9.2.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
+println(&quot;$t seconds elapsed&quot;)</code></pre><pre><code class="nohighlight hljs">7.052e-5 seconds elapsed
+</code></pre><p>So, the model creation time can be essentially nothing. Thus, if you care about the model creation time, always make sure to write a function for creating the model, and do not directly create a model from the REPL.</p><h2 id="Make-sure-your-array&#39;s-eltype-is-concrete"><a class="docs-heading-anchor" href="#Make-sure-your-array&#39;s-eltype-is-concrete">Make sure your array&#39;s eltype is concrete</a><a id="Make-sure-your-array&#39;s-eltype-is-concrete-1"></a><a class="docs-heading-anchor-permalink" href="#Make-sure-your-array&#39;s-eltype-is-concrete" title="Permalink"></a></h2><p>In order for ExaModels to run for loops over the array you provided without any overhead caused by type inference, the eltype of the data array should always be a concrete type. Furthermore, this is <strong>required</strong> if you want to run ExaModels on GPU accelerators.</p><p>Let&#39;s take an example.</p><pre><code class="language-julia hljs">using ExaModels
+
+N = 1000
+
+function luksan_vlcek_model_concrete(N)
+    c = ExaCore()
+
+    arr1 = Array(2:N)
+    arr2 = Array(1:N-2)
+
+    x = variable(c, N; start = (mod(i, 2) == 1 ? -1.2 : 1.0 for i = 1:N))
+    objective(c, 100 * (x[i-1]^2 - x[i])^2 + (x[i-1] - 1)^2 for i = arr1)
+    constraint(
+        c,
+        3x[i+1]^3 + 2 * x[i+2] - 5 + sin(x[i+1] - x[i+2])sin(x[i+1] + x[i+2]) + 4x[i+1] -
+            x[i]exp(x[i] - x[i+1]) - 3 for i = arr2
+                )
+    m = ExaModel(c)
+end
+
+function luksan_vlcek_model_non_concrete(N)
+    c = ExaCore()
+
+    arr1 = Array{Any}(2:N)
+    arr2 = Array{Any}(1:N-2)
+
+    x = variable(c, N; start = (mod(i, 2) == 1 ? -1.2 : 1.0 for i = 1:N))
+    objective(c, 100 * (x[i-1]^2 - x[i])^2 + (x[i-1] - 1)^2 for i = arr1)
+    constraint(
+        c,
+        3x[i+1]^3 + 2 * x[i+2] - 5 + sin(x[i+1] - x[i+2])sin(x[i+1] + x[i+2]) + 4x[i+1] -
+            x[i]exp(x[i] - x[i+1]) - 3 for i = arr2
+                )
+    m = ExaModel(c)
+end</code></pre><pre><code class="nohighlight hljs">luksan_vlcek_model_non_concrete (generic function with 1 method)</code></pre><p>Here, observe that</p><pre><code class="language-julia hljs">isconcretetype(eltype(Array(2:N)))</code></pre><pre><code class="nohighlight hljs">true</code></pre><pre><code class="language-julia hljs">isconcretetype(eltype(Array{Any}(2:N)))</code></pre><pre><code class="nohighlight hljs">false</code></pre><p>As you can see, the first array type has concrete eltypes, whereas the second array type has non concrete eltypes. Due to this, the array stored in the model created by <code>luksan_vlcek_model_non_concrete</code> will have non-concrete eltypes.</p><p>Now let&#39;s compare the performance. We will use the following benchmark function here.</p><pre><code class="language-julia hljs">using NLPModels
+
+function benchmark_callbacks(m; N = 100)
+    nvar = m.meta.nvar
+    ncon = m.meta.ncon
+    nnzj = m.meta.nnzj
+    nnzh = m.meta.nnzh
+
+    x = copy(m.meta.x0)
+    y = similar(m.meta.x0, ncon)
+    c = similar(m.meta.x0, ncon)
+    g = similar(m.meta.x0, nvar)
+    jac = similar(m.meta.x0, nnzj)
+    hess = similar(m.meta.x0, nnzh)
+    jrows = similar(m.meta.x0, Int, nnzj)
+    jcols = similar(m.meta.x0, Int, nnzj)
+    hrows = similar(m.meta.x0, Int, nnzh)
+    hcols = similar(m.meta.x0, Int, nnzh)
+
+    GC.enable(false)
+
+    NLPModels.obj(m, x) # to compile
+
+    tobj = (1 / N) * @elapsed for t = 1:N
+        NLPModels.obj(m, x)
+    end
+
+    NLPModels.cons!(m, x, c) # to compile
+    tcon = (1 / N) * @elapsed for t = 1:N
+        NLPModels.cons!(m, x, c)
+    end
+
+    NLPModels.grad!(m, x, g) # to compile
+    tgrad = (1 / N) * @elapsed for t = 1:N
+        NLPModels.grad!(m, x, g)
+    end
+
+    NLPModels.jac_coord!(m, x, jac) # to compile
+    tjac = (1 / N) * @elapsed for t = 1:N
+        NLPModels.jac_coord!(m, x, jac)
+    end
+
+    NLPModels.hess_coord!(m, x, y, hess) # to compile
+    thess = (1 / N) * @elapsed for t = 1:N
+        NLPModels.hess_coord!(m, x, y, hess)
+    end
+
+    NLPModels.jac_structure!(m, jrows, jcols) # to compile
+    tjacs = (1 / N) * @elapsed for t = 1:N
+        NLPModels.jac_structure!(m, jrows, jcols)
+    end
+
+    NLPModels.hess_structure!(m, hrows, hcols) # to compile
+    thesss = (1 / N) * @elapsed for t = 1:N
+        NLPModels.hess_structure!(m, hrows, hcols)
+    end
+
+    GC.enable(true)
+
+    return (
+        tobj = tobj,
+        tcon = tcon,
+        tgrad = tgrad,
+        tjac = tjac,
+        thess = thess,
+        tjacs = tjacs,
+        thesss = thesss,
+    )
+end</code></pre><pre><code class="nohighlight hljs">benchmark_callbacks (generic function with 1 method)</code></pre><p>The performance comparison is here:</p><pre><code class="language-julia hljs">m1 = luksan_vlcek_model_concrete(N)
+m2 = luksan_vlcek_model_non_concrete(N)
+
+benchmark_callbacks(m1)</code></pre><pre><code class="nohighlight hljs">(tobj = 1.572299e-5, tcon = 2.6152030000000002e-5, tgrad = 1.868329e-5, tjac = 4.884695e-5, thess = 0.00041794916000000004, tjacs = 1.68763e-5, thesss = 1.958946e-5)</code></pre><pre><code class="language-julia hljs">benchmark_callbacks(m2)</code></pre><pre><code class="nohighlight hljs">(tobj = 0.00018287400999999998, tcon = 0.00025873918, tgrad = 0.00025151023000000004, tjac = 0.00144025575, thess = 0.00345549689, tjacs = 0.0005031359, thesss = 0.00203735337)</code></pre><p>As can be seen here, having concrete eltype dramatically improves the performance. This is because when all the data arrays&#39; eltypes are concrete, the AD evaluations can be performed without any type inferernce, and this should be as fast as highly optimized C/C++/Fortran code.</p><p>When you&#39;re using GPU accelerators, the eltype of the array should always be concrete. In fact, non-concrete etlype will already cause an error when creating the array. For example,</p><pre><code class="language-julia hljs">using CUDA
+
+try
+    arr1 = CuArray(2:N)
+catch e
+    showerror(stdout,e)
+end</code></pre><pre><code class="nohighlight hljs">999-element CUDA.CuArray{Int64, 1, CUDA.Mem.DeviceBuffer}:
+    2
+    3
+    4
+    5
+    6
+    7
+    8
+    9
+   10
+   11
+   12
+   13
+   14
+   15
+   16
+   17
+   18
+   19
+   20
+   21
+   22
+   23
+   24
+   25
+   26
+   27
+   28
+   29
+   30
+   31
+   32
+   33
+   34
+   35
+   36
+   37
+   38
+   39
+   40
+   41
+   42
+   43
+   44
+   45
+   46
+   47
+   48
+   49
+   50
+   51
+   52
+   53
+   54
+   55
+   56
+   57
+   58
+   59
+   60
+   61
+   62
+   63
+   64
+   65
+   66
+   67
+   68
+   69
+   70
+   71
+   72
+   73
+   74
+   75
+   76
+   77
+   78
+   79
+   80
+   81
+   82
+   83
+   84
+   85
+   86
+   87
+   88
+   89
+   90
+   91
+   92
+   93
+   94
+   95
+   96
+   97
+   98
+   99
+  100
+  101
+  102
+  103
+  104
+  105
+  106
+  107
+  108
+  109
+  110
+  111
+  112
+  113
+  114
+  115
+  116
+  117
+  118
+  119
+  120
+  121
+  122
+  123
+  124
+  125
+  126
+  127
+  128
+  129
+  130
+  131
+  132
+  133
+  134
+  135
+  136
+  137
+  138
+  139
+  140
+  141
+  142
+  143
+  144
+  145
+  146
+  147
+  148
+  149
+  150
+  151
+  152
+  153
+  154
+  155
+  156
+  157
+  158
+  159
+  160
+  161
+  162
+  163
+  164
+  165
+  166
+  167
+  168
+  169
+  170
+  171
+  172
+  173
+  174
+  175
+  176
+  177
+  178
+  179
+  180
+  181
+  182
+  183
+  184
+  185
+  186
+  187
+  188
+  189
+  190
+  191
+  192
+  193
+  194
+  195
+  196
+  197
+  198
+  199
+  200
+  201
+  202
+  203
+  204
+  205
+  206
+  207
+  208
+  209
+  210
+  211
+  212
+  213
+  214
+  215
+  216
+  217
+  218
+  219
+  220
+  221
+  222
+  223
+  224
+  225
+  226
+  227
+  228
+  229
+  230
+  231
+  232
+  233
+  234
+  235
+  236
+  237
+  238
+  239
+  240
+  241
+  242
+  243
+  244
+  245
+  246
+  247
+  248
+  249
+  250
+  251
+  252
+  253
+  254
+  255
+  256
+  257
+  258
+  259
+  260
+  261
+  262
+  263
+  264
+  265
+  266
+  267
+  268
+  269
+  270
+  271
+  272
+  273
+  274
+  275
+  276
+  277
+  278
+  279
+  280
+  281
+  282
+  283
+  284
+  285
+  286
+  287
+  288
+  289
+  290
+  291
+  292
+  293
+  294
+  295
+  296
+  297
+  298
+  299
+  300
+  301
+  302
+  303
+  304
+  305
+  306
+  307
+  308
+  309
+  310
+  311
+  312
+  313
+  314
+  315
+  316
+  317
+  318
+  319
+  320
+  321
+  322
+  323
+  324
+  325
+  326
+  327
+  328
+  329
+  330
+  331
+  332
+  333
+  334
+  335
+  336
+  337
+  338
+  339
+  340
+  341
+  342
+  343
+  344
+  345
+  346
+  347
+  348
+  349
+  350
+  351
+  352
+  353
+  354
+  355
+  356
+  357
+  358
+  359
+  360
+  361
+  362
+  363
+  364
+  365
+  366
+  367
+  368
+  369
+  370
+  371
+  372
+  373
+  374
+  375
+  376
+  377
+  378
+  379
+  380
+  381
+  382
+  383
+  384
+  385
+  386
+  387
+  388
+  389
+  390
+  391
+  392
+  393
+  394
+  395
+  396
+  397
+  398
+  399
+  400
+  401
+  402
+  403
+  404
+  405
+  406
+  407
+  408
+  409
+  410
+  411
+  412
+  413
+  414
+  415
+  416
+  417
+  418
+  419
+  420
+  421
+  422
+  423
+  424
+  425
+  426
+  427
+  428
+  429
+  430
+  431
+  432
+  433
+  434
+  435
+  436
+  437
+  438
+  439
+  440
+  441
+  442
+  443
+  444
+  445
+  446
+  447
+  448
+  449
+  450
+  451
+  452
+  453
+  454
+  455
+  456
+  457
+  458
+  459
+  460
+  461
+  462
+  463
+  464
+  465
+  466
+  467
+  468
+  469
+  470
+  471
+  472
+  473
+  474
+  475
+  476
+  477
+  478
+  479
+  480
+  481
+  482
+  483
+  484
+  485
+  486
+  487
+  488
+  489
+  490
+  491
+  492
+  493
+  494
+  495
+  496
+  497
+  498
+  499
+  500
+  501
+  502
+  503
+  504
+  505
+  506
+  507
+  508
+  509
+  510
+  511
+  512
+  513
+  514
+  515
+  516
+  517
+  518
+  519
+  520
+  521
+  522
+  523
+  524
+  525
+  526
+  527
+  528
+  529
+  530
+  531
+  532
+  533
+  534
+  535
+  536
+  537
+  538
+  539
+  540
+  541
+  542
+  543
+  544
+  545
+  546
+  547
+  548
+  549
+  550
+  551
+  552
+  553
+  554
+  555
+  556
+  557
+  558
+  559
+  560
+  561
+  562
+  563
+  564
+  565
+  566
+  567
+  568
+  569
+  570
+  571
+  572
+  573
+  574
+  575
+  576
+  577
+  578
+  579
+  580
+  581
+  582
+  583
+  584
+  585
+  586
+  587
+  588
+  589
+  590
+  591
+  592
+  593
+  594
+  595
+  596
+  597
+  598
+  599
+  600
+  601
+  602
+  603
+  604
+  605
+  606
+  607
+  608
+  609
+  610
+  611
+  612
+  613
+  614
+  615
+  616
+  617
+  618
+  619
+  620
+  621
+  622
+  623
+  624
+  625
+  626
+  627
+  628
+  629
+  630
+  631
+  632
+  633
+  634
+  635
+  636
+  637
+  638
+  639
+  640
+  641
+  642
+  643
+  644
+  645
+  646
+  647
+  648
+  649
+  650
+  651
+  652
+  653
+  654
+  655
+  656
+  657
+  658
+  659
+  660
+  661
+  662
+  663
+  664
+  665
+  666
+  667
+  668
+  669
+  670
+  671
+  672
+  673
+  674
+  675
+  676
+  677
+  678
+  679
+  680
+  681
+  682
+  683
+  684
+  685
+  686
+  687
+  688
+  689
+  690
+  691
+  692
+  693
+  694
+  695
+  696
+  697
+  698
+  699
+  700
+  701
+  702
+  703
+  704
+  705
+  706
+  707
+  708
+  709
+  710
+  711
+  712
+  713
+  714
+  715
+  716
+  717
+  718
+  719
+  720
+  721
+  722
+  723
+  724
+  725
+  726
+  727
+  728
+  729
+  730
+  731
+  732
+  733
+  734
+  735
+  736
+  737
+  738
+  739
+  740
+  741
+  742
+  743
+  744
+  745
+  746
+  747
+  748
+  749
+  750
+  751
+  752
+  753
+  754
+  755
+  756
+  757
+  758
+  759
+  760
+  761
+  762
+  763
+  764
+  765
+  766
+  767
+  768
+  769
+  770
+  771
+  772
+  773
+  774
+  775
+  776
+  777
+  778
+  779
+  780
+  781
+  782
+  783
+  784
+  785
+  786
+  787
+  788
+  789
+  790
+  791
+  792
+  793
+  794
+  795
+  796
+  797
+  798
+  799
+  800
+  801
+  802
+  803
+  804
+  805
+  806
+  807
+  808
+  809
+  810
+  811
+  812
+  813
+  814
+  815
+  816
+  817
+  818
+  819
+  820
+  821
+  822
+  823
+  824
+  825
+  826
+  827
+  828
+  829
+  830
+  831
+  832
+  833
+  834
+  835
+  836
+  837
+  838
+  839
+  840
+  841
+  842
+  843
+  844
+  845
+  846
+  847
+  848
+  849
+  850
+  851
+  852
+  853
+  854
+  855
+  856
+  857
+  858
+  859
+  860
+  861
+  862
+  863
+  864
+  865
+  866
+  867
+  868
+  869
+  870
+  871
+  872
+  873
+  874
+  875
+  876
+  877
+  878
+  879
+  880
+  881
+  882
+  883
+  884
+  885
+  886
+  887
+  888
+  889
+  890
+  891
+  892
+  893
+  894
+  895
+  896
+  897
+  898
+  899
+  900
+  901
+  902
+  903
+  904
+  905
+  906
+  907
+  908
+  909
+  910
+  911
+  912
+  913
+  914
+  915
+  916
+  917
+  918
+  919
+  920
+  921
+  922
+  923
+  924
+  925
+  926
+  927
+  928
+  929
+  930
+  931
+  932
+  933
+  934
+  935
+  936
+  937
+  938
+  939
+  940
+  941
+  942
+  943
+  944
+  945
+  946
+  947
+  948
+  949
+  950
+  951
+  952
+  953
+  954
+  955
+  956
+  957
+  958
+  959
+  960
+  961
+  962
+  963
+  964
+  965
+  966
+  967
+  968
+  969
+  970
+  971
+  972
+  973
+  974
+  975
+  976
+  977
+  978
+  979
+  980
+  981
+  982
+  983
+  984
+  985
+  986
+  987
+  988
+  989
+  990
+  991
+  992
+  993
+  994
+  995
+  996
+  997
+  998
+  999
+ 1000</code></pre><hr/><p><em>This page was generated using <a href="https://github.com/fredrikekre/Literate.jl">Literate.jl</a>.</em></p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../guide/">« Getting Started</a><a class="docs-footer-nextpage" href="../gpu/">Accelerations »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 0.27.25 on <span class="colophon-date" title="Tuesday 15 August 2023 09:52">Tuesday 15 August 2023</span>. Using Julia version 1.9.2.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
