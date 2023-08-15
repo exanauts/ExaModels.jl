@@ -201,7 +201,7 @@ benchmark_callbacks(m2)
 using CUDA
 
 try
-    arr1 = CuArray(2:N)
+    arr1 = CuArray(Array{Any}(2:N))
 catch e
     showerror(stdout,e)
 end
