@@ -59,6 +59,7 @@ x = variable(c, N; start = (mod(i, 2) == 1 ? -1.2 : 1.0 for i = 1:N))
 Variable
 
   x ∈ R^{10}
+
 ````
 
 This creates the variable `x`, which we will be able to refer to when we create constraints/objective constraionts. Also, this modifies the information in the `ExaCore` object properly so that later an optimization model can be properly created with the necessary information. Observe that we have used the keyword argument `start` to specify the initial guess for the solution. The variable upper and lower bounds can be specified in a similar manner.
@@ -70,11 +71,13 @@ objective(c, 100 * (x[i-1]^2 - x[i])^2 + (x[i-1] - 1)^2 for i = 2:N)
 ````
 
 ````
+
 Objective
 
   min (...) + ∑_{p ∈ P} f(x,p)
 
   where |P| = 9
+
 ````
 
 The constraints can be set as follows:
@@ -88,12 +91,14 @@ constraint(
 ````
 
 ````
+
 Constraint
 
   s.t. (...)
        g♭ ≤ [g(x,p)]_{p ∈ P} ≤ g♯
 
   where |P| = 8
+
 ````
 
 Finally, we are ready to create an `ExaModel` from the data we have collected in `ExaCore`. Since `ExaCore` includes all the necessary information, we can do this simply by:

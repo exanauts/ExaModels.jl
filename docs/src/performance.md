@@ -27,7 +27,7 @@ println("$t seconds elapsed")
 ````
 
 ````
-0.101720252 seconds elapsed
+0.099825116 seconds elapsed
 
 ````
 
@@ -51,7 +51,7 @@ println("$t seconds elapsed")
 ````
 
 ````
-0.098235497 seconds elapsed
+0.096606144 seconds elapsed
 
 ````
 
@@ -77,7 +77,7 @@ println("$t seconds elapsed")
 ````
 
 ````
-0.146379964 seconds elapsed
+0.147985464 seconds elapsed
 
 ````
 
@@ -87,7 +87,7 @@ println("$t seconds elapsed")
 ````
 
 ````
-8.2339e-5 seconds elapsed
+8.423e-5 seconds elapsed
 
 ````
 

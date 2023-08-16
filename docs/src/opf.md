@@ -259,7 +259,7 @@ end
 ac_power_model (generic function with 1 method)
 ````
 
-We first download the case file
+We first download the case file.
 
 ````julia
 using Downloads
@@ -273,7 +273,7 @@ Downloads.download(
 ````
 
 ````
-"/tmp/jl_UlCnitynIf.m"
+"/tmp/jl_Jkb29Mhgza.m"
 ````
 
 Then, we can model/sovle the problem.
