@@ -7,7 +7,8 @@ For more information, please visit https://github.com/sshin23/ExaModels.jl
 """
 module ExaModels
 
-import NLPModels, SolverCore
+import NLPModels: NLPModels, obj, cons!, grad!, jac_coord!, hess_coord!, jac_structure!, hess_structure!
+import SolverCore
 
 include("graph.jl")
 include("register.jl")
