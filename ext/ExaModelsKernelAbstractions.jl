@@ -78,7 +78,7 @@ end
 
 
 function _grad_structure!(backend, objs, gsparsity)
-    ExaModels.sgradient!(backend, gsparsity, objs, nothing, NaN16)
+    ExaModels.sgradient!(backend, gsparsity, objs, nothing, NaN32)
     _grad_structure!(backend, objs.inner, gsparsity)
     synchronize(backend)
 end
@@ -92,7 +92,7 @@ function NLPModels.jac_structure!(
     _jac_structure!(m.ext.backend, m.cons, rows, cols)
 end
 function _jac_structure!(backend, cons, rows, cols)
-    ExaModels.sjacobian!(backend, rows, cols, cons, nothing, NaN16)
+    ExaModels.sjacobian!(backend, rows, cols, cons, nothing, NaN32)
     _jac_structure!(backend, cons.inner, rows, cols)
     synchronize(backend)
 end
@@ -109,13 +109,13 @@ function NLPModels.hess_structure!(
 end
 
 function _obj_hess_structure!(backend, objs, rows, cols)
-    ExaModels.shessian!(backend, rows, cols, objs, nothing, NaN16, NaN16)
+    ExaModels.shessian!(backend, rows, cols, objs, nothing, NaN32, NaN32)
     _obj_hess_structure!(backend, objs.inner, rows, cols)
     synchronize(backend)
 end
 function _obj_hess_structure!(backend, objs::ExaModels.ObjectiveNull, rows, cols) end
 function _con_hess_structure!(backend, cons, rows, cols)
-    ExaModels.shessian!(backend, rows, cols, cons, nothing, NaN16, NaN16)
+    ExaModels.shessian!(backend, rows, cols, cons, nothing, NaN32, NaN32)
     _con_hess_structure!(backend, cons.inner, rows, cols)
     synchronize(backend)
 end
@@ -250,7 +250,8 @@ function ExaModels.sgradient!(
     f,
     x,
     adj,
-) where {B<:KernelAbstractions.Backend}
+    ) where {B<:KernelAbstractions.Backend}
+    
     return kerg(backend)(y, f.f, f.itr, x, adj; ndrange = length(f.itr))
 end
 
