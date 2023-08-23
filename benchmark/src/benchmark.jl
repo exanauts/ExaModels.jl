@@ -8,122 +8,87 @@ const POWER_CASES = [
 const CASES = [
     (
         "LV",
-        jump_luksan_vlcek_model,
-        ampl_luksan_vlcek_model,
-        exa_luksan_vlcek_model,
+        :luksan_vlcek_model,
         (100, 1000, 10000)
     ),
     (
         "QR",
-        jump_quadrotor_model,
-        ampl_quadrotor_model,
-        exa_quadrotor_model,
+        :quadrotor_model,
         (50, 500, 5000)
     ),
     (
         "DC",
-        jump_distillation_column_model,
-        ampl_distillation_column_model,
-        exa_distillation_column_model,
+        :distillation_column_model,
         (5, 50, 500)
     ),
     (
         "PF",
-        jump_ac_power_model,
-        ampl_ac_power_model,
-        exa_ac_power_model,
+        :ac_power_model,
         POWER_CASES
     ),
 ]
 
+const DEVICES = []
+
+
+function update_benchmark_result!(result, name, label, model, arg, neval; kwargs...)
+    m = model(arg; kwargs...)
+    push!(
+        result.data, (
+            name = label,
+            nvar = m.meta.nvar,
+            ncon = m.meta.ncon,
+            result = benchmark_callbacks(m; N = neval)
+        )
+    )
+end
+
 function runbenchmark(cases = CASES; neval = 3, deploy = false)
     
-    result = Dict(
-        "JuMP" => BenchmarkResult(
+    result = [
+        BenchmarkResult(
             name = "JuMP"
         ),
-        "AMPL" => BenchmarkResult(
+        BenchmarkResult(
             name = "AMPL"
         ),
-        "ExaModels (single)" => BenchmarkResult(
-            name = "ExaModels (single)",
-        ),
-        "ExaModels (multi)" => BenchmarkResult(
-            name = "ExaModels (multi)",
-            hardware = "$(cpubrand()) (nthreads = $(Threads.nthreads()))"                       
-        ),
-        "ExaModels (CUDA)" => BenchmarkResult(
-            name = "ExaModels (CUDA)",
-            hardware = "$(CUDA.name(CUDA.device()))"
-        ),
-    )
+        BenchmarkResult(
+            name = "ExaModels"
+        )
+    ]
+
+    for (name, hardware, backend) in DEVICES
+        push!(
+            result,
+            BenchmarkResult(
+                name = "ExaModels ($name)",
+                hardware = hardware
+            )
+        )
+    end
 
     try 
         GC.enable(false)
-        for (name, jump_model, ampl_model, exa_model, args) in cases
+        for (name, model, args) in cases
             for (cnt, arg) in enumerate(args)
                 
                 @info "Benchmarking $name$cnt"
+                label = "$name$cnt"
+
+                jump_model =  eval(Symbol("jump_"*string(model)))
+                ampl_model =  eval(Symbol("ampl_"*string(model)))
+                exa_model =  eval(Symbol("exa_"*string(model)))
                 
-                m = jump_model(arg)
-                tj = benchmark_callbacks(m; N = neval)
+                update_benchmark_result!(result[1], "JuMP", label, jump_model, arg, neval)
+                update_benchmark_result!(result[2], "AMPL", label, ampl_model, arg, neval)
+                update_benchmark_result!(result[3], "ExaModels (single)", label, exa_model, arg, neval)
+
+                for (i,(name, hardware, backend)) in enumerate(DEVICES)
+                    update_benchmark_result!(
+                        result[3+i], "ExaModels ($name)", label, exa_model, arg, neval; backend = backend
+                    )
+                end
                 
-                m = ampl_model(arg)
-                ta = benchmark_callbacks(m; N = neval)
-
-                m = exa_model(arg)
-                te = benchmark_callbacks(m; N = neval)
-
-                m = exa_model(arg; backend = CPU())
-                tec = benchmark_callbacks(m; N = neval)
-
-                m = exa_model(arg; backend = CUDABackend())
-                teg = benchmark_callbacks(m; N = neval)
-
-                push!(
-                    result["JuMP"].data, (
-                        name = "$name$cnt",
-                        nvar = m.meta.nvar,
-                        ncon = m.meta.ncon,
-                        result = tj
-                    )
-                )
-
-                push!(
-                    result["AMPL"].data, (
-                        name = "$name$cnt",
-                        nvar = m.meta.nvar,
-                        ncon = m.meta.ncon,
-                        result = ta
-                    )
-                )
-                
-                push!(
-                    result["ExaModels (single)"].data, (
-                        name = "$name$cnt",
-                        nvar = m.meta.nvar,
-                        ncon = m.meta.ncon,
-                        result = te
-                    )
-                )
-                
-                push!(
-                    result["ExaModels (multi)"].data, (
-                        name = "$name$cnt",
-                        nvar = m.meta.nvar,
-                        ncon = m.meta.ncon,
-                        result = tec
-                    )
-                )
-
-                push!(
-                    result["ExaModels (CUDA)"].data, (
-                        name = "$name$cnt",
-                        nvar = m.meta.nvar,
-                        ncon = m.meta.ncon,
-                        result = teg
-                    )
-                )
             end
         end
     catch e
@@ -133,7 +98,7 @@ function runbenchmark(cases = CASES; neval = 3, deploy = false)
     end
 
     if deploy
-        ExaModelsExamples.deploy(result)
+        ExaModelsBenchmark.deploy(result)
     end
 
     return result
@@ -146,11 +111,16 @@ function deploy(result)
 
     # Clone the repository into a temporary directory
     tmp_dir = mktempdir()
-    run(`git clone --depth 1 --branch $branch $repo_url $tmp_dir`) 
-    write(
-        joinpath(tmp_dir, result.commit),
-        string(result)
-    )
+    run(`git clone --depth 1 --branch $branch $repo_url $tmp_dir`)
+    
+    for r in result
+        dir = joinpath(tmp_dir, r.commit)
+        mkpath(dir)
+        write(
+            joinpath(dir, r.id),
+            string(r)
+        )
+    end
 
     # Commit and push the changes
     cd(tmp_dir) do
@@ -168,6 +138,7 @@ export benchmark, deploy
 @kwdef struct BenchmarkResult
     name::String = ""
     data::Vector = []
+    id::String = "$(UUIDs.uuid4())"
     commit::String = string(
         LibGit2.GitHash(
             LibGit2.GitRepo(
@@ -193,34 +164,36 @@ function varcon(n)
     end
 end
 
-function fmtname(name)
+function fmtname(name; full = 46)
     len = length(name)
-    prec = div(41 - len,2)
-    proc = 41 - len - prec
+    prec = div(full - len,2)
+    proc = full - len - prec
     return prod(" " for i=1:prec) * name * prod(" " for i=1:proc)
 end
 
 
 function Base.string(result::BenchmarkResult)
     return """
-==============================================================
-|                 Evaluation Wall Time (sec)                 |
-==============================================================
+
+===================================================================
+|                    Evaluation Wall Time (sec)                   |
+===================================================================
 |      |           |$(fmtname(result.name))|
-| case | nvar ncon |   obj     con    grad     jac    hess   |
-==============================================================
+| case | nvar ncon |   obj      con      grad     jac      hess   |
+===================================================================
 """ * join(
                 (@sprintf(
-                    "| %4s | %4s %4s | %1.1e %1.1e %1.1e %1.1e %1.1e |",
+                    "| %4s | %4s %4s | %1.2e %1.2e %1.2e %1.2e %1.2e |",
                     d.name, varcon(d.nvar), varcon(d.ncon),
                     d.result.tobj, d.result.tcon, d.result.tgrad, d.result.tjac, d.result.thess,
                 ) 
                  for d in result.data), "\n")*
 """
 
-==============================================================
- * commit   : $(result.commit)
- * hardware : $(result.hardware)
+===================================================================
+ * benchmark ID : $(result.id)
+ * commit       : $(result.commit)
+ * hardware     : $(result.hardware)
 """
 end
 
@@ -446,4 +419,104 @@ Base.show(io::IO, ::MIME"text/plain", e::ADBenchmarkModel) = Base.print(io, e);
 adtime(m) = sum(
     getproperty(m.stats, v) for
     v in filter(name -> endswith(string(name), "time"), propertynames(m.stats))
-)
+        )
+
+function parsek(str)
+    if str[end] == 'k'
+        parse(Int, str[1:end-1]) * 1000
+    elseif str[end] == 'm'
+        parse(Int, str[1:end-1]) * 1000000
+    else
+        parse(Int, str)
+    end
+end
+function _get_tuple(d)
+    l = split(d, ['|',' ']; keepempty = false)
+    tups =(
+        name = l[1],
+        nvar = parsek(l[2]),
+        ncon = parsek(l[3]),
+        result = (
+            tobj = parse(Float64, l[4]),
+            tcon = parse(Float64, l[5]),
+            tgrad = parse(Float64, l[6]),
+            tjac = parse(Float64, l[7]),
+            thess = parse(Float64, l[8]),
+        )
+    )
+end
+function benchmark_parse(str)
+    # Extract the lines containing the data
+    lines = split(
+        str, "===================================================================\n";
+        keepempty = false
+    )
+    name = strip(split(lines[3], ['|']; keepempty = false)[3])
+    data = split(lines[4], "\n"; keepempty = false)
+    misc = strip.(split(lines[5], ['*',':']; keepempty = false))
+    id = misc[3]
+    commit = misc[5]
+    hardware = misc[7]
+
+    BenchmarkResult(
+        name = name,
+        data = [_get_tuple(d) for d in data],
+        id = id,
+        commit = commit,
+        hardware = hardware,
+    )
+end
+
+function read_results(
+    commit = string(
+        LibGit2.GitHash(
+            LibGit2.GitRepo(
+                joinpath(dirname(pathof(ExaModels)), "..")
+            ),
+            "HEAD"
+        )
+    )
+    )
+    # Define the repository URL and the branch to deploy to
+    repo_url = "git@github.com:sshin23/ExaModels.jl.git"
+    branch = "benchmark-results"
+
+    # Clone the repository into a temporary directory
+    tmp_dir = mktempdir()
+    run(`git clone --depth 1 --branch $branch $repo_url $tmp_dir`)
+    
+    return benchmark_parse.(
+        read.(
+            [joinpath(tmp_dir, commit, id) for id in readdir(joinpath(tmp_dir, commit))],
+            String
+        )
+    )
+end
+
+using LaTeXStrings
+
+function export_latex(fname, result)
+    data = join(
+        (@sprintf(
+            " %4s & %4s & %4s & %1.2e & %1.2e & %1.2e & %1.2e & %1.2e ",
+            d.name, varcon(d.nvar), varcon(d.ncon),
+            d.result.tobj, d.result.tcon, d.result.tgrad, d.result.tjac, d.result.thess,
+        ) 
+         for d in result.data), "\\\\ \n")
+
+    tex = L"""
+\begin{tabular}{|l|cc|ccccc|}
+  \hline
+  \multicolumn{8}{c|}{ExaModels (single)}\\
+  \hline
+  case & nvar & ncon & obj & cons & grad & jac & hess\\
+  \hline
+  %$data
+  \\
+  \hline
+\end{tabular}
+"""[2:end-1]
+
+    return write(fname, tex)
+end
+

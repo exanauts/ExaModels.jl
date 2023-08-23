@@ -9,9 +9,8 @@ import AmplNLReader
 import NLPModelsIpopt: ipopt
 import Downloads
 import Printf: @printf
-import CUDA: CUDA, CUDABackend
-import KernelAbstractions: CPU
 using LibGit2, Downloads, CpuId, Printf
+import UUIDs
 
 include("opf.jl")
 include("luksanvlcek.jl")

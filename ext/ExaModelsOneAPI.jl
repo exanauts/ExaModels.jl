@@ -32,9 +32,9 @@ ExaModels.convert_array(v, backend::oneAPI.oneAPIBackend) = oneAPI.oneArray(v)
 
 # Below are type piracy
 function Base.sum(a::A) where {A<:oneAPI.oneVector{Float64}}
-    b = similar(a, Float32, length(a))
+    b = zeros(length(a))
     copyto!(b, a)
-    Float64(sum(b))
+    return sum(b)
 end
 function Base.findall(f::F, bitarray::A) where {F<:Function,A<:oneAPI.oneVector}
     a = Array(bitarray)
