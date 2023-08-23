@@ -43,9 +43,13 @@ function update_benchmark_result!(result, name, label, model, arg, neval; kwargs
     )
 end
 
-function runbenchmark(cases = CASES; neval = 3, deploy = false)
+function runbenchmark(
+    cases = CASES;
+    neval = 10,
+    deploy = false
+    )
     
-    result = [
+    result = BenchmarkResult[
         BenchmarkResult(
             name = "JuMP"
         ),

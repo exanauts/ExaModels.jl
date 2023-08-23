@@ -8,7 +8,7 @@ function __init__()
     push!(
         ExaModelsBenchmark.DEVICES,
         (
-            name = "($(Threads.nthreads()) threads)",
+            name = "$(Threads.nthreads())T",
             hardware = "$(CpuId.cpubrand())",
             backend = KernelAbstractions.CPU()
         )
