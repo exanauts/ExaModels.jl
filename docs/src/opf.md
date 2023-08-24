@@ -273,21 +273,17 @@ Downloads.download(
 ````
 
 ````
-"/tmp/jl_lABWFWtm3m.m"
+"/tmp/jl_nKd4rehGxa.m"
 ````
 
 Then, we can model/sovle the problem.
 
 ````julia
 using PowerModels, ExaModels, NLPModelsIpopt
+````
 
 m = ac_power_model(case)
 ipopt(m)
-````
-
-````
-"Execution stats: first-order stationary"
-````
 
 ---
 

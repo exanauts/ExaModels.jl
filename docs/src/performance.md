@@ -28,7 +28,7 @@ println("$t seconds elapsed")
 ````
 
 ````
-0.070678922 seconds elapsed
+0.066898222 seconds elapsed
 
 ````
 
@@ -52,7 +52,7 @@ println("$t seconds elapsed")
 ````
 
 ````
-0.068157659 seconds elapsed
+0.064398672 seconds elapsed
 
 ````
 
@@ -78,7 +78,7 @@ println("$t seconds elapsed")
 ````
 
 ````
-0.094701702 seconds elapsed
+0.09220298 seconds elapsed
 
 ````
 
@@ -88,13 +88,13 @@ println("$t seconds elapsed")
 ````
 
 ````
-6.4801e-5 seconds elapsed
+5.1967e-5 seconds elapsed
 
 ````
 
 So, the model creation time can be essentially nothing. Thus, if you care about the model creation time, always make sure to write a function for creating the model, and do not directly create a model from the REPL.
 
-## Make sure that your array's eltype is concrete.
+## Make sure your array's eltype is concrete
 In order for ExaModels to run for loops over the array you provided without any overhead caused by type inference, the eltype of the data array should always be a concrete type. Furthermore, this is **required** if you want to run ExaModels on GPU accelerators.
 
 Let's take an example.
@@ -249,7 +249,7 @@ benchmark_callbacks(m1)
 ````
 
 ````
-(tobj = 1.692209e-5, tcon = 1.654947e-5, tgrad = 1.511585e-5, tjac = 3.185132e-5, thess = 0.00027618556, tjacs = 1.204332e-5, thesss = 1.2789640000000001e-5)
+(tobj = 1.88742e-5, tcon = 2.002505e-5, tgrad = 1.5646040000000002e-5, tjac = 3.092868e-5, thess = 0.00019260719, tjacs = 1.1257629999999999e-5, thesss = 1.350459e-5)
 ````
 
 ````julia
@@ -257,10 +257,28 @@ benchmark_callbacks(m2)
 ````
 
 ````
-(tobj = 5.214221e-5, tcon = 7.363767e-5, tgrad = 7.84783e-5, tjac = 0.00039876529, thess = 0.0013688455299999999, tjacs = 0.00015846934, thesss = 0.00057630313)
+(tobj = 5.3494629999999996e-5, tcon = 8.321695000000001e-5, tgrad = 0.00013395386, tjac = 0.00044622955, thess = 0.00206250262, tjacs = 0.00023909941, thesss = 0.0007601504700000001)
 ````
 
-As can be seen here, having concrete eltype dramatically improves the performance. This is because when all the data arrays' eltypes are concrete, the AD evaluations can be performed without any type inferernce, and this should be as fast as highly optimized C/C++/Fortran code. When the
+As can be seen here, having concrete eltype dramatically improves the performance. This is because when all the data arrays' eltypes are concrete, the AD evaluations can be performed without any type inferernce, and this should be as fast as highly optimized C/C++/Fortran code.
+
+When you're using GPU accelerators, the eltype of the array should always be concrete. In fact, non-concrete etlype will already cause an error when creating the array. For example,
+
+````julia
+using CUDA
+
+try
+    arr1 = CuArray(Array{Any}(2:N))
+catch e
+    showerror(stdout,e)
+end
+````
+
+````
+CuArray only supports element types that are allocated inline.
+Any is not allocated inline
+
+````
 
 ---
 

@@ -1,3 +1,5 @@
+img[alt=benchmark] { width: 100vw; }
+
 .citation dl {
   display: grid;
   grid-template-columns: max-content auto; }

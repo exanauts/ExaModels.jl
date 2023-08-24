@@ -68,7 +68,7 @@ makedocs(
     format = Documenter.HTML(
         assets = [
             "assets/favicon.ico",
-            "assets/citations.css"
+            "assets/extra.css",
         ],
         prettyurls = true,
         sidebar_sitename = true,
