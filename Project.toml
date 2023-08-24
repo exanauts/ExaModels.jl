@@ -13,7 +13,6 @@ KernelAbstractions = "63c18a36-062a-441e-b654-da1e3ab1ce7c"
 SpecialFunctions = "276daf66-3868-5448-9aa4-cd146d93841b"
 oneAPI = "8f75cd03-7ff8-4ecb-9b8f-daf728133b1b"
 AMDGPU = "21141c5a-9bdb-4563-92ae-f87d6854732e"
-Metal = "dde4c033-4e86-420c-a63e-0dd931031962"
 
 [extensions]
 ExaModelsCUDA = "CUDA"
@@ -21,7 +20,6 @@ ExaModelsKernelAbstractions = "KernelAbstractions"
 ExaModelsOneAPI = "oneAPI"
 ExaModelsSpecialFunctions = "SpecialFunctions"
 ExaModelsAMDGPU = "AMDGPU"
-ExaModelsMetal = "Metal"
 
 [compat]
 CUDA = "4"
@@ -31,7 +29,6 @@ SolverCore = "0.3"
 SpecialFunctions = "2"
 julia = "1.9"
 oneAPI = "1"
-Metal = "0.5"
 AMDGPU = "0.5"
 
 [extras]

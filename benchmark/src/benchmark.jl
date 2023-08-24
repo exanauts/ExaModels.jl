@@ -509,9 +509,10 @@ function export_latex(fname, result)
          for d in result.data), "\\\\ \n")
 
     tex = L"""
+
 \begin{tabular}{|l|cc|ccccc|}
   \hline
-  \multicolumn{8}{|c|}{$(result.name)}\\
+  \multicolumn{8}{|c|}{%$(result.name) / %$(result.hardware)}\\
   \hline
   case & nvar & ncon & obj & cons & grad & jac & hess\\
   \hline
@@ -519,6 +520,7 @@ function export_latex(fname, result)
   \\
   \hline
 \end{tabular}
+
 """[2:end-1]
 
     return write(fname, tex)
