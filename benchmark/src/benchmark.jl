@@ -139,7 +139,7 @@ end
 
 export benchmark, deploy
 
-@kwdef struct BenchmarkResult
+@kwdef mutable struct BenchmarkResult
     name::String = ""
     data::Vector = []
     id::String = "$(UUIDs.uuid4())"
@@ -511,7 +511,7 @@ function export_latex(fname, result)
     tex = L"""
 \begin{tabular}{|l|cc|ccccc|}
   \hline
-  \multicolumn{8}{c|}{ExaModels (single)}\\
+  \multicolumn{8}{|c|}{$(result.name)}\\
   \hline
   case & nvar & ncon & obj & cons & grad & jac & hess\\
   \hline
