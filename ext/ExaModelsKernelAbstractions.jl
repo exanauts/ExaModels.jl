@@ -72,7 +72,7 @@ end
 function _conaug_structure!(backend, cons::ExaModels.ConstraintNull, sparsity) end
 @kernel function kers(sparsity, @Const(f), @Const(itr), @Const(oa))
     I = @index(Global)
-    sparsity[oa+I] = (ExaModels.offset0(f, itr, I), oa + I)
+    @inbounds sparsity[oa+I] = (ExaModels.offset0(f, itr, I), oa + I)
 end
 
 
@@ -292,7 +292,7 @@ end
 
 @kernel function kerh(y1, y2, @Const(f), @Const(itr), @Const(x), @Const(adj1), @Const(adj2))
     I = @index(Global)
-    ExaModels.hrpass0(
+    @inbounds ExaModels.hrpass0(
         f.f(itr[I], ExaModels.SecondAdjointNodeSource(x)),
         f.comp2,
         y1,
@@ -314,7 +314,7 @@ end
     @Const(adj2)
 )
     I = @index(Global)
-    ExaModels.hrpass0(
+    @inbounds ExaModels.hrpass0(
         f.f(itr[I], ExaModels.SecondAdjointNodeSource(x)),
         f.comp2,
         y1,
@@ -328,7 +328,7 @@ end
 
 @kernel function kerj(y1, y2, @Const(f), @Const(itr), @Const(x), @Const(adj))
     I = @index(Global)
-    ExaModels.jrpass(
+    @inbounds ExaModels.jrpass(
         f.f(itr[I], ExaModels.AdjointNodeSource(x)),
         f.comp1,
         ExaModels.offset0(f, itr, I),
@@ -342,7 +342,7 @@ end
 
 @kernel function kerg(y, @Const(f), @Const(itr), @Const(x), @Const(adj))
     I = @index(Global)
-    ExaModels.grpass(
+    @inbounds ExaModels.grpass(
         f.f(itr[I], ExaModels.AdjointNodeSource(x)),
         f.comp1,
         y,
@@ -354,17 +354,17 @@ end
 
 @kernel function kerf(y, @Const(f), @Const(itr), @Const(x))
     I = @index(Global)
-    y[ExaModels.offset0(f, itr, I)] = f.f(itr[I], x)
+    @inbounds y[ExaModels.offset0(f, itr, I)] = f.f(itr[I], x)
 end
 @kernel function kerf2(y, @Const(f), @Const(itr), @Const(x), @Const(oa))
     I = @index(Global)
-    y[oa+I] = f.f(itr[I], x)
+    @inbounds y[oa+I] = f.f(itr[I], x)
 end
 
 
 @kernel function compress_to_dense(y, @Const(y0), @Const(ptr), @Const(sparsity))
     I = @index(Global)
-    for j = ptr[I]:ptr[I+1]-1
+    @inbounds for j = ptr[I]:ptr[I+1]-1
         (k, l) = sparsity[j]
         y[k] += y0[l]
     end
@@ -372,7 +372,7 @@ end
 
 @kernel function kergetptr(bitarray, @Const(array))
     I = @index(Global)
-    if I == 1
+    @inbounds if I == 1
         bitarray[I] = true
     elseif I == length(array) + 1
         bitarray[I] = true
