@@ -14,8 +14,10 @@ ExaModels.jl employs what we call **[SIMD](https://en.wikipedia.org/wiki/Single_
 ExaModels.jl is different from other algebraic modeling tools, such as [JuMP](https://github.com/jump-dev/JuMP.jl) or [AMPL](https://ampl.com/), in the following ways:
 - **Modeling Interface**: ExaModels.jl enforces users to specify the model equations always in the form of `Generator`. This allows ExaModels.jl to preserve the SIMD-compatible structure in the model equations.
 - **Performance**: ExaModels.jl compiles (via Julia's compiler) derivative evaluation codes that are specific to each computation pattern, based on reverse-mode automatic differentiation. This makes the speed of derivative evaluation (even on the CPU) significantly faster than other existing tools.
-- **Portability**: ExaModels.jl can evaluate derivatives on GPU accelerators. The code is currently only tested for NVIDIA GPUs, but GPU code is implemented mostly based on the portable programming paradigm, [KernelAbstractions.jl](https://github.com/JuliaGPU/KernelAbstractions.jl). In the future, we are interested in supporting Intel, AMD, and Apple GPUs.
+- **Portability**: ExaModels.jl can evaluate derivatives on GPU accelerators. The GPU kernels are implemented with the portable programming paradigm, [KernelAbstractions.jl](https://github.com/JuliaGPU/KernelAbstractions.jl), and the code runs on different devices, including multi-threaded CPUs, NVIDIA GPUs, AMD GPUs, and Intel GPUs. Apple's Metal is currently not supported because it does not support double-precision arithmetic.
 
+The performance comparison of ExaModels with other algebraic modeling systems for evaluating different NLP functions (obj, con, grad, jac, and hess) are shown below. Note that Hessian computations are the typical bottlenecks.
+![benchmark](https://raw.githubusercontent.com/sshin23/ExaModels.jl/480ecc42359edb01a9d4544b884bd56bf19c3ab8/docs/src/assets/benchmark.svg)
 ## Supporting ExaModels.jl
 - Please report issues and feature requests via the [GitHub issue tracker](https://github.com/sshin/ExaModels.jl/issues).
 - Questions are welcome at [GitHub discussion forum](https://github.com/sshin23/ExaModels.jl/discussions).
