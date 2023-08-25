@@ -28,7 +28,7 @@ println("$t seconds elapsed")
 ````
 
 ````
-0.081519012 seconds elapsed
+0.077558709 seconds elapsed
 
 ````
 
@@ -52,7 +52,7 @@ println("$t seconds elapsed")
 ````
 
 ````
-0.080016394 seconds elapsed
+0.078979772 seconds elapsed
 
 ````
 
@@ -78,7 +78,7 @@ println("$t seconds elapsed")
 ````
 
 ````
-0.110422069 seconds elapsed
+0.110238629 seconds elapsed
 
 ````
 
@@ -88,7 +88,7 @@ println("$t seconds elapsed")
 ````
 
 ````
-7.0176e-5 seconds elapsed
+7.7875e-5 seconds elapsed
 
 ````
 
@@ -249,7 +249,7 @@ benchmark_callbacks(m1)
 ````
 
 ````
-(tobj = 1.801149e-5, tcon = 2.677913e-5, tgrad = 1.880002e-5, tjac = 3.380795e-5, thess = 0.00032226008, tjacs = 1.198617e-5, thesss = 1.4400350000000002e-5)
+(tobj = 2.25784e-5, tcon = 2.0715170000000002e-5, tgrad = 1.66088e-5, tjac = 3.255548e-5, thess = 0.00020214717, tjacs = 1.153889e-5, thesss = 1.726594e-5)
 ````
 
 ````julia
@@ -257,7 +257,7 @@ benchmark_callbacks(m2)
 ````
 
 ````
-(tobj = 6.444421e-5, tcon = 0.00012509315, tgrad = 0.00013694621000000001, tjac = 0.00043552689, thess = 0.00143530613, tjacs = 0.00017682197, thesss = 0.00059633767)
+(tobj = 5.456354e-5, tcon = 0.00011960496, tgrad = 0.00014311511000000002, tjac = 0.0004568199, thess = 0.00117255006, tjacs = 0.00016572139, thesss = 0.00055759719)
 ````
 
 As can be seen here, having concrete eltype dramatically improves the performance. This is because when all the data arrays' eltypes are concrete, the AD evaluations can be performed without any type inferernce, and this should be as fast as highly optimized C/C++/Fortran code.
@@ -275,6 +275,111 @@ end
 ````
 
 ````
+┌ Error: Failed to initialize CUDA
+│   exception =
+│    CUDA error (code 999, CUDA_ERROR_UNKNOWN)
+│    Stacktrace:
+│      [1] throw_api_error(res::CUDA.cudaError_enum)
+│        @ CUDA ~/.julia/packages/CUDA/tVtYo/lib/cudadrv/libcuda.jl:27
+│      [2] check
+│        @ CUDA ~/.julia/packages/CUDA/tVtYo/lib/cudadrv/libcuda.jl:34 [inlined]
+│      [3] cuInit
+│        @ CUDA ~/.julia/packages/CUDA/tVtYo/lib/utils/call.jl:26 [inlined]
+│      [4] __init__()
+│        @ CUDA ~/.julia/packages/CUDA/tVtYo/src/initialization.jl:125
+│      [5] run_module_init(mod::Module, i::Int64)
+│        @ Base ./loading.jl:1128
+│      [6] register_restored_modules(sv::Core.SimpleVector, pkg::Base.PkgId, path::String)
+│        @ Base ./loading.jl:1116
+│      [7] _include_from_serialized(pkg::Base.PkgId, path::String, ocachepath::String, depmods::Vector{Any})
+│        @ Base ./loading.jl:1061
+│      [8] _require_search_from_serialized(pkg::Base.PkgId, sourcepath::String, build_id::UInt128)
+│        @ Base ./loading.jl:1575
+│      [9] _require(pkg::Base.PkgId, env::String)
+│        @ Base ./loading.jl:1932
+│     [10] __require_prelocked(uuidkey::Base.PkgId, env::String)
+│        @ Base ./loading.jl:1806
+│     [11] #invoke_in_world#3
+│        @ Base ./essentials.jl:921 [inlined]
+│     [12] invoke_in_world
+│        @ Base ./essentials.jl:918 [inlined]
+│     [13] _require_prelocked(uuidkey::Base.PkgId, env::String)
+│        @ Base ./loading.jl:1797
+│     [14] macro expansion
+│        @ Base ./loading.jl:1784 [inlined]
+│     [15] macro expansion
+│        @ Base ./lock.jl:267 [inlined]
+│     [16] __require(into::Module, mod::Symbol)
+│        @ Base ./loading.jl:1747
+│     [17] #invoke_in_world#3
+│        @ Base ./essentials.jl:921 [inlined]
+│     [18] invoke_in_world
+│        @ Base ./essentials.jl:918 [inlined]
+│     [19] require(into::Module, mod::Symbol)
+│        @ Base ./loading.jl:1740
+│     [20] eval
+│        @ Core ./boot.jl:383 [inlined]
+│     [21] include_string(mapexpr::typeof(identity), mod::Module, code::String, filename::String)
+│        @ Base ./loading.jl:2070
+│     [22] include_string(mapexpr::typeof(identity), mod::Module, code::String, filename::String)
+│        @ Base ./loading.jl:2080 [inlined]
+│     [23] #44
+│        @ IOCapture ~/.julia/packages/Literate/ZJPmT/src/Literate.jl:850 [inlined]
+│     [24] (::IOCapture.var"#3#5"{Core.TypeofBottom, Literate.var"#44#45"{String, Module, String}, Task, IOContext{Base.PipeEndpoint}, IOContext{Base.PipeEndpoint}, Base.TTY, Base.TTY})()
+│        @ IOCapture ~/.julia/packages/IOCapture/8Uj7o/src/IOCapture.jl:119
+│     [25] with_logstate(f::Function, logstate::Any)
+│        @ Base.CoreLogging ./logging.jl:515
+│     [26] with_logger
+│        @ IOCapture ./logging.jl:627 [inlined]
+│     [27] capture(f::Literate.var"#44#45"{String, Module, String}; rethrow::Type, color::Bool)
+│        @ IOCapture ~/.julia/packages/IOCapture/8Uj7o/src/IOCapture.jl:116
+│     [28] capture
+│        @ Literate ~/.julia/packages/IOCapture/8Uj7o/src/IOCapture.jl:72 [inlined]
+│     [29] execute_block(sb::Module, block::String; inputfile::String, fake_source::String)
+│        @ Literate ~/.julia/packages/Literate/ZJPmT/src/Literate.jl:849
+│     [30] execute_block
+│        @ Literate ~/.julia/packages/Literate/ZJPmT/src/Literate.jl:834 [inlined]
+│     [31] execute_markdown!(io::IOBuffer, sb::Module, block::String, outputdir::String; inputfile::String, fake_source::String, flavor::Literate.DocumenterFlavor, image_formats::Vector{Tuple{MIME, String}}, file_prefix::String)
+│        @ Literate ~/.julia/packages/Literate/ZJPmT/src/Literate.jl:598
+│     [32] (::Literate.var"#28#30"{Dict{String, Any}, String, IOBuffer, Module, Literate.CodeChunk, Int64})()
+│        @ Literate ~/.julia/packages/Literate/ZJPmT/src/Literate.jl:573
+│     [33] cd(f::Literate.var"#28#30"{Dict{String, Any}, String, IOBuffer, Module, Literate.CodeChunk, Int64}, dir::String)
+│        @ Base.Filesystem ./file.jl:112
+│     [34] markdown(inputfile::String, outputdir::String; config::Dict{Any, Any}, kwargs::@Kwargs{documenter::Bool, execute::Bool})
+│        @ Literate ~/.julia/packages/Literate/ZJPmT/src/Literate.jl:572
+│     [35] markdown
+│        @ ~/.julia/packages/Literate/ZJPmT/src/Literate.jl:536 [inlined]
+│     [36] top-level scope
+│        @ ~/git/ExaModels.jl/docs/make.jl:42
+│     [37] include(fname::String)
+│        @ Base.MainInclude ./client.jl:489
+│     [38] top-level scope
+│        @ REPL[1]:1
+│     [39] eval
+│        @ Core ./boot.jl:383 [inlined]
+│     [40] eval_user_input(ast::Any, backend::REPL.REPLBackend, mod::Module)
+│        @ REPL ~/.julia/juliaup/julia-1.10.0-beta2+0.x64.linux.gnu/share/julia/stdlib/v1.10/REPL/src/REPL.jl:150
+│     [41] repl_backend_loop(backend::REPL.REPLBackend, get_module::Function)
+│        @ REPL ~/.julia/juliaup/julia-1.10.0-beta2+0.x64.linux.gnu/share/julia/stdlib/v1.10/REPL/src/REPL.jl:246
+│     [42] start_repl_backend(backend::REPL.REPLBackend, consumer::Any; get_module::Function)
+│        @ REPL ~/.julia/juliaup/julia-1.10.0-beta2+0.x64.linux.gnu/share/julia/stdlib/v1.10/REPL/src/REPL.jl:231
+│     [43] run_repl(repl::REPL.AbstractREPL, consumer::Any; backend_on_current_task::Bool, backend::Any)
+│        @ REPL ~/.julia/juliaup/julia-1.10.0-beta2+0.x64.linux.gnu/share/julia/stdlib/v1.10/REPL/src/REPL.jl:389
+│     [44] run_repl(repl::REPL.AbstractREPL, consumer::Any)
+│        @ REPL ~/.julia/juliaup/julia-1.10.0-beta2+0.x64.linux.gnu/share/julia/stdlib/v1.10/REPL/src/REPL.jl:375
+│     [45] (::Base.var"#1012#1014"{Bool, Bool, Bool})(REPL::Module)
+│        @ Base ./client.jl:432
+│     [46] #invokelatest#2
+│        @ Base ./essentials.jl:887 [inlined]
+│     [47] invokelatest
+│        @ Base ./essentials.jl:884 [inlined]
+│     [48] run_main_repl(interactive::Bool, quiet::Bool, banner::Bool, history_file::Bool, color_set::Bool)
+│        @ Base ./client.jl:416
+│     [49] exec_options(opts::Base.JLOptions)
+│        @ Base ./client.jl:333
+│     [50] _start()
+│        @ Base ./client.jl:552
+└ @ CUDA ~/.julia/packages/CUDA/tVtYo/src/initialization.jl:127
 CuArray only supports element types that are allocated inline.
 Any is not allocated inline
 
