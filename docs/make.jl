@@ -1,4 +1,5 @@
 using Documenter, DocumenterCitations, ExaModels, Literate
+# using tectonic_jll
 
 if !(@isdefined _LATEX)
     const _LATEX = true
@@ -49,15 +50,15 @@ end
 
 bib = CitationBibliography(joinpath(@__DIR__, "src", "refs.bib"))
 
-if _LATEX
-    makedocs(
-    bib, 
-    sitename = "ExaModels",
-    authors = "Sungho Shin",
-    format = Documenter.LaTeX(),
-    pages = _PAGES,
-)
-end
+# if _LATEX
+#     makedocs(
+#         bib, 
+#         sitename = "ExaModels",
+#         authors = "Sungho Shin",
+#         format = Documenter.LaTeX(),
+#         pages = _PAGES,
+#     )
+# end
 
 
 makedocs(
@@ -68,7 +69,7 @@ makedocs(
     format = Documenter.HTML(
         assets = [
             "assets/favicon.ico",
-            "assets/extra.css",
+            "assets/citations.css",
         ],
         prettyurls = true,
         sidebar_sitename = true,

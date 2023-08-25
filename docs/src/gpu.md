@@ -1,5 +1,5 @@
 ```@meta
-EditURL = "<unknown>/src/gpu.jl"
+EditURL = "gpu.jl"
 ```
 
 # Accelerations

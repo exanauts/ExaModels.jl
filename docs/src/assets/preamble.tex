@@ -1,0 +1,148 @@
+%% Default preamble BEGIN
+\documentclass[oneside]{memoir}
+
+
+% font settings
+\usepackage{fontspec, newunicodechar, polyglossia}
+
+% \setsansfont{DejaVu Sans}[Scale=MatchLowercase, Ligatures=TeX]
+% \setmonofont{DejaVu Sans Mono}[Scale=MatchLowercase]
+\renewcommand{\familydefault}{\sfdefault}
+% DejaVu Sans Mono does not have the xor symbol. So we hack around that by replacing all
+% instances of it with calls to \unicodeveebar, which prints this single character as with
+% DejaVu Sans instead.
+% \newfontfamily\unicodeveebarfont{DejaVu Sans}[Scale=MatchLowercase]
+\newcommand\unicodeveebar{{\unicodeveebarfont ⊻}}
+%
+
+% colours
+\usepackage{xcolor}
+
+\definecolor{light-blue}{HTML}{6b85dd}
+\definecolor{dark-blue}{HTML}{4266d5}
+\definecolor{light-red}{HTML}{d66661}
+\definecolor{dark-red}{HTML}{c93d39}
+\definecolor{light-green}{HTML}{6bab5b}
+\definecolor{dark-green}{HTML}{3b972e}
+\definecolor{light-purple}{HTML}{aa7dc0}
+\definecolor{dark-purple}{HTML}{945bb0}
+\definecolor{codeblock-background}{gray}{0.96}
+\definecolor{codeblock-border}{gray}{0.8}
+%
+
+% maths
+\usepackage{amsmath, amssymb}
+%
+
+% listings
+\usepackage{minted}
+\setminted{
+    breaklines = true,
+    fontsize = \small,
+    frame = none,
+    bgcolor = codeblock-background,
+    rulecolor=codeblock-border,
+}
+%
+
+% tables
+\usepackage{tabulary}
+%
+
+% hyperref
+\usepackage{hyperref}
+\hypersetup{
+    pdfpagelabels,
+    bookmarks,
+    hyperindex,
+    unicode = true,
+    linkcolor = dark-blue,
+    urlcolor = dark-purple,
+    colorlinks = true,
+}
+%
+
+% table of contents
+\maxtocdepth{subsection}
+%
+
+% paragraphs
+\setlength{\parindent}{0pt}
+\nonzeroparskip
+%
+
+% adjust margins
+\setulmarginsandblock{1.5in}{1in}{*}
+\setlrmarginsandblock{1.5in}{1in}{*}
+\setheaderspaces{1in}{*}{*}
+\checkandfixthelayout
+%
+
+% images etc.
+\usepackage{graphicx}
+\usepackage[export]{adjustbox}
+%
+
+% Some internal link targets are implemented with \label, some with \hypertarget,
+% but they require different links. This inserts a \hyperref if a corresponding label exists,
+% and \hyperlink if it doesn't.
+\def\hyperlinkref#1#2{\@ifundefined{r@#1}{\hyperlink{#1}{#2}}{\hyperref[#1]{#2}}}
+%
+
+% styling of admonitions. tcolorbox is available in the texlive-latex-extra
+% package
+\usepackage{tcolorbox}
+% These colors are taken from documenter-light.css in the HTML assets.
+\definecolor{admonition-default}{HTML}{363636}
+\definecolor{admonition-danger}{HTML}{da0b00}
+\definecolor{admonition-warning}{HTML}{ffdd57}
+\definecolor{admonition-note}{HTML}{209cee}
+\definecolor{admonition-info}{HTML}{209cee}
+\definecolor{admonition-tip}{HTML}{22c35b}
+\definecolor{admonition-compat}{HTML}{1db5c9}
+%
+
+% Styling of tables.
+\usepackage{booktabs}
+%
+
+%% Title Page
+\title{
+    {\HUGE \DocMainTitle }\\
+    {\Large \DocVersion }
+}
+\author{ \DocAuthors }
+
+%% TOC settings
+% -- TOC depth
+%   value: [part, chapter, section, subsection,
+%           subsubsection, paragraph, subparagraph]
+\settocdepth{section}  % show "part+chapter+section" in TOC
+% -- TOC spacing
+%   ref: https://tex.stackexchange.com/questions/60317/toc-spacing-in-memoir
+%   doc: memoir/memman.pdf
+%       - Figure 9.2: Layout of a ToC
+%       - Table 9.3: Value of K in macros for styling entries
+\makeatletter
+% {part} to {chapter}
+\setlength{\cftbeforepartskip}{1.5em \@plus \p@}
+% {chapter} to {chapter}
+\setlength{\cftbeforechapterskip}{0.0em \@plus \p@}
+% Chapter num to chapter title spacing (Figure 9.2@memman)
+\setlength{\cftchapternumwidth}{2.5em \@plus \p@}
+% indent before section number
+\setlength{\cftsectionindent}{2.5em \@plus \p@}
+% Section num to section title spacing (Figure 9.2@memman)
+\setlength{\cftsectionnumwidth}{4.0em \@plus \p@}
+\makeatother
+
+%% Main document begin
+\begin{document}
+
+\frontmatter
+\maketitle
+\clearpage
+\tableofcontents
+
+\mainmatter
+%% preamble END

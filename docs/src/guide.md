@@ -1,5 +1,5 @@
 ```@meta
-EditURL = "<unknown>/src/guide.jl"
+EditURL = "guide.jl"
 ```
 
 # Getting Started

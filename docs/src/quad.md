@@ -1,5 +1,5 @@
 ```@meta
-EditURL = "<unknown>/src/quad.jl"
+EditURL = "quad.jl"
 ```
 
 # Example: Quadrotor

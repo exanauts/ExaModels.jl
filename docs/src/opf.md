@@ -1,5 +1,5 @@
 ```@meta
-EditURL = "<unknown>/src/opf.jl"
+EditURL = "opf.jl"
 ```
 
 # Example: Optimal Power Flow
@@ -273,17 +273,21 @@ Downloads.download(
 ````
 
 ````
-"/tmp/jl_nKd4rehGxa.m"
+"/tmp/jl_FS1etkBURs.m"
 ````
 
 Then, we can model/sovle the problem.
 
 ````julia
 using PowerModels, ExaModels, NLPModelsIpopt
-````
 
 m = ac_power_model(case)
 ipopt(m)
+````
+
+````
+"Execution stats: first-order stationary"
+````
 
 ---
 
