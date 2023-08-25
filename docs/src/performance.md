@@ -28,7 +28,7 @@ println("$t seconds elapsed")
 ````
 
 ````
-0.077558709 seconds elapsed
+0.079290324 seconds elapsed
 
 ````
 
@@ -52,7 +52,7 @@ println("$t seconds elapsed")
 ````
 
 ````
-0.078979772 seconds elapsed
+0.078673574 seconds elapsed
 
 ````
 
@@ -78,7 +78,7 @@ println("$t seconds elapsed")
 ````
 
 ````
-0.110238629 seconds elapsed
+0.110436831 seconds elapsed
 
 ````
 
@@ -88,7 +88,7 @@ println("$t seconds elapsed")
 ````
 
 ````
-7.7875e-5 seconds elapsed
+6.8465e-5 seconds elapsed
 
 ````
 
@@ -249,7 +249,7 @@ benchmark_callbacks(m1)
 ````
 
 ````
-(tobj = 2.25784e-5, tcon = 2.0715170000000002e-5, tgrad = 1.66088e-5, tjac = 3.255548e-5, thess = 0.00020214717, tjacs = 1.153889e-5, thesss = 1.726594e-5)
+(tobj = 1.739256e-5, tcon = 1.696618e-5, tgrad = 1.529262e-5, tjac = 3.227811e-5, thess = 0.00036055241000000003, tjacs = 1.2323e-5, thesss = 1.966526e-5)
 ````
 
 ````julia
@@ -257,7 +257,7 @@ benchmark_callbacks(m2)
 ````
 
 ````
-(tobj = 5.456354e-5, tcon = 0.00011960496, tgrad = 0.00014311511000000002, tjac = 0.0004568199, thess = 0.00117255006, tjacs = 0.00016572139, thesss = 0.00055759719)
+(tobj = 5.976038e-5, tcon = 0.00012149577, tgrad = 0.00013410325, tjac = 0.00043746264, thess = 0.00143735102, tjacs = 0.00017240098, thesss = 0.00058127776)
 ````
 
 As can be seen here, having concrete eltype dramatically improves the performance. This is because when all the data arrays' eltypes are concrete, the AD evaluations can be performed without any type inferernce, and this should be as fast as highly optimized C/C++/Fortran code.

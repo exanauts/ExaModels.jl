@@ -28,7 +28,6 @@ end
 Base.show(io::IO, v::Objective) = print(
     io,
     """
-
 Objective
 
   min (...) + ∑_{p ∈ P} f(x,p)
@@ -47,7 +46,6 @@ end
 Base.show(io::IO, v::Constraint) = print(
     io,
     """
-
 Constraint
 
   s.t. (...)
