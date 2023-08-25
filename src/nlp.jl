@@ -242,7 +242,7 @@ end
     (v.offset - _start(v.size[1]) + 1 - _start(v.size[2]) * _length(v.size[1])),
 )
 
-function myappend!(a, b::Base.Generator, lb)
+function append!(a, b::Base.Generator, lb)
 
     la = length(a)
     resize!(a, la + lb)
@@ -250,7 +250,7 @@ function myappend!(a, b::Base.Generator, lb)
     return a
 end
 
-function myappend!(a, b::AbstractArray, lb)
+function append!(a, b::AbstractArray, lb)
 
     la = length(a)
     resize!(a, la + lb)
@@ -258,7 +258,7 @@ function myappend!(a, b::AbstractArray, lb)
     return a
 end
 
-function myappend!(a, b::Number, lb)
+function append!(a, b::Number, lb)
 
     la = length(a)
     resize!(a, la + lb)
@@ -313,9 +313,9 @@ function variable(
 
     o = c.nvar
     c.nvar += total(ns)
-    c.x0 = myappend!(c.x0, start, total(ns))
-    c.lvar = myappend!(c.lvar, lvar, total(ns))
-    c.uvar = myappend!(c.uvar, uvar, total(ns))
+    c.x0 = append!(c.x0, start, total(ns))
+    c.lvar = append!(c.lvar, lvar, total(ns))
+    c.uvar = append!(c.uvar, uvar, total(ns))
 
     return Variable(ns, o)
 
@@ -395,9 +395,9 @@ function constraint(
     c.nnzj += nitr * f.o1step
     c.nnzh += nitr * f.o2step
 
-    c.y0 = myappend!(c.y0, start, nitr)
-    c.lcon = myappend!(c.lcon, lcon, nitr)
-    c.ucon = myappend!(c.ucon, ucon, nitr)
+    c.y0 = append!(c.y0, start, nitr)
+    c.lcon = append!(c.lcon, lcon, nitr)
+    c.ucon = append!(c.ucon, ucon, nitr)
 
     c.con = Constraint(c.con, f, gen.iter, o)
 end
