@@ -28,7 +28,7 @@ println("$t seconds elapsed")
 ````
 
 ````
-0.079290324 seconds elapsed
+0.081741408 seconds elapsed
 
 ````
 
@@ -52,7 +52,7 @@ println("$t seconds elapsed")
 ````
 
 ````
-0.078673574 seconds elapsed
+0.079568836 seconds elapsed
 
 ````
 
@@ -78,7 +78,7 @@ println("$t seconds elapsed")
 ````
 
 ````
-0.110436831 seconds elapsed
+0.110675498 seconds elapsed
 
 ````
 
@@ -88,7 +88,7 @@ println("$t seconds elapsed")
 ````
 
 ````
-6.8465e-5 seconds elapsed
+9.4596e-5 seconds elapsed
 
 ````
 
@@ -249,7 +249,7 @@ benchmark_callbacks(m1)
 ````
 
 ````
-(tobj = 1.739256e-5, tcon = 1.696618e-5, tgrad = 1.529262e-5, tjac = 3.227811e-5, thess = 0.00036055241000000003, tjacs = 1.2323e-5, thesss = 1.966526e-5)
+(tobj = 1.714591e-5, tcon = 2.654205e-5, tgrad = 1.8927950000000002e-5, tjac = 3.6279900000000005e-5, thess = 0.00015366121, tjacs = 1.408699e-5, thesss = 1.314101e-5)
 ````
 
 ````julia
@@ -257,7 +257,7 @@ benchmark_callbacks(m2)
 ````
 
 ````
-(tobj = 5.976038e-5, tcon = 0.00012149577, tgrad = 0.00013410325, tjac = 0.00043746264, thess = 0.00143735102, tjacs = 0.00017240098, thesss = 0.00058127776)
+(tobj = 5.4961510000000006e-5, tcon = 0.00010298229, tgrad = 0.00016306678000000001, tjac = 0.0005182674999999999, thess = 0.00152483005, tjacs = 0.00019729928, thesss = 0.0006343117299999999)
 ````
 
 As can be seen here, having concrete eltype dramatically improves the performance. This is because when all the data arrays' eltypes are concrete, the AD evaluations can be performed without any type inferernce, and this should be as fast as highly optimized C/C++/Fortran code.
@@ -351,33 +351,11 @@ end
 │        @ ~/.julia/packages/Literate/ZJPmT/src/Literate.jl:536 [inlined]
 │     [36] top-level scope
 │        @ ~/git/ExaModels.jl/docs/make.jl:42
-│     [37] include(fname::String)
-│        @ Base.MainInclude ./client.jl:489
-│     [38] top-level scope
-│        @ REPL[1]:1
-│     [39] eval
-│        @ Core ./boot.jl:383 [inlined]
-│     [40] eval_user_input(ast::Any, backend::REPL.REPLBackend, mod::Module)
-│        @ REPL ~/.julia/juliaup/julia-1.10.0-beta2+0.x64.linux.gnu/share/julia/stdlib/v1.10/REPL/src/REPL.jl:150
-│     [41] repl_backend_loop(backend::REPL.REPLBackend, get_module::Function)
-│        @ REPL ~/.julia/juliaup/julia-1.10.0-beta2+0.x64.linux.gnu/share/julia/stdlib/v1.10/REPL/src/REPL.jl:246
-│     [42] start_repl_backend(backend::REPL.REPLBackend, consumer::Any; get_module::Function)
-│        @ REPL ~/.julia/juliaup/julia-1.10.0-beta2+0.x64.linux.gnu/share/julia/stdlib/v1.10/REPL/src/REPL.jl:231
-│     [43] run_repl(repl::REPL.AbstractREPL, consumer::Any; backend_on_current_task::Bool, backend::Any)
-│        @ REPL ~/.julia/juliaup/julia-1.10.0-beta2+0.x64.linux.gnu/share/julia/stdlib/v1.10/REPL/src/REPL.jl:389
-│     [44] run_repl(repl::REPL.AbstractREPL, consumer::Any)
-│        @ REPL ~/.julia/juliaup/julia-1.10.0-beta2+0.x64.linux.gnu/share/julia/stdlib/v1.10/REPL/src/REPL.jl:375
-│     [45] (::Base.var"#1012#1014"{Bool, Bool, Bool})(REPL::Module)
-│        @ Base ./client.jl:432
-│     [46] #invokelatest#2
-│        @ Base ./essentials.jl:887 [inlined]
-│     [47] invokelatest
-│        @ Base ./essentials.jl:884 [inlined]
-│     [48] run_main_repl(interactive::Bool, quiet::Bool, banner::Bool, history_file::Bool, color_set::Bool)
-│        @ Base ./client.jl:416
-│     [49] exec_options(opts::Base.JLOptions)
-│        @ Base ./client.jl:333
-│     [50] _start()
+│     [37] include(mod::Module, _path::String)
+│        @ Base ./Base.jl:489
+│     [38] exec_options(opts::Base.JLOptions)
+│        @ Base ./client.jl:318
+│     [39] _start()
 │        @ Base ./client.jl:552
 └ @ CUDA ~/.julia/packages/CUDA/tVtYo/src/initialization.jl:127
 CuArray only supports element types that are allocated inline.

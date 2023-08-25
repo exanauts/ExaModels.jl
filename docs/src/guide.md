@@ -71,7 +71,6 @@ objective(c, 100 * (x[i-1]^2 - x[i])^2 + (x[i-1] - 1)^2 for i = 2:N)
 ````
 
 ````
-
 Objective
 
   min (...) + ∑_{p ∈ P} f(x,p)
@@ -91,7 +90,6 @@ constraint(
 ````
 
 ````
-
 Constraint
 
   s.t. (...)
