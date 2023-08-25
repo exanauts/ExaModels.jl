@@ -1,8 +1,8 @@
 # Overview
 
 Welcome to the documentation of [ExaModels.jl](https://github.com/sshin23/ExaModels.jl)	
-!!! note
-    This documentation is also available in PDF format: [ExaModels.pdf](ExaModels.pdf).
+<!-- !!! note -->
+<!--     This documentation is also available in PDF format: [ExaModels.pdf](ExaModels.pdf). -->
 
 !!! warning
 	**This documentation page is currently under construction.** **Please help us improve ExaModels.jl and this documentation!** ExaModels.jl is in the early stage of development, and you may encounter unintended behaviors or missing documentations. If you find anything is not working as intended or documentation is missing, please [open issues](https://github.com/sshin/ExaModels.jl/issues) or [pull requests](https://github.com/sshin/ExaModels.jl/pulls) or start [discussions](https://github.com/sshin/ExaModels.jl/discussions). 

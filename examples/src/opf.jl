@@ -1,15 +1,36 @@
-```@meta
-EditURL = "<unknown>/src/opf.jl"
-```
+function get_power_case(filename)
+    if !isfile(filename)
+        ff = joinpath(TMPDIR, filename)
+        if !isfile(ff)
+            @info "Downloading $filename"
+            Downloads.download(
+                "https://raw.githubusercontent.com/power-grid-lib/pglib-opf/dc6be4b2f85ca0e776952ec22cbd4c22396ea5a3/$filename",
+                joinpath(TMPDIR, filename)
+            )
+            return joinpath(TMPDIR, filename)
+        else
+            return ff
+        end
+    else
+        return filename
+    end
+end
 
-# Example: Optimal Power Flow
 
-````julia
-function parse_ac_power_data(filename)
-    data = PowerModels.parse_file(filename)
+function get_power_data_ref(filename)
+    case = get_power_case(filename)
+    data = PowerModels.parse_file(case)
     PowerModels.standardize_cost_terms!(data, order=2)
     PowerModels.calc_thermal_limits!(data)
-    ref = PowerModels.build_ref(data)[:it][:pm][:nw][0]
+    return PowerModels.build_ref(data)[:it][:pm][:nw][0]
+end
+
+convert_data(data::N, backend) where {names, N <: NamedTuple{names}} = NamedTuple{names}(ExaModels.convert_array(d,backend) for d in data)
+parse_ac_power_data(filename, backend) = convert_data(parse_ac_power_data(filename), backend)
+
+
+function parse_ac_power_data(filename)
+    ref = get_power_data_ref(filename)
 
     arcdict = Dict(
         a=>k
@@ -23,24 +44,24 @@ function parse_ac_power_data(filename)
     branchdict = Dict(
         k=>i
         for (i,(k,v)) in enumerate(ref[:branch]))
-
+    
     return (
         bus = [
             begin
                 bus_loads = [ref[:load][l] for l in ref[:bus_loads][k]]
                 bus_shunts = [ref[:shunt][s] for s in ref[:bus_shunts][k]]
-                pd = sum(load["pd"] for load in bus_loads; init = 0.)
+                pd = sum(load["pd"] for load in bus_loads; init = 0.) 
                 gs = sum(shunt["gs"] for shunt in bus_shunts; init = 0.)
                 qd = sum(load["qd"] for load in bus_loads; init = 0.)
                 bs = sum(shunt["bs"] for shunt in bus_shunts; init = 0.)
                 (
-                    i = busdict[k],
+                    i = busdict[k], 
                     pd = pd, gs = gs, qd = qd, bs = bs
                 )
             end
             for (k,v) in ref[:bus]],
         gen = [
-            (i = gendict[k],
+            (i = gendict[k], 
              cost1 = v["cost"][1], cost2 = v["cost"][2], cost3 = v["cost"][3], bus = busdict[v["gen_bus"]])
             for (k,v) in ref[:gen]],
         arc =[
@@ -105,191 +126,149 @@ function parse_ac_power_data(filename)
     )
 end
 
-convert_data(data::N, backend) where {names, N <: NamedTuple{names}} = NamedTuple{names}(ExaModels.convert_array(d,backend) for d in data)
-
-parse_ac_power_data(filename, backend) = convert_data(parse_ac_power_data(filename), backend)
-
 function ac_power_model(
-    filename;
+    filename = "pglib_opf_case3_lmbd.m";
     backend = nothing,
     T = Float64
     )
 
-    data = parse_ac_power_data(filename, backend)
+    data = parse_ac_power_data(filename, backend) 
+    
+    w = ExaModels.ExaCore(T, backend)
 
-    w = ExaCore(T, backend)
-
-    va = variable(
+    va = ExaModels.variable(
         w, length(data.bus);
     )
 
-    vm = variable(
-        w,
+    vm = ExaModels.variable(
+        w, 
         length(data.bus);
         start = fill!(similar(data.bus,Float64),1.),
         lvar = data.vmin,
         uvar = data.vmax
     )
-    pg = variable(
-        w,
+    pg = ExaModels.variable(
+        w, 
         length(data.gen);
         lvar = data.pmin,
         uvar = data.pmax
     )
 
-    qg = variable(
-        w,
+    qg = ExaModels.variable(
+        w, 
         length(data.gen);
         lvar = data.qmin,
         uvar = data.qmax
     )
 
-    p = variable(
-        w,
+    p = ExaModels.variable(
+        w, 
         length(data.arc);
         lvar = -data.rate_a,
         uvar = data.rate_a
     )
 
-    q = variable(
-        w,
+    q = ExaModels.variable(
+        w, 
         length(data.arc);
         lvar = -data.rate_a,
         uvar = data.rate_a
     )
 
-    o = objective(
-        w,
+    o = ExaModels.objective(
+        w, 
         g.cost1 * pg[g.i]^2 + g.cost2 * pg[g.i] + g.cost3
         for g in data.gen)
 
-    c1 = constraint(
-        w,
+    c1 = ExaModels.constraint(
+        w, 
         va[i] for i in data.ref_buses)
-
-    c2 = constraint(
-        w,
+    
+    c2 = ExaModels.constraint(
+        w, 
         p[b.f_idx]
         - b.c5*vm[b.f_bus]^2
         - b.c3*(vm[b.f_bus]*vm[b.t_bus]*cos(va[b.f_bus]-va[b.t_bus]))
         - b.c4*(vm[b.f_bus]*vm[b.t_bus]*sin(va[b.f_bus]-va[b.t_bus]))
         for b in data.branch)
 
-    c3 = constraint(
-        w,
+    c3 = ExaModels.constraint(
+        w, 
         q[b.f_idx]
         + b.c6*vm[b.f_bus]^2
         + b.c4*(vm[b.f_bus]*vm[b.t_bus]*cos(va[b.f_bus]-va[b.t_bus]))
         - b.c3*(vm[b.f_bus]*vm[b.t_bus]*sin(va[b.f_bus]-va[b.t_bus]))
         for b in data.branch)
-
-    c4 = constraint(
-        w,
+    
+    c4 = ExaModels.constraint(
+        w, 
         p[b.t_idx]
         - b.c7*vm[b.t_bus]^2
         - b.c1*(vm[b.t_bus]*vm[b.f_bus]*cos(va[b.t_bus]-va[b.f_bus]))
         - b.c2*(vm[b.t_bus]*vm[b.f_bus]*sin(va[b.t_bus]-va[b.f_bus]))
         for b in data.branch)
 
-    c5 = constraint(
-        w,
+    c5 = ExaModels.constraint(
+        w, 
         q[b.t_idx]
-        + b.c8*vm[b.t_bus]^2
+        + b.c8*vm[b.t_bus]^2 
         + b.c2*(vm[b.t_bus]*vm[b.f_bus]*cos(va[b.t_bus]-va[b.f_bus]))
         - b.c1*(vm[b.t_bus]*vm[b.f_bus]*sin(va[b.t_bus]-va[b.f_bus]))
         for b in data.branch)
 
-    c6 = constraint(
-        w,
+    c6 = ExaModels.constraint(
+        w, 
         va[b.f_bus] - va[b.t_bus] for b in data.branch;
             lcon = data.angmin,
             ucon = data.angmax
             )
-    c7 = constraint(
-        w,
+    c7 = ExaModels.constraint(
+        w, 
         p[b.f_idx]^2 + q[b.f_idx]^2 - b.rate_a_sq for b in data.branch;
             lcon = fill!(similar(data.branch,Float64,length(data.branch)),-Inf)
             )
-    c8 = constraint(
-        w,
+    c8 = ExaModels.constraint(
+        w, 
         p[b.t_idx]^2 + q[b.t_idx]^2 - b.rate_a_sq for b in data.branch;
             lcon = fill!(similar(data.branch,Float64,length(data.branch)),-Inf)
             )
 
-    c9 = constraint(
+    c9 = ExaModels.constraint(
         w,
         + b.pd
         + b.gs * vm[b.i]^2
         for b in data.bus)
 
-    c10 = constraint(
+    c10 = ExaModels.constraint(
         w,
         + b.qd
         - b.bs * vm[b.i]^2
         for b in data.bus)
 
-    c11 = constraint!(
+    c11 = ExaModels.constraint!(
         w,
         c9,
         a.bus => p[a.i]
         for a in data.arc)
-    c12 = constraint!(
+    c12 = ExaModels.constraint!(
         w,
         c10,
         a.bus => q[a.i]
         for a in data.arc)
 
-    c13 = constraint!(
+    c13 = ExaModels.constraint!(
         w,
         c9,
         g.bus =>-pg[g.i]
         for g in data.gen)
-    c14 = constraint!(
+    c14 = ExaModels.constraint!(
         w,
         c10,
         g.bus =>-qg[g.i]
         for g in data.gen)
-
-    return ExaModel(w)
-
+    
+    return ExaModels.ExaModel(w)
+    
 end
-````
 
-````
-ac_power_model (generic function with 1 method)
-````
-
-We first download the case file.
-
-````julia
-using Downloads
-
-case = tempname() * ".m"
-
-Downloads.download(
-    "https://raw.githubusercontent.com/power-grid-lib/pglib-opf/dc6be4b2f85ca0e776952ec22cbd4c22396ea5a3/pglib_opf_case3_lmbd.m",
-    case
-)
-````
-
-````
-"/tmp/jl_lABWFWtm3m.m"
-````
-
-Then, we can model/sovle the problem.
-
-````julia
-using PowerModels, ExaModels, NLPModelsIpopt
-
-m = ac_power_model(case)
-ipopt(m)
-````
-
-````
-"Execution stats: first-order stationary"
-````
-
----
-
-*This page was generated using [Literate.jl](https://github.com/fredrikekre/Literate.jl).*
 

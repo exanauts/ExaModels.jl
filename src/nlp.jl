@@ -28,7 +28,6 @@ end
 Base.show(io::IO, v::Objective) = print(
     io,
     """
-
 Objective
 
   min (...) + ∑_{p ∈ P} f(x,p)
@@ -47,7 +46,6 @@ end
 Base.show(io::IO, v::Constraint) = print(
     io,
     """
-
 Constraint
 
   s.t. (...)
@@ -420,7 +418,7 @@ end
 
 function extension(args...) end
 
-function NLPModels.jac_structure!(m::ExaModel, rows::AbstractVector, cols::AbstractVector)
+function jac_structure!(m::ExaModel, rows::AbstractVector, cols::AbstractVector)
 
     _jac_structure!(m.cons, rows, cols)
 end
@@ -431,7 +429,7 @@ function _jac_structure!(cons, rows, cols)
     sjacobian!(rows, cols, cons, nothing, NaN16)
 end
 
-function NLPModels.hess_structure!(m::ExaModel, rows::AbstractVector, cols::AbstractVector)
+function hess_structure!(m::ExaModel, rows::AbstractVector, cols::AbstractVector)
 
     _obj_hess_structure!(m.objs, rows, cols)
     _con_hess_structure!(m.cons, rows, cols)
@@ -449,15 +447,14 @@ function _con_hess_structure!(cons, rows, cols)
     shessian!(rows, cols, cons, nothing, NaN16, NaN16)
 end
 
-function NLPModels.obj(m::ExaModel, x::AbstractVector)
-
+function obj(m::ExaModel, x::AbstractVector)
     _obj(m.objs, x)
 end
 
 _obj(objs, x) = _obj(objs.inner, x) + sum(objs.f.f(k, x) for k in objs.itr)
 _obj(objs::ObjectiveNull, x) = zero(eltype(x))
 
-function NLPModels.cons!(m::ExaModel, x::AbstractVector, g::AbstractVector)
+function cons!(m::ExaModel, x::AbstractVector, g::AbstractVector)
 
     fill!(g, zero(eltype(g)))
     _cons!(m.cons, x, g)
@@ -473,7 +470,7 @@ _cons!(cons::ConstraintNull, x, g) = nothing
 
 
 
-function NLPModels.grad!(m::ExaModel, x::AbstractVector, f::AbstractVector)
+function grad!(m::ExaModel, x::AbstractVector, f::AbstractVector)
 
     fill!(f, zero(eltype(f)))
     _grad!(m.objs, x, f)
@@ -486,7 +483,7 @@ function _grad!(objs, x, f)
 end
 _grad!(objs::ObjectiveNull, x, f) = nothing
 
-function NLPModels.jac_coord!(m::ExaModel, x::AbstractVector, jac::AbstractVector)
+function jac_coord!(m::ExaModel, x::AbstractVector, jac::AbstractVector)
 
     fill!(jac, zero(eltype(jac)))
     _jac_coord!(m.cons, x, jac)
@@ -499,7 +496,7 @@ function _jac_coord!(cons, x, jac)
     sjacobian!(jac, nothing, cons, x, one(eltype(jac)))
 end
 
-function NLPModels.hess_coord!(
+function hess_coord!(
     m::ExaModel,
     x::AbstractVector,
     y::AbstractVector,
