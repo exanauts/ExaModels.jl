@@ -27,7 +27,7 @@ for double-precision arithmetic.
 
 ## Highlight
 The performance comparison of ExaModels with other algebraic modeling systems for evaluating different NLP functions (obj, con, grad, jac, and hess) are shown below. Note that Hessian computations are the typical bottlenecks.
-![benchmark](https://raw.githubusercontent.com/sshin23/ExaModels.jl/480ecc42359edb01a9d4544b884bd56bf19c3ab8/docs/src/assets/benchmark.svg)
+![benchmark](https://raw.githubusercontent.com/sshin23/ExaModels.jl/main/docs/src/assets/benchmark.svg)
 ## Supporting ExaModels.jl
 - Please report issues and feature requests via the [GitHub issue tracker](https://github.com/sshin/ExaModels.jl/issues).
 - Questions are welcome at [GitHub discussion forum](https://github.com/sshin23/ExaModels.jl/discussions).
