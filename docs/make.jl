@@ -7,10 +7,7 @@ end
 
 if !(@isdefined _PAGES)
     const _PAGES = [
-        "Introduction" => [
-            "index.md",
-            "highlights.md",
-        ],
+        "Introduction" => "index.md",
         "Mathematical Abstraction" => "simd.md",
         "Tutorial" => [
             "guide.md",
