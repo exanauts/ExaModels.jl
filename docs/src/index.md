@@ -1,4 +1,4 @@
-# Overview
+# Introduction
 
 Welcome to the documentation of [ExaModels.jl](https://github.com/sshin23/ExaModels.jl)	
 !!! note

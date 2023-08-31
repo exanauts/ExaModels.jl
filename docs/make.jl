@@ -1,5 +1,4 @@
 using Documenter, DocumenterCitations, ExaModels, Literate
-# using tectonic_jll
 
 if !(@isdefined _LATEX)
     const _LATEX = true
@@ -15,7 +14,7 @@ if !(@isdefined _PAGES)
             "gpu.md",
             "develop.md",
             "quad.md",
-            "dist.md",
+            "distillation.md",
             "opf.md",
         ],
         "API Manual" => "core.md",
@@ -27,7 +26,7 @@ if !(@isdefined _JL_FILENAMES)
     const _JL_FILENAMES = [
         "guide.jl",
         "quad.jl",
-        "dist.jl",
+        "distillation.jl",
         "opf.jl",
         "gpu.jl",
         "performance.jl"
