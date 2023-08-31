@@ -27,6 +27,7 @@ function __init__()
         global TMPDIR = tempname()
         mkdir(TMPDIR)
     end
+    PowerModels.silence()
 end
 
 end # module ExaModelsExamples
