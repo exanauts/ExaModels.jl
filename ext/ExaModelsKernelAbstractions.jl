@@ -19,7 +19,7 @@ function getptr(backend, array)
     kergetptr(backend)(bitarray, array; ndrange = length(array) + 1)
     synchronize(backend)
 
-    return findall(identity, bitarray)
+    return ExaModels.findall(identity, bitarray)
 end
 
 
@@ -41,12 +41,12 @@ function ExaModels.extension(
     gsparsity = similar(w.x0, Tuple{Int,Int}, w.nnzg)
 
     _grad_structure!(w.backend, w.obj, gsparsity)
-    sort!(gsparsity; lt = ((i, j), (k, l)) -> i < k)
+    ExaModels.sort!(gsparsity; lt = ((i, j), (k, l)) -> i < k)
     gptr = getptr(w.backend, gsparsity)
 
     conaugsparsity = similar(w.x0, Tuple{Int,Int}, w.nconaug)
     _conaug_structure!(w.backend, w.con, conaugsparsity)
-    length(conaugsparsity) > 0 && sort!(conaugsparsity; lt = ((i, j), (k, l)) -> i < k)
+    length(conaugsparsity) > 0 && ExaModels.sort!(conaugsparsity; lt = ((i, j), (k, l)) -> i < k)
     conaugptr = getptr(w.backend, conaugsparsity)
 
     return KAExtension(
@@ -127,7 +127,7 @@ function NLPModels.obj(
     x::V,
 ) where {V<:AbstractVector}
     _obj(m.ext.backend, m.ext.objbuffer, m.objs, x)
-    result = sum(m.ext.objbuffer)
+    result = ExaModels.sum(m.ext.objbuffer)
     return result
 end
 function _obj(backend, objbuffer, obj, x)
