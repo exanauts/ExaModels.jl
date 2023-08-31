@@ -3,16 +3,6 @@ module NLPTest
 using ExaModels, Test, ADNLPModels, NLPModels, KernelAbstractions, CUDA, AMDGPU, oneAPI
 using NLPModelsIpopt, MadNLP
 
-const NLP_TEST_ARGUMENTS = [
-    (
-        "luksan_vlcek",
-        3
-    ),
-    (
-        "luksan_vlcek",
-        20
-    ),
-]
 
 const BACKENDS = Any[
     nothing,
@@ -29,8 +19,20 @@ end
 
 try
     oneAPI.oneL0.zeInit(0)
+    push!(BACKENDS, oneAPIBackend())
 catch e
 end
+
+const NLP_TEST_ARGUMENTS = [
+    (
+        "luksan_vlcek",
+        3
+    ),
+    (
+        "luksan_vlcek",
+        20
+    ),
+]
 
 const SOLVERS = [
     (
