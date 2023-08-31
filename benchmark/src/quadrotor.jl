@@ -1,7 +1,5 @@
 function exa_quadrotor_model(N = 3; kwargs...)
-    return ADBenchmarkModel(
-        ExaModelsExamples.quadrotor_model(N; kwargs...)
-    )    
+    return ExaModelsExamples.quadrotor_model(N; kwargs...)
 end
 
 function jump_quadrotor_model(N= 3)
@@ -30,9 +28,7 @@ function jump_quadrotor_model(N= 3)
     JuMP.@NLconstraint(m,[i=1:N], x[i+1,9] == x[i,9] + (u[i,2]*cos(x[i,7])*tan(x[i,8])+u[i,3]*sin(x[i,7])*tan(x[i,8])+u[i,4])*dt)
     JuMP.@objective(m,Min, .5*sum(Q[j]*(x[i,j]-d(i,j,N))^2 for i=1:N for j=1:n) + .5*sum(R[j]*(u[i,j]^2) for i=1:N for j=1:p)
                + .5*sum(Qf[j]*(x[N+1,j]-d(N+1,j,N))^2 for j=1:n))
-    return ADBenchmarkModel(
-        MathOptNLPModel(m)
-    )
+    return MathOptNLPModel(m)
 end
 
 function ampl_quadrotor_model(N = 3)
@@ -162,8 +158,6 @@ function ampl_quadrotor_model(N = 3)
         """
     end
     
-    return ADBenchmarkModel(
-        AmplNLReader.AmplModel(nlfile)
-    )
+    return  AmplNLReader.AmplModel(nlfile)
 
 end
