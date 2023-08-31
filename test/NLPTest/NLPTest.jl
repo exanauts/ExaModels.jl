@@ -1,7 +1,27 @@
 module NLPTest
 
-using ExaModels, Test, ADNLPModels, NLPModels, KernelAbstractions, CUDA
+using ExaModels, Test, ADNLPModels, NLPModels, KernelAbstractions, CUDA, AMDGPU, oneAPI
 using NLPModelsIpopt, MadNLP
+
+
+const BACKENDS = Any[
+    nothing,
+    CPU()
+]
+
+if CUDA.has_cuda()
+    push!(BACKENDS, CUDABackend())
+end
+
+if AMDGPU.has_rocm_gpu()
+    push!(BACKENDS, ROCBackend())
+end
+
+try
+    oneAPI.oneL0.zeInit(0)
+    push!(BACKENDS, oneAPIBackend())
+catch e
+end
 
 const NLP_TEST_ARGUMENTS = [
     (
@@ -12,11 +32,6 @@ const NLP_TEST_ARGUMENTS = [
         "luksan_vlcek",
         20
     ),
-]
-
-const BACKENDS = Any[
-    nothing,
-    CPU()
 ]
 
 const SOLVERS = [
@@ -30,9 +45,6 @@ const SOLVERS = [
     )
 ]
 
-if CUDA.has_cuda()
-    push!(BACKENDS, CUDABackend())
-end
 
 include("luksan.jl")
 

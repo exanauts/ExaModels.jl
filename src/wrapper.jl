@@ -164,7 +164,6 @@ function NLPModels.hess_coord!(
         m.inner, m.x_buffer, m.y_buffer, m.hess_buffer;
         obj_weight=obj_weight
     )
-    unsafe_copyto!(pointer(hess), pointer(m.hess_buffer), length(hess))
-
+    copyto!(unsafe_wrap(Array, pointer(hess), length(hess)), m.hess_buffer)
     return
 end    
