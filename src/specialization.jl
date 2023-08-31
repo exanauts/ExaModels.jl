@@ -27,7 +27,7 @@ for (op, id, typ) in [
             if d2 == $id
                 return d1
             else
-                return Node2(*, d1, d2)
+                return Node2($op, d1, d2)
             end
         end
     end
@@ -45,7 +45,7 @@ for (op, id, typ) in [
             if d1 == $id
                 return d2
             else
-                return Node2(*, d1, d2)
+                return Node2($op, d1, d2)
             end
         end
     end
