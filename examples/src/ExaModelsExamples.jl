@@ -21,8 +21,12 @@ end
 end
 
 function __init__()
-    global TMPDIR = tempname()
-    mkdir(TMPDIR)
+    if haskey(ENV, "EXA_MODELS_DEPOT")
+        global TMPDIR = ENV["EXA_MODELS_DEPOT"]
+    else
+        global TMPDIR = tempname()
+        mkdir(TMPDIR)
+    end
     PowerModels.silence()
 end
 

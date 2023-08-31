@@ -1,7 +1,7 @@
 module ExaModelsBenchmark
 
 import ExaModels: ExaModels, NLPModels
-import ExaModelsExamples
+import ExaModelsExamples: ExaModelsExamples, TMPDIR
 import JuMP
 import PyCall: @py_str
 import MadNLP
@@ -26,11 +26,6 @@ function MathOptNLPModel(jm)
     return jm.moi_backend.optimizer.model.nlp
 end
 
-
-function __init__()
-    global TMPDIR = tempname()
-    mkdir(TMPDIR)
-end
 
 export runbenchmark
 
