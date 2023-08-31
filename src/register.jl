@@ -1,7 +1,10 @@
 macro register_univariate(f, df, ddf)
     return esc(
         quote
-            @inline $f(n::N) where {N<:ExaModels.AbstractNode} = ExaModels.Node1($f, n)
+            if !hasmethod($f, Tuple{ExaModels.AbstractNode})
+                @inline $f(n::N) where {N<:ExaModels.AbstractNode} = ExaModels.Node1($f, n)
+            end
+            
             @inline $f(d::D) where {D<:ExaModels.AbstractAdjointNode} =
                 ExaModels.AdjointNode1($f, $f(d.x), $df(d.x), d)
             @inline $f(t::T) where {T<:ExaModels.AbstractSecondAdjointNode} =
@@ -16,17 +19,25 @@ end
 macro register_bivariate(f, df1, df2, ddf11, ddf12, ddf22)
     return esc(
         quote
-            @inline function $f(
-                d1::D1,
-                d2::D2,
-            ) where {D1<:ExaModels.AbstractNode,D2<:ExaModels.AbstractNode}
-                ExaModels.Node2($f, d1, d2)
+            if !hasmethod($f, Tuple{ExaModels.AbstractNode, ExaModels.AbstractNode})
+                @inline function $f(
+                    d1::D1,
+                    d2::D2,
+                    ) where {D1<:ExaModels.AbstractNode,D2<:ExaModels.AbstractNode}
+                    ExaModels.Node2($f, d1, d2)
+                end
             end
-            @inline function $f(d1::D1, d2::D2) where {D1<:ExaModels.AbstractNode,D2<:Real}
-                ExaModels.Node2($f, d1, d2)
+            
+            if !hasmethod($f, Tuple{ExaModels.AbstractNode, Real})
+                @inline function $f(d1::D1, d2::D2) where {D1<:ExaModels.AbstractNode,D2<:Real}
+                    ExaModels.Node2($f, d1, d2)
+                end
             end
-            @inline function $f(d1::D1, d2::D2) where {D1<:Real,D2<:ExaModels.AbstractNode}
-                ExaModels.Node2($f, d1, d2)
+
+            if !hasmethod($f, Tuple{Real, ExaModels.AbstractNode})
+                @inline function $f(d1::D1, d2::D2) where {D1<:Real,D2<:ExaModels.AbstractNode}
+                    ExaModels.Node2($f, d1, d2)
+                end
             end
 
             @inline function $f(

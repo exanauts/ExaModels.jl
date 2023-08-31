@@ -31,15 +31,18 @@ end
 ExaModels.convert_array(v, backend::oneAPI.oneAPIBackend) = oneAPI.oneArray(v)
 
 function ExaModels.sum(a::A) where {A<:oneAPI.oneVector{Float64}}
-    return Float64(mapreduce(Float32, +, a))
+    return sum(Array(a))
 end
-function ExaModels.findall(f::F, bitarray::A) where {F<:Function,A<:oneAPI.oneVector}
+ExaModels.sort!(array::A; lt = isless) where {A<:oneAPI.oneVector} =
+    copyto!(array, sort!(Array(array)))
+
+# below is type piracy
+function Base.findall(f::F, bitarray::A) where {F<:Function,A<:oneAPI.oneVector}
     a = Array(bitarray)
     b = findall(f, a)
     c = similar(bitarray, eltype(b), length(b))
     return copyto!(c, b)
 end
-ExaModels.findall(bitarray::A) where {A<:oneAPI.oneVector} = ExaModels.findall(identity, bitarray)
-ExaModels.sort!(array::A; lt = isless) where {A<:oneAPI.oneVector} =
-    copyto!(array, sort!(Array(array)))
-end
+Base.findall(bitarray::A) where {A<:oneAPI.oneVector} = Base.findall(identity, bitarray)
+
+end # module

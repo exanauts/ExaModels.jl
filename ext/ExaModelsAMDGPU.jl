@@ -8,14 +8,15 @@ ExaModels.ExaCore(T, backend::AMDGPU.ROCBackend) =
 
 ExaModels.convert_array(v, backend::AMDGPU.ROCBackend) = AMDGPU.ROCArray(v)
 
+ExaModels.sort!(array::A; lt = isless) where {A<:AMDGPU.ROCVector} =
+    copyto!(array, sort!(Array(array)))
+
 # Below are type piracy
-function ExaModels.findall(f::F, bitarray::A) where {F<:Function,A<:AMDGPU.ROCVector}
+function Base.findall(f::F, bitarray::A) where {F<:Function,A<:AMDGPU.ROCVector}
     a = Array(bitarray)
     b = findall(f, a)
     c = similar(bitarray, eltype(b), length(b))
     return copyto!(c, b)
 end
-ExaModels.findall(bitarray::A) where {A<:AMDGPU.ROCVector} = ExaModels.findall(identity, bitarray)
-ExaModels.sort!(array::A; lt = isless) where {A<:AMDGPU.ROCVector} =
-    copyto!(array, sort!(Array(array)))
+Base.findall(bitarray::A) where {A<:AMDGPU.ROCVector} = Base.findall(identity, bitarray)
 end

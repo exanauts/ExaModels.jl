@@ -12,6 +12,7 @@ import SolverCore
 
 include("graph.jl")
 include("register.jl")
+include("specialization.jl")
 include("functionlist.jl")
 include("simdfunction.jl")
 include("gradient.jl")
