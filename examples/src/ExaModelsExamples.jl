@@ -21,9 +21,12 @@ end
 end
 
 function __init__()
-    global TMPDIR = tempname()
-    mkdir(TMPDIR)
-    PowerModels.silence()
+    if haskey(ENV, "EXA_MODELS_DEPOT")
+        global TMPDIR = ENV["EXA_MODELS_DEPOT"]
+    else
+        global TMPDIR = tempname()
+        mkdir(TMPDIR)
+    end
 end
 
 end # module ExaModelsExamples
