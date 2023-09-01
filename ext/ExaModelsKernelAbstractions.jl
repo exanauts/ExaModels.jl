@@ -14,9 +14,9 @@ ExaModels.ExaCore(T, backend::KernelAbstractions.CPU) =
     ExaModels.ExaCore(x0 = zeros(T, 0), backend = backend)
 ExaModels.ExaCore(backend::KernelAbstractions.CPU) = ExaModels.ExaCore(backend = backend)
 
-function getptr(backend, array)
+function getptr(backend, array; cmp = isequal)
     bitarray = similar(array, Bool, length(array) + 1)
-    kergetptr(backend)(bitarray, array; ndrange = length(array) + 1)
+    kergetptr(backend)(cmp, bitarray, array; ndrange = length(array) + 1)
     synchronize(backend)
 
     return ExaModels.findall(identity, bitarray)
@@ -35,8 +35,13 @@ struct KAExtension{T,VT<:AbstractVector{T},VI1,VI2,VI3,B}
     jacbuffer::VT
     jacsparsityi::VI3
     jacsparsityj::VI3
+    jacptri::VI2
+    jacptrj::VI2
     hessbuffer::VT
-    hesssparsity::VI3
+    hesssparsityi::VI3
+    hesssparsityj::VI3
+    hessptri::VI2
+    hessptrj::VI2
 end
 
 function ExaModels.extension(
@@ -55,13 +60,25 @@ function ExaModels.extension(
     conaugptr = getptr(w.backend, conaugsparsity)
 
     jacbuffer  = similar(w.x0, w.nnzj)
-    hessbuffer = similar(w.x0, w.nnzj)
-    jacsparsityi = similar(w.x0, Tuple{Int,Int,Int}, w.nnzj)
-    hesssparsity = similar(w.x0, Tuple{Int,Int,Int}, w.nnzj)
+    hessbuffer = similar(w.x0, w.nnzh)
+    jacsparsityi = similar(w.x0, Tuple{Tuple{Int,Int},Int}, w.nnzj)
+    hesssparsityi = similar(w.x0, Tuple{Tuple{Int,Int},Int}, w.nnzh)
     
-    _jac_structure!(w.backend, w.cons, jacsparsityi)
+    _jac_structure!(w.backend, w.con, jacsparsityi, nothing)
     jacsparsityj = copy(jacsparsityi)
-    _hess_structure!(w.backend, w.cons, jacsparsityi)
+    _obj_hess_structure!(w.backend, w.obj, hesssparsityi, nothing)
+    _con_hess_structure!(w.backend, w.con, hesssparsityi, nothing)
+    hesssparsityj = copy(hesssparsityi)
+
+    ExaModels.sort!(jacsparsityi; lt = (((i,j), k), ((n,m), l)) -> i < n)
+    ExaModels.sort!(jacsparsityj; lt = (((i,j), k), ((n,m), l)) -> j < m)
+    jacptri = getptr(w.backend, jacsparsityi; cmp = (x,y)->x[1] == y[1])
+    jacptrj = getptr(w.backend, jacsparsityj; cmp = (x,y)->x[2] == y[2])
+    
+    ExaModels.sort!(hesssparsityi; lt = (((i,j), k), ((n,m), l)) -> i < n)
+    ExaModels.sort!(hesssparsityj; lt = (((i,j), k), ((n,m), l)) -> j < m)
+    hessptri = getptr(w.backend, hesssparsityi; cmp = (x,y)->x[1] == y[1])
+    hessptrj = getptr(w.backend, hesssparsityj; cmp = (x,y)->x[2] == y[2])
     
     return KAExtension(
         w.backend,
@@ -75,8 +92,13 @@ function ExaModels.extension(
         jacbuffer,
         jacsparsityi,
         jacsparsityj,
+        jacptri,
+        jacptrj,
         hessbuffer,
-        hesssparsity,
+        hesssparsityi,
+        hesssparsityj,
+        hessptri,
+        hessptrj,
     )
 end
 
@@ -142,9 +164,9 @@ function _con_hess_structure!(backend, cons::ExaModels.ConstraintNull, rows, col
 
 
 function ExaModels.obj(
-    m::ExaModels.ExaModel{T,VT,E} where {T,VT,E<:KAExtension},
-    x::V,
-) where {V<:AbstractVector}
+    m::ExaModels.ExaModel{T,VT,E},
+    x::AbstractVector,
+) where {T,VT,E<:KAExtension}
     _obj(m.ext.backend, m.ext.objbuffer, m.objs, x)
     result = ExaModels.sum(m.ext.objbuffer)
     return result
@@ -157,10 +179,10 @@ end
 function _obj(backend, objbuffer, f::ExaModels.ObjectiveNull, x) end
 
 function ExaModels.cons_nln!(
-    m::ExaModels.ExaModel{T,VT,E} where {T,VT,E<:KAExtension},
-    x::V,
-    y::V,
-) where {V<:AbstractVector}
+    m::ExaModels.ExaModel{T,VT,E},
+    x::AbstractVector,
+    y::AbstractVector,
+) where {T,VT,E<:KAExtension}
     _cons_nln!(m.ext.backend, y, m.cons, x)
     _conaugs!(m.ext.backend, m.ext.conbuffer, m.cons, x)
 
@@ -237,6 +259,99 @@ function _jac_coord!(backend, y, cons, x)
     synchronize(backend)
 end
 function _jac_coord!(backend, y, cons::ExaModels.ConstraintNull, x) end
+
+function ExaModels.jprod_nln!(m::ExaModels.ExaModel{T,VT,E}, x::AbstractVector, v::AbstractVector, Jv::AbstractVector) where {T,VT,E <: KAExtension}
+
+    fill!(Jv, zero(eltype(Jv)))
+    fill!(m.ext.jacbuffer, zero(eltype(Jv)))
+    _jac_coord!(m.ext.backend, m.ext.jacbuffer, m.cons, x)
+    synchronize(m.ext.backend)
+    kerspmv(m.ext.backend)(
+        Jv,
+        v,
+        m.ext.jacsparsityi,
+        m.ext.jacbuffer,
+        m.ext.jacptri,
+        ndrange = length(m.ext.jacptri) - 1,
+    )
+    synchronize(m.ext.backend)
+end
+function ExaModels.jtprod_nln!(m::ExaModels.ExaModel{T,VT,E}, x::AbstractVector, v::AbstractVector, Jtv::AbstractVector) where {T,VT,E <: KAExtension}
+
+    fill!(Jtv, zero(eltype(Jtv)))
+    fill!(m.ext.jacbuffer, zero(eltype(Jtv)))
+    _jac_coord!(m.ext.backend, m.ext.jacbuffer, m.cons, x)
+    synchronize(m.ext.backend)
+    kerspmv2(m.ext.backend)(
+        Jtv,
+        v,
+        m.ext.jacsparsityj,
+        m.ext.jacbuffer,
+        m.ext.jacptrj,
+        ndrange = length(m.ext.jacptrj) - 1,
+    )
+    synchronize(m.ext.backend)    
+end
+function ExaModels.hprod!(m::ExaModels.ExaModel{T,VT,E}, x::AbstractVector, y::AbstractVector, v::AbstractVector, Hv::AbstractVector; obj_weight= one(eltype(x))) where {T,VT,E <: KAExtension}
+
+    fill!(Hv, zero(eltype(Hv)))
+    fill!(m.ext.hessbuffer, zero(eltype(Hv)))
+    
+    _obj_hess_coord!(m.ext.backend, m.ext.hessbuffer, m.objs, x, obj_weight)
+    _con_hess_coord!(m.ext.backend, m.ext.hessbuffer, m.cons, x, y)
+    synchronize(m.ext.backend)
+    kersyspmv(m.ext.backend)(
+        Hv,
+        v,
+        m.ext.hesssparsityi,
+        m.ext.hessbuffer,
+        m.ext.hessptri,
+        ndrange = length(m.ext.hessptri) - 1,
+    )
+    synchronize(m.ext.backend)
+    kersyspmv2(m.ext.backend)(
+        Hv,
+        v,
+        m.ext.hesssparsityj,
+        m.ext.hessbuffer,
+        m.ext.hessptrj,
+        ndrange = length(m.ext.hessptrj) - 1,
+    )
+    synchronize(m.ext.backend)
+end
+
+@kernel function kerspmv(y, @Const(x), @Const(coord), @Const(V), @Const(ptr))
+    idx = @index(Global)
+    @inbounds for l in ptr[idx]:ptr[idx+1]-1
+        ((i,j), ind) = coord[l]
+        y[i] += V[ind] * x[j]
+    end
+end
+@kernel function kerspmv2(y, @Const(x), @Const(coord), @Const(V), @Const(ptr))
+    idx = @index(Global)    
+    @inbounds for l in ptr[idx]:ptr[idx+1]-1
+        ((i,j), ind) = coord[l]
+        y[j] += V[ind] * x[i]
+    end
+end
+@kernel function kersyspmv(y, @Const(x), @Const(coord), @Const(V), @Const(ptr))
+    idx = @index(Global)
+    @inbounds for l in ptr[idx]:ptr[idx+1]-1
+        ((i,j), ind) = coord[l]
+        y[i] += V[ind] * x[j]
+    end
+end
+@kernel function kersyspmv2(y, @Const(x), @Const(coord), @Const(V), @Const(ptr))
+    idx = @index(Global)    
+    @inbounds for l in ptr[idx]:ptr[idx+1]-1
+        ((i,j), ind) = coord[l]
+        if i != j
+            y[j] += V[ind] * x[i]
+        end
+    end
+end
+
+
 
 function ExaModels.hess_coord!(
     m::ExaModels.ExaModel{T,VT,E} where {T,VT,E<:KAExtension},
@@ -389,7 +504,7 @@ end
     end
 end
 
-@kernel function kergetptr(bitarray, @Const(array))
+@kernel function kergetptr(cmp, bitarray, @Const(array))
     I = @index(Global)
     @inbounds if I == 1
         bitarray[I] = true
@@ -399,7 +514,7 @@ end
         i0, j0 = array[I-1]
         i1, j1 = array[I]
 
-        if i0 != i1
+        if !cmp(i0, i1)
             bitarray[I] = true
         else
             bitarray[I] = false

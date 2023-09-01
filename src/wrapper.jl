@@ -5,6 +5,9 @@ struct WrapperNLPModel{
 
     inner::I
 
+    x_result::VT
+    y_result::VT
+    
     x_buffer::VT2
     y_buffer::VT2
     v_buffer::VT2
@@ -31,6 +34,9 @@ function WrapperNLPModel(VT,m)
     nnzj = NLPModels.get_nnzj(m)
     nnzh = NLPModels.get_nnzh(m)
     
+    x_result = VT(undef, nvar)
+    y_result = VT(undef, ncon)
+
     x0   = VT(undef, nvar)
     lvar = VT(undef, nvar)
     uvar = VT(undef, nvar)
@@ -61,6 +67,8 @@ function WrapperNLPModel(VT,m)
 
     return WrapperNLPModel(
         m,
+        x_result,
+        y_result,
         x_buffer,
         y_buffer,
         v_buffer,
@@ -167,7 +175,10 @@ function NLPModels.hess_coord!(
         m.inner, m.x_buffer, m.y_buffer, m.hess_buffer;
         obj_weight=obj_weight
     )
-    copyto!(unsafe_wrap(Array, pointer(hess), length(hess)), m.hess_buffer)
+    copyto!(
+        unsafe_wrap(Array, pointer(hess), length(hess)),
+        m.hess_buffer
+    )
     return
 end    
 function NLPModels.jprod_nln!(
@@ -178,22 +189,26 @@ function NLPModels.jprod_nln!(
     )
 
     copyto!(m.x_buffer, x)
-    copyto!(m.grad_buffer, v)
+    copyto!(m.x_result, v)
+    copyto!(m.grad_buffer, m.x_result)
     NLPModels.jprod_nln!(m.inner, m.x_buffer, m.grad_buffer, m.cons_buffer)
-    copyto!(Jv, m.cons_buffer)
+    copyto!(m.y_result, m.cons_buffer)
+    copyto!(Jv, m.y_result)
     return
 end
 function NLPModels.jtprod_nln!(
     m::WrapperNLPModel,
     x::AbstractVector,
     v::AbstractVector,
-    Jv::AbstractVector
+    Jtv::AbstractVector
     )
 
     copyto!(m.x_buffer, x)
-    copyto!(m.cons_buffer, v)
+    copyto!(m.y_result, v)
+    copyto!(m.cons_buffer, m.y_result)
     NLPModels.jtprod_nln!(m.inner, m.x_buffer, m.cons_buffer, m.grad_buffer)
-    copyto!(Jv, m.grad_buffer)
+    copyto!(m.x_result, m.grad_buffer)
+    copyto!(Jtv, m.x_result)
     return
 end
 function NLPModels.hprod!(
@@ -212,6 +227,7 @@ function NLPModels.hprod!(
         m.inner, m.x_buffer, m.y_buffer, m.grad_buffer, m.v_buffer;
         obj_weight=obj_weight
     )
-    copyto!(Hv, m.v_buffer)
+    copyto!(m.x_result, m.grad_buffer)
+    copyto!(Hv, m.x_result)
     return
 end    

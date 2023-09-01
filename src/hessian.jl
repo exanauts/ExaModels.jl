@@ -523,9 +523,9 @@ end
     cnt,
     adj,
     adj2,
-) where {T<:SecondAdjointNodeVar,I<:Tuple{Int,Int,Int},V<:AbstractVector{I}}
+) where {T<:SecondAdjointNodeVar,I<:Tuple{Tuple{Int,Int},Int},V<:AbstractVector{I}}
     ind = o2 + comp(cnt += 1)
-    y1[ind] = (ind, t.i, t.i)
+    y1[ind] = ((t.i, t.i), ind)
     cnt
 end
 @inbounds @inline function hdrpass(
@@ -558,13 +558,13 @@ end
     o2,
     cnt,
     adj,
-) where {T1<:SecondAdjointNodeVar,T2<:SecondAdjointNodeVar,I<:Tuple{Int,Int,Int},V<:AbstractVector{I}}
+) where {T1<:SecondAdjointNodeVar,T2<:SecondAdjointNodeVar,I<:Tuple{Tuple{Int,Int},Int},V<:AbstractVector{I}}
     i, j = t1.i, t2.i
     ind = o2 + comp(cnt += 1)
     if i >= j
-        y1[ind] = (ind,i,j)
+        y1[ind] = ((i,j), ind)
     else
-        y1[ind] = (ind,j,i)
+        y1[ind] = ((j,i), ind)
     end
     cnt
 end

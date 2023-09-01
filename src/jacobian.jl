@@ -90,9 +90,9 @@ end
     o1,
     cnt,
     adj,
-) where {D<:AdjointNodeVar,I<:Tuple{Int,Int,Int},V<:AbstractVector{I}}
+) where {D<:AdjointNodeVar,I<:Tuple{Tuple{Int,Int},Int},V<:AbstractVector{I}}
     ind = o1 + comp(cnt += 1)
-    y1[ind] = (ind, i, d.i)
+    y1[ind] = ((i, d.i), ind)
     return cnt
 end
 
