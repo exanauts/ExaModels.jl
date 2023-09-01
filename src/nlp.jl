@@ -454,19 +454,19 @@ end
 _obj(objs, x) = _obj(objs.inner, x) + sum(objs.f.f(k, x) for k in objs.itr)
 _obj(objs::ObjectiveNull, x) = zero(eltype(x))
 
-function cons!(m::ExaModel, x::AbstractVector, g::AbstractVector)
+function cons_nln!(m::ExaModel, x::AbstractVector, g::AbstractVector)
 
     fill!(g, zero(eltype(g)))
-    _cons!(m.cons, x, g)
+    _cons_nln!(m.cons, x, g)
 end
 
-function _cons!(cons, x, g)
-    _cons!(cons.inner, x, g)
+function _cons_nln!(cons, x, g)
+    _cons_nln!(cons.inner, x, g)
     @simd for i in eachindex(cons.itr)
         g[offset0(cons, i)] += cons.f.f(cons.itr[i], x)
     end
 end
-_cons!(cons::ConstraintNull, x, g) = nothing
+_cons_nln!(cons::ConstraintNull, x, g) = nothing
 
 
 
@@ -496,6 +496,32 @@ function _jac_coord!(cons, x, jac)
     sjacobian!(jac, nothing, cons, x, one(eltype(jac)))
 end
 
+function jprod_nln!(m::ExaModel, x::AbstractVector, v::AbstractVector, Jv::AbstractVector)
+
+    fill!(Jv, zero(eltype(Jv)))
+    _jprod_nln!(m.cons, x, v, Jv)
+
+end
+
+_jprod_nln!(cons::ConstraintNull, x, v, Jv) = nothing
+function _jprod_nln!(cons, x, v, Jv)
+    _jprod_nln!(cons.inner, x, v, Jv)
+    sjacobian!((Jv, v), nothing, cons, x, one(eltype(Jv)))
+end
+
+function jtprod_nln!(m::ExaModel, x::AbstractVector, v::AbstractVector, Jtv::AbstractVector)
+
+    fill!(Jtv, zero(eltype(Jtv)))
+    _jtprod_nln!(m.cons, x, v, Jtv)
+
+end
+
+_jtprod_nln!(cons::ConstraintNull, x, v, Jtv) = nothing
+function _jtprod_nln!(cons, x, v, Jtv)
+    _jtprod_nln!(cons.inner, x, v, Jtv)
+    sjacobian!(nothing, (Jtv, v), cons, x, one(eltype(Jtv)))
+end
+
 function hess_coord!(
     m::ExaModel,
     x::AbstractVector,
@@ -519,6 +545,25 @@ _con_hess_coord!(cons::ConstraintNull, x, y, hess, obj_weight) = nothing
 function _con_hess_coord!(cons, x, y, hess, obj_weight)
     _con_hess_coord!(cons.inner, x, y, hess, obj_weight)
     shessian!(hess, nothing, cons, x, y, zero(eltype(hess)))
+end
+
+function hprod!(m::ExaModel, x::AbstractVector, y::AbstractVector, v::AbstractVector, Hv::AbstractVector; obj_weight= one(eltype(x)))
+
+    fill!(Hv, zero(eltype(Hv)))
+    _obj_hprod!(m.objs, x, y, v, Hv, obj_weight)
+    _con_hprod!(m.cons, x, y, v, Hv, obj_weight)
+end
+
+_obj_hprod!(objs::ObjectiveNull, x, y, v, Hv, obj_weight) = nothing
+function _obj_hprod!(objs, x, y, v, Hv, obj_weight)
+    _obj_hprod!(objs.inner, x, y, v, Hv, obj_weight)
+    shessian!((Hv, v), nothing, objs, x, obj_weight, one(eltype(Hv)))
+end
+
+_con_hprod!(cons::ConstraintNull, x, y, v, Hv, obj_weight) = nothing
+function _con_hprod!(cons, x, y, v, Hv, obj_weight)
+    _con_hprod!(cons.inner, x, y, v, Hv, obj_weight)
+    shessian!((Hv, v), nothing, cons, x, y, one(eltype(Hv)))
 end
 
 @inbounds @inline offset0(a, i) = offset0(a.f, i)

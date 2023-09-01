@@ -232,6 +232,7 @@ end
     cnt
 end
 
+
 @inbounds @inline function hdrpass(
     t1::T1,
     t2::T2,
@@ -249,6 +250,28 @@ end
         y1[o2+comp(cnt += 1)] += adj
     end
     cnt
+end
+
+
+@inbounds @inline function hdrpass(
+    t1::T1,
+    t2::T2,
+    comp,
+    y1::Tuple{V1,V2},
+    y2,
+    o2,
+    cnt,
+    adj,
+) where {T1<:SecondAdjointNodeVar,T2<:SecondAdjointNodeVar,V1 <: AbstractVector,V2 <: AbstractVector}
+    i, j = t1.i, t2.i
+    y, v = y1
+    if i == j
+        y[i] += 2 * adj * v[i]
+    else
+        y[i] += adj * v[j]
+        y[j] += adj * v[i]
+    end
+    return (cnt += 1)
 end
 
 @inbounds @inline function hrpass(
@@ -447,6 +470,21 @@ end
     cnt += 1
     push!(y1, (t.i, t.i))
     cnt
+end
+
+@inbounds @inline function hrpass(
+    t::T,
+    comp,
+    y1::Tuple{V1,V2},
+    y2,
+    o2,
+    cnt,
+    adj,
+    adj2,
+    ) where {T<:SecondAdjointNodeVar,V1 <: AbstractVector,V2 <: AbstractVector}
+    y, v = y1
+    y[t.i] += adj2 * v[t.i]
+    return (cnt += 1)
 end
 @inbounds @inline function hrpass(
     t::T,

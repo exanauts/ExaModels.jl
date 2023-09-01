@@ -42,6 +42,34 @@ end
     d::D,
     comp,
     i,
+    y1::Tuple{V1,V2},
+    y2,
+    o1,
+    cnt,
+    adj,
+    ) where {D<:AdjointNodeVar, V1 <: AbstractVector, V2 <: AbstractVector}
+    (y,v) = y1 
+    y[i] += adj * v[d.i]
+    return (cnt += 1)
+end
+@inbounds @inline function jrpass(
+    d::D,
+    comp,
+    i,
+    y1,
+    y2::Tuple{V1,V2},
+    o1,
+    cnt,
+    adj,
+) where {D<:AdjointNodeVar, V1 <: AbstractVector, V2 <: AbstractVector}
+    y, v = y2
+    y[d.i] += adj * v[i]
+    return (cnt += 1)
+end
+@inbounds @inline function jrpass(
+    d::D,
+    comp,
+    i,
     y1::V,
     y2::V,
     o1,
