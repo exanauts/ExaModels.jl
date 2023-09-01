@@ -514,6 +514,20 @@ end
     y2[ind] = t.i
     cnt
 end
+@inbounds @inline function hrpass(
+    t::T,
+    comp,
+    y1::V,
+    y2,
+    o2,
+    cnt,
+    adj,
+    adj2,
+) where {T<:SecondAdjointNodeVar,I<:Tuple{Int,Int,Int},V<:AbstractVector{I}}
+    ind = o2 + comp(cnt += 1)
+    y1[ind] = (ind, t.i, t.i)
+    cnt
+end
 @inbounds @inline function hdrpass(
     t1::T1,
     t2::T2,
@@ -532,6 +546,25 @@ end
     else
         y1[ind] = j
         y2[ind] = i
+    end
+    cnt
+end
+@inbounds @inline function hdrpass(
+    t1::T1,
+    t2::T2,
+    comp,
+    y1::V,
+    y2,
+    o2,
+    cnt,
+    adj,
+) where {T1<:SecondAdjointNodeVar,T2<:SecondAdjointNodeVar,I<:Tuple{Int,Int,Int},V<:AbstractVector{I}}
+    i, j = t1.i, t2.i
+    ind = o2 + comp(cnt += 1)
+    if i >= j
+        y1[ind] = (ind,i,j)
+    else
+        y1[ind] = (ind,j,i)
     end
     cnt
 end

@@ -23,7 +23,7 @@ function getptr(backend, array)
 end
 
 
-struct KAExtension{T,VT<:AbstractVector{T},VI1,VI2,B}
+struct KAExtension{T,VT<:AbstractVector{T},VI1,VI2,VI3,B}
     backend::B
     objbuffer::VT
     gradbuffer::VT
@@ -32,6 +32,11 @@ struct KAExtension{T,VT<:AbstractVector{T},VI1,VI2,B}
     conbuffer::VT
     conaugsparsity::VI1
     conaugptr::VI2
+    jacbuffer::VT
+    jacsparsityi::VI3
+    jacsparsityj::VI3
+    hessbuffer::VT
+    hesssparsity::VI3
 end
 
 function ExaModels.extension(
@@ -49,6 +54,15 @@ function ExaModels.extension(
     length(conaugsparsity) > 0 && ExaModels.sort!(conaugsparsity; lt = ((i, j), (k, l)) -> i < k)
     conaugptr = getptr(w.backend, conaugsparsity)
 
+    jacbuffer  = similar(w.x0, w.nnzj)
+    hessbuffer = similar(w.x0, w.nnzj)
+    jacsparsityi = similar(w.x0, Tuple{Int,Int,Int}, w.nnzj)
+    hesssparsity = similar(w.x0, Tuple{Int,Int,Int}, w.nnzj)
+    
+    _jac_structure!(w.backend, w.cons, jacsparsityi)
+    jacsparsityj = copy(jacsparsityi)
+    _hess_structure!(w.backend, w.cons, jacsparsityi)
+    
     return KAExtension(
         w.backend,
         similar(w.x0, w.nobj),
@@ -58,6 +72,11 @@ function ExaModels.extension(
         similar(w.x0, w.nconaug),
         conaugsparsity,
         conaugptr,
+        jacbuffer,
+        jacsparsityi,
+        jacsparsityj,
+        hessbuffer,
+        hesssparsity,
     )
 end
 

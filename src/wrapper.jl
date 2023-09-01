@@ -5,8 +5,9 @@ struct WrapperNLPModel{
 
     inner::I
 
-    x_buffer:: VT2
-    y_buffer:: VT2
+    x_buffer::VT2
+    y_buffer::VT2
+    v_buffer::VT2
     
     cons_buffer::VT2
     grad_buffer::VT2
@@ -48,6 +49,7 @@ function WrapperNLPModel(VT,m)
 
     x_buffer = similar(m.meta.x0, nvar)
     y_buffer = similar(m.meta.x0, ncon)
+    v_buffer = similar(m.meta.x0, nvar)
     cons_buffer = similar(m.meta.x0, ncon)
     grad_buffer = similar(m.meta.x0, nvar)
     jac_buffer  = similar(m.meta.x0, nnzj)
@@ -61,6 +63,7 @@ function WrapperNLPModel(VT,m)
         m,
         x_buffer,
         y_buffer,
+        v_buffer,
         cons_buffer,
         grad_buffer,
         jac_buffer,
@@ -165,5 +168,50 @@ function NLPModels.hess_coord!(
         obj_weight=obj_weight
     )
     copyto!(unsafe_wrap(Array, pointer(hess), length(hess)), m.hess_buffer)
+    return
+end    
+function NLPModels.jprod_nln!(
+    m::WrapperNLPModel,
+    x::AbstractVector,
+    v::AbstractVector,
+    Jv::AbstractVector
+    )
+
+    copyto!(m.x_buffer, x)
+    copyto!(m.grad_buffer, v)
+    NLPModels.jprod_nln!(m.inner, m.x_buffer, m.grad_buffer, m.cons_buffer)
+    copyto!(Jv, m.cons_buffer)
+    return
+end
+function NLPModels.jtprod_nln!(
+    m::WrapperNLPModel,
+    x::AbstractVector,
+    v::AbstractVector,
+    Jv::AbstractVector
+    )
+
+    copyto!(m.x_buffer, x)
+    copyto!(m.cons_buffer, v)
+    NLPModels.jtprod_nln!(m.inner, m.x_buffer, m.cons_buffer, m.grad_buffer)
+    copyto!(Jv, m.grad_buffer)
+    return
+end
+function NLPModels.hprod!(
+    m::WrapperNLPModel,
+    x::AbstractVector,
+    y::AbstractVector,
+    v::AbstractVector,
+    Hv::AbstractVector;
+    obj_weight = one(eltype(x))
+    )
+
+    copyto!(m.x_buffer, x)
+    copyto!(m.y_buffer, y)
+    copyto!(m.grad_buffer, v)
+    NLPModels.hprod!(
+        m.inner, m.x_buffer, m.y_buffer, m.grad_buffer, m.v_buffer;
+        obj_weight=obj_weight
+    )
+    copyto!(Hv, m.v_buffer)
     return
 end    
