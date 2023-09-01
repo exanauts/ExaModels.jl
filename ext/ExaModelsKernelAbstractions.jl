@@ -1,6 +1,6 @@
 module ExaModelsKernelAbstractions
 
-import ExaModels: ExaModels, NLPModels
+import ExaModels
 import KernelAbstractions: KernelAbstractions, @kernel, @index, @Const, synchronize, CPU
 
 ExaModels.convert_array(v, backend::CPU) = v
@@ -23,7 +23,7 @@ function getptr(backend, array)
 end
 
 
-struct KAExtension{T,VT<:AbstractVector{T},VI1,VI2,B}
+struct KAExtension{T,VT<:AbstractVector{T},VI1,VI2,VI3,B}
     backend::B
     objbuffer::VT
     gradbuffer::VT
@@ -32,6 +32,11 @@ struct KAExtension{T,VT<:AbstractVector{T},VI1,VI2,B}
     conbuffer::VT
     conaugsparsity::VI1
     conaugptr::VI2
+    jacbuffer::VT
+    jacsparsityi::VI3
+    jacsparsityj::VI3
+    hessbuffer::VT
+    hesssparsity::VI3
 end
 
 function ExaModels.extension(
@@ -49,6 +54,15 @@ function ExaModels.extension(
     length(conaugsparsity) > 0 && ExaModels.sort!(conaugsparsity; lt = ((i, j), (k, l)) -> i < k)
     conaugptr = getptr(w.backend, conaugsparsity)
 
+    jacbuffer  = similar(w.x0, w.nnzj)
+    hessbuffer = similar(w.x0, w.nnzj)
+    jacsparsityi = similar(w.x0, Tuple{Int,Int,Int}, w.nnzj)
+    hesssparsity = similar(w.x0, Tuple{Int,Int,Int}, w.nnzj)
+    
+    _jac_structure!(w.backend, w.cons, jacsparsityi)
+    jacsparsityj = copy(jacsparsityi)
+    _hess_structure!(w.backend, w.cons, jacsparsityi)
+    
     return KAExtension(
         w.backend,
         similar(w.x0, w.nobj),
@@ -58,6 +72,11 @@ function ExaModels.extension(
         similar(w.x0, w.nconaug),
         conaugsparsity,
         conaugptr,
+        jacbuffer,
+        jacsparsityi,
+        jacsparsityj,
+        hessbuffer,
+        hesssparsity,
     )
 end
 
@@ -84,7 +103,7 @@ function _grad_structure!(backend, objs, gsparsity)
 end
 function _grad_structure!(backend, objs::ExaModels.ObjectiveNull, gsparsity) end
 
-function NLPModels.jac_structure!(
+function ExaModels.jac_structure!(
     m::ExaModels.ExaModel{T,VT,E} where {T,VT,E<:KAExtension},
     rows::V,
     cols::V,
@@ -99,7 +118,7 @@ end
 function _jac_structure!(backend, cons::ExaModels.ConstraintNull, rows, cols) end
 
 
-function NLPModels.hess_structure!(
+function ExaModels.hess_structure!(
     m::ExaModels.ExaModel{T,VT,E} where {T,VT,E<:KAExtension},
     rows::V,
     cols::V,
@@ -122,7 +141,7 @@ end
 function _con_hess_structure!(backend, cons::ExaModels.ConstraintNull, rows, cols) end
 
 
-function NLPModels.obj(
+function ExaModels.obj(
     m::ExaModels.ExaModel{T,VT,E} where {T,VT,E<:KAExtension},
     x::V,
 ) where {V<:AbstractVector}
@@ -137,12 +156,12 @@ function _obj(backend, objbuffer, obj, x)
 end
 function _obj(backend, objbuffer, f::ExaModels.ObjectiveNull, x) end
 
-function NLPModels.cons!(
+function ExaModels.cons_nln!(
     m::ExaModels.ExaModel{T,VT,E} where {T,VT,E<:KAExtension},
     x::V,
     y::V,
 ) where {V<:AbstractVector}
-    _cons!(m.ext.backend, y, m.cons, x)
+    _cons_nln!(m.ext.backend, y, m.cons, x)
     _conaugs!(m.ext.backend, m.ext.conbuffer, m.cons, x)
 
     if length(m.ext.conaugptr) > 1
@@ -156,14 +175,14 @@ function NLPModels.cons!(
         synchronize(m.ext.backend)
     end
 end
-function _cons!(backend, y, con::ExaModels.Constraint, x)
+function _cons_nln!(backend, y, con::ExaModels.Constraint, x)
     kerf(backend)(y, con.f, con.itr, x; ndrange = length(con.itr))
-    _cons!(backend, y, con.inner, x)
+    _cons_nln!(backend, y, con.inner, x)
     synchronize(backend)
 end
-function _cons!(backend, y, con::ExaModels.ConstraintNull, x) end
-function _cons!(backend, y, con::ExaModels.ConstraintAug, x)
-    _cons!(backend, y, con.inner, x)
+function _cons_nln!(backend, y, con::ExaModels.ConstraintNull, x) end
+function _cons_nln!(backend, y, con::ExaModels.ConstraintAug, x)
+    _cons_nln!(backend, y, con.inner, x)
 end
 
 
@@ -178,7 +197,7 @@ function _conaugs!(backend, y, con::ExaModels.Constraint, x)
 end
 function _conaugs!(backend, y, con::ExaModels.ConstraintNull, x) end
 
-function NLPModels.grad!(
+function ExaModels.grad!(
     m::ExaModels.ExaModel{T,VT,E} where {T,VT,E<:KAExtension},
     x::V,
     y::V,
@@ -204,7 +223,7 @@ function _grad!(backend, y, objs, x)
 end
 function _grad!(backend, y, objs::ExaModels.ObjectiveNull, x) end
 
-function NLPModels.jac_coord!(
+function ExaModels.jac_coord!(
     m::ExaModels.ExaModel{T,VT,E} where {T,VT,E<:KAExtension},
     x::V,
     y::V,
@@ -219,7 +238,7 @@ function _jac_coord!(backend, y, cons, x)
 end
 function _jac_coord!(backend, y, cons::ExaModels.ConstraintNull, x) end
 
-function NLPModels.hess_coord!(
+function ExaModels.hess_coord!(
     m::ExaModels.ExaModel{T,VT,E} where {T,VT,E<:KAExtension},
     x::V,
     y::V,

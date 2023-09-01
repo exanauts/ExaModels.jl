@@ -1,7 +1,7 @@
 module NLPTest
 
 using ExaModels, Test, ADNLPModels, NLPModels, KernelAbstractions, CUDA, AMDGPU, oneAPI
-using NLPModelsIpopt, MadNLP
+using NLPModelsIpopt, MadNLP, DCISolver
 
 
 const BACKENDS = Any[
@@ -42,6 +42,10 @@ const SOLVERS = [
     (
         "madnlp",
         nlp -> madnlp(nlp; print_level=MadNLP.ERROR)
+    ),
+    (
+        "dci",
+        nlp -> dci(nlp)
     )
 ]
 

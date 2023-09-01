@@ -53,6 +53,20 @@ end
     y2[ind] = d.i
     return cnt
 end
+@inbounds @inline function jrpass(
+    d::D,
+    comp,
+    i,
+    y1::V,
+    y2,
+    o1,
+    cnt,
+    adj,
+) where {D<:AdjointNodeVar,I<:Tuple{Int,Int,Int},V<:AbstractVector{I}}
+    ind = o1 + comp(cnt += 1)
+    y1[ind] = (ind, i, d.i)
+    return cnt
+end
 
 
 function sjacobian!(y1, y2, f, x, adj)
