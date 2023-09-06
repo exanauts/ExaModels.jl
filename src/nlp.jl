@@ -213,7 +213,7 @@ julia> result = ipopt(m; print_level=0)    # solve the problem
 
 ```
 """
-function ExaModel(c::C) where {C<:ExaCore}
+function ExaModel(c::C; kwargs...) where {C<:ExaCore}
     return ExaModel(
         c.obj,
         c.con,
