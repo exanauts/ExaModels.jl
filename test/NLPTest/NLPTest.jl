@@ -48,6 +48,8 @@ end
 try
     oneAPI.oneL0.zeInit(0)
     push!(BACKENDS, oneAPIBackend())
+    
+    push!(EXCLUDE,("percival", oneAPIBackend()))
 catch e
 end
 
