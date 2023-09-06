@@ -34,5 +34,6 @@ function luksan_vlcek_simdiff_model(backend, N)
         luksan_vlcek_con(x,i)
         for i in 1:N-2)
     objective(c, luksan_vlcek_obj(x,i) for i in 2:N)
-    return ExaModel(c)
+    
+    return ExaModel(c; prod = true)
 end

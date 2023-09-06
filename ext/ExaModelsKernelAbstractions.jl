@@ -23,7 +23,7 @@ function getptr(backend, array; cmp = isequal)
 end
 
 
-struct KAExtension{T,VT<:AbstractVector{T},VI1,VI2,B, H}
+struct KAExtension{T,VT<:AbstractVector{T}, H,VI1,VI2,B}
     backend::B
     objbuffer::VT
     gradbuffer::VT
@@ -279,8 +279,18 @@ function _jac_coord!(backend, y, cons, x)
 end
 function _jac_coord!(backend, y, cons::ExaModels.ConstraintNull, x) end
 
-function ExaModels.jprod_nln!(m::ExaModels.ExaModel{T,VT,E}, x::AbstractVector, v::AbstractVector, Jv::AbstractVector) where {T,VT,E <: KAExtension}
+function ExaModels.jprod_nln!(m::ExaModels.ExaModel{T,VT,E}, x::AbstractVector, v::AbstractVector, Jv::AbstractVector) where {T,VT,E <: KAExtension{T, VT, Nothing}}
+    error("Prodhelper is not defined. Use ExaModels(c; prod=true) to use jprod_nln!")
+end
+function ExaModels.jtprod_nln!(m::ExaModels.ExaModel{T,VT,E}, x::AbstractVector, v::AbstractVector, Jtv::AbstractVector) where {T,VT,E <: KAExtension{T, VT, Nothing}}
+    error("Prodhelper is not defined. Use ExaModels(c; prod=true) to use jtprod_nln!")
+end
+function ExaModels.hprod!(m::ExaModels.ExaModel{T,VT,E}, x::AbstractVector, y::AbstractVector, v::AbstractVector, Hv::AbstractVector; obj_weight= one(eltype(x))) where {T,VT,E <: KAExtension{T, VT, Nothing}}
+    error("Prodhelper is not defined. Use ExaModels(c; prod=true) to use hprod!")
+end
 
+function ExaModels.jprod_nln!(m::ExaModels.ExaModel{T,VT,E}, x::AbstractVector, v::AbstractVector, Jv::AbstractVector) where {T,VT,E <: KAExtension}
+    
     fill!(Jv, zero(eltype(Jv)))
     fill!(m.ext.prodhelper.jacbuffer, zero(eltype(Jv)))
     _jac_coord!(m.ext.backend, m.ext.prodhelper.jacbuffer, m.cons, x)
