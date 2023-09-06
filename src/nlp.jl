@@ -230,7 +230,7 @@ function ExaModel(c::C) where {C<:ExaCore}
             ucon = c.ucon,
         ),
         NLPModels.Counters(),
-        extension(c),
+        nothing,
     )
 end
 
@@ -415,8 +415,6 @@ function constraint!(c::C, c1, gen) where {C<:ExaCore}
     c.con = ConstraintAug(c.con, f, gen.iter, oa)
 end
 
-
-function extension(args...) end
 
 function jac_structure!(m::ExaModel, rows::AbstractVector, cols::AbstractVector)
 

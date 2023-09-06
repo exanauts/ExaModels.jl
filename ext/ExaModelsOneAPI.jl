@@ -30,9 +30,6 @@ end
 
 ExaModels.convert_array(v, backend::oneAPI.oneAPIBackend) = oneAPI.oneArray(v)
 
-function ExaModels.sum(a::A) where {A<:oneAPI.oneVector{Float64}}
-    return sum(Array(a))
-end
 ExaModels.sort!(array::A; lt = isless) where {A<:oneAPI.oneVector} =
     copyto!(array, sort!(Array(array)))
 

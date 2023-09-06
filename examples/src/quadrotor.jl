@@ -1,4 +1,4 @@
-function quadrotor_model(N=3; T = Float64, backend=nothing)
+function quadrotor_model(N=3; T = Float64, backend=nothing, kwargs...)
     
     n = 9
     p = 4
@@ -33,6 +33,6 @@ function quadrotor_model(N=3; T = Float64, backend=nothing)
     ExaModels.objective(c, .5*Q*(x[i,j]-d)^2 for (i,j,Q,d) in itr1)
     ExaModels.objective(c, .5*Qf*(x[N+1,j]-d)^2 for (j,Qf,d) in itr2)
     
-    return ExaModels.ExaModel(c)
+    return ExaModels.ExaModel(c;  kwargs...)
 end
 

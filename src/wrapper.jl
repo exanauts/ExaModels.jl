@@ -124,19 +124,22 @@ function NLPModels.obj(
     x::AbstractVector
     )
 
-    copyto!(m.x_buffer, x)
+    copyto!(m.x_result, x)
+    copyto!(m.x_buffer, m.x_result)
     o = NLPModels.obj(m.inner, m.x_buffer)
     return o
 end
-function NLPModels.cons!(
+function NLPModels.cons_nln!(
     m::WrapperNLPModel,
     x::AbstractVector,
     g::AbstractVector
     )
 
-    copyto!(m.x_buffer, x)
-    NLPModels.cons!(m.inner, m.x_buffer, m.cons_buffer)
-    copyto!(g, m.cons_buffer)
+    copyto!(m.x_result, x)
+    copyto!(m.x_buffer, m.x_result)
+    NLPModels.cons_nln!(m.inner, m.x_buffer, m.cons_buffer)
+    copyto!(m.y_result, m.cons_buffer)
+    copyto!(g, m.y_result)
     return 
 end
 function NLPModels.grad!(
@@ -145,9 +148,11 @@ function NLPModels.grad!(
     f::AbstractVector
     )
 
-    copyto!(m.x_buffer, x)
+    copyto!(m.x_result, x)
+    copyto!(m.x_buffer, m.x_result)
     NLPModels.grad!(m.inner, m.x_buffer, m.grad_buffer)
-    copyto!(f, m.grad_buffer)
+    copyto!(m.x_result, m.grad_buffer)
+    copyto!(f, m.x_result)
     return
 end
 function NLPModels.jac_coord!(
@@ -156,7 +161,8 @@ function NLPModels.jac_coord!(
     jac::AbstractVector
     )
 
-    copyto!(m.x_buffer, x)
+    copyto!(m.x_result, x)
+    copyto!(m.x_buffer, m.x_result)
     NLPModels.jac_coord!(m.inner, m.x_buffer, m.jac_buffer)
     copyto!(jac, m.jac_buffer)
     return
@@ -188,7 +194,8 @@ function NLPModels.jprod_nln!(
     Jv::AbstractVector
     )
 
-    copyto!(m.x_buffer, x)
+    copyto!(m.x_result, x)
+    copyto!(m.x_buffer, m.x_result)
     copyto!(m.x_result, v)
     copyto!(m.grad_buffer, m.x_result)
     NLPModels.jprod_nln!(m.inner, m.x_buffer, m.grad_buffer, m.cons_buffer)
@@ -203,7 +210,8 @@ function NLPModels.jtprod_nln!(
     Jtv::AbstractVector
     )
 
-    copyto!(m.x_buffer, x)
+    copyto!(m.x_result, x)
+    copyto!(m.x_buffer, m.x_result)
     copyto!(m.y_result, v)
     copyto!(m.cons_buffer, m.y_result)
     NLPModels.jtprod_nln!(m.inner, m.x_buffer, m.cons_buffer, m.grad_buffer)
@@ -220,9 +228,11 @@ function NLPModels.hprod!(
     obj_weight = one(eltype(x))
     )
 
-    copyto!(m.x_buffer, x)
+    copyto!(m.x_result, x)
+    copyto!(m.x_buffer, m.x_result)
     copyto!(m.y_buffer, y)
-    copyto!(m.grad_buffer, v)
+    copyto!(m.x_result, v)
+    copyto!(m.grad_buffer, m.x_result)
     NLPModels.hprod!(
         m.inner, m.x_buffer, m.y_buffer, m.grad_buffer, m.v_buffer;
         obj_weight=obj_weight
