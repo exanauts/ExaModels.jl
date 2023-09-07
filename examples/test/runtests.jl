@@ -5,22 +5,16 @@ const CONFIGS = [
     (Float64, nothing),
     (Float32, CPU()),
     (Float64, CPU()),
-    (Float64, CUDABackend())
+    (Float64, CUDABackend()),
 ]
 
 function runtests()
     @testset "ExaModelsExamples test" begin
         for name in ExaModelsExamples.NAMES
             for (T, backend) in CONFIGS
-                m = eval(name)(
-                    ;
-                    T = T, backend = backend
-                )
-                result = madnlp(
-                    m;
-                    print_level = MadNLP.ERROR
-                )
-                
+                m = eval(name)(; T = T, backend = backend)
+                result = madnlp(m; print_level = MadNLP.ERROR)
+
                 @testset "$name" begin
                     @test result.status == MadNLP.SOLVE_SUCCEEDED
                 end

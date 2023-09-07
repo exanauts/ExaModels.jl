@@ -18,19 +18,13 @@ if !(@isdefined _PAGES)
             "opf.md",
         ],
         "API Manual" => "core.md",
-        "References" => "ref.md"
+        "References" => "ref.md",
     ]
 end
 
 if !(@isdefined _JL_FILENAMES)
-    const _JL_FILENAMES = [
-        "guide.jl",
-        "quad.jl",
-        "distillation.jl",
-        "opf.jl",
-        "gpu.jl",
-        "performance.jl"
-    ]
+    const _JL_FILENAMES =
+        ["guide.jl", "quad.jl", "distillation.jl", "opf.jl", "gpu.jl", "performance.jl"]
 end
 
 for jl_filename in _JL_FILENAMES
@@ -63,13 +57,10 @@ makedocs(
     modules = [ExaModels],
     authors = "Sungho Shin",
     format = Documenter.HTML(
-        assets = [
-            "assets/favicon.ico",
-            "assets/citations.css",
-        ],
+        assets = ["assets/favicon.ico", "assets/citations.css"],
         prettyurls = true,
         sidebar_sitename = true,
-        collapselevel = 1
+        collapselevel = 1,
     ),
     pages = _PAGES,
     clean = false,
@@ -77,4 +68,3 @@ makedocs(
 
 
 deploydocs(repo = "github.com/sshin23/ExaModels.jl.git")
-

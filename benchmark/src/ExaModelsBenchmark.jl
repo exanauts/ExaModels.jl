@@ -29,10 +29,10 @@ end
 
 export runbenchmark
 
-for name in filter(names(ExaModelsExamples; all=true)) do x
+for name in filter(names(ExaModelsExamples; all = true)) do x
     endswith(string(x), "model")
 end
     @eval export $name
-end 
+end
 
 end # module ExaModelsBenchmark

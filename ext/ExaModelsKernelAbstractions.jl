@@ -24,7 +24,7 @@ function getptr(backend, array; cmp = isequal)
 end
 
 
-struct KAExtension{T,VT<:AbstractVector{T}, H,VI1,VI2,B}
+struct KAExtension{T,VT<:AbstractVector{T},H,VI1,VI2,B}
     backend::B
     objbuffer::VT
     gradbuffer::VT
@@ -36,13 +36,12 @@ struct KAExtension{T,VT<:AbstractVector{T}, H,VI1,VI2,B}
     prodhelper::H
 end
 
-function ExaModels.ExaModel(c::C; prod = false, kwargs...) where {
-    T,
-    VT<:AbstractVector{T},
-    B<:KernelAbstractions.Backend,
-    C<:ExaModels.ExaCore{T,VT,B}
-    }
-    
+function ExaModels.ExaModel(
+    c::C;
+    prod = false,
+    kwargs...,
+) where {T,VT<:AbstractVector{T},B<:KernelAbstractions.Backend,C<:ExaModels.ExaCore{T,VT,B}}
+
     gsparsity = similar(c.x0, Tuple{Int,Int}, c.nnzg)
 
     _grad_structure!(c.backend, c.obj, gsparsity)
@@ -51,11 +50,12 @@ function ExaModels.ExaModel(c::C; prod = false, kwargs...) where {
 
     conaugsparsity = similar(c.x0, Tuple{Int,Int}, c.nconaug)
     _conaug_structure!(c.backend, c.con, conaugsparsity)
-    length(conaugsparsity) > 0 && ExaModels.sort!(conaugsparsity; lt = ((i, j), (k, l)) -> i < k)
+    length(conaugsparsity) > 0 &&
+        ExaModels.sort!(conaugsparsity; lt = ((i, j), (k, l)) -> i < k)
     conaugptr = getptr(c.backend, conaugsparsity)
 
     if prod
-        jacbuffer  = similar(c.x0, c.nnzj)
+        jacbuffer = similar(c.x0, c.nnzj)
         hessbuffer = similar(c.x0, c.nnzh)
         jacsparsityi = similar(c.x0, Tuple{Tuple{Int,Int},Int}, c.nnzj)
         hesssparsityi = similar(c.x0, Tuple{Tuple{Int,Int},Int}, c.nnzh)
@@ -66,16 +66,16 @@ function ExaModels.ExaModel(c::C; prod = false, kwargs...) where {
         _con_hess_structure!(c.backend, c.con, hesssparsityi, nothing)
         hesssparsityj = copy(hesssparsityi)
 
-        ExaModels.sort!(jacsparsityi; lt = (((i,j), k), ((n,m), l)) -> i < n)
-        ExaModels.sort!(jacsparsityj; lt = (((i,j), k), ((n,m), l)) -> j < m)
-        jacptri = getptr(c.backend, jacsparsityi; cmp = (x,y)->x[1] == y[1])
-        jacptrj = getptr(c.backend, jacsparsityj; cmp = (x,y)->x[2] == y[2])
-        
-        ExaModels.sort!(hesssparsityi; lt = (((i,j), k), ((n,m), l)) -> i < n)
-        ExaModels.sort!(hesssparsityj; lt = (((i,j), k), ((n,m), l)) -> j < m)
-        hessptri = getptr(c.backend, hesssparsityi; cmp = (x,y)->x[1] == y[1])
-        hessptrj = getptr(c.backend, hesssparsityj; cmp = (x,y)->x[2] == y[2])
-        
+        ExaModels.sort!(jacsparsityi; lt = (((i, j), k), ((n, m), l)) -> i < n)
+        ExaModels.sort!(jacsparsityj; lt = (((i, j), k), ((n, m), l)) -> j < m)
+        jacptri = getptr(c.backend, jacsparsityi; cmp = (x, y) -> x[1] == y[1])
+        jacptrj = getptr(c.backend, jacsparsityj; cmp = (x, y) -> x[2] == y[2])
+
+        ExaModels.sort!(hesssparsityi; lt = (((i, j), k), ((n, m), l)) -> i < n)
+        ExaModels.sort!(hesssparsityj; lt = (((i, j), k), ((n, m), l)) -> j < m)
+        hessptri = getptr(c.backend, hesssparsityi; cmp = (x, y) -> x[1] == y[1])
+        hessptrj = getptr(c.backend, hesssparsityj; cmp = (x, y) -> x[2] == y[2])
+
         prodhelper = (
             jacbuffer = jacbuffer,
             jacsparsityi = jacsparsityi,
@@ -91,7 +91,7 @@ function ExaModels.ExaModel(c::C; prod = false, kwargs...) where {
     else
         prodhelper = nothing
     end
-    
+
     return ExaModels.ExaModel(
         c.obj,
         c.con,
@@ -117,7 +117,7 @@ function ExaModels.ExaModel(c::C; prod = false, kwargs...) where {
             similar(c.x0, c.nconaug),
             conaugsparsity,
             conaugptr,
-            prodhelper
+            prodhelper,
         ),
     )
 end
@@ -280,18 +280,40 @@ function _jac_coord!(backend, y, cons, x)
 end
 function _jac_coord!(backend, y, cons::ExaModels.ConstraintNull, x) end
 
-function ExaModels.jprod_nln!(m::ExaModels.ExaModel{T,VT,E}, x::AbstractVector, v::AbstractVector, Jv::AbstractVector) where {T,VT,E <: KAExtension{T, VT, Nothing}}
+function ExaModels.jprod_nln!(
+    m::ExaModels.ExaModel{T,VT,E},
+    x::AbstractVector,
+    v::AbstractVector,
+    Jv::AbstractVector,
+) where {T,VT,E<:KAExtension{T,VT,Nothing}}
     error("Prodhelper is not defined. Use ExaModels(c; prod=true) to use jprod_nln!")
 end
-function ExaModels.jtprod_nln!(m::ExaModels.ExaModel{T,VT,E}, x::AbstractVector, v::AbstractVector, Jtv::AbstractVector) where {T,VT,E <: KAExtension{T, VT, Nothing}}
+function ExaModels.jtprod_nln!(
+    m::ExaModels.ExaModel{T,VT,E},
+    x::AbstractVector,
+    v::AbstractVector,
+    Jtv::AbstractVector,
+) where {T,VT,E<:KAExtension{T,VT,Nothing}}
     error("Prodhelper is not defined. Use ExaModels(c; prod=true) to use jtprod_nln!")
 end
-function ExaModels.hprod!(m::ExaModels.ExaModel{T,VT,E}, x::AbstractVector, y::AbstractVector, v::AbstractVector, Hv::AbstractVector; obj_weight= one(eltype(x))) where {T,VT,E <: KAExtension{T, VT, Nothing}}
+function ExaModels.hprod!(
+    m::ExaModels.ExaModel{T,VT,E},
+    x::AbstractVector,
+    y::AbstractVector,
+    v::AbstractVector,
+    Hv::AbstractVector;
+    obj_weight = one(eltype(x)),
+) where {T,VT,E<:KAExtension{T,VT,Nothing}}
     error("Prodhelper is not defined. Use ExaModels(c; prod=true) to use hprod!")
 end
 
-function ExaModels.jprod_nln!(m::ExaModels.ExaModel{T,VT,E}, x::AbstractVector, v::AbstractVector, Jv::AbstractVector) where {T,VT,E <: KAExtension}
-    
+function ExaModels.jprod_nln!(
+    m::ExaModels.ExaModel{T,VT,E},
+    x::AbstractVector,
+    v::AbstractVector,
+    Jv::AbstractVector,
+) where {T,VT,E<:KAExtension}
+
     fill!(Jv, zero(eltype(Jv)))
     fill!(m.ext.prodhelper.jacbuffer, zero(eltype(Jv)))
     _jac_coord!(m.ext.backend, m.ext.prodhelper.jacbuffer, m.cons, x)
@@ -306,7 +328,12 @@ function ExaModels.jprod_nln!(m::ExaModels.ExaModel{T,VT,E}, x::AbstractVector, 
     )
     synchronize(m.ext.backend)
 end
-function ExaModels.jtprod_nln!(m::ExaModels.ExaModel{T,VT,E}, x::AbstractVector, v::AbstractVector, Jtv::AbstractVector) where {T,VT,E <: KAExtension}
+function ExaModels.jtprod_nln!(
+    m::ExaModels.ExaModel{T,VT,E},
+    x::AbstractVector,
+    v::AbstractVector,
+    Jtv::AbstractVector,
+) where {T,VT,E<:KAExtension}
 
     fill!(Jtv, zero(eltype(Jtv)))
     fill!(m.ext.prodhelper.jacbuffer, zero(eltype(Jtv)))
@@ -320,13 +347,20 @@ function ExaModels.jtprod_nln!(m::ExaModels.ExaModel{T,VT,E}, x::AbstractVector,
         m.ext.prodhelper.jacptrj,
         ndrange = length(m.ext.prodhelper.jacptrj) - 1,
     )
-    synchronize(m.ext.backend)    
+    synchronize(m.ext.backend)
 end
-function ExaModels.hprod!(m::ExaModels.ExaModel{T,VT,E}, x::AbstractVector, y::AbstractVector, v::AbstractVector, Hv::AbstractVector; obj_weight= one(eltype(x))) where {T,VT,E <: KAExtension}
+function ExaModels.hprod!(
+    m::ExaModels.ExaModel{T,VT,E},
+    x::AbstractVector,
+    y::AbstractVector,
+    v::AbstractVector,
+    Hv::AbstractVector;
+    obj_weight = one(eltype(x)),
+) where {T,VT,E<:KAExtension}
 
     fill!(Hv, zero(eltype(Hv)))
     fill!(m.ext.prodhelper.hessbuffer, zero(eltype(Hv)))
-    
+
     _obj_hess_coord!(m.ext.backend, m.ext.prodhelper.hessbuffer, m.objs, x, obj_weight)
     _con_hess_coord!(m.ext.backend, m.ext.prodhelper.hessbuffer, m.cons, x, y)
     synchronize(m.ext.backend)
@@ -352,29 +386,29 @@ end
 
 @kernel function kerspmv(y, @Const(x), @Const(coord), @Const(V), @Const(ptr))
     idx = @index(Global)
-    @inbounds for l in ptr[idx]:ptr[idx+1]-1
-        ((i,j), ind) = coord[l]
+    @inbounds for l = ptr[idx]:ptr[idx+1]-1
+        ((i, j), ind) = coord[l]
         y[i] += V[ind] * x[j]
     end
 end
 @kernel function kerspmv2(y, @Const(x), @Const(coord), @Const(V), @Const(ptr))
-    idx = @index(Global)    
-    @inbounds for l in ptr[idx]:ptr[idx+1]-1
-        ((i,j), ind) = coord[l]
+    idx = @index(Global)
+    @inbounds for l = ptr[idx]:ptr[idx+1]-1
+        ((i, j), ind) = coord[l]
         y[j] += V[ind] * x[i]
     end
 end
 @kernel function kersyspmv(y, @Const(x), @Const(coord), @Const(V), @Const(ptr))
     idx = @index(Global)
-    @inbounds for l in ptr[idx]:ptr[idx+1]-1
-        ((i,j), ind) = coord[l]
+    @inbounds for l = ptr[idx]:ptr[idx+1]-1
+        ((i, j), ind) = coord[l]
         y[i] += V[ind] * x[j]
     end
 end
 @kernel function kersyspmv2(y, @Const(x), @Const(coord), @Const(V), @Const(ptr))
-    idx = @index(Global)    
-    @inbounds for l in ptr[idx]:ptr[idx+1]-1
-        ((i,j), ind) = coord[l]
+    idx = @index(Global)
+    @inbounds for l = ptr[idx]:ptr[idx+1]-1
+        ((i, j), ind) = coord[l]
         if i != j
             y[j] += V[ind] * x[i]
         end
@@ -414,8 +448,8 @@ function ExaModels.sgradient!(
     f,
     x,
     adj,
-    ) where {B<:KernelAbstractions.Backend}
-    
+) where {B<:KernelAbstractions.Backend}
+
     return kerg(backend)(y, f.f, f.itr, x, adj; ndrange = length(f.itr))
 end
 
