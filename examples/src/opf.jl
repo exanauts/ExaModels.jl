@@ -129,7 +129,8 @@ end
 function ac_power_model(
     filename = "pglib_opf_case3_lmbd.m";
     backend = nothing,
-    T = Float64
+    T = Float64,
+    kwargs...
     )
 
     data = parse_ac_power_data(filename, backend) 
@@ -267,7 +268,7 @@ function ac_power_model(
         g.bus =>-qg[g.i]
         for g in data.gen)
     
-    return ExaModels.ExaModel(w)
+    return ExaModels.ExaModel(w; kwargs...)
     
 end
 

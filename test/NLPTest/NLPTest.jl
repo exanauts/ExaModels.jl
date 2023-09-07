@@ -1,27 +1,13 @@
 module NLPTest
 
 using ExaModels, Test, ADNLPModels, NLPModels, KernelAbstractions, CUDA, AMDGPU, oneAPI
-using NLPModelsIpopt, MadNLP
+using NLPModelsIpopt, MadNLP, Percival
 
 
 const BACKENDS = Any[
     nothing,
     CPU()
 ]
-
-if CUDA.has_cuda()
-    push!(BACKENDS, CUDABackend())
-end
-
-if AMDGPU.has_rocm_gpu()
-    push!(BACKENDS, ROCBackend())
-end
-
-try
-    oneAPI.oneL0.zeInit(0)
-    push!(BACKENDS, oneAPIBackend())
-catch e
-end
 
 const NLP_TEST_ARGUMENTS = [
     (
@@ -42,9 +28,29 @@ const SOLVERS = [
     (
         "madnlp",
         nlp -> madnlp(nlp; print_level=MadNLP.ERROR)
+    ),
+    (
+        "percival",
+        nlp -> percival(nlp)
     )
 ]
 
+const EXCLUDE = []
+
+if CUDA.has_cuda()
+    push!(BACKENDS, CUDABackend())
+end
+
+if AMDGPU.has_rocm_gpu()
+    push!(BACKENDS, ROCBackend())
+end
+
+try
+    oneAPI.oneL0.zeInit(0)
+    push!(BACKENDS, oneAPIBackend())
+    push!(EXCLUDE,("percival", oneAPIBackend()))
+catch e
+end
 
 include("luksan.jl")
 
@@ -73,6 +79,9 @@ function runtests()
         for (sname, solver) in SOLVERS
             for (name, args) in NLP_TEST_ARGUMENTS
                 for backend in BACKENDS
+                    if (sname, backend) in EXCLUDE
+                        continue
+                    end
                     simdiff_model = getfield(
                         @__MODULE__,
                         Symbol(name * "_simdiff_model")

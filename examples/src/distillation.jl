@@ -1,4 +1,4 @@
-function distillation_column_model(N = 3; T = Float64, backend=nothing)
+function distillation_column_model(N = 3; T = Float64, backend=nothing,  kwargs...)
     NT = 30
     FT = 17
     Ac = 0.5
@@ -66,5 +66,5 @@ function distillation_column_model(N = 3; T = Float64, backend=nothing)
         yA[t, i] * (1 - xA[t, i]) - alpha * xA[t, i] * (1 - yA[t, i]) for (t, i) in itr2
     )
 
-    return ExaModels.ExaModel(c)
+    return ExaModels.ExaModel(c; kwargs...)
 end
