@@ -47,8 +47,8 @@ end
     o1,
     cnt,
     adj,
-    ) where {D<:AdjointNodeVar, V1 <: AbstractVector, V2 <: AbstractVector}
-    (y,v) = y1 
+) where {D<:AdjointNodeVar,V1<:AbstractVector,V2<:AbstractVector}
+    (y, v) = y1
     y[i] += adj * v[d.i]
     return (cnt += 1)
 end
@@ -61,7 +61,7 @@ end
     o1,
     cnt,
     adj,
-) where {D<:AdjointNodeVar, V1 <: AbstractVector, V2 <: AbstractVector}
+) where {D<:AdjointNodeVar,V1<:AbstractVector,V2<:AbstractVector}
     y, v = y2
     y[d.i] += adj * v[i]
     return (cnt += 1)

@@ -1,4 +1,4 @@
-function distillation_column_model(N = 3; T = Float64, backend=nothing,  kwargs...)
+function distillation_column_model(N = 3; T = Float64, backend = nothing, kwargs...)
     NT = 30
     FT = 17
     Ac = 0.5

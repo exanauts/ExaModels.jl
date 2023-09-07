@@ -9,8 +9,8 @@ function __init__()
         (
             name = "AMDGPU",
             hardware = "$(AMDGPU.HIP.name(AMDGPU.device()))",
-            backend = AMDGPU.ROCBackend()
-        )
+            backend = AMDGPU.ROCBackend(),
+        ),
     )
 end
 

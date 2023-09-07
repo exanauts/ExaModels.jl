@@ -1,4 +1,4 @@
-function exa_distillation_column_model(N= 3; kwargs...)
+function exa_distillation_column_model(N = 3; kwargs...)
     return ExaModelsExamples.distillation_column_model(N; kwargs...)
 end
 

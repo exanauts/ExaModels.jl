@@ -262,7 +262,12 @@ end
     o2,
     cnt,
     adj,
-) where {T1<:SecondAdjointNodeVar,T2<:SecondAdjointNodeVar,V1 <: AbstractVector,V2 <: AbstractVector}
+) where {
+    T1<:SecondAdjointNodeVar,
+    T2<:SecondAdjointNodeVar,
+    V1<:AbstractVector,
+    V2<:AbstractVector,
+}
     i, j = t1.i, t2.i
     y, v = y1
     if i == j
@@ -481,7 +486,7 @@ end
     cnt,
     adj,
     adj2,
-    ) where {T<:SecondAdjointNodeVar,V1 <: AbstractVector,V2 <: AbstractVector}
+) where {T<:SecondAdjointNodeVar,V1<:AbstractVector,V2<:AbstractVector}
     y, v = y1
     y[t.i] += adj2 * v[t.i]
     return (cnt += 1)
@@ -558,13 +563,18 @@ end
     o2,
     cnt,
     adj,
-) where {T1<:SecondAdjointNodeVar,T2<:SecondAdjointNodeVar,I<:Tuple{Tuple{Int,Int},Int},V<:AbstractVector{I}}
+) where {
+    T1<:SecondAdjointNodeVar,
+    T2<:SecondAdjointNodeVar,
+    I<:Tuple{Tuple{Int,Int},Int},
+    V<:AbstractVector{I},
+}
     i, j = t1.i, t2.i
     ind = o2 + comp(cnt += 1)
     if i >= j
-        y1[ind] = ((i,j), ind)
+        y1[ind] = ((i, j), ind)
     else
-        y1[ind] = ((j,i), ind)
+        y1[ind] = ((j, i), ind)
     end
     cnt
 end

@@ -9,8 +9,8 @@ function __init__()
         (
             name = "oneAPI",
             hardware = "$(oneAPI.properties(oneAPI.device()).name)",
-            backend = oneAPI.oneAPIBackend()
-        )
+            backend = oneAPI.oneAPIBackend(),
+        ),
     )
 end
 

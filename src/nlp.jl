@@ -387,7 +387,7 @@ function constraint(
     lcon = zero(T),
     ucon = zero(T),
 ) where {T,C<:ExaCore{T}}
-  
+
     f = SIMDFunction(gen, c.ncon, c.nnzj, c.nnzh)
     nitr = length(gen.iter)
     o = c.ncon
@@ -545,7 +545,14 @@ function _con_hess_coord!(cons, x, y, hess, obj_weight)
     shessian!(hess, nothing, cons, x, y, zero(eltype(hess)))
 end
 
-function hprod!(m::ExaModel, x::AbstractVector, y::AbstractVector, v::AbstractVector, Hv::AbstractVector; obj_weight= one(eltype(x)))
+function hprod!(
+    m::ExaModel,
+    x::AbstractVector,
+    y::AbstractVector,
+    v::AbstractVector,
+    Hv::AbstractVector;
+    obj_weight = one(eltype(x)),
+)
 
     fill!(Hv, zero(eltype(Hv)))
     _obj_hprod!(m.objs, x, y, v, Hv, obj_weight)

@@ -20,48 +20,75 @@ function exa_ac_power_model(filename = "pglib_opf_case3_lmbd.m"; kwargs...)
     return ExaModelsExamples.ac_power_model(filename; kwargs...)
 end
 function jump_ac_power_model(filename = "pglib_opf_case3_lmbd.m")
-    
+
     ref = ExaModelsExamples.get_power_data_ref(filename)
 
     model = JuMP.Model()
     #JuMP.set_optimizer_attribute(model, "print_level", 0)
 
     JuMP.@variable(model, va[i in keys(ref[:bus])])
-    JuMP.@variable(model, ref[:bus][i]["vmin"] <= vm[i in keys(ref[:bus])] <= ref[:bus][i]["vmax"], start=1.0)
+    JuMP.@variable(
+        model,
+        ref[:bus][i]["vmin"] <= vm[i in keys(ref[:bus])] <= ref[:bus][i]["vmax"],
+        start = 1.0
+    )
 
-    JuMP.@variable(model, ref[:gen][i]["pmin"] <= pg[i in keys(ref[:gen])] <= ref[:gen][i]["pmax"])
-    JuMP.@variable(model, ref[:gen][i]["qmin"] <= qg[i in keys(ref[:gen])] <= ref[:gen][i]["qmax"])
+    JuMP.@variable(
+        model,
+        ref[:gen][i]["pmin"] <= pg[i in keys(ref[:gen])] <= ref[:gen][i]["pmax"]
+    )
+    JuMP.@variable(
+        model,
+        ref[:gen][i]["qmin"] <= qg[i in keys(ref[:gen])] <= ref[:gen][i]["qmax"]
+    )
 
-    JuMP.@variable(model, -ref[:branch][l]["rate_a"] <= p[(l,i,j) in ref[:arcs]] <= ref[:branch][l]["rate_a"])
-    JuMP.@variable(model, -ref[:branch][l]["rate_a"] <= q[(l,i,j) in ref[:arcs]] <= ref[:branch][l]["rate_a"])
+    JuMP.@variable(
+        model,
+        -ref[:branch][l]["rate_a"] <=
+        p[(l, i, j) in ref[:arcs]] <=
+        ref[:branch][l]["rate_a"]
+    )
+    JuMP.@variable(
+        model,
+        -ref[:branch][l]["rate_a"] <=
+        q[(l, i, j) in ref[:arcs]] <=
+        ref[:branch][l]["rate_a"]
+    )
 
-    JuMP.@objective(model, Min, sum(gen["cost"][1]*pg[i]^2 + gen["cost"][2]*pg[i] + gen["cost"][3] for (i,gen) in ref[:gen]))
+    JuMP.@objective(
+        model,
+        Min,
+        sum(
+            gen["cost"][1] * pg[i]^2 + gen["cost"][2] * pg[i] + gen["cost"][3] for
+            (i, gen) in ref[:gen]
+        )
+    )
 
-    for (i,bus) in ref[:ref_buses]
+    for (i, bus) in ref[:ref_buses]
         JuMP.@constraint(model, va[i] == 0)
     end
 
-    for (i,bus) in ref[:bus]
+    for (i, bus) in ref[:bus]
         bus_loads = [ref[:load][l] for l in ref[:bus_loads][i]]
         bus_shunts = [ref[:shunt][s] for s in ref[:bus_shunts][i]]
 
-        JuMP.@constraint(model,
+        JuMP.@constraint(
+            model,
             sum(p[a] for a in ref[:bus_arcs][i]) ==
-            sum(pg[g] for g in ref[:bus_gens][i]) -
-            sum(load["pd"] for load in bus_loads) -
-            sum(shunt["gs"] for shunt in bus_shunts)*vm[i]^2
+            sum(pg[g] for g in ref[:bus_gens][i]) - sum(load["pd"] for load in bus_loads) -
+            sum(shunt["gs"] for shunt in bus_shunts) * vm[i]^2
         )
 
-        JuMP.@constraint(model,
+        JuMP.@constraint(
+            model,
             sum(q[a] for a in ref[:bus_arcs][i]) ==
-            sum(qg[g] for g in ref[:bus_gens][i]) -
-            sum(load["qd"] for load in bus_loads) +
-            sum(shunt["bs"] for shunt in bus_shunts)*vm[i]^2
+            sum(qg[g] for g in ref[:bus_gens][i]) - sum(load["qd"] for load in bus_loads) +
+            sum(shunt["bs"] for shunt in bus_shunts) * vm[i]^2
         )
     end
 
     # Branch power flow physics and limit constraints
-    for (i,branch) in ref[:branch]
+    for (i, branch) in ref[:branch]
         f_idx = (i, branch["f_bus"], branch["t_bus"])
         t_idx = (i, branch["t_bus"], branch["f_bus"])
 
@@ -84,12 +111,36 @@ function jump_ac_power_model(filename = "pglib_opf_case3_lmbd.m")
         b_to = branch["b_to"]
 
         # From side of the branch flow
-        JuMP.@NLconstraint(model, p_fr ==  (g+g_fr)/ttm*vm_fr^2 + (-g*tr+b*ti)/ttm*(vm_fr*vm_to*cos(va_fr-va_to)) + (-b*tr-g*ti)/ttm*(vm_fr*vm_to*sin(va_fr-va_to)) )
-        JuMP.@NLconstraint(model, q_fr == -(b+b_fr)/ttm*vm_fr^2 - (-b*tr-g*ti)/ttm*(vm_fr*vm_to*cos(va_fr-va_to)) + (-g*tr+b*ti)/ttm*(vm_fr*vm_to*sin(va_fr-va_to)) )
+        JuMP.@NLconstraint(
+            model,
+            p_fr ==
+            (g + g_fr) / ttm * vm_fr^2 +
+            (-g * tr + b * ti) / ttm * (vm_fr * vm_to * cos(va_fr - va_to)) +
+            (-b * tr - g * ti) / ttm * (vm_fr * vm_to * sin(va_fr - va_to))
+        )
+        JuMP.@NLconstraint(
+            model,
+            q_fr ==
+            -(b + b_fr) / ttm * vm_fr^2 -
+            (-b * tr - g * ti) / ttm * (vm_fr * vm_to * cos(va_fr - va_to)) +
+            (-g * tr + b * ti) / ttm * (vm_fr * vm_to * sin(va_fr - va_to))
+        )
 
         # To side of the branch flow
-        JuMP.@NLconstraint(model, p_to ==  (g+g_to)*vm_to^2 + (-g*tr-b*ti)/ttm*(vm_to*vm_fr*cos(va_to-va_fr)) + (-b*tr+g*ti)/ttm*(vm_to*vm_fr*sin(va_to-va_fr)) )
-        JuMP.@NLconstraint(model, q_to == -(b+b_to)*vm_to^2 - (-b*tr+g*ti)/ttm*(vm_to*vm_fr*cos(va_to-va_fr)) + (-g*tr-b*ti)/ttm*(vm_to*vm_fr*sin(va_to-va_fr)) )
+        JuMP.@NLconstraint(
+            model,
+            p_to ==
+            (g + g_to) * vm_to^2 +
+            (-g * tr - b * ti) / ttm * (vm_to * vm_fr * cos(va_to - va_fr)) +
+            (-b * tr + g * ti) / ttm * (vm_to * vm_fr * sin(va_to - va_fr))
+        )
+        JuMP.@NLconstraint(
+            model,
+            q_to ==
+            -(b + b_to) * vm_to^2 -
+            (-b * tr + g * ti) / ttm * (vm_to * vm_fr * cos(va_to - va_fr)) +
+            (-g * tr - b * ti) / ttm * (vm_to * vm_fr * sin(va_to - va_fr))
+        )
 
         # Voltage angle difference limit
         JuMP.@constraint(model, branch["angmin"] <= va_fr - va_to <= branch["angmax"])
@@ -101,30 +152,30 @@ function jump_ac_power_model(filename = "pglib_opf_case3_lmbd.m")
 
     return MathOptNLPModel(model)
 end
- 
+
 
 function ampl_data(filename)
     data = ExaModelsExamples.parse_ac_power_data(filename)
-    
-    bus_gens = [Int[] for i=1:length(data.bus)]
-    bus_arcs = [Int[] for i=1:length(data.bus)]
-    
+
+    bus_gens = [Int[] for i = 1:length(data.bus)]
+    bus_arcs = [Int[] for i = 1:length(data.bus)]
+
     for g in data.gen
         push!(bus_gens[g.bus], g.i)
     end
-    
+
     for a in data.arc
         push!(bus_arcs[a.bus], a.i)
     end
-    
+
     return data, bus_gens, bus_arcs
 end
 
 function ampl_ac_power_model(filename = "pglib_opf_case3_lmbd.m")
 
     short = splitext(basename(filename))[1]
-    
-    nlfile = joinpath(TMPDIR , "ac_power_model_$short.nl")
+
+    nlfile = joinpath(TMPDIR, "ac_power_model_$short.nl")
 
     if !isfile(nlfile)
         py"""
@@ -136,7 +187,7 @@ function ampl_ac_power_model(filename = "pglib_opf_case3_lmbd.m")
 
         data, bus_gens, bus_arcs = ExaModelsBenchmark.ampl_data($filename)
         """
-        
+
         @info "Writing nlfile for $filename"
         py"""
 
@@ -253,7 +304,6 @@ function ampl_ac_power_model(filename = "pglib_opf_case3_lmbd.m")
         m.write($nlfile)
         """
     end
-    
+
     return AmplNLReader.AmplModel(nlfile)
 end
-
