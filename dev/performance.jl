@@ -13,25 +13,23 @@ t = @elapsed begin
     objective(c, 100 * (x[i-1]^2 - x[i])^2 + (x[i-1] - 1)^2 for i = 2:N)
     constraint(
         c,
-        3x[i+1]^3 + 2 * x[i+2] - 5 + sin(x[i+1] - x[i+2])sin(x[i+1] + x[i+2]) + 4x[i+1] -
-            x[i]exp(x[i] - x[i+1]) - 3 for i = 1:N-2
-                )
+        3x[i+1]^3 + 2 * x[i+2] - 5 + sin(x[i+1] - x[i+2])sin(x[i+1] + x[i+2]) + 4x[i+1] - x[i]exp(x[i] - x[i+1]) - 3 for i = 1:N-2
+    )
     m = ExaModel(c)
 end
 
 println("$t seconds elapsed")
 
 # Even at the second call,
-t = @elapsed begin 
+t = @elapsed begin
     c = ExaCore()
     N = 10
     x = variable(c, N; start = (mod(i, 2) == 1 ? -1.2 : 1.0 for i = 1:N))
     objective(c, 100 * (x[i-1]^2 - x[i])^2 + (x[i-1] - 1)^2 for i = 2:N)
     constraint(
         c,
-        3x[i+1]^3 + 2 * x[i+2] - 5 + sin(x[i+1] - x[i+2])sin(x[i+1] + x[i+2]) + 4x[i+1] -
-            x[i]exp(x[i] - x[i+1]) - 3 for i = 1:N-2
-                )
+        3x[i+1]^3 + 2 * x[i+2] - 5 + sin(x[i+1] - x[i+2])sin(x[i+1] + x[i+2]) + 4x[i+1] - x[i]exp(x[i] - x[i+1]) - 3 for i = 1:N-2
+    )
     m = ExaModel(c)
 end
 
@@ -46,8 +44,8 @@ function luksan_vlcek_model(N)
     constraint(
         c,
         3x[i+1]^3 + 2 * x[i+2] - 5 + sin(x[i+1] - x[i+2])sin(x[i+1] + x[i+2]) + 4x[i+1] -
-            x[i]exp(x[i] - x[i+1]) - 3 for i = 1:N-2
-                )
+        x[i]exp(x[i] - x[i+1]) - 3 for i = 1:N-2
+    )
     m = ExaModel(c)
 end
 
@@ -57,7 +55,7 @@ println("$t seconds elapsed")
 #-
 
 t = @elapsed luksan_vlcek_model(N)
-println("$t seconds elapsed") 
+println("$t seconds elapsed")
 
 # So, the model creation time can be essentially nothing. Thus, if you care about the model creation time, always make sure to write a function for creating the model, and do not directly create a model from the REPL.
 
@@ -75,14 +73,14 @@ function luksan_vlcek_model_concrete(N)
 
     arr1 = Array(2:N)
     arr2 = Array(1:N-2)
-    
+
     x = variable(c, N; start = (mod(i, 2) == 1 ? -1.2 : 1.0 for i = 1:N))
-    objective(c, 100 * (x[i-1]^2 - x[i])^2 + (x[i-1] - 1)^2 for i = arr1)
+    objective(c, 100 * (x[i-1]^2 - x[i])^2 + (x[i-1] - 1)^2 for i in arr1)
     constraint(
         c,
         3x[i+1]^3 + 2 * x[i+2] - 5 + sin(x[i+1] - x[i+2])sin(x[i+1] + x[i+2]) + 4x[i+1] -
-            x[i]exp(x[i] - x[i+1]) - 3 for i = arr2
-                )
+        x[i]exp(x[i] - x[i+1]) - 3 for i in arr2
+    )
     m = ExaModel(c)
 end
 
@@ -91,14 +89,14 @@ function luksan_vlcek_model_non_concrete(N)
 
     arr1 = Array{Any}(2:N)
     arr2 = Array{Any}(1:N-2)
-    
+
     x = variable(c, N; start = (mod(i, 2) == 1 ? -1.2 : 1.0 for i = 1:N))
-    objective(c, 100 * (x[i-1]^2 - x[i])^2 + (x[i-1] - 1)^2 for i = arr1)
+    objective(c, 100 * (x[i-1]^2 - x[i])^2 + (x[i-1] - 1)^2 for i in arr1)
     constraint(
         c,
         3x[i+1]^3 + 2 * x[i+2] - 5 + sin(x[i+1] - x[i+2])sin(x[i+1] + x[i+2]) + 4x[i+1] -
-            x[i]exp(x[i] - x[i+1]) - 3 for i = arr2
-                )
+        x[i]exp(x[i] - x[i+1]) - 3 for i in arr2
+    )
     m = ExaModel(c)
 end
 
@@ -136,7 +134,7 @@ function benchmark_callbacks(m; N = 100)
     GC.enable(false)
 
     NLPModels.obj(m, x) # to compile
-    
+
     tobj = (1 / N) * @elapsed for t = 1:N
         NLPModels.obj(m, x)
     end
@@ -203,5 +201,5 @@ using CUDA
 try
     arr1 = CuArray(Array{Any}(2:N))
 catch e
-    showerror(stdout,e)
+    showerror(stdout, e)
 end
