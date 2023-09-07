@@ -477,7 +477,7 @@ end
 
 function _grad!(objs, x, f)
     _grad!(objs.inner, x, f)
-    sgradient!(f, objs, x, one(eltype(f)))
+    gradient!(f, objs, x, one(eltype(f)))
 end
 _grad!(objs::ObjectiveNull, x, f) = nothing
 

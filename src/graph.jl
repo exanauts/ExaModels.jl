@@ -1,11 +1,16 @@
+# Abstract node type for symbolic expression
 abstract type AbstractNode end
+
+# Abstract node type for first-order forward pass
 abstract type AbstractAdjointNode end
+
+# Abstract node type for second-order forward pass
 abstract type AbstractSecondAdjointNode end
 
 """
     Var{I}
 
-DOCSTRING
+A variable node for symbolic expression tree
 
 # Fields:
 - `i::I`: DESCRIPTION

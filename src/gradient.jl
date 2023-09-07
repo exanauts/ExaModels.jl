@@ -1,4 +1,47 @@
 """
+    drpass(d::D, y, adj)
+
+DOCSTRING
+
+# Arguments:
+- `d`: DESCRIPTION
+- `y`: DESCRIPTION
+- `adj`: DESCRIPTION
+"""
+@inline function drpass(d::D, y, adj) where {D<:AdjointNode1}
+    offset = drpass(d.inner, y, adj * d.y)
+    nothing
+end
+@inline function drpass(d::D, y, adj) where {D<:AdjointNode2}
+    offset = drpass(d.inner1, y, adj * d.y1)
+    offset = drpass(d.inner2, y, adj * d.y2)
+    nothing
+end
+@inline function drpass(d::D, y, adj) where {D<:AdjointNodeVar}
+    @inbounds y[d.i] += adj
+    nothing
+end
+@inline function drpass(f::F, x, y, adj) where {F<:SIMDFunction} end
+
+"""
+    gradient!(y, f, x, adj)
+
+DOCSTRING
+
+# Arguments:
+- `y`: DESCRIPTION
+- `f`: DESCRIPTION
+- `x`: DESCRIPTION
+- `adj`: DESCRIPTION
+"""
+function gradient!(y, f, x, adj)
+    @simd for k in eachindex(f.itr)
+        @inbounds drpass(f.f.f(f.itr[k], AdjointNodeSource(x)), y, adj)
+    end
+    return y
+end
+
+"""
     grpass(d::D, comp, y, o1, cnt, adj)
 
 DOCSTRING
