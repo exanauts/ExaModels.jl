@@ -42,13 +42,13 @@ function SIMDFunction(gen::Base.Generator, o0 = 0, o1 = 0, o2 = 0)
     f = gen.f(p)
 
 
-    d = f(Identity(), AdjointNodeSource(NaNSource{Float16}()))
+    d = f(Identity(), AdjointNodeSource())
     y1 = []
-    ExaModels.grpass(d, nothing, y1, nothing, 0, NaN16)
+    ExaModels.grpass(d, nothing, y1, nothing, 0, nothing)
 
-    t = f(Identity(), SecondAdjointNodeSource(NaNSource{Float16}()))
+    t = f(Identity(), SecondAdjointNodeSource())
     y2 = []
-    ExaModels.hrpass0(t, nothing, y2, nothing, nothing, 0, NaN16, NaN16)
+    ExaModels.hrpass0(t, nothing, y2, nothing, nothing, 0, nothing, nothing)
 
     a1 = unique(y1)
     o1step = length(a1)

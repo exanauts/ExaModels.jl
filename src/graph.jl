@@ -1,10 +1,10 @@
-# Abstract node type for symbolic expression
+# Abstract node type for the computation graph for symbolic expression
 abstract type AbstractNode end
 
-# Abstract node type for first-order forward pass
+# Abstract node type for first-order forward pass tree
 abstract type AbstractAdjointNode end
 
-# Abstract node type for second-order forward pass
+# Abstract node type for the computation graph for second-order forward pass
 abstract type AbstractSecondAdjointNode end
 
 """
@@ -13,25 +13,27 @@ abstract type AbstractSecondAdjointNode end
 A variable node for symbolic expression tree
 
 # Fields:
-- `i::I`: DESCRIPTION
+- `i::I`: (parameterized) index 
 """
 struct Var{I} <: AbstractNode
     i::I
 end
-"""
-    Par
-
-DOCSTRING
 
 """
-struct Par <: AbstractNode end
+    ParSource
+
+A source of parameterized data
+
+"""
+struct ParSource <: AbstractNode end
+
 """
     ParIndexed{I, J}
 
-DOCSTRING
+A parameterized data node
 
 # Fields:
-- `inner::I`: DESCRIPTION
+- `inner::I`: parameter for the data
 """
 struct ParIndexed{I,J} <: AbstractNode
     inner::I
@@ -41,22 +43,23 @@ end
 """
     Node1{F, I}
 
-DOCSTRING
+A node with one child for symbolic expression tree
 
 # Fields:
-- `inner::I`: DESCRIPTION
+- `inner::I`: children
 """
 struct Node1{F,I} <: AbstractNode
     inner::I
 end
+
 """
     Node2{F, I1, I2}
 
-DOCSTRING
+A node with two children for symbolic expression tree
 
 # Fields:
-- `inner1::I1`: DESCRIPTION
-- `inner2::I2`: DESCRIPTION
+- `inner1::I1`: children #1
+- `inner2::I2`: children #2
 """
 struct Node2{F,I1,I2} <: AbstractNode
     inner1::I1
@@ -70,9 +73,9 @@ struct SecondFixed{F}
     inner::F
 end
 
-@inline Base.getindex(n::Par, i) = ParIndexed(n, i)
+@inline Base.getindex(n::ParSource, i) = ParIndexed(n, i)
 
-Par(iter::DataType) = Par()
+Par(iter::DataType) = ParSource()
 Par(iter, idx...) = ParIndexed(Par(iter, idx[2:end]...), idx[1])
 Par(iter::Type{T}, idx...) where {T<:Tuple} =
     Tuple(Par(p, i, idx...) for (i, p) in enumerate(T.parameters))
@@ -92,22 +95,22 @@ struct NaNSource{T} <: AbstractVector{T} end
 
 
 @inline (v::Var{I})(i, x) where {I} = @inbounds x[v.i(i, x)]
-@inline (v::Par)(i, x) = i
+@inline (v::ParSource)(i, x) = i
 @inline (v::ParIndexed{I,n})(i, x) where {I,n} = @inbounds v.inner(i, x)[n]
 
 (v::ParIndexed)(i::Identity, x) = NaN16 # despecialized
-(v::Par)(i::Identity, x) = NaN16 # despecialized
+(v::ParSource)(i::Identity, x) = NaN16 # despecialized
 (v::Var)(i::Identity, x) = @inbounds x[v.i] # despecialized
 
 """
     AdjointNode1{F, T, I}
 
-DOCSTRING
+A node with one child for first-order forward pass tree
 
 # Fields:
-- `x::T`: DESCRIPTION
-- `y::T`: DESCRIPTION
-- `inner::I`: DESCRIPTION
+- `x::T`: function value
+- `y::T`: first-order sensitivity
+- `inner::I`: children
 """
 struct AdjointNode1{F,T,I} <: AbstractAdjointNode
     x::T
@@ -117,14 +120,14 @@ end
 """
     AdjointNode2{F, T, I1, I2}
 
-DOCSTRING
+A node with two children for first-order forward pass tree
 
 # Fields:
-- `x::T`: DESCRIPTION
-- `y1::T`: DESCRIPTION
-- `y2::T`: DESCRIPTION
-- `inner1::I1`: DESCRIPTION
-- `inner2::I2`: DESCRIPTION
+- `x::T`: function value
+- `y1::T`: first-order sensitivity w.r.t. first argument
+- `y2::T`: first-order sensitivity w.r.t. second argument
+- `inner1::I1`: children #1
+- `inner2::I2`: children #2
 """
 struct AdjointNode2{F,T,I1,I2} <: AbstractAdjointNode
     x::T
@@ -136,7 +139,7 @@ end
 """
     AdjointNodeVar{I, T}
 
-DOCSTRING
+A variable node for first-order forward pass tree
 
 # Fields:
 - `i::I`: DESCRIPTION
@@ -171,7 +174,7 @@ struct AdjointNodeNullSource end
     AdjointNode2{F,T,I1,I2}(x, y1, y2, inner1, inner2)
 
 
-AdjointNodeSource(::Nothing) = AdjointNodeNullSource()
+AdjointNodeSource() = AdjointNodeNullSource()
 
 @inline Base.getindex(x::I, i) where {I<:AdjointNodeNullSource} =
     AdjointNodeVar(i, NaN16)
@@ -263,7 +266,7 @@ end
     SecondAdjointNode2{F,T,I1,I2}(x, y1, y2, h11, h12, h22, inner1, inner2)
 
 struct SecondAdjointNodeNullSource end
-SecondAdjointNodeSource(::Nothing) = SecondAdjointNodeNullSource()
+SecondAdjointNodeSource() = SecondAdjointNodeNullSource()
 
 @inline Base.getindex(x::I, i) where {I<:SecondAdjointNodeNullSource} =
     SecondAdjointNodeVar(i, NaN)
