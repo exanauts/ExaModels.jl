@@ -1,6 +1,4 @@
-abstract type AbstractIndex end
 abstract type AbstractNode end
-abstract type AbstractPar <: AbstractNode end
 abstract type AbstractAdjointNode end
 abstract type AbstractSecondAdjointNode end
 
@@ -21,7 +19,7 @@ end
 DOCSTRING
 
 """
-struct Par <: AbstractPar end
+struct Par <: AbstractNode end
 """
     ParIndexed{I, J}
 
@@ -30,7 +28,7 @@ DOCSTRING
 # Fields:
 - `inner::I`: DESCRIPTION
 """
-struct ParIndexed{I,J} <: AbstractPar
+struct ParIndexed{I,J} <: AbstractNode
     inner::I
 end
 
