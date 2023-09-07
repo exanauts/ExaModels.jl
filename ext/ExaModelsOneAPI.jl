@@ -31,7 +31,7 @@ end
 ExaModels.convert_array(v, backend::oneAPI.oneAPIBackend) = oneAPI.oneArray(v)
 
 ExaModels.sort!(array::A; lt = isless) where {A<:oneAPI.oneVector} =
-    copyto!(array, sort!(Array(array)))
+    copyto!(array, sort!(Array(array); lt = lt))
 
 # below is type piracy
 function Base.findall(f::F, bitarray::A) where {F<:Function,A<:oneAPI.oneVector}

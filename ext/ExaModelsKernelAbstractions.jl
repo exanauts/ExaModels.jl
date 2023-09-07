@@ -15,6 +15,7 @@ ExaModels.ExaCore(T, backend::KernelAbstractions.CPU) =
 ExaModels.ExaCore(backend::KernelAbstractions.CPU) = ExaModels.ExaCore(backend = backend)
 
 function getptr(backend, array; cmp = isequal)
+
     bitarray = similar(array, Bool, length(array) + 1)
     kergetptr(backend)(cmp, bitarray, array; ndrange = length(array) + 1)
     synchronize(backend)
