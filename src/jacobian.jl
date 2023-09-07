@@ -1,4 +1,18 @@
-# @autodoc
+"""
+    jrpass(d::D, comp, i, y1, y2, o1, cnt, adj)
+
+DOCSTRING
+
+# Arguments:
+- `d`: DESCRIPTION
+- `comp`: DESCRIPTION
+- `i`: DESCRIPTION
+- `y1`: DESCRIPTION
+- `y2`: DESCRIPTION
+- `o1`: DESCRIPTION
+- `cnt`: DESCRIPTION
+- `adj`: DESCRIPTION
+"""
 @inline function jrpass(
     d::D,
     comp,
@@ -98,7 +112,18 @@ end
 end
 
 
-# @autodoc
+"""
+    sjacobian!(y1, y2, f, x, adj)
+
+DOCSTRING
+
+# Arguments:
+- `y1`: DESCRIPTION
+- `y2`: DESCRIPTION
+- `f`: DESCRIPTION
+- `x`: DESCRIPTION
+- `adj`: DESCRIPTION
+"""
 function sjacobian!(y1, y2, f, x, adj)
     @simd for i in eachindex(f.itr)
         @inbounds jrpass(

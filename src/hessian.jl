@@ -1,4 +1,18 @@
-# @autodoc
+"""
+    hdrpass(t1::T1, t2::T2, comp, y1, y2, o2, cnt, adj)
+
+DOCSTRING
+
+# Arguments:
+- `t1`: DESCRIPTION
+- `t2`: DESCRIPTION
+- `comp`: DESCRIPTION
+- `y1`: DESCRIPTION
+- `y2`: DESCRIPTION
+- `o2`: DESCRIPTION
+- `cnt`: DESCRIPTION
+- `adj`: DESCRIPTION
+"""
 @inline function hdrpass(
     t1::T1,
     t2::T2,
@@ -280,7 +294,21 @@ end
     return (cnt += 1)
 end
 
-# @autodoc
+"""
+    hrpass(t::D, comp, y1, y2, o2, cnt, adj, adj2)
+
+DOCSTRING
+
+# Arguments:
+- `t`: DESCRIPTION
+- `comp`: DESCRIPTION
+- `y1`: DESCRIPTION
+- `y2`: DESCRIPTION
+- `o2`: DESCRIPTION
+- `cnt`: DESCRIPTION
+- `adj`: DESCRIPTION
+- `adj2`: DESCRIPTION
+"""
 @inline function hrpass(
     t::D,
     comp,
@@ -581,7 +609,19 @@ end
     cnt
 end
 
-# @autodoc
+"""
+    shessian!(y1, y2, f, x, adj1, adj2)
+
+DOCSTRING
+
+# Arguments:
+- `y1`: DESCRIPTION
+- `y2`: DESCRIPTION
+- `f`: DESCRIPTION
+- `x`: DESCRIPTION
+- `adj1`: DESCRIPTION
+- `adj2`: DESCRIPTION
+"""
 function shessian!(y1, y2, f, x, adj1, adj2)
     @simd for k in eachindex(f.itr)
         @inbounds hrpass0(
