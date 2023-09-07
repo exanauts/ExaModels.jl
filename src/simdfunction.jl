@@ -1,10 +1,18 @@
-@inbounds @inline (a::Pair{P,S} where {P<:AbstractNode,S<:AbstractNode})(i, x) =
+@inline (a::Pair{P,S} where {P<:AbstractNode,S<:AbstractNode})(i, x) =
     a.second(i, x)
 
+"""
+    Compressor{I}
+
+DOCSTRING
+
+# Fields:
+- `inner::I`: DESCRIPTION
+"""
 struct Compressor{I}
     inner::I
 end
-@inbounds @inline (i::Compressor{I})(n) where {I} = i.inner[n]
+@inline (i::Compressor{I})(n) where {I} = @inbounds i.inner[n]
 
 struct SIMDFunction{F,C1,C2}
     f::F
@@ -16,6 +24,18 @@ struct SIMDFunction{F,C1,C2}
     o1step::Int
     o2step::Int
 end
+
+"""
+    SIMDFunction(gen::Base.Generator, o0 = 0, o1 = 0, o2 = 0)
+
+DOCSTRING
+
+# Arguments:
+- `gen`: DESCRIPTION
+- `o0`: DESCRIPTION
+- `o1`: DESCRIPTION
+- `o2`: DESCRIPTION
+"""
 function SIMDFunction(gen::Base.Generator, o0 = 0, o1 = 0, o2 = 0)
 
     p = Par(eltype(gen.iter))

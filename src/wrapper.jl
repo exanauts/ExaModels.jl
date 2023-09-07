@@ -31,7 +31,9 @@ struct WrapperNLPModel{
     counters::NLPModels.Counters
 end
 
+# @autodoc
 WrapperNLPModel(m) = WrapperNLPModel(Vector{Float64}, m)
+# @autodoc
 function WrapperNLPModel(VT, m)
     nvar = NLPModels.get_nvar(m)
     ncon = NLPModels.get_ncon(m)

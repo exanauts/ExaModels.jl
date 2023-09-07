@@ -10,7 +10,7 @@ macro register_univariate(f, df, ddf)
             @inline $f(t::T) where {T<:ExaModels.AbstractSecondAdjointNode} =
                 ExaModels.SecondAdjointNode1($f, $f(t.x), $df(t.x), $ddf(t.x), t)
 
-            @inbounds @inline (n::ExaModels.Node1{typeof($f),I})(i, x) where {I} =
+            @inline (n::ExaModels.Node1{typeof($f),I})(i, x) where {I} =
                 $f(n.inner(i, x))
         end,
     )
@@ -128,13 +128,13 @@ macro register_bivariate(f, df1, df2, ddf11, ddf12, ddf22)
                 )
             end
 
-            @inbounds @inline (n::ExaModels.Node2{typeof($f),I1,I2})(i, x) where {I1,I2} =
+            @inline (n::ExaModels.Node2{typeof($f),I1,I2})(i, x) where {I1,I2} =
                 $f(n.inner1(i, x), n.inner2(i, x))
-            @inbounds @inline (n::ExaModels.Node2{typeof($f),I1,I2})(
+            @inline (n::ExaModels.Node2{typeof($f),I1,I2})(
                 i,
                 x,
             ) where {I1<:Real,I2} = $f(n.inner1, n.inner2(i, x))
-            @inbounds @inline (n::ExaModels.Node2{typeof($f),I1,I2})(
+            @inline (n::ExaModels.Node2{typeof($f),I1,I2})(
                 i,
                 x,
             ) where {I1,I2<:Real} = $f(n.inner1(i, x), n.inner2)
