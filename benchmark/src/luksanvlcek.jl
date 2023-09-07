@@ -1,7 +1,5 @@
 function exa_luksan_vlcek_model(N = 3; kwargs...)
-    return ADBenchmarkModel(
-        ExaModelsExamples.luksan_vlcek_model(N; kwargs...)
-    )
+    return ExaModelsExamples.luksan_vlcek_model(N; kwargs...)
 end
 
 function jump_luksan_vlcek_model(N = 3)
@@ -16,7 +14,7 @@ function jump_luksan_vlcek_model(N = 3)
     )
     JuMP.@NLobjective(jm, Min, sum(100(x[i-1]^2 - x[i])^2 + (x[i-1] - 1)^2 for i = 2:N))
 
-    return ADBenchmarkModel(MathOptNLPModel(jm))
+    return MathOptNLPModel(jm)
 end
 
 
@@ -48,5 +46,5 @@ function ampl_luksan_vlcek_model(N = 3)
         """
     end
 
-    return ADBenchmarkModel(AmplNLReader.AmplModel(nlfile))
+    return AmplNLReader.AmplModel(nlfile)
 end
