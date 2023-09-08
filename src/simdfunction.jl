@@ -1,10 +1,18 @@
-@inbounds @inline (a::Pair{P,S} where {P<:AbstractNode,S<:AbstractNode})(i, x) =
+@inline (a::Pair{P,S} where {P<:AbstractNode,S<:AbstractNode})(i, x) =
     a.second(i, x)
 
+"""
+    Compressor{I}
+
+Data structure for the sparse index
+
+# Fields:
+- `inner::I`: stores the sparse index as a tuple form
+"""
 struct Compressor{I}
     inner::I
 end
-@inbounds @inline (i::Compressor{I})(n) where {I} = i.inner[n]
+@inline (i::Compressor{I})(n) where {I} = @inbounds i.inner[n]
 
 struct SIMDFunction{F,C1,C2}
     f::F
@@ -16,17 +24,29 @@ struct SIMDFunction{F,C1,C2}
     o1step::Int
     o2step::Int
 end
+
+"""
+    SIMDFunction(gen::Base.Generator, o0 = 0, o1 = 0, o2 = 0)
+
+Returns a `SIMDFunction` using the `gen`.
+
+# Arguments:
+- `gen`: an iterable function specified in `Base.Generator` format
+- `o0`: offset for the function evaluation
+- `o1`: offset for the derivative evalution
+- `o2`: offset for the second-order derivative evalution
+"""
 function SIMDFunction(gen::Base.Generator, o0 = 0, o1 = 0, o2 = 0)
 
     p = Par(eltype(gen.iter))
     f = gen.f(p)
 
 
-    d = f(Identity(), AdjointNodeSource(NaNSource{Float16}()))
+    d = f(Identity(), AdjointNodeSource(nothing))
     y1 = []
     ExaModels.grpass(d, nothing, y1, nothing, 0, NaN16)
 
-    t = f(Identity(), SecondAdjointNodeSource(NaNSource{Float16}()))
+    t = f(Identity(), SecondAdjointNodeSource(nothing))
     y2 = []
     ExaModels.hrpass0(t, nothing, y2, nothing, nothing, 0, NaN16, NaN16)
 

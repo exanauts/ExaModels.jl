@@ -1,4 +1,19 @@
-@inbounds @inline function jrpass(
+"""
+    jrpass(d::D, comp, i, y1, y2, o1, cnt, adj)
+
+Performs sparse jacobian evaluation via the reverse pass on the computation (sub)graph formed by forward pass
+
+# Arguments:
+- `d`: first-order computation (sub)graph
+- `comp`: a `Compressor`, which helps map counter to sparse vector index
+- `i`: constraint index (this is `i`-th constraint)
+- `y1`: result vector #1
+- `y2`: result vector #2 (only used when evaluating sparsity)
+- `o1`: index offset
+- `cnt`: counter
+- `adj`: adjoint propagated up to the current node
+"""
+@inline function jrpass(
     d::D,
     comp,
     i,
@@ -11,7 +26,7 @@
     cnt = jrpass(d.inner, comp, i, y1, y2, o1, cnt, adj * d.y)
     return cnt
 end
-@inbounds @inline function jrpass(
+@inline function jrpass(
     d::D,
     comp,
     i,
@@ -25,7 +40,7 @@ end
     cnt = jrpass(d.inner2, comp, i, y1, y2, o1, cnt, adj * d.y2)
     return cnt
 end
-@inbounds @inline function jrpass(
+@inline function jrpass(
     d::D,
     comp,
     i,
@@ -35,10 +50,10 @@ end
     cnt,
     adj,
 ) where {D<:AdjointNodeVar}
-    y1[o1+comp(cnt += 1)] += adj
+    @inbounds y1[o1+comp(cnt += 1)] += adj
     return cnt
 end
-@inbounds @inline function jrpass(
+@inline function jrpass(
     d::D,
     comp,
     i,
@@ -47,12 +62,12 @@ end
     o1,
     cnt,
     adj,
-) where {D<:AdjointNodeVar,V1<:AbstractVector,V2<:AbstractVector}
+    ) where {D<:AdjointNodeVar,V1<:AbstractVector,V2<:AbstractVector}
     (y, v) = y1
-    y[i] += adj * v[d.i]
+    @inbounds y[i] += adj * v[d.i]
     return (cnt += 1)
 end
-@inbounds @inline function jrpass(
+@inline function jrpass(
     d::D,
     comp,
     i,
@@ -63,10 +78,10 @@ end
     adj,
 ) where {D<:AdjointNodeVar,V1<:AbstractVector,V2<:AbstractVector}
     y, v = y2
-    y[d.i] += adj * v[i]
+    @inbounds y[d.i] += adj * v[i]
     return (cnt += 1)
 end
-@inbounds @inline function jrpass(
+@inline function jrpass(
     d::D,
     comp,
     i,
@@ -77,11 +92,11 @@ end
     adj,
 ) where {D<:AdjointNodeVar,I<:Integer,V<:AbstractVector{I}}
     ind = o1 + comp(cnt += 1)
-    y1[ind] = i
-    y2[ind] = d.i
+    @inbounds y1[ind] = i
+    @inbounds y2[ind] = d.i
     return cnt
 end
-@inbounds @inline function jrpass(
+@inline function jrpass(
     d::D,
     comp,
     i,
@@ -92,14 +107,26 @@ end
     adj,
 ) where {D<:AdjointNodeVar,I<:Tuple{Tuple{Int,Int},Int},V<:AbstractVector{I}}
     ind = o1 + comp(cnt += 1)
-    y1[ind] = ((i, d.i), ind)
+    @inbounds y1[ind] = ((i, d.i), ind)
     return cnt
 end
 
 
+"""
+    sjacobian!(y1, y2, f, x, adj)
+
+Performs sparse jacobian evalution
+
+# Arguments:
+- `y1`: result vector #1
+- `y2`: result vector #2 (only used when evaluating sparsity)
+- `f`: the function to be differentiated in `SIMDFunction` format
+- `x`: variable vector
+- `adj`: initial adjoint
+"""
 function sjacobian!(y1, y2, f, x, adj)
     @simd for i in eachindex(f.itr)
-        jrpass(
+        @inbounds jrpass(
             f.f.f(f.itr[i], AdjointNodeSource(x)),
             f.f.comp1,
             offset0(f, i),
