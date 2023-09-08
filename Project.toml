@@ -40,7 +40,8 @@ MadNLP = "2621e9c9-9eb4-46b1-8089-e8c72242dfb6"
 CUDA = "052768ef-5323-5732-b1bb-66c8b64840ba"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 Percival = "01435c0c-c90d-11e9-3788-63660f8fbccc"
+PowerModels = "c36e90e8-916a-50a6-bd94-075b64ef4655"
 
 [targets]
-test = ["Test", "NLPModels", "NLPModelsIpopt", "ADNLPModels", "KernelAbstractions", "CUDA", "AMDGPU", "oneAPI", "MadNLP", "Percival"]
+test = ["Test", "NLPModels", "NLPModelsIpopt", "ADNLPModels", "KernelAbstractions", "CUDA", "AMDGPU", "oneAPI", "MadNLP", "Percival", "PowerModels"]
 

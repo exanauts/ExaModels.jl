@@ -21,7 +21,6 @@ end
     @inbounds y[d.i] += adj
     nothing
 end
-@inline function drpass(f::F, x, y, adj) where {F<:SIMDFunction} end
 
 """
     gradient!(y, f, x, adj)
@@ -36,8 +35,14 @@ Performs dense gradient evalution
 """
 function gradient!(y, f, x, adj)
     @simd for k in eachindex(f.itr)
-        @inbounds drpass(f.f.f(f.itr[k], AdjointNodeSource(x)), y, adj)
+        @inbounds gradient!(y, f.f.f, f.itr[k], x, adj)
     end
+    return y
+end
+
+function gradient!(y, f, p, x, adj)
+    graph = f(p, AdjointNodeSource(x))
+    drpass(graph, y, adj)
     return y
 end
 
@@ -98,7 +103,13 @@ Performs sparse gradient evalution
 """
 function sgradient!(y, f, x, adj)
     @simd for k in eachindex(f.itr)
-        @inbounds grpass(f.f.f(f.itr[k], AdjointNodeSource(x)), f.itr.comp1, y, offset1(f, k), 0, adj)
+        @inbounds sgradient!(y, f.f.f, f.itr[k], x, f.itr.comp1, offset1(f, k), adj)
     end
+    return y
+end
+
+function sgradient!(y, f, p, x, comp, o1, adj)
+    graph = f(p, AdjointNodeSource(x))
+    grpass(graph, comp, y, o1, 0, adj)
     return y
 end

@@ -1,6 +1,7 @@
 module NLPTest
 
-using ExaModels, Test, ADNLPModels, NLPModels, KernelAbstractions, CUDA, AMDGPU, oneAPI
+using ExaModels, Test, ADNLPModels, NLPModels, PowerModels
+using KernelAbstractions, CUDA, AMDGPU, oneAPI
 using NLPModelsIpopt, MadNLP, Percival
 
 
@@ -18,20 +19,24 @@ const EXCLUDE = []
 
 if CUDA.has_cuda()
     push!(BACKENDS, CUDABackend())
+    @info "testing CUDA"
 end
 
 if AMDGPU.has_rocm_gpu()
     push!(BACKENDS, ROCBackend())
+    @info "testing AMDGPU"
 end
 
 try
     oneAPI.oneL0.zeInit(0)
     push!(BACKENDS, oneAPIBackend())
     push!(EXCLUDE, ("percival", oneAPIBackend()))
+    @info "testing oneAPI"
 catch e
 end
 
 include("luksan.jl")
+include("power.jl")
 
 function test_nlp(simdiff_model, adnlp_model, solver, backend, args)
 
@@ -67,5 +72,16 @@ function runtests()
         end
     end
 end
+
+function __init__()
+    if haskey(ENV, "EXA_MODELS_DEPOT")
+        global TMPDIR = ENV["EXA_MODELS_DEPOT"]
+    else
+        global TMPDIR = tempname()
+        mkdir(TMPDIR)
+    end
+    PowerModels.silence()
+end
+
 
 end # NLPTest
