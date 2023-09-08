@@ -90,9 +90,6 @@ Par(iter::Type{T}, idx...) where {T<:NamedTuple} = NamedTuple{T.parameters[1]}(
 
 struct Identity end
 
-struct NaNSource{T} <: AbstractVector{T} end
-@inline Base.getindex(::NaNSource{T}, i) where {T} = T(NaN)
-
 
 @inline (v::Var{I})(i, x) where {I} = @inbounds x[v.i(i, x)]
 @inline (v::ParSource)(i, x) = i
@@ -142,41 +139,32 @@ end
 A variable node for first-order forward pass tree
 
 # Fields:
-- `i::I`: DESCRIPTION
-- `x::T`: DESCRIPTION
+- `i::I`: index
+- `x::T`: value
 """
 struct AdjointNodeVar{I,T} <: AbstractAdjointNode
     i::I
     x::T
 end
-"""
-    AdjointNodeSource{T, VT <: AbstractVector{T}}
 
-DOCSTRING
+"""
+    AdjointNodeSource{VT}
+
+A source of `AdjointNode`. `adjoint_node_source[i]` returns an `AdjointNodeVar` at index `i`.
 
 # Fields:
-- `inner::VT`: DESCRIPTION
+- `inner::VT`: variable vector
 """
-struct AdjointNodeSource{T,VT<:AbstractVector{T}}
+struct AdjointNodeSource{VT}
     inner::VT
 end
-"""
-    AdjointNodeNullSource
-
-DOCSTRING
-
-"""
-struct AdjointNodeNullSource end
 
 @inline AdjointNode1(f::F, x::T, y, inner::I) where {F,T,I} =
     AdjointNode1{F,T,I}(x, y, inner)
 @inline AdjointNode2(f::F, x::T, y1, y2, inner1::I1, inner2::I2) where {F,T,I1,I2} =
     AdjointNode2{F,T,I1,I2}(x, y1, y2, inner1, inner2)
 
-
-AdjointNodeSource() = AdjointNodeNullSource()
-
-@inline Base.getindex(x::I, i) where {I<:AdjointNodeNullSource} =
+@inline Base.getindex(x::I, i) where {I<:AdjointNodeSource{Nothing}} =
     AdjointNodeVar(i, NaN16)
 @inline Base.getindex(x::I, i) where {I<:AdjointNodeSource} =
     @inbounds AdjointNodeVar(i, x.inner[i])
@@ -185,12 +173,12 @@ AdjointNodeSource() = AdjointNodeNullSource()
 """
     SecondAdjointNode1{F, T, I}
 
-DOCSTRING
+A node with one child for second-order forward pass tree
 
 # Fields:
-- `x::T`: DESCRIPTION
-- `y::T`: DESCRIPTION
-- `h::T`: DESCRIPTION
+- `x::T`: function value
+- `y::T`: first-order sensitivity
+- `h::T`: second-order sensitivity
 - `inner::I`: DESCRIPTION
 """
 struct SecondAdjointNode1{F,T,I} <: AbstractSecondAdjointNode
@@ -202,17 +190,17 @@ end
 """
     SecondAdjointNode2{F, T, I1, I2}
 
-DOCSTRING
+A node with one child for second-order forward pass tree
 
 # Fields:
-- `x::T`: DESCRIPTION
-- `y1::T`: DESCRIPTION
-- `y2::T`: DESCRIPTION
-- `h11::T`: DESCRIPTION
-- `h12::T`: DESCRIPTION
-- `h22::T`: DESCRIPTION
-- `inner1::I1`: DESCRIPTION
-- `inner2::I2`: DESCRIPTION
+- `x::T`: function value
+- `y1::T`: first-order sensitivity w.r.t. first argument
+- `y2::T`: first-order sensitivity w.r.t. first argument
+- `h11::T`: second-order sensitivity w.r.t. first argument
+- `h12::T`: second-order sensitivity w.r.t. first and second argument
+- `h22::T`: second-order sensitivity w.r.t. second argument
+- `inner1::I1`: children #1
+- `inner2::I2`: children #2
 """
 struct SecondAdjointNode2{F,T,I1,I2} <: AbstractSecondAdjointNode
     x::T
@@ -228,25 +216,26 @@ end
 """
     SecondAdjointNodeVar{I, T}
 
-DOCSTRING
+A variable node for first-order forward pass tree
 
 # Fields:
-- `i::I`: DESCRIPTION
-- `x::T`: DESCRIPTION
+- `i::I`: index
+- `x::T`: value
 """
 struct SecondAdjointNodeVar{I,T} <: AbstractSecondAdjointNode
     i::I
     x::T
 end
-"""
-    SecondAdjointNodeSource{T, VT <: AbstractVector{T}}
 
-DOCSTRING
+"""
+    SecondAdjointNodeSource{VT}
+
+A source of `AdjointNode`. `adjoint_node_source[i]` returns an `AdjointNodeVar` at index `i`.
 
 # Fields:
-- `inner::VT`: DESCRIPTION
+- `inner::VT`: variable vector
 """
-struct SecondAdjointNodeSource{T,VT<:AbstractVector{T}}
+struct SecondAdjointNodeSource{VT}
     inner::VT
 end
 
@@ -265,10 +254,7 @@ end
 ) where {F,T,I1,I2} =
     SecondAdjointNode2{F,T,I1,I2}(x, y1, y2, h11, h12, h22, inner1, inner2)
 
-struct SecondAdjointNodeNullSource end
-SecondAdjointNodeSource() = SecondAdjointNodeNullSource()
-
-@inline Base.getindex(x::I, i) where {I<:SecondAdjointNodeNullSource} =
-    SecondAdjointNodeVar(i, NaN)
+@inline Base.getindex(x::I, i) where {I<:SecondAdjointNodeSource{Nothing}} =
+    SecondAdjointNodeVar(i, NaN16)
 @inline Base.getindex(x::I, i) where {I<:SecondAdjointNodeSource} =
     @inbounds SecondAdjointNodeVar(i, x.inner[i])

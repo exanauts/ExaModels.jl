@@ -47,6 +47,8 @@ export ExaModel,
     multipliers,
     multipliers_L,
     multipliers_U,
-    WrapperNLPModel
+    WrapperNLPModel,
+    @register_univariate,
+    @register_bivariate
 
 end # module ExaModels

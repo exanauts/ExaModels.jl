@@ -4,10 +4,10 @@
 """
     Compressor{I}
 
-DOCSTRING
+Data structure for the sparse index
 
 # Fields:
-- `inner::I`: DESCRIPTION
+- `inner::I`: stores the sparse index as a tuple form
 """
 struct Compressor{I}
     inner::I
@@ -28,13 +28,13 @@ end
 """
     SIMDFunction(gen::Base.Generator, o0 = 0, o1 = 0, o2 = 0)
 
-DOCSTRING
+Returns a `SIMDFunction` using the `gen`.
 
 # Arguments:
-- `gen`: DESCRIPTION
-- `o0`: DESCRIPTION
-- `o1`: DESCRIPTION
-- `o2`: DESCRIPTION
+- `gen`: an iterable function specified in `Base.Generator` format
+- `o0`: offset for the function evaluation
+- `o1`: offset for the derivative evalution
+- `o2`: offset for the second-order derivative evalution
 """
 function SIMDFunction(gen::Base.Generator, o0 = 0, o1 = 0, o2 = 0)
 
@@ -42,13 +42,13 @@ function SIMDFunction(gen::Base.Generator, o0 = 0, o1 = 0, o2 = 0)
     f = gen.f(p)
 
 
-    d = f(Identity(), AdjointNodeSource())
+    d = f(Identity(), AdjointNodeSource(nothing))
     y1 = []
-    ExaModels.grpass(d, nothing, y1, nothing, 0, nothing)
+    ExaModels.grpass(d, nothing, y1, nothing, 0, NaN16)
 
-    t = f(Identity(), SecondAdjointNodeSource())
+    t = f(Identity(), SecondAdjointNodeSource(nothing))
     y2 = []
-    ExaModels.hrpass0(t, nothing, y2, nothing, nothing, 0, nothing, nothing)
+    ExaModels.hrpass0(t, nothing, y2, nothing, nothing, 0, NaN16, NaN16)
 
     a1 = unique(y1)
     o1step = length(a1)

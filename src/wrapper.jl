@@ -1,3 +1,7 @@
+# WrapperNLPModel serves as a wrapper for ExaNLPModel, or even any NLPModels.
+# This is useful when you want to use a solver that does not support non-stardard array data types.
+# TODO: make this as an independent package
+
 struct WrapperNLPModel{
     T,
     VT,
@@ -34,14 +38,14 @@ end
 """
     WrapperNLPModel(m)
 
-DOCSTRING
+Returns a `WrapperModel{Float64,Vector{64}}` wrapping `m`
 """
 WrapperNLPModel(m) = WrapperNLPModel(Vector{Float64}, m)
 
 """
     WrapperNLPModel(VT, m)
 
-DOCSTRING
+Returns a `WrapperModel{T,VT}` wrapping `m <: AbstractNLPModel{T}`
 """
 function WrapperNLPModel(VT, m)
     nvar = NLPModels.get_nvar(m)

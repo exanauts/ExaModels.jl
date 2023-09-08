@@ -1,17 +1,17 @@
 """
     jrpass(d::D, comp, i, y1, y2, o1, cnt, adj)
 
-DOCSTRING
+Performs sparse jacobian evaluation via the reverse pass on the computation (sub)graph formed by forward pass
 
 # Arguments:
-- `d`: DESCRIPTION
-- `comp`: DESCRIPTION
-- `i`: DESCRIPTION
-- `y1`: DESCRIPTION
-- `y2`: DESCRIPTION
-- `o1`: DESCRIPTION
-- `cnt`: DESCRIPTION
-- `adj`: DESCRIPTION
+- `d`: first-order computation (sub)graph
+- `comp`: a `Compressor`, which helps map counter to sparse vector index
+- `i`: constraint index (this is `i`-th constraint)
+- `y1`: result vector #1
+- `y2`: result vector #2 (only used when evaluating sparsity)
+- `o1`: index offset
+- `cnt`: counter
+- `adj`: adjoint propagated up to the current node
 """
 @inline function jrpass(
     d::D,
@@ -115,14 +115,14 @@ end
 """
     sjacobian!(y1, y2, f, x, adj)
 
-DOCSTRING
+Performs sparse jacobian evalution
 
 # Arguments:
-- `y1`: DESCRIPTION
-- `y2`: DESCRIPTION
-- `f`: DESCRIPTION
-- `x`: DESCRIPTION
-- `adj`: DESCRIPTION
+- `y1`: result vector #1
+- `y2`: result vector #2 (only used when evaluating sparsity)
+- `f`: the function to be differentiated in `SIMDFunction` format
+- `x`: variable vector
+- `adj`: initial adjoint
 """
 function sjacobian!(y1, y2, f, x, adj)
     @simd for i in eachindex(f.itr)

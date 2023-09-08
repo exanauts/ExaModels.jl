@@ -1,17 +1,17 @@
 """
     hdrpass(t1::T1, t2::T2, comp, y1, y2, o2, cnt, adj)
 
-DOCSTRING
+Performs sparse hessian evaluation (`(df1/dx)(df2/dx)'` portion) via the reverse pass on the computation (sub)graph formed by second-order forward pass
 
 # Arguments:
-- `t1`: DESCRIPTION
-- `t2`: DESCRIPTION
-- `comp`: DESCRIPTION
-- `y1`: DESCRIPTION
-- `y2`: DESCRIPTION
-- `o2`: DESCRIPTION
-- `cnt`: DESCRIPTION
-- `adj`: DESCRIPTION
+- `t1`: second-order computation (sub)graph regarding f1
+- `t2`: second-order computation (sub)graph regarding f2
+- `comp`: a `Compressor`, which helps map counter to sparse vector index
+- `y1`: result vector #1
+- `y2`: result vector #2 (only used when evaluating sparsity)
+- `o2`: index offset
+- `cnt`: counter
+- `adj`: second adjoint propagated up to the current node
 """
 @inline function hdrpass(
     t1::T1,
@@ -297,18 +297,19 @@ end
 """
     hrpass(t::D, comp, y1, y2, o2, cnt, adj, adj2)
 
-DOCSTRING
+Performs sparse hessian evaluation (`d²f/dx²` portion) via the reverse pass on the computation (sub)graph formed by second-order forward pass
 
 # Arguments:
-- `t`: DESCRIPTION
-- `comp`: DESCRIPTION
-- `y1`: DESCRIPTION
-- `y2`: DESCRIPTION
-- `o2`: DESCRIPTION
-- `cnt`: DESCRIPTION
-- `adj`: DESCRIPTION
-- `adj2`: DESCRIPTION
+- `comp`: a `Compressor`, which helps map counter to sparse vector index
+- `y1`: result vector #1
+- `y2`: result vector #2 (only used when evaluating sparsity)
+- `o2`: index offset
+- `cnt`: counter
+- `adj`: first adjoint propagated up to the current node
+- `adj`: second adjoint propagated up to the current node
 """
+
+
 @inline function hrpass(
     t::D,
     comp,
@@ -612,15 +613,15 @@ end
 """
     shessian!(y1, y2, f, x, adj1, adj2)
 
-DOCSTRING
+Performs sparse jacobian evalution
 
 # Arguments:
-- `y1`: DESCRIPTION
-- `y2`: DESCRIPTION
-- `f`: DESCRIPTION
-- `x`: DESCRIPTION
-- `adj1`: DESCRIPTION
-- `adj2`: DESCRIPTION
+- `y1`: result vector #1
+- `y2`: result vector #2 (only used when evaluating sparsity)
+- `f`: the function to be differentiated in `SIMDFunction` format
+- `x`: variable vector
+- `adj1`: initial first adjoint
+- `adj2`: initial second adjoint
 """
 function shessian!(y1, y2, f, x, adj1, adj2)
     @simd for k in eachindex(f.itr)

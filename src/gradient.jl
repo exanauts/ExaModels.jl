@@ -1,12 +1,12 @@
 """
     drpass(d::D, y, adj)
 
-DOCSTRING
+Performs dense gradient evaluation via the reverse pass on the computation (sub)graph formed by forward pass
 
 # Arguments:
-- `d`: DESCRIPTION
-- `y`: DESCRIPTION
-- `adj`: DESCRIPTION
+- `d`: first-order computation (sub)graph
+- `y`: result vector
+- `adj`: adjoint propagated up to the current node
 """
 @inline function drpass(d::D, y, adj) where {D<:AdjointNode1}
     offset = drpass(d.inner, y, adj * d.y)
@@ -26,13 +26,13 @@ end
 """
     gradient!(y, f, x, adj)
 
-DOCSTRING
+Performs dense gradient evalution
 
 # Arguments:
-- `y`: DESCRIPTION
-- `f`: DESCRIPTION
-- `x`: DESCRIPTION
-- `adj`: DESCRIPTION
+- `y`: result vector
+- `f`: the function to be differentiated in `SIMDFunction` format
+- `x`: variable vector
+- `adj`: initial adjoint
 """
 function gradient!(y, f, x, adj)
     @simd for k in eachindex(f.itr)
@@ -44,15 +44,15 @@ end
 """
     grpass(d::D, comp, y, o1, cnt, adj)
 
-DOCSTRING
+Performs dsparse gradient evaluation via the reverse pass on the computation (sub)graph formed by forward pass
 
 # Arguments:
-- `d`: DESCRIPTION
-- `comp`: DESCRIPTION
-- `y`: DESCRIPTION
-- `o1`: DESCRIPTION
-- `cnt`: DESCRIPTION
-- `adj`: DESCRIPTION
+- `d`: first-order computation (sub)graph
+- `comp`: a `Compressor`, which helps map counter to sparse vector index
+- `y`: result vector
+- `o1`: index offset
+- `cnt`: counter
+- `adj`: adjoint propagated up to the current node
 """
 @inline function grpass(d::D, comp, y, o1, cnt, adj) where {D<:AdjointNode1}
     cnt = grpass(d.inner, comp, y, o1, cnt, adj * d.y)
@@ -88,13 +88,13 @@ end
 """
     sgradient!(y, f, x, adj)
 
-DOCSTRING
+Performs sparse gradient evalution
 
 # Arguments:
-- `y`: DESCRIPTION
-- `f`: DESCRIPTION
-- `x`: DESCRIPTION
-- `adj`: DESCRIPTION
+- `y`: result vector
+- `f`: the function to be differentiated in `SIMDFunction` format
+- `x`: variable vector
+- `adj`: initial adjoint
 """
 function sgradient!(y, f, x, adj)
     @simd for k in eachindex(f.itr)

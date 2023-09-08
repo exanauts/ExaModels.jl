@@ -1,3 +1,29 @@
+"""
+    @register_univariate(f, df, ddf)
+
+Register a univariate function `f` to `ExaModels`, so that it can be used within objective and constraint expressions
+
+# Arguments:
+- `f`: function
+- `df`: derivative function
+- `ddf`: second-order derivative funciton
+
+## Example
+```jldoctest
+julia> using ExaModels
+
+julia> relu3(x) = x > 0 ? x^3 : zero(x)
+relu3 (generic function with 1 method)
+
+julia> drelu3(x) = x > 0 ? 3*x^2 : zero(x)
+drelu3 (generic function with 1 method)
+
+julia> ddrelu3(x) = x > 0 ? 6*x : zero(x)
+ddrelu3 (generic function with 1 method)
+
+julia> @register_univariate(relu3, drelu3, ddrelu3)
+```
+"""
 macro register_univariate(f, df, ddf)
     return esc(
         quote
@@ -16,6 +42,44 @@ macro register_univariate(f, df, ddf)
     )
 end
 
+"""
+    register_bivariate(f, df1, df2, ddf11, ddf12, ddf22)
+
+Register a bivariate function `f` to `ExaModels`, so that it can be used within objective and constraint expressions
+
+# Arguments:
+- `f`: function
+- `df1`: derivative function (w.r.t. first argument)
+- `df2`: derivative function (w.r.t. second argument)
+- `ddf11`: second-order derivative funciton (w.r.t. first argument)
+- `ddf12`: second-order derivative funciton (w.r.t. first and second argument)
+- `ddf22`: second-order derivative funciton (w.r.t. second argument)
+
+## Example
+```jldoctest
+julia> using ExaModels
+
+julia> relu23(x) = (x > 0 || y > 0) ? (x + y)^3 : zero(x)
+relu23 (generic function with 1 method)
+
+julia> drelu231(x) = (x > 0 || y > 0) ? 3 * (x + y)^2 : zero(x)
+drelu231 (generic function with 1 method)
+
+julia> drelu232(x) = (x > 0 || y > 0) ? 3 * (x + y)^2  : zero(x)
+drelu232 (generic function with 1 method)
+
+julia> ddrelu2311(x) = (x > 0 || y > 0) ? 6 * (x + y) : zero(x)
+ddrelu2311 (generic function with 1 method)
+
+julia> ddrelu2312(x) = (x > 0 || y > 0) ? 6 * (x + y) : zero(x)
+ddrelu2312 (generic function with 1 method)
+
+julia> ddrelu2322(x) = (x > 0 || y > 0) ? 6 * (x + y) : zero(x)
+ddrelu2322 (generic function with 1 method)
+
+julia> @register_bivariate(relu23, drelu231, drelu232, ddrelu2311, ddrelu2312, ddrelu2322)
+```
+"""
 macro register_bivariate(f, df1, df2, ddf11, ddf12, ddf22)
     return esc(
         quote
