@@ -42,7 +42,8 @@ Percival = "01435c0c-c90d-11e9-3788-63660f8fbccc"
 PowerModels = "c36e90e8-916a-50a6-bd94-075b64ef4655"
 JuMP = "4076af6c-e467-56ae-b986-b466b2749572"
 NLPModelsJuMP = "792afdf1-32c1-5681-94e0-d7bf7a5df49e"
+Downloads = "f43a241f-c20a-4ad4-852c-f6b1247861c6"
 
 [targets]
-test = ["Test", "NLPModels", "NLPModelsIpopt", "KernelAbstractions", "CUDA", "AMDGPU", "oneAPI", "MadNLP", "Percival", "PowerModels", "JuMP", "NLPModelsJuMP"]
+test = ["Test", "NLPModels", "NLPModelsIpopt", "KernelAbstractions", "CUDA", "AMDGPU", "oneAPI", "MadNLP", "Percival", "PowerModels", "JuMP", "NLPModelsJuMP", "Downloads"]
 
