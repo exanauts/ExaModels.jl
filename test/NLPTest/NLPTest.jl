@@ -1,6 +1,6 @@
 module NLPTest
 
-using ExaModels, Test, NLPModels, JuMP, NLPModelsJuMP, PowerModels
+using ExaModels, Test, NLPModels, JuMP, NLPModelsJuMP, PowerModels, Downloads
 using KernelAbstractions, CUDA, AMDGPU, oneAPI
 using NLPModelsIpopt, MadNLP, Percival
 
