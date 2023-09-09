@@ -1,13 +1,15 @@
 module NLPTest
 
-using ExaModels, Test, ADNLPModels, NLPModels, PowerModels
+using ExaModels, Test, NLPModels, JuMP, NLPModelsJuMP, PowerModels
 using KernelAbstractions, CUDA, AMDGPU, oneAPI
 using NLPModelsIpopt, MadNLP, Percival
 
-
 const BACKENDS = Any[nothing, CPU()]
 
-const NLP_TEST_ARGUMENTS = [("luksan_vlcek", 3), ("luksan_vlcek", 20)]
+const NLP_TEST_ARGUMENTS = [
+    ("luksan_vlcek", 3), ("luksan_vlcek", 20),
+    ("ac_power", "pglib_opf_case3_lmbd.m"), ("ac_power", "pglib_opf_case14_ieee.m")
+]
 
 const SOLVERS = [
     ("ipopt", nlp -> ipopt(nlp; print_level = 0)),
@@ -15,7 +17,10 @@ const SOLVERS = [
     ("percival", nlp -> percival(nlp)),
 ]
 
-const EXCLUDE = []
+const EXCLUDE1 = [
+    ("ac_power", "percival") # does not converge
+]
+const EXCLUDE2 = []
 
 if CUDA.has_cuda()
     push!(BACKENDS, CUDABackend())
@@ -30,7 +35,7 @@ end
 try
     oneAPI.oneL0.zeInit(0)
     push!(BACKENDS, oneAPIBackend())
-    push!(EXCLUDE, ("percival", oneAPIBackend()))
+    push!(EXCLUDE2, ("percival", oneAPIBackend()))
     @info "testing oneAPI"
 catch e
 end
@@ -38,10 +43,10 @@ end
 include("luksan.jl")
 include("power.jl")
 
-function test_nlp(simdiff_model, adnlp_model, solver, backend, args)
+function test_nlp(exa_model, jump_model, solver, backend, args)
 
-    m1 = WrapperNLPModel(simdiff_model(backend, args...))
-    m2 = WrapperNLPModel(adnlp_model(backend, args...))
+    m1 = WrapperNLPModel(exa_model(backend, args))
+    m2 = WrapperNLPModel(jump_model(backend, args))
 
     result1 = solver(m1)
     result2 = solver(m2)
@@ -57,15 +62,18 @@ function runtests()
     @testset "NLP tests" begin
         for (sname, solver) in SOLVERS
             for (name, args) in NLP_TEST_ARGUMENTS
+                if (name, sname) in EXCLUDE1
+                    continue
+                end
                 for backend in BACKENDS
-                    if (sname, backend) in EXCLUDE
+                    if (sname, backend) in EXCLUDE2
                         continue
                     end
-                    simdiff_model = getfield(@__MODULE__, Symbol(name * "_simdiff_model"))
-                    adnlp_model = getfield(@__MODULE__, Symbol(name * "_adnlp_model"))
+                    exa_model = getfield(@__MODULE__, Symbol("exa_$(name)_model"))
+                    jump_model = getfield(@__MODULE__, Symbol("jump_$(name)_model"))
 
                     @testset "$sname $name $args $backend" begin
-                        test_nlp(simdiff_model, adnlp_model, solver, backend, args)
+                        test_nlp(exa_model, jump_model, solver, backend, args)
                     end
                 end
             end
