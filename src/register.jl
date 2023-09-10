@@ -187,7 +187,7 @@ macro register_bivariate(f, df1, df2, ddf11, ddf12, ddf22)
                     ExaModels.FirstFixed($f),
                     $f(x1, x2),
                     $df2(x1, x2),
-                    $ddf22(x2, x1),
+                    $ddf22(x1, x2),
                     t2,
                 )
             end

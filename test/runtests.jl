@@ -7,5 +7,5 @@ include("ADTest/ADTest.jl")
 
 @testset "ExaModels test" begin
     ADTest.runtests()
-    # NLPTest.runtests()
+    NLPTest.runtests()
 end

@@ -139,7 +139,7 @@ end
 
 
 function _grad_structure!(backend, objs, gsparsity)
-    ExaModels.sgradient!(backend, gsparsity, objs, nothing, NaN32)
+    ExaModels.sgradient!(backend, gsparsity, objs, nothing, NaN)
     _grad_structure!(backend, objs.inner, gsparsity)
     synchronize(backend)
 end
@@ -153,7 +153,7 @@ function ExaModels.jac_structure!(
     _jac_structure!(m.ext.backend, m.cons, rows, cols)
 end
 function _jac_structure!(backend, cons, rows, cols)
-    ExaModels.sjacobian!(backend, rows, cols, cons, nothing, NaN32)
+    ExaModels.sjacobian!(backend, rows, cols, cons, nothing, NaN)
     _jac_structure!(backend, cons.inner, rows, cols)
     synchronize(backend)
 end
@@ -170,13 +170,13 @@ function ExaModels.hess_structure!(
 end
 
 function _obj_hess_structure!(backend, objs, rows, cols)
-    ExaModels.shessian!(backend, rows, cols, objs, nothing, NaN32, NaN32)
+    ExaModels.shessian!(backend, rows, cols, objs, nothing, NaN, NaN)
     _obj_hess_structure!(backend, objs.inner, rows, cols)
     synchronize(backend)
 end
 function _obj_hess_structure!(backend, objs::ExaModels.ObjectiveNull, rows, cols) end
 function _con_hess_structure!(backend, cons, rows, cols)
-    ExaModels.shessian!(backend, rows, cols, cons, nothing, NaN32, NaN32)
+    ExaModels.shessian!(backend, rows, cols, cons, nothing, NaN, NaN)
     _con_hess_structure!(backend, cons.inner, rows, cols)
     synchronize(backend)
 end
