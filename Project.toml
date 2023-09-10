@@ -4,10 +4,8 @@ authors = ["Sungho Shin <sshin@anl.gov>"]
 version = "0.4.1"
 
 [deps]
-ForwardDiff = "f6369f11-7733-5829-9624-2563aa707210"
 NLPModels = "a4795742-8479-5a88-8948-cc11e1c8c1a6"
 SolverCore = "ff4d7338-4cf1-434d-91df-b86cb86fb843"
-SpecialFunctions = "276daf66-3868-5448-9aa4-cd146d93841b"
 
 [weakdeps]
 AMDGPU = "21141c5a-9bdb-4563-92ae-f87d6854732e"
