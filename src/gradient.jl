@@ -35,12 +35,12 @@ Performs dense gradient evalution
 """
 function gradient!(y, f, x, adj)
     @simd for k in eachindex(f.itr)
-        @inbounds gradient!(y, f.f.f, f.itr[k], x, adj)
+        @inbounds gradient!(y, f.f.f, x, f.itr[k], adj)
     end
     return y
 end
 
-function gradient!(y, f, p, x, adj)
+function gradient!(y, f, x, p, adj)
     graph = f(p, AdjointNodeSource(x))
     drpass(graph, y, adj)
     return y

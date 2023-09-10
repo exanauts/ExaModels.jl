@@ -8,6 +8,14 @@ abstract type AbstractAdjointNode end
 abstract type AbstractSecondAdjointNode end
 
 """
+    VarSource
+
+A source of variable nodes
+
+"""
+struct VarSource <: AbstractNode end
+
+"""
     Var{I}
 
 A variable node for symbolic expression tree
@@ -74,6 +82,7 @@ struct SecondFixed{F}
 end
 
 @inline Base.getindex(n::ParSource, i) = ParIndexed(n, i)
+@inline Base.getindex(n::VarSource, i) = Var(i)
 
 Par(iter::DataType) = ParSource()
 Par(iter, idx...) = ParIndexed(Par(iter, idx[2:end]...), idx[1])
@@ -90,14 +99,15 @@ Par(iter::Type{T}, idx...) where {T<:NamedTuple} = NamedTuple{T.parameters[1]}(
 
 struct Identity end
 
-@inline (v::Var{I})(i, x) where {I} = @inbounds x[v.i(i, x)]
-@inline (v::Var{I})(i, x) where {I <: Integer} = @inbounds x[v.i]
+@inline (v::Var{I})(i, x) where {I <: AbstractNode} = @inbounds x[v.i(i, x)]
+@inline (v::Var{I})(i, x) where {I} = @inbounds x[v.i]
+@inline (v::Var{I})(i::Identity, x) where {I <: AbstractNode} = @inbounds x[v.i] 
+
 @inline (v::ParSource)(i, x) = i
 @inline (v::ParIndexed{I,n})(i, x) where {I,n} = @inbounds v.inner(i, x)[n]
 
-(v::ParIndexed)(i::Identity, x) = NaN16 # despecialized
-(v::ParSource)(i::Identity, x) = NaN16 # despecialized
-(v::Var)(i::Identity, x) = @inbounds x[v.i] # despecialized
+(v::ParIndexed)(i::Identity, x) = NaN # despecialized
+(v::ParSource)(i::Identity, x) = NaN # despecialized
 
 """
     AdjointNode1{F, T, I}
@@ -165,7 +175,7 @@ end
     AdjointNode2{F,T,I1,I2}(x, y1, y2, inner1, inner2)
 
 @inline Base.getindex(x::I, i) where {I<:AdjointNodeSource{Nothing}} =
-    AdjointNodeVar(i, NaN16)
+    AdjointNodeVar(i, NaN)
 @inline Base.getindex(x::I, i) where {I<:AdjointNodeSource} =
     @inbounds AdjointNodeVar(i, x.inner[i])
 
@@ -255,6 +265,6 @@ end
     SecondAdjointNode2{F,T,I1,I2}(x, y1, y2, h11, h12, h22, inner1, inner2)
 
 @inline Base.getindex(x::I, i) where {I<:SecondAdjointNodeSource{Nothing}} =
-    SecondAdjointNodeVar(i, NaN16)
+    SecondAdjointNodeVar(i, NaN)
 @inline Base.getindex(x::I, i) where {I<:SecondAdjointNodeSource} =
     @inbounds SecondAdjointNodeVar(i, x.inner[i])

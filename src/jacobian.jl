@@ -126,28 +126,29 @@ Performs sparse jacobian evalution
 """
 function sjacobian!(y1, y2, f, x, adj)
     @simd for i in eachindex(f.itr)
-        @inbounds jrpass(
-            f.f.f(f.itr[i], AdjointNodeSource(x)),
-            f.f.comp1,
-            offset0(f, i),
+        @inbounds sjacobian!(
             y1,
             y2,
+            f.f.f,
+            f.itr[i],
+            x,
+            f.f.comp1,
+            offset0(f, i),
             offset1(f, i),
-            0,
             adj,
         )
     end
 end
 
-function sjacobian!(y1, y2, f, p, x, comp, adj)
+function sjacobian!(y1, y2, f, p, x, comp, o0, o1, adj)
     graph = f(p, AdjointNodeSource(x))
     jrpass(
         graph,
         comp,
-        offset0(f, i),
+        o0,
         y1,
         y2,
-        offset1(f, i),
+        o1,
         0,
         adj,
     )

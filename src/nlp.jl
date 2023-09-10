@@ -424,7 +424,7 @@ end
 _jac_structure!(cons::ConstraintNull, rows, cols) = nothing
 function _jac_structure!(cons, rows, cols)
     _jac_structure!(cons.inner, rows, cols)
-    sjacobian!(rows, cols, cons, nothing, NaN16)
+    sjacobian!(rows, cols, cons, nothing, NaN)
 end
 
 function hess_structure!(m::ExaModel, rows::AbstractVector, cols::AbstractVector)
@@ -436,13 +436,13 @@ end
 _obj_hess_structure!(objs::ObjectiveNull, rows, cols) = nothing
 function _obj_hess_structure!(objs, rows, cols)
     _obj_hess_structure!(objs.inner, rows, cols)
-    shessian!(rows, cols, objs, nothing, NaN16, NaN16)
+    shessian!(rows, cols, objs, nothing, NaN, NaN)
 end
 
 _con_hess_structure!(cons::ConstraintNull, rows, cols) = nothing
 function _con_hess_structure!(cons, rows, cols)
     _con_hess_structure!(cons.inner, rows, cols)
-    shessian!(rows, cols, cons, nothing, NaN16, NaN16)
+    shessian!(rows, cols, cons, nothing, NaN, NaN)
 end
 
 function obj(m::ExaModel, x::AbstractVector)
