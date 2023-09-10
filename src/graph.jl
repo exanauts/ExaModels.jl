@@ -13,7 +13,7 @@ abstract type AbstractSecondAdjointNode end
 A source of variable nodes
 
 """
-struct VarSource end
+struct VarSource <: AbstractNode end
 
 """
     Var{I}
@@ -33,7 +33,7 @@ end
 A source of parameterized data
 
 """
-struct ParSource end
+struct ParSource <: AbstractNode end
 
 """
     ParIndexed{I, J}

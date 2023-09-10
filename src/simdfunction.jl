@@ -41,7 +41,6 @@ function SIMDFunction(gen::Base.Generator, o0 = 0, o1 = 0, o2 = 0)
     p = Par(eltype(gen.iter))
     f = gen.f(p)
 
-
     d = f(Identity(), AdjointNodeSource(nothing))
     y1 = []
     ExaModels.grpass(d, nothing, y1, nothing, 0, NaN16)

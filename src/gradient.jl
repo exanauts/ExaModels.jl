@@ -40,7 +40,7 @@ function gradient!(y, f, x, adj)
     return y
 end
 
-function gradient!(y, f, x, p = nothing, adj = one(eltype(y)))
+function gradient!(y, f, x, p, adj)
     graph = f(p, AdjointNodeSource(x))
     drpass(graph, y, adj)
     return y
