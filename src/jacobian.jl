@@ -138,3 +138,17 @@ function sjacobian!(y1, y2, f, x, adj)
         )
     end
 end
+
+function sjacobian!(y1, y2, f, p, x, comp, adj)
+    graph = f(p, AdjointNodeSource(x))
+    jrpass(
+        graph,
+        comp,
+        offset0(f, i),
+        y1,
+        y2,
+        offset1(f, i),
+        0,
+        adj,
+    )
+end
