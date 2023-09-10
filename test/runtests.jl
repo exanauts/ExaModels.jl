@@ -9,4 +9,3 @@ include("ADTest/ADTest.jl")
     ADTest.runtests()
     NLPTest.runtests()
 end
-
