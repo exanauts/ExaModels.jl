@@ -115,7 +115,7 @@ function parse_ac_power_data(filename)
     )
 end
 
-function exa_ac_power_model(backend, filename)
+function _exa_ac_power_model(backend, filename)
 
     data = parse_ac_power_data(filename, backend)
 
@@ -206,11 +206,16 @@ function exa_ac_power_model(backend, filename)
     c13 = ExaModels.constraint!(w, c9, g.bus => -pg[g.i] for g in data.gen)
     c14 = ExaModels.constraint!(w, c10, g.bus => -qg[g.i] for g in data.gen)
 
-    return ExaModels.ExaModel(w; prod = true)
+    return ExaModels.ExaModel(w; prod = true), (va, vg, pg, pq, p, q), (c1, c2, c3, c4, c5, c6, c7, c8, c9, c10)
 
 end
 
-function jump_ac_power_model(backend, filename)
+function exa_ac_power_model(backend, filename)
+    m, vars, cons = _exa_ac_power_model(backend, filename)
+    return m
+end
+
+function _jump_ac_power_model(backend, filename)
 
     ref = get_power_data_ref(filename)
 
@@ -433,5 +438,10 @@ function jump_ac_power_model(backend, filename)
     end
 
 
-    return MathOptNLPModel(model)
+    return model, (va, vg, pg, pq, p, q), ()
+end
+
+function jump_ac_power_model(backend, filename)
+    jm, vars = _jump_ac_power_model(backend, filename)
+    return MathOptNLPModel(jm)
 end

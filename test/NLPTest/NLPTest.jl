@@ -154,6 +154,14 @@ function runtests()
             end
         end
 
+        @testset "API test" begin
+            for backend in BACKENDS
+                @testset "$backend" begin
+                    exa_$(name)_model
+                end
+            end
+        end
+        
         @testset "Backend test" begin
             for (name, args) in NLP_TEST_ARGUMENTS
                 @testset "$name $args" begin
