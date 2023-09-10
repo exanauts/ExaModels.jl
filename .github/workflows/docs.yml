@@ -9,8 +9,6 @@ on:
 
 jobs:
   build:
-    env:
-      JULIA_DEPOT_PATH: /scratch/sshin/github-actions/julia_depot_madnlp
     runs-on: self-hosted
     steps:
       - uses: actions/checkout@v2
