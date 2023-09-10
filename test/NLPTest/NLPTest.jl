@@ -155,7 +155,7 @@ function runtests()
         end
     end
 
-    @testset "Backend tests" begin
+    @testset "Backend test" begin
         for (name, args) in NLP_TEST_ARGUMENTS
             @testset "$name $args" begin
                 for backend in BACKENDS
