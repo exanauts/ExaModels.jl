@@ -25,7 +25,6 @@ jobs:
         julia-version: ['1.9']
     steps:
       - uses: actions/checkout@v2
-      - run: export JULIA_DEPOT_PATH  
       - uses: julia-actions/setup-julia@latest
         with:
           version: ${{ matrix.julia-version }}
