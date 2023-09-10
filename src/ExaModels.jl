@@ -7,7 +7,21 @@ For more information, please visit https://github.com/sshin23/ExaModels.jl
 """
 module ExaModels
 
-import NLPModels: NLPModels, obj, cons!, grad!, jac_coord!, hess_coord!, jac_structure!, hess_structure!
+import NLPModels:
+    NLPModels,
+    obj,
+    cons!,
+    grad!,
+    jac_coord!,
+    hess_coord!,
+    jprod!,
+    jtprod!,
+    hprod!,
+    jac_structure!,
+    hess_structure!,
+    cons_nln!,
+    jtprod_nln!,
+    jprod_nln!
 import SolverCore
 
 include("graph.jl")
@@ -33,6 +47,8 @@ export ExaModel,
     multipliers,
     multipliers_L,
     multipliers_U,
-    WrapperNLPModel
+    WrapperNLPModel,
+    @register_univariate,
+    @register_bivariate
 
 end # module ExaModels

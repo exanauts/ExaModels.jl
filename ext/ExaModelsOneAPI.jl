@@ -8,38 +8,41 @@ ExaModels.ExaCore(T, backend::oneAPI.oneAPIBackend) =
 
 function ExaModels.append!(a::A, b::Base.Generator, lb) where {A<:oneAPI.oneVector}
     la = length(a)
-    a = similar(a, la + lb)
-    map!(b.f, view(a, (la+1):(la+lb)), b.iter)
-    return a
+    aa = similar(a, la + lb)
+    copyto!(view(aa, 1:la), a)
+    map!(b.f, view(aa, (la+1):(la+lb)), b.iter)
+    return aa
 end
 
 function ExaModels.append!(a::A, b::A, lb) where {A<:oneAPI.oneVector}
     la = length(a)
-    a = similar(a, la + lb)
-    copyto!(view(a, (la+1):(la+lb)), b)
-    return a
+    aa = similar(a, la + lb)
+    copyto!(view(aa, 1:la), a)
+    copyto!(view(aa, (la+1):(la+lb)), b)
+    return aa
 end
 
 
 function ExaModels.append!(a::A, b::Number, lb) where {A<:oneAPI.oneVector}
     la = length(a)
-    a = similar(a, la + lb)
-    fill!(view(a, (la+1):(la+lb)), b)
-    return a
+    aa = similar(a, la + lb)
+    copyto!(view(aa, 1:la), a)
+    fill!(view(aa, (la+1):(la+lb)), b)
+    return aa
 end
 
 ExaModels.convert_array(v, backend::oneAPI.oneAPIBackend) = oneAPI.oneArray(v)
 
-function ExaModels.sum(a::A) where {A<:oneAPI.oneVector{Float64}}
-    return Float64(mapreduce(Float32, +, a))
-end
-function ExaModels.findall(f::F, bitarray::A) where {F<:Function,A<:oneAPI.oneVector}
+ExaModels.sort!(array::A; lt = isless) where {A<:oneAPI.oneVector} =
+    copyto!(array, sort!(Array(array); lt = lt))
+
+# below is type piracy
+function Base.findall(f::F, bitarray::A) where {F<:Function,A<:oneAPI.oneVector}
     a = Array(bitarray)
     b = findall(f, a)
     c = similar(bitarray, eltype(b), length(b))
     return copyto!(c, b)
 end
-ExaModels.findall(bitarray::A) where {A<:oneAPI.oneVector} = ExaModels.findall(identity, bitarray)
-ExaModels.sort!(array::A; lt = isless) where {A<:oneAPI.oneVector} =
-    copyto!(array, sort!(Array(array)))
-end
+Base.findall(bitarray::A) where {A<:oneAPI.oneVector} = Base.findall(identity, bitarray)
+
+end # module

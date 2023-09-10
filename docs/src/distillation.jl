@@ -78,4 +78,3 @@ using ExaModels, NLPModelsIpopt
 
 m = distillation_column_model(10)
 ipopt(m)
-

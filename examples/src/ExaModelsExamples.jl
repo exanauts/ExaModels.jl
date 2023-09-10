@@ -14,7 +14,7 @@ const NAMES = filter(names(ExaModelsExamples; all = true)) do x
     endswith(str, "model") && !startswith(str, "#")
 end
 
-for name in filter(names(ExaModelsExamples; all=true)) do x
+for name in filter(names(ExaModelsExamples; all = true)) do x
     endswith(string(x), "model")
 end
     @eval export $name

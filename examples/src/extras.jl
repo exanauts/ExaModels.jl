@@ -11,7 +11,7 @@ for power in POWERS
     if !isfile(power)
         Downloads.download(
             "https://raw.githubusercontent.com/power-grid-lib/pglib-opf/dc6be4b2f85ca0e776952ec22cbd4c22396ea5a3/$power",
-            power
+            power,
         )
     end
 end
@@ -22,45 +22,33 @@ const CASES = [
         jump_luksan_vlcek_model,
         ampl_luksan_vlcek_model,
         luksan_vlcek_model,
-        (100, 1000, 10000)
+        (100, 1000, 10000),
     ),
-    (
-        "QR",
-        jump_quadrotor_model,
-        ampl_quadrotor_model,
-        quadrotor_model,
-        (50, 500, 5000)
-    ),
+    ("QR", jump_quadrotor_model, ampl_quadrotor_model, quadrotor_model, (50, 500, 5000)),
     (
         "DC",
         jump_distillation_column_model,
         ampl_distillation_column_model,
         distillation_column_model,
-        (5, 50, 500)
+        (5, 50, 500),
     ),
-    (
-        "PF",
-        jump_ac_power_model,
-        ampl_ac_power_model,
-        ac_power_model,
-        POWERS
-    ),
+    ("PF", jump_ac_power_model, ampl_ac_power_model, ac_power_model, POWERS),
 ]
 
 function benchmark(cases = CASES; neval = 3, deploy = false)
-    
+
     result = BenchmarkResult()
 
-    try 
+    try
         GC.enable(false)
         for (name, jump_model, ampl_model, exa_model, args) in cases
             for (cnt, arg) in enumerate(args)
-                
+
                 @info "Benchmarking $name$cnt"
-                
+
                 m = jump_model(arg)
                 tj = benchmark_callbacks(m; N = neval)
-                
+
                 m = ampl_model(arg)
                 ta = benchmark_callbacks(m; N = neval)
 
@@ -74,7 +62,8 @@ function benchmark(cases = CASES; neval = 3, deploy = false)
                 teg = benchmark_callbacks(m; N = neval)
 
                 push!(
-                    result, (
+                    result,
+                    (
                         name = "$name$cnt",
                         nvar = m.meta.nvar,
                         ncon = m.meta.ncon,
@@ -82,8 +71,8 @@ function benchmark(cases = CASES; neval = 3, deploy = false)
                         ta = ta,
                         te = te,
                         tec = tec,
-                        teg = teg
-                    )
+                        teg = teg,
+                    ),
                 )
             end
         end
@@ -107,11 +96,8 @@ function deploy(result)
 
     # Clone the repository into a temporary directory
     tmp_dir = mktempdir()
-    run(`git clone --depth 1 --branch $branch $repo_url $tmp_dir`) 
-    write(
-        joinpath(tmp_dir, result.commit),
-        string(result)
-    )
+    run(`git clone --depth 1 --branch $branch $repo_url $tmp_dir`)
+    write(joinpath(tmp_dir, result.commit), string(result))
 
     # Commit and push the changes
     cd(tmp_dir) do
@@ -121,20 +107,18 @@ function deploy(result)
     end
 
     # Clean up the temporary directory
-    rm(tmp_dir; recursive=true)
+    rm(tmp_dir; recursive = true)
 end
 
 export benchmark, deploy
 
 @kwdef struct BenchmarkResult
-    data::Vector{Any} = Vector{Any}(undef,0)
+    data::Vector{Any} = Vector{Any}(undef, 0)
     commit::String = string(
         LibGit2.GitHash(
-            LibGit2.GitRepo(
-                joinpath(dirname(pathof(ExaModels)), "..")
-            ),
-            "HEAD"
-        )
+            LibGit2.GitRepo(joinpath(dirname(pathof(ExaModels)), "..")),
+            "HEAD",
+        ),
     )
     cpuinfo::String = "$(cpubrand()) (nthreads = $(Threads.nthreads()))"
     gpuinfo::String = "$(CUDA.name(CUDA.device()))"
@@ -148,48 +132,93 @@ function varcon(n)
     if n < 1000
         @sprintf("%3i ", n)
     elseif n < 1000000'
-        @sprintf("%3.0fk", n/1000)
+        @sprintf("%3.0fk", n / 1000)
     else
-        @sprintf("%3.0fm", n/1000000)
+        @sprintf("%3.0fm", n / 1000000)
     end
 end
 
 function Base.string(result::BenchmarkResult)
     data1 = join(
-        (@sprintf(
-            "| %4s | %4s %4s | %1.1e %1.1e %1.1e %1.1e %1.1e |",
-            d.name, varcon(d.nvar), varcon(d.ncon),
-            d.te.tobj, d.te.tcon, d.te.tgrad, d.te.tjac, d.te.thess,
-        )
-         for d in result.data), "\n")
+        (
+            @sprintf(
+                "| %4s | %4s %4s | %1.1e %1.1e %1.1e %1.1e %1.1e |",
+                d.name,
+                varcon(d.nvar),
+                varcon(d.ncon),
+                d.te.tobj,
+                d.te.tcon,
+                d.te.tgrad,
+                d.te.tjac,
+                d.te.thess,
+            ) for d in result.data
+        ),
+        "\n",
+    )
     data2 = join(
-        (@sprintf(
-            "| %4s | %4s %4s | %1.1e %1.1e %1.1e %1.1e %1.1e |",
-            d.name, varcon(d.nvar), varcon(d.ncon),
-            d.tec.tobj, d.tec.tcon, d.tec.tgrad, d.tec.tjac, d.tec.thess,
-        )
-         for d in result.data), "\n")
+        (
+            @sprintf(
+                "| %4s | %4s %4s | %1.1e %1.1e %1.1e %1.1e %1.1e |",
+                d.name,
+                varcon(d.nvar),
+                varcon(d.ncon),
+                d.tec.tobj,
+                d.tec.tcon,
+                d.tec.tgrad,
+                d.tec.tjac,
+                d.tec.thess,
+            ) for d in result.data
+        ),
+        "\n",
+    )
     data3 = join(
-        (@sprintf(
-            "| %4s | %4s %4s | %1.1e %1.1e %1.1e %1.1e %1.1e |",
-            d.name, varcon(d.nvar), varcon(d.ncon),
-            d.teg.tobj, d.teg.tcon, d.teg.tgrad, d.teg.tjac, d.teg.thess,
-        )
-         for d in result.data), "\n")
+        (
+            @sprintf(
+                "| %4s | %4s %4s | %1.1e %1.1e %1.1e %1.1e %1.1e |",
+                d.name,
+                varcon(d.nvar),
+                varcon(d.ncon),
+                d.teg.tobj,
+                d.teg.tcon,
+                d.teg.tgrad,
+                d.teg.tjac,
+                d.teg.thess,
+            ) for d in result.data
+        ),
+        "\n",
+    )
     data4 = join(
-        (@sprintf(
-            "| %4s | %4s %4s | %1.1e %1.1e %1.1e %1.1e %1.1e |",
-            d.name, varcon(d.nvar), varcon(d.ncon),
-            d.ta.tobj, d.ta.tcon, d.ta.tgrad, d.ta.tjac, d.ta.thess
-        )
-         for d in result.data), "\n")
+        (
+            @sprintf(
+                "| %4s | %4s %4s | %1.1e %1.1e %1.1e %1.1e %1.1e |",
+                d.name,
+                varcon(d.nvar),
+                varcon(d.ncon),
+                d.ta.tobj,
+                d.ta.tcon,
+                d.ta.tgrad,
+                d.ta.tjac,
+                d.ta.thess
+            ) for d in result.data
+        ),
+        "\n",
+    )
     data5 = join(
-        (@sprintf(
-            "| %4s | %4s %4s | %1.1e %1.1e %1.1e %1.1e %1.1e |",
-            d.name, varcon(d.nvar), varcon(d.ncon),
-            d.tj.tobj, d.tj.tcon, d.tj.tgrad, d.tj.tjac, d.tj.thess,
-        )
-         for d in result.data), "\n")
+        (
+            @sprintf(
+                "| %4s | %4s %4s | %1.1e %1.1e %1.1e %1.1e %1.1e |",
+                d.name,
+                varcon(d.nvar),
+                varcon(d.ncon),
+                d.tj.tobj,
+                d.tj.tcon,
+                d.tj.tgrad,
+                d.tj.tjac,
+                d.tj.thess,
+            ) for d in result.data
+        ),
+        "\n",
+    )
     return """
 ==============================================================
 |                 Evaluation Wall Time (sec)                 |
@@ -329,7 +358,7 @@ Base.@kwdef mutable struct ADBenchmarkStats
 end
 
 struct ADBenchmarkModel{T,VT,I<:NLPModels.AbstractNLPModel{T,VT}} <:
-    NLPModels.AbstractNLPModel{T,VT}
+       NLPModels.AbstractNLPModel{T,VT}
     inner::I
     meta::NLPModels.AbstractNLPModelMeta{T,VT}
     stats::ADBenchmarkStats
@@ -392,11 +421,7 @@ function NLPModels.grad!(m::ADBenchmarkModel, x::AbstractVector, f::AbstractVect
     m.stats.grad_time += time() - t
     return
 end
-function NLPModels.jac_coord!(
-    m::ADBenchmarkModel,
-    x::AbstractVector,
-    jac::AbstractVector,
-)
+function NLPModels.jac_coord!(m::ADBenchmarkModel, x::AbstractVector, jac::AbstractVector)
 
     m.stats.jac_coord_cnt += 1
     t = time()
@@ -423,7 +448,7 @@ end
 function Base.print(io::IO, e::ADBenchmarkModel)
     tot = 0.0
     for f in fieldnames(ADBenchmarkStats)
-        if endswith(string(f), "cnt") 
+        if endswith(string(f), "cnt")
             @printf "%20s:  %13i times\n" f getfield(e.stats, f)
         else
             t = getfield(e.stats, f)

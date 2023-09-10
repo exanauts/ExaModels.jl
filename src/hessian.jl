@@ -1,4 +1,19 @@
-@inbounds @inline function hdrpass(
+"""
+    hdrpass(t1::T1, t2::T2, comp, y1, y2, o2, cnt, adj)
+
+Performs sparse hessian evaluation (`(df1/dx)(df2/dx)'` portion) via the reverse pass on the computation (sub)graph formed by second-order forward pass
+
+# Arguments:
+- `t1`: second-order computation (sub)graph regarding f1
+- `t2`: second-order computation (sub)graph regarding f2
+- `comp`: a `Compressor`, which helps map counter to sparse vector index
+- `y1`: result vector #1
+- `y2`: result vector #2 (only used when evaluating sparsity)
+- `o2`: index offset
+- `cnt`: counter
+- `adj`: second adjoint propagated up to the current node
+"""
+@inline function hdrpass(
     t1::T1,
     t2::T2,
     comp,
@@ -11,7 +26,7 @@
     cnt = hdrpass(t1.inner, t2.inner, comp, y1, y2, o2, cnt, adj * t1.y * t2.y)
     cnt
 end
-@inbounds function hdrpass(
+function hdrpass(
     t1::SecondAdjointNode1,
     t2::SecondAdjointNode1,
     comp::Nothing,
@@ -26,7 +41,7 @@ end
 end
 
 
-@inbounds @inline function hdrpass(
+@inline function hdrpass(
     t1::T1,
     t2::T2,
     comp,
@@ -39,7 +54,7 @@ end
     cnt = hdrpass(t1, t2.inner, comp, y1, y2, o2, cnt, adj * t2.y)
     cnt
 end
-@inbounds function hdrpass(
+function hdrpass(
     t1::SecondAdjointNodeVar,
     t2::SecondAdjointNode1,
     comp::Nothing,
@@ -54,7 +69,7 @@ end
 end
 
 
-@inbounds @inline function hdrpass(
+@inline function hdrpass(
     t1::T1,
     t2::T2,
     comp,
@@ -67,7 +82,7 @@ end
     cnt = hdrpass(t1.inner, t2, comp, y1, y2, o2, cnt, adj * t1.y)
     cnt
 end
-@inbounds function hdrpass(
+function hdrpass(
     t1::SecondAdjointNode1,
     t2::SecondAdjointNodeVar,
     comp::Nothing,
@@ -82,7 +97,7 @@ end
 end
 
 
-@inbounds @inline function hdrpass(
+@inline function hdrpass(
     t1::T1,
     t2::T2,
     comp,
@@ -98,7 +113,7 @@ end
     cnt = hdrpass(t1.inner2, t2.inner2, comp, y1, y2, o2, cnt, adj * t1.y2 * t2.y2)
     cnt
 end
-@inbounds function hdrpass(
+function hdrpass(
     t1::SecondAdjointNode2,
     t2::SecondAdjointNode2,
     comp::Nothing,
@@ -116,7 +131,7 @@ end
 end
 
 
-@inbounds @inline function hdrpass(
+@inline function hdrpass(
     t1::T1,
     t2::T2,
     comp,
@@ -130,7 +145,7 @@ end
     cnt = hdrpass(t1.inner, t2.inner2, comp, y1, y2, o2, cnt, adj * t1.y * t2.y2)
     cnt
 end
-@inbounds function hdrpass(
+function hdrpass(
     t1::SecondAdjointNode1,
     t2::SecondAdjointNode2,
     comp::Nothing,
@@ -145,7 +160,7 @@ end
     cnt
 end
 
-@inbounds @inline function hdrpass(
+@inline function hdrpass(
     t1::T1,
     t2::T2,
     comp,
@@ -159,7 +174,7 @@ end
     cnt = hdrpass(t1.inner2, t2.inner, comp, y1, y2, o2, cnt, adj * t1.y2 * t2.y)
     cnt
 end
-@inbounds function hdrpass(
+function hdrpass(
     t1::SecondAdjointNode2,
     t2::SecondAdjointNode1,
     comp::Nothing,
@@ -174,7 +189,7 @@ end
     cnt
 end
 
-@inbounds @inline function hdrpass(
+@inline function hdrpass(
     t1::T1,
     t2::T2,
     comp,
@@ -188,7 +203,7 @@ end
     cnt = hdrpass(t1, t2.inner2, comp, y1, y2, o2, cnt, adj * t2.y2)
     cnt
 end
-@inbounds function hdrpass(
+function hdrpass(
     t1::SecondAdjointNodeVar,
     t2::SecondAdjointNode2,
     comp::Nothing,
@@ -203,7 +218,7 @@ end
     cnt
 end
 
-@inbounds @inline function hdrpass(
+@inline function hdrpass(
     t1::T1,
     t2::T2,
     comp,
@@ -217,7 +232,7 @@ end
     cnt = hdrpass(t1.inner2, t2, comp, y1, y2, o2, cnt, adj * t1.y2)
     cnt
 end
-@inbounds function hdrpass(
+function hdrpass(
     t1::SecondAdjointNode2,
     t2::SecondAdjointNodeVar,
     comp::Nothing,
@@ -232,7 +247,8 @@ end
     cnt
 end
 
-@inbounds @inline function hdrpass(
+
+@inline function hdrpass(
     t1::T1,
     t2::T2,
     comp,
@@ -243,7 +259,7 @@ end
     adj,
 ) where {T1<:SecondAdjointNodeVar,T2<:SecondAdjointNodeVar}
     i, j = t1.i, t2.i
-    if i == j
+    @inbounds if i == j
         y1[o2+comp(cnt += 1)] += 2 * adj
     else
         y1[o2+comp(cnt += 1)] += adj
@@ -251,7 +267,50 @@ end
     cnt
 end
 
-@inbounds @inline function hrpass(
+
+@inline function hdrpass(
+    t1::T1,
+    t2::T2,
+    comp,
+    y1::Tuple{V1,V2},
+    y2,
+    o2,
+    cnt,
+    adj,
+) where {
+    T1<:SecondAdjointNodeVar,
+    T2<:SecondAdjointNodeVar,
+    V1<:AbstractVector,
+    V2<:AbstractVector,
+}
+    i, j = t1.i, t2.i
+    y, v = y1
+    @inbounds if i == j
+        y[i] += 2 * adj * v[i]
+    else
+        y[i] += adj * v[j]
+        y[j] += adj * v[i]
+    end
+    return (cnt += 1)
+end
+
+"""
+    hrpass(t::D, comp, y1, y2, o2, cnt, adj, adj2)
+
+Performs sparse hessian evaluation (`d²f/dx²` portion) via the reverse pass on the computation (sub)graph formed by second-order forward pass
+
+# Arguments:
+- `comp`: a `Compressor`, which helps map counter to sparse vector index
+- `y1`: result vector #1
+- `y2`: result vector #2 (only used when evaluating sparsity)
+- `o2`: index offset
+- `cnt`: counter
+- `adj`: first adjoint propagated up to the current node
+- `adj`: second adjoint propagated up to the current node
+"""
+
+
+@inline function hrpass(
     t::D,
     comp,
     y1,
@@ -264,7 +323,7 @@ end
     cnt = hrpass(t.inner, comp, y1, y2, o2, cnt, adj * t.y, adj2 * (t.y)^2 + adj * t.h)
     cnt
 end
-@inbounds @inline function hrpass(
+@inline function hrpass(
     t::D,
     comp,
     y1,
@@ -282,10 +341,10 @@ end
     cnt
 end
 
-@inbounds @inline hrpass0(args...) = hrpass(args...)
+@inline hrpass0(args...) = hrpass(args...)
 
 
-@inbounds @inline function hrpass0(
+@inline function hrpass0(
     t::D,
     comp,
     y1,
@@ -298,7 +357,7 @@ end
     cnt = hrpass0(t.inner, comp, y1, y2, o2, cnt, adj * t.y, adj2 * (t.y)^2)
     cnt
 end
-@inbounds @inline function hrpass0(
+@inline function hrpass0(
     t::D,
     comp,
     y1,
@@ -311,7 +370,7 @@ end
     cnt = hrpass0(t.inner, comp, y1, y2, o2, cnt, adj, adj2)
     cnt
 end
-@inbounds @inline function hrpass0(
+@inline function hrpass0(
     t::D,
     comp,
     y1,
@@ -324,7 +383,7 @@ end
     cnt = hrpass0(t.inner, comp, y1, y2, o2, cnt, -adj, adj2)
     cnt
 end
-@inbounds @inline function hrpass0(
+@inline function hrpass0(
     t::D,
     comp,
     y1,
@@ -338,7 +397,7 @@ end
     cnt
 end
 
-@inbounds @inline function hrpass0(
+@inline function hrpass0(
     t::D,
     comp,
     y1,
@@ -351,7 +410,7 @@ end
     cnt = hrpass0(t.inner, comp, y1, y2, o2, cnt, adj, adj2)
     cnt
 end
-@inbounds @inline function hrpass0(
+@inline function hrpass0(
     t::D,
     comp,
     y1,
@@ -365,7 +424,7 @@ end
     cnt
 end
 
-@inbounds @inline function hrpass0(
+@inline function hrpass0(
     t::D,
     comp,
     y1,
@@ -380,7 +439,7 @@ end
     cnt
 end
 
-@inbounds @inline function hrpass0(
+@inline function hrpass0(
     t::D,
     comp,
     y1,
@@ -394,7 +453,7 @@ end
     cnt = hrpass0(t.inner2, comp, y1, y2, o2, cnt, -adj, adj2)
     cnt
 end
-@inbounds @inline function hrpass0(
+@inline function hrpass0(
     t::T,
     comp,
     y1,
@@ -406,7 +465,7 @@ end
 ) where {T<:SecondAdjointNodeVar}
     cnt
 end
-@inbounds @inline function hrpass0(
+@inline function hrpass0(
     t::T,
     comp::Nothing,
     y1,
@@ -420,7 +479,7 @@ end
 end
 
 
-@inbounds function hdrpass(
+function hdrpass(
     t1::SecondAdjointNodeVar,
     t2::SecondAdjointNodeVar,
     comp::Nothing,
@@ -434,7 +493,7 @@ end
     push!(y1, (t1.i, t2.i))
     cnt
 end
-@inbounds function hrpass(
+function hrpass(
     t::SecondAdjointNodeVar,
     comp::Nothing,
     y1,
@@ -448,7 +507,22 @@ end
     push!(y1, (t.i, t.i))
     cnt
 end
-@inbounds @inline function hrpass(
+
+@inline function hrpass(
+    t::T,
+    comp,
+    y1::Tuple{V1,V2},
+    y2,
+    o2,
+    cnt,
+    adj,
+    adj2,
+) where {T<:SecondAdjointNodeVar,V1<:AbstractVector,V2<:AbstractVector}
+    y, v = y1
+    @inbounds y[t.i] += adj2 * v[t.i]
+    return (cnt += 1)
+end
+@inline function hrpass(
     t::T,
     comp,
     y1,
@@ -458,10 +532,10 @@ end
     adj,
     adj2,
 ) where {T<:SecondAdjointNodeVar}
-    y1[o2+comp(cnt += 1)] += adj2
+    @inbounds y1[o2+comp(cnt += 1)] += adj2
     cnt
 end
-@inbounds @inline function hrpass(
+@inline function hrpass(
     t::T,
     comp,
     y1::V,
@@ -472,11 +546,25 @@ end
     adj2,
 ) where {T<:SecondAdjointNodeVar,I<:Integer,V<:AbstractVector{I}}
     ind = o2 + comp(cnt += 1)
-    y1[ind] = t.i
-    y2[ind] = t.i
+    @inbounds y1[ind] = t.i
+    @inbounds y2[ind] = t.i
     cnt
 end
-@inbounds @inline function hdrpass(
+@inline function hrpass(
+    t::T,
+    comp,
+    y1::V,
+    y2,
+    o2,
+    cnt,
+    adj,
+    adj2,
+) where {T<:SecondAdjointNodeVar,I<:Tuple{Tuple{Int,Int},Int},V<:AbstractVector{I}}
+    ind = o2 + comp(cnt += 1)
+    @inbounds y1[ind] = ((t.i, t.i), ind)
+    cnt
+end
+@inline function hdrpass(
     t1::T1,
     t2::T2,
     comp,
@@ -488,7 +576,7 @@ end
 ) where {T1<:SecondAdjointNodeVar,T2<:SecondAdjointNodeVar,I<:Integer,V<:AbstractVector{I}}
     i, j = t1.i, t2.i
     ind = o2 + comp(cnt += 1)
-    if i >= j
+    @inbounds if i >= j
         y1[ind] = i
         y2[ind] = j
     else
@@ -497,10 +585,47 @@ end
     end
     cnt
 end
+@inline function hdrpass(
+    t1::T1,
+    t2::T2,
+    comp,
+    y1::V,
+    y2,
+    o2,
+    cnt,
+    adj,
+) where {
+    T1<:SecondAdjointNodeVar,
+    T2<:SecondAdjointNodeVar,
+    I<:Tuple{Tuple{Int,Int},Int},
+    V<:AbstractVector{I},
+}
+    i, j = t1.i, t2.i
+    ind = o2 + comp(cnt += 1)
+    @inbounds if i >= j
+        y1[ind] = ((i, j), ind)
+    else
+        y1[ind] = ((j, i), ind)
+    end
+    cnt
+end
 
+"""
+    shessian!(y1, y2, f, x, adj1, adj2)
+
+Performs sparse jacobian evalution
+
+# Arguments:
+- `y1`: result vector #1
+- `y2`: result vector #2 (only used when evaluating sparsity)
+- `f`: the function to be differentiated in `SIMDFunction` format
+- `x`: variable vector
+- `adj1`: initial first adjoint
+- `adj2`: initial second adjoint
+"""
 function shessian!(y1, y2, f, x, adj1, adj2)
     @simd for k in eachindex(f.itr)
-        hrpass0(
+        @inbounds hrpass0(
             f.f.f(f.itr[k], SecondAdjointNodeSource(x)),
             f.f.comp2,
             y1,
@@ -512,10 +637,9 @@ function shessian!(y1, y2, f, x, adj1, adj2)
         )
     end
 end
-
 function shessian!(y1, y2, f, x, adj1s::V, adj2) where {V<:AbstractVector}
     @simd for k in eachindex(f.itr)
-        hrpass0(
+        @inbounds hrpass0(
             f.f.f(f.itr[k], SecondAdjointNodeSource(x)),
             f.f.comp2,
             y1,

@@ -10,8 +10,8 @@ function __init__()
         (
             name = "$(Threads.nthreads())T",
             hardware = "$(CpuId.cpubrand())",
-            backend = KernelAbstractions.CPU()
-        )
+            backend = KernelAbstractions.CPU(),
+        ),
     )
 end
 

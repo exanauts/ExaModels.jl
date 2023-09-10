@@ -1,7 +1,5 @@
-function exa_distillation_column_model(N= 3; kwargs...)
-    return ADBenchmarkModel(
-        ExaModelsExamples.distillation_column_model(N; kwargs...)
-    )    
+function exa_distillation_column_model(N = 3; kwargs...)
+    return ExaModelsExamples.distillation_column_model(N; kwargs...)
 end
 
 function jump_distillation_column_model(T = 3)
@@ -80,7 +78,7 @@ function jump_distillation_column_model(T = 3)
         yA[t, i] * (1 - xA[t, i]) - alpha * xA[t, i] * (1 - yA[t, i]) == 0
     )
 
-    return ADBenchmarkModel(MathOptNLPModel(m))
+    return MathOptNLPModel(m)
 end
 
 function ampl_distillation_column_model(T = 3)
@@ -197,5 +195,5 @@ function ampl_distillation_column_model(T = 3)
         m.write($nlfile)
         """
     end
-    return ADBenchmarkModel(AmplNLReader.AmplModel(nlfile))
+    return AmplNLReader.AmplModel(nlfile)
 end
