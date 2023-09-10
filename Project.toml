@@ -1,7 +1,7 @@
 name = "ExaModels"
 uuid = "1037b233-b668-4ce9-9b63-f9f681f55dd2"
 authors = ["Sungho Shin <sshin@anl.gov>"]
-version = "0.4.0"
+version = "0.4.1"
 
 [deps]
 ForwardDiff = "f6369f11-7733-5829-9624-2563aa707210"
