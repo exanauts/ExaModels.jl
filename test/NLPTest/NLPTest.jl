@@ -1,11 +1,9 @@
 module NLPTest
 
 using ExaModels
-using Random, Downloads, Test
+using Downloads, Test
 using NLPModels, JuMP, NLPModelsJuMP, PowerModels, NLPModelsIpopt, MadNLP, Percival
 using KernelAbstractions, CUDA, AMDGPU, oneAPI
-
-Random.seed!(0)
 
 const BACKENDS = Any[nothing, CPU()]
 
@@ -125,46 +123,48 @@ end
 
 function runtests()
     @testset "NLP test" begin
-        for (name, args) in NLP_TEST_ARGUMENTS
-            @testset "$name $args" begin
-                for backend in BACKENDS
-                    @testset "$backend" begin
-                        exa_model = getfield(@__MODULE__, Symbol("exa_$(name)_model"))
-                        jump_model = getfield(@__MODULE__, Symbol("jump_$(name)_model"))
+        @testset "NLP test" begin
+            for (name, args) in NLP_TEST_ARGUMENTS
+                @testset "$name $args" begin
+                    for backend in BACKENDS
+                        @testset "$backend" begin
+                            exa_model = getfield(@__MODULE__, Symbol("exa_$(name)_model"))
+                            jump_model = getfield(@__MODULE__, Symbol("jump_$(name)_model"))
 
-                        m1 = WrapperNLPModel(exa_model(backend, args))
-                        m2 = WrapperNLPModel(jump_model(backend, args))
+                            m1 = WrapperNLPModel(exa_model(backend, args))
+                            m2 = WrapperNLPModel(jump_model(backend, args))
 
-                        test_nlp(m1, m2; full = false)
+                            test_nlp(m1, m2; full = false)
 
-                        for (sname, solver) in SOLVERS
-                            if (name, sname) in EXCLUDE1 || (sname, backend) in EXCLUDE2
-                                continue
-                            end
-                            
-                            result1 = solver(m1)
-                            result2 = solver(m2)
+                            for (sname, solver) in SOLVERS
+                                if (name, sname) in EXCLUDE1 || (sname, backend) in EXCLUDE2
+                                    continue
+                                end
+                                
+                                result1 = solver(m1)
+                                result2 = solver(m2)
 
-                            @testset "$sname" begin
-                                test_nlp_solution(result1, result2)
+                                @testset "$sname" begin
+                                    test_nlp_solution(result1, result2)
+                                end
                             end
                         end
                     end
                 end
             end
         end
-    end
 
-    @testset "Backend test" begin
-        for (name, args) in NLP_TEST_ARGUMENTS
-            @testset "$name $args" begin
-                for backend in BACKENDS
-                    @testset "$backend" begin
-                        exa_model = getfield(@__MODULE__, Symbol("exa_$(name)_model"))
-                        m1 = WrapperNLPModel(exa_model(nothing, args))
-                        m2 = WrapperNLPModel(exa_model(backend, args))
-                        
-                        test_nlp(m1, m2; full = true)
+        @testset "Backend test" begin
+            for (name, args) in NLP_TEST_ARGUMENTS
+                @testset "$name $args" begin
+                    for backend in BACKENDS
+                        @testset "$backend" begin
+                            exa_model = getfield(@__MODULE__, Symbol("exa_$(name)_model"))
+                            m1 = WrapperNLPModel(exa_model(nothing, args))
+                            m2 = WrapperNLPModel(exa_model(backend, args))
+                            
+                            test_nlp(m1, m2; full = true)
+                        end
                     end
                 end
             end

@@ -320,6 +320,7 @@ Performs sparse hessian evaluation (`d²f/dx²` portion) via the reverse pass on
     adj,
     adj2,
 ) where {D<:SecondAdjointNode1}
+
     cnt = hrpass(t.inner, comp, y1, y2, o2, cnt, adj * t.y, adj2 * (t.y)^2 + adj * t.h)
     cnt
 end
@@ -332,7 +333,8 @@ end
     cnt,
     adj,
     adj2,
-) where {D<:SecondAdjointNode2}
+    ) where {D<:SecondAdjointNode2}
+
     adj2y1y2 = adj2 * t.y1 * t.y2
     adjh12 = adj * t.h12
     cnt = hrpass(t.inner1, comp, y1, y2, o2, cnt, adj * t.y1, adj2 * (t.y1)^2 + adj * t.h11)
@@ -531,7 +533,7 @@ end
     cnt,
     adj,
     adj2,
-) where {T<:SecondAdjointNodeVar}
+    ) where {T<:SecondAdjointNodeVar}
     @inbounds y1[o2+comp(cnt += 1)] += adj2
     cnt
 end
@@ -625,13 +627,14 @@ Performs sparse jacobian evalution
 """
 function shessian!(y1, y2, f, x, adj1, adj2)
     @simd for k in eachindex(f.itr)
-        @inbounds hrpass0(
-            f.f.f(f.itr[k], SecondAdjointNodeSource(x)),
-            f.f.comp2,
+        @inbounds shessian!(
             y1,
             y2,
+            f.f.f,
+            f.itr[k],
+            x,
+            f.f.comp2,
             offset2(f, k),
-            0,
             adj1,
             adj2,
         )
@@ -639,15 +642,30 @@ function shessian!(y1, y2, f, x, adj1, adj2)
 end
 function shessian!(y1, y2, f, x, adj1s::V, adj2) where {V<:AbstractVector}
     @simd for k in eachindex(f.itr)
-        @inbounds hrpass0(
-            f.f.f(f.itr[k], SecondAdjointNodeSource(x)),
-            f.f.comp2,
+        @inbounds shessian!(
             y1,
             y2,
+            f.f.f,
+            f.itr[k],
+            x,
+            f.f.comp2,
             offset2(f, k),
-            0,
             adj1s[offset0(f, k)],
             adj2,
         )
     end
+end
+
+function shessian!(y1, y2, f, p, x, comp, o2, adj1, adj2) where {V<:AbstractVector}
+    graph = f(p, SecondAdjointNodeSource(x))
+    hrpass0(
+        graph,
+        comp,
+        y1,
+        y2,
+        o2,
+        0,
+        adj1,
+        adj2,
+    )
 end

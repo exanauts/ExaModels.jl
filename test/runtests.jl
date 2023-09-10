@@ -1,9 +1,11 @@
 using Test, ExaModels
+using Random
+Random.seed!(0)
 
 include("NLPTest/NLPTest.jl")
+include("ADTest/ADTest.jl")
 
 @testset "ExaModels test" begin
-    @testset "NLP test" begin
-        NLPTest.runtests()
-    end
+    ADTest.runtests()
+    NLPTest.runtests()
 end
