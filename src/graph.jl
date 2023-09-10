@@ -8,6 +8,14 @@ abstract type AbstractAdjointNode end
 abstract type AbstractSecondAdjointNode end
 
 """
+    VarSource
+
+A source of variable nodes
+
+"""
+struct VarSource end
+
+"""
     Var{I}
 
 A variable node for symbolic expression tree
@@ -25,7 +33,7 @@ end
 A source of parameterized data
 
 """
-struct ParSource <: AbstractNode end
+struct ParSource end
 
 """
     ParIndexed{I, J}
@@ -74,6 +82,7 @@ struct SecondFixed{F}
 end
 
 @inline Base.getindex(n::ParSource, i) = ParIndexed(n, i)
+@inline Base.getindex(n::VarSource, i) = Var(i)
 
 Par(iter::DataType) = ParSource()
 Par(iter, idx...) = ParIndexed(Par(iter, idx[2:end]...), idx[1])
@@ -90,14 +99,13 @@ Par(iter::Type{T}, idx...) where {T<:NamedTuple} = NamedTuple{T.parameters[1]}(
 
 struct Identity end
 
-@inline (v::Var{I})(i, x) where {I} = @inbounds x[v.i(i, x)]
-@inline (v::Var{I})(i, x) where {I <: Integer} = @inbounds x[v.i]
+@inline (v::Var{I})(i, x) where {I <: AbstractNode} = @inbounds x[v.i(i, x)]
+@inline (v::Var{I})(i, x) where {I} = @inbounds x[v.i]
 @inline (v::ParSource)(i, x) = i
 @inline (v::ParIndexed{I,n})(i, x) where {I,n} = @inbounds v.inner(i, x)[n]
 
 (v::ParIndexed)(i::Identity, x) = NaN16 # despecialized
 (v::ParSource)(i::Identity, x) = NaN16 # despecialized
-(v::Var)(i::Identity, x) = @inbounds x[v.i] # despecialized
 
 """
     AdjointNode1{F, T, I}
