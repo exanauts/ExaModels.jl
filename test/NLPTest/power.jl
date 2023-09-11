@@ -115,7 +115,7 @@ function parse_ac_power_data(filename)
     )
 end
 
-function exa_ac_power_model(backend, filename)
+function _exa_ac_power_model(backend, filename)
 
     data = parse_ac_power_data(filename, backend)
 
@@ -206,11 +206,16 @@ function exa_ac_power_model(backend, filename)
     c13 = ExaModels.constraint!(w, c9, g.bus => -pg[g.i] for g in data.gen)
     c14 = ExaModels.constraint!(w, c10, g.bus => -qg[g.i] for g in data.gen)
 
-    return ExaModels.ExaModel(w; prod = true)
+    return ExaModels.ExaModel(w; prod = true), (va, vm, pg, qg, p, q), (c1, c2, c3, c4, c5, c6, c7, c8, c9, c10)
 
 end
 
-function jump_ac_power_model(backend, filename)
+function exa_ac_power_model(backend, filename)
+    m, vars, cons = _exa_ac_power_model(backend, filename)
+    return m
+end
+
+function _jump_ac_power_model(backend, filename)
 
     ref = get_power_data_ref(filename)
 
@@ -255,8 +260,22 @@ function jump_ac_power_model(backend, filename)
                 )
     )
 
+    c1 = []
+    c2 = []
+    c3 = []
+    c4 = []
+    c5 = []
+    c6 = []
+    c7 = []
+    c8 = []
+    c9 = []
+    c10= []
+    
     for (i, bus) in ref[:ref_buses]
-        JuMP.@NLconstraint(model, va[i] == 0)
+        push!(
+            c1,
+            JuMP.@NLconstraint(model, va[i] == 0)
+        )
     end
 
     # Branch power flow physics and limit constraints
@@ -283,14 +302,16 @@ function jump_ac_power_model(backend, filename)
         b_to = branch["b_to"]
 
         # From side of the branch flow
-        JuMP.@NLconstraint(
-            model,
-            p_fr ==
-                (g + g_fr) / ttm * vm_fr^2 +
-                (-g * tr + b * ti) / ttm * (vm_fr * vm_to * cos(va_fr - va_to)) +
-                (-b * tr - g * ti) / ttm * (vm_fr * vm_to * sin(va_fr - va_to))
+        push!(
+            c2,
+            JuMP.@NLconstraint(
+                model,
+                p_fr ==
+                    (g + g_fr) / ttm * vm_fr^2 +
+                    (-g * tr + b * ti) / ttm * (vm_fr * vm_to * cos(va_fr - va_to)) +
+                    (-b * tr - g * ti) / ttm * (vm_fr * vm_to * sin(va_fr - va_to))
+            )
         )
-
     end
     for (i, branch) in ref[:branch]
         f_idx = (i, branch["f_bus"], branch["t_bus"])
@@ -314,12 +335,15 @@ function jump_ac_power_model(backend, filename)
         g_to = branch["g_to"]
         b_to = branch["b_to"]
 
-        JuMP.@NLconstraint(
-            model,
-            q_fr ==
-                -(b + b_fr) / ttm * vm_fr^2 -
-                (-b * tr - g * ti) / ttm * (vm_fr * vm_to * cos(va_fr - va_to)) +
-                (-g * tr + b * ti) / ttm * (vm_fr * vm_to * sin(va_fr - va_to))
+        push!(
+            c3,
+            JuMP.@NLconstraint(
+                model,
+                q_fr ==
+                    -(b + b_fr) / ttm * vm_fr^2 -
+                    (-b * tr - g * ti) / ttm * (vm_fr * vm_to * cos(va_fr - va_to)) +
+                    (-g * tr + b * ti) / ttm * (vm_fr * vm_to * sin(va_fr - va_to))
+            )
         )
     end
     # To side of the branch flow
@@ -345,12 +369,15 @@ function jump_ac_power_model(backend, filename)
         g_to = branch["g_to"]
         b_to = branch["b_to"]
 
-        JuMP.@NLconstraint(
-            model,
-            p_to ==
-                (g + g_to) * vm_to^2 +
-                (-g * tr - b * ti) / ttm * (vm_to * vm_fr * cos(va_to - va_fr)) +
-                (-b * tr + g * ti) / ttm * (vm_to * vm_fr * sin(va_to - va_fr))
+        push!(
+            c4,
+            JuMP.@NLconstraint(
+                model,
+                p_to ==
+                    (g + g_to) * vm_to^2 +
+                    (-g * tr - b * ti) / ttm * (vm_to * vm_fr * cos(va_to - va_fr)) +
+                    (-b * tr + g * ti) / ttm * (vm_to * vm_fr * sin(va_to - va_fr))
+            )
         )
     end
     for (i, branch) in ref[:branch]
@@ -375,19 +402,25 @@ function jump_ac_power_model(backend, filename)
         g_to = branch["g_to"]
         b_to = branch["b_to"]
 
-        JuMP.@NLconstraint(
-            model,
-            q_to ==
-                -(b + b_to) * vm_to^2 -
-                (-b * tr + g * ti) / ttm * (vm_to * vm_fr * cos(va_to - va_fr)) +
-                (-g * tr - b * ti) / ttm * (vm_to * vm_fr * sin(va_to - va_fr))
+        push!(
+            c5,
+            JuMP.@NLconstraint(
+                model,
+                q_to ==
+                    -(b + b_to) * vm_to^2 -
+                    (-b * tr + g * ti) / ttm * (vm_to * vm_fr * cos(va_to - va_fr)) +
+                    (-g * tr - b * ti) / ttm * (vm_to * vm_fr * sin(va_to - va_fr))
+            )
         )
     end
     for (i, branch) in ref[:branch]
         
         va_fr = va[branch["f_bus"]]
         va_to = va[branch["t_bus"]]
-        JuMP.@NLconstraint(model, branch["angmin"] <= va_fr - va_to <= branch["angmax"])
+        push!(
+            c6,
+            JuMP.@NLconstraint(model, branch["angmin"] <= va_fr - va_to <= branch["angmax"])
+        )
     end
 
     # Apparent power limit, from side and to side
@@ -396,42 +429,55 @@ function jump_ac_power_model(backend, filename)
 
         p_fr = p[f_idx]
         q_fr = q[f_idx]
-
-        JuMP.@NLconstraint(model, p_fr^2 + q_fr^2 <= branch["rate_a"]^2)
+        push!(
+            c7,
+            JuMP.@NLconstraint(model, p_fr^2 + q_fr^2 <= branch["rate_a"]^2)
+        )
     end
     for (i, branch) in ref[:branch]
         t_idx = (i, branch["t_bus"], branch["f_bus"])
 
         p_to = p[t_idx]
         q_to = q[t_idx]
-
-        JuMP.@NLconstraint(model, p_to^2 + q_to^2 <= branch["rate_a"]^2)
+        push!(
+            c8,
+            JuMP.@NLconstraint(model, p_to^2 + q_to^2 <= branch["rate_a"]^2)
+        )
     end
 
     for (i, bus) in ref[:bus]
         bus_loads = [ref[:load][l] for l in ref[:bus_loads][i]]
         bus_shunts = [ref[:shunt][s] for s in ref[:bus_shunts][i]]
-
-        JuMP.@NLconstraint(
-            model,
-            sum(p[a] for a in ref[:bus_arcs][i]) ==
-                sum(pg[g] for g in ref[:bus_gens][i]) - sum(load["pd"] for load in bus_loads) -
-                sum(shunt["gs"] for shunt in bus_shunts) * vm[i]^2
+        push!(
+            c9,
+            JuMP.@NLconstraint(
+                model,
+                sum(p[a] for a in ref[:bus_arcs][i]) ==
+                    sum(pg[g] for g in ref[:bus_gens][i]) - sum(load["pd"] for load in bus_loads) -
+                    sum(shunt["gs"] for shunt in bus_shunts) * vm[i]^2
+            )
         )
     end
     
     for (i, bus) in ref[:bus]
         bus_loads = [ref[:load][l] for l in ref[:bus_loads][i]]
         bus_shunts = [ref[:shunt][s] for s in ref[:bus_shunts][i]]
-
-        JuMP.@NLconstraint(
-            model,
-            sum(q[a] for a in ref[:bus_arcs][i]) ==
-                sum(qg[g] for g in ref[:bus_gens][i]) - sum(load["qd"] for load in bus_loads) +
-                sum(shunt["bs"] for shunt in bus_shunts) * vm[i]^2
+        push!(
+            c10,
+            JuMP.@NLconstraint(
+                model,
+                sum(q[a] for a in ref[:bus_arcs][i]) ==
+                    sum(qg[g] for g in ref[:bus_gens][i]) - sum(load["qd"] for load in bus_loads) +
+                    sum(shunt["bs"] for shunt in bus_shunts) * vm[i]^2
+            )
         )
     end
 
 
-    return MathOptNLPModel(model)
+    return model, (va.data, vm.data, pg.data, qg.data, p.data, q.data), (c1, c2, c3, c4, c5, c6, c7, c8, c9, c10)
+end
+
+function jump_ac_power_model(backend, filename)
+    jm, vars = _jump_ac_power_model(backend, filename)
+    return MathOptNLPModel(jm)
 end

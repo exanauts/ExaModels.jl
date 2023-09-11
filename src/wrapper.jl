@@ -164,7 +164,7 @@ function NLPModels.grad!(m::WrapperNLPModel, x::AbstractVector, f::AbstractVecto
     NLPModels.grad!(m.inner, m.x_buffer, m.grad_buffer)
     copyto!(m.x_result, m.grad_buffer)
     copyto!(f, m.x_result)
-    return
+    return f
 end
 function NLPModels.jac_coord!(m::WrapperNLPModel, x::AbstractVector, jac::AbstractVector)
 
@@ -238,8 +238,8 @@ function NLPModels.hprod!(
 )
 
     buffered_copyto!(m.x_buffer, m.x_result, x)
-    copyto!(m.y_buffer, y)
-    buffered_copyto!(m.grad_buffer, m.x_result, v)
+    buffered_copyto!(m.y_buffer, m.y_result, y)
+    buffered_copyto!(m.grad_buffer, m.x_result2, v)
     
     NLPModels.hprod!(
         m.inner,
@@ -250,6 +250,6 @@ function NLPModels.hprod!(
         obj_weight = obj_weight,
     )
     
-    buffered_copyto!(Hv, m.x_result, m.grad_buffer)
-    return
+    buffered_copyto!(Hv, m.x_result, m.v_buffer)
+    return Hv
 end

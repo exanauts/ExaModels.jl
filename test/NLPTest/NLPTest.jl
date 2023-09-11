@@ -110,7 +110,8 @@ function test_nlp(m1, m2; full = false)
     end
 end
 
-function test_nlp_solution(result1, result2)
+function test_nlp_solution(result1,result2)
+    
     @testset "solution test" begin
         @test result1.status == result2.status
         for field in [:solution, :multipliers, :multipliers_L, :multipliers_U]
@@ -121,19 +122,50 @@ function test_nlp_solution(result1, result2)
     end
 end
 
+dual_lb(x) = has_lower_bound(x) ? dual(LowerBoundRef(x)) : 0.
+dual_ub(x) = has_upper_bound(x) ? dual(UpperBoundRef(x)) : 0.
+
+function test_api(result1, vars1, cons1, vars2, cons2)
+    @testset "API test" begin
+        for (var1, var2) in zip(vars1, vars2)
+            @test solution(result1, var1) ≈ [value(var) for var in var2] atol = 1e-6
+            @test multipliers_L(result1, var1) ≈ [dual_lb(var) for var in var2] atol = 1e-6
+            @test multipliers_U(result1, var1) ≈ [-dual_ub(var) for var in var2] atol = 1e-6
+        end
+        for (con1, con2) in zip(cons1, cons2)
+            @test multipliers(result1, con1) ≈ [-dual.(con) for con in con2] atol = 1e-6
+        end
+    end
+end
+
 function runtests()
     @testset "NLP test" begin
-        @testset "NLP test" begin
-            for (name, args) in NLP_TEST_ARGUMENTS
-                @testset "$name $args" begin
-                    for backend in BACKENDS
-                        @testset "$backend" begin
-                            exa_model = getfield(@__MODULE__, Symbol("exa_$(name)_model"))
-                            jump_model = getfield(@__MODULE__, Symbol("jump_$(name)_model"))
+        for (name, args) in NLP_TEST_ARGUMENTS
+            @testset "$name $args" begin
+                
+                exa_model = getfield(@__MODULE__, Symbol("_exa_$(name)_model"))
+                jump_model = getfield(@__MODULE__, Symbol("_jump_$(name)_model"))
 
-                            m1 = WrapperNLPModel(exa_model(backend, args))
-                            m2 = WrapperNLPModel(jump_model(backend, args))
+                m, vars0, cons0 = exa_model(nothing, args)
+                m0 = WrapperNLPModel(m)
 
+                m, vars2, cons2 = jump_model(backend, args)
+                m2 = MathOptNLPModel(m)
+                
+                set_optimizer(m, MadNLP.Optimizer)
+                set_optimizer_attribute(m, "print_level", MadNLP.ERROR)
+                optimize!(m)
+                
+                for backend in BACKENDS
+                    @testset "$backend" begin
+                        
+                        m, vars1, cons1 = exa_model(backend, args)
+                        m1 = WrapperNLPModel(m)
+                        
+                        @testset "Backend test" begin
+                            test_nlp(m0, m1; full = true)
+                        end
+                        @testset "Comparison to JuMP" begin
                             test_nlp(m1, m2; full = false)
 
                             for (sname, solver) in SOLVERS
@@ -149,22 +181,9 @@ function runtests()
                                 end
                             end
                         end
-                    end
-                end
-            end
-        end
 
-        @testset "Backend test" begin
-            for (name, args) in NLP_TEST_ARGUMENTS
-                @testset "$name $args" begin
-                    for backend in BACKENDS
-                        @testset "$backend" begin
-                            exa_model = getfield(@__MODULE__, Symbol("exa_$(name)_model"))
-                            m1 = WrapperNLPModel(exa_model(nothing, args))
-                            m2 = WrapperNLPModel(exa_model(backend, args))
-                            
-                            test_nlp(m1, m2; full = true)
-                        end
+                        result1 = madnlp(m1; print_level=MadNLP.ERROR)
+                        test_api(result1, vars1, cons1, vars2, cons2)
                     end
                 end
             end

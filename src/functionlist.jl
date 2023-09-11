@@ -204,10 +204,10 @@
     ((x1, x2) -> -1 / x2^2),
     ((x1, x2) -> 2x1 / x2^3),
 )
-@register_bivariate(Base.:<=, _zero, _zero, _zero, _zero, _zero)
-@register_bivariate(Base.:>=, _zero, _zero, _zero, _zero, _zero)
-@register_bivariate(Base.:(==), _zero, _zero, _zero, _zero, _zero)
-@register_bivariate(Base.:<, _zero, _zero, _zero, _zero, _zero)
-@register_bivariate(Base.:>, _zero, _zero, _zero, _zero, _zero)
-@register_bivariate(_and, _zero, _zero, _zero, _zero, _zero)
-@register_bivariate(_or, _zero, _zero, _zero, _zero, _zero)
+# @register_bivariate(Base.:<=, _zero, _zero, _zero, _zero, _zero)
+# @register_bivariate(Base.:>=, _zero, _zero, _zero, _zero, _zero)
+# @register_bivariate(Base.:(==), _zero, _zero, _zero, _zero, _zero)
+# @register_bivariate(Base.:<, _zero, _zero, _zero, _zero, _zero)
+# @register_bivariate(Base.:>, _zero, _zero, _zero, _zero, _zero)
+# @register_bivariate(_and, _zero, _zero, _zero, _zero, _zero)
+# @register_bivariate(_or, _zero, _zero, _zero, _zero, _zero)
