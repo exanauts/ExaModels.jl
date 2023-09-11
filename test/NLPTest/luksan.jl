@@ -21,8 +21,8 @@ function _exa_luksan_vlcek_model(backend, N)
     return ExaModel(c; prod = true), (x,), (s,)
 end
 
-function _exa_luksan_vlcek_model(backend, N)
-    m, vars = _exa_luksan_vlcek_model(backend, N)
+function exa_luksan_vlcek_model(backend, N)
+    m, vars, cons = _exa_luksan_vlcek_model(backend, N)
     return m
 end
 

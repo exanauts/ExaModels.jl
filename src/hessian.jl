@@ -282,7 +282,7 @@ end
     T2<:SecondAdjointNodeVar,
     V1<:AbstractVector,
     V2<:AbstractVector,
-}
+    }
     i, j = t1.i, t2.i
     y, v = y1
     @inbounds if i == j

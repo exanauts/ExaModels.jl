@@ -257,6 +257,8 @@ function ExaModels.grad!(
         ndrange = length(m.ext.gptr) - 1,
     )
     synchronize(m.ext.backend)
+
+    return y
 end
 function _grad!(backend, y, objs, x)
     ExaModels.sgradient!(backend, y, objs, x, one(eltype(y)))
@@ -382,6 +384,8 @@ function ExaModels.hprod!(
         ndrange = length(m.ext.prodhelper.hessptrj) - 1,
     )
     synchronize(m.ext.backend)
+
+    return Hv
 end
 
 @kernel function kerspmv(y, @Const(x), @Const(coord), @Const(V), @Const(ptr))
