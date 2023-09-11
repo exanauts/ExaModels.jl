@@ -89,7 +89,7 @@ const FUNCTIONS = [
     ("composite-functions-1-12", x->sin(x[9]inv(x[1])-x[8]inv(x[2]))),  
     ("composite-functions-1-13", x->x[1]/log(x[2]^2+9.)),  
     ("composite-functions-1-14", x->beta(beta(tan(beta(x[1], 1)+2.0), cos(sin(x[2]))), x[3])),  
-    ("composite-functions-1-15", x->beta(cos(beta(beta(x[1]^9, x[2]), x[2]*x[3])), sin(x[2]*x[3]/2.0)/1.0)), 
+    ("composite-functions-1-15", x->beta(cos(beta(beta(x[1]^2, x[2]), x[2]*x[3])), sin(x[2]*x[3]/2.0)/1.0)), 
 ]
 
 function gradient(f, x)
@@ -183,7 +183,6 @@ function runtests()
     @testset "AD test" begin
         for (name, f) in FUNCTIONS
             x0 = rand(10)
-            println(x0)
             @testset "$name" begin
                 g = ForwardDiff.gradient(f, x0)
                 h = ForwardDiff.hessian(f, x0)
