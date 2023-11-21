@@ -48,7 +48,7 @@ function parse_ac_power_data(filename)
                 gs = sum(shunt["gs"] for shunt in bus_shunts; init = 0.0)
                 qd = sum(load["qd"] for load in bus_loads; init = 0.0)
                 bs = sum(shunt["bs"] for shunt in bus_shunts; init = 0.0)
-                (i = busdict[k], pd = pd, gs = gs, qd = qd, bs = bs)
+                (i = busdict[k], pd = pd, gs = gs, qd = qd, bs = bs, bus_type = v["bus_type"])
             end for (k, v) in ref[:bus]
         ],
         gen = [
