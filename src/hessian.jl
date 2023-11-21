@@ -282,7 +282,7 @@ end
     T2<:SecondAdjointNodeVar,
     V1<:AbstractVector,
     V2<:AbstractVector,
-    }
+}
     i, j = t1.i, t2.i
     y, v = y1
     @inbounds if i == j
@@ -333,7 +333,7 @@ end
     cnt,
     adj,
     adj2,
-    ) where {D<:SecondAdjointNode2}
+) where {D<:SecondAdjointNode2}
 
     adj2y1y2 = adj2 * t.y1 * t.y2
     adjh12 = adj * t.h12
@@ -495,16 +495,7 @@ function hdrpass(
     push!(y1, (t1.i, t2.i))
     cnt
 end
-function hrpass(
-    t::SecondAdjointNodeVar,
-    comp::Nothing,
-    y1,
-    y2,
-    o2,
-    cnt,
-    adj,
-    adj2,
-)
+function hrpass(t::SecondAdjointNodeVar, comp::Nothing, y1, y2, o2, cnt, adj, adj2)
     cnt += 1
     push!(y1, (t.i, t.i))
     cnt
@@ -533,7 +524,7 @@ end
     cnt,
     adj,
     adj2,
-    ) where {T<:SecondAdjointNodeVar}
+) where {T<:SecondAdjointNodeVar}
     @inbounds y1[o2+comp(cnt += 1)] += adj2
     cnt
 end
@@ -658,14 +649,5 @@ end
 
 function shessian!(y1, y2, f, p, x, comp, o2, adj1, adj2) where {V<:AbstractVector}
     graph = f(p, SecondAdjointNodeSource(x))
-    hrpass0(
-        graph,
-        comp,
-        y1,
-        y2,
-        o2,
-        0,
-        adj1,
-        adj2,
-    )
+    hrpass0(graph, comp, y1, y2, o2, 0, adj1, adj2)
 end

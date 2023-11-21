@@ -169,7 +169,7 @@ struct ExaModel{T,VT,E,O,C} <: NLPModels.AbstractNLPModel{T,VT}
     ext::E
 end
 
-function Base.show(io::IO, c::ExaModel{T, VT}) where {T, VT}
+function Base.show(io::IO, c::ExaModel{T,VT}) where {T,VT}
     println(io, "An ExaModel{$T, $VT, ...}\n")
     Base.show(io, c.meta)
 end
