@@ -99,9 +99,9 @@ Par(iter::Type{T}, idx...) where {T<:NamedTuple} = NamedTuple{T.parameters[1]}(
 
 struct Identity end
 
-@inline (v::Var{I})(i, x) where {I <: AbstractNode} = @inbounds x[v.i(i, x)]
+@inline (v::Var{I})(i, x) where {I<:AbstractNode} = @inbounds x[v.i(i, x)]
 @inline (v::Var{I})(i, x) where {I} = @inbounds x[v.i]
-@inline (v::Var{I})(i::Identity, x) where {I <: AbstractNode} = @inbounds x[v.i] 
+@inline (v::Var{I})(i::Identity, x) where {I<:AbstractNode} = @inbounds x[v.i]
 
 @inline (v::ParSource)(i, x) = i
 @inline (v::ParIndexed{I,n})(i, x) where {I,n} = @inbounds v.inner(i, x)[n]
