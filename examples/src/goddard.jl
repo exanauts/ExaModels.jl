@@ -46,10 +46,7 @@ function goddard_model(N::Int; T = Float64, backend = nothing, kwargs...)
             1 / x[t, 1]^2
         ) * dt[1] for t = 1:N
     )
-    ExaModels.constraint(
-        core,
-        -x[t+1, 3] + x[t, 3] - (b * Tmax * u[t]) * dt[1] for t = 1:N
-    )
+    ExaModels.constraint(core, -x[t+1, 3] + x[t, 3] - (b * Tmax * u[t]) * dt[1] for t = 1:N)
 
     # Objective (minus sign as problem is to maximize final radius)
     o = ExaModels.objective(core, -x[t, 1] for t in (N + 1,))
