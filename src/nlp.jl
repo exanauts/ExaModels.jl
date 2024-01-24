@@ -399,6 +399,11 @@ function constraint(
     _constraint(c, f, pars, start, lcon, ucon)
 end
 
+"""
+    constraint(core, n; start = 0, lcon = 0,  ucon = 0)
+
+Adds empty constraints of dimension n, so that later the terms can be added with `constraint!`. 
+"""
 function constraint(
     c::C,
     n;
