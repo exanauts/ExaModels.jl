@@ -8,6 +8,9 @@ Performs dense gradient evaluation via the reverse pass on the computation (sub)
 - `y`: result vector
 - `adj`: adjoint propagated up to the current node
 """
+@inline function drpass(d::D, y, adj) where {D<:AdjointNull}
+    nothing
+end
 @inline function drpass(d::D, y, adj) where {D<:AdjointNode1}
     offset = drpass(d.inner, y, adj * d.y)
     nothing
@@ -58,11 +61,7 @@ Performs dsparse gradient evaluation via the reverse pass on the computation (su
 - `cnt`: counter
 - `adj`: adjoint propagated up to the current node
     """
-@inline function grpass(d::D, comp, y, o1, cnt, adj) where {D<:AdjointNull}
-    return cnt
-end
-@inline function grpass(d::D, comp, y, o1, cnt, adj) where {D<:AdjointNode1}
-    cnt = grpass(d.inner, comp, y, o1, cnt, adj * d.y)
+@inline function grpass(d::D, comp, y, o1, cnt, adj) where {D<: Union{AdjointNull, ParIndexed}}
     return cnt
 end
 @inline function grpass(d::D, comp, y, o1, cnt, adj) where {D<:AdjointNode1}

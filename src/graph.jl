@@ -12,7 +12,10 @@ abstract type AbstractSecondAdjointNode end
 A null node
 
 """
-struct Null <: AbstractNode end
+struct Null{T} <: AbstractNode
+    value::T
+end
+Null() = Null(nothing)
 
 """
     Null
@@ -122,9 +125,6 @@ Par(iter::Type{T}, idx...) where {T<:NamedTuple} = NamedTuple{T.parameters[1]}(
 
 struct Identity end
 
-@inline (v::Null)(i, x) = zero(eltype(x))
-@inline (v::Null)(i, x::AdjointNodeSource{T}) where T = AdjointNull()
-@inline (v::Null)(i, x::SecondAdjointNodeSource{T}) where T = SecondAdjointNull()
 @inline (v::Var{I})(i, x) where {I <: AbstractNode} = @inbounds x[v.i(i, x)]
 @inline (v::Var{I})(i, x) where {I} = @inbounds x[v.i]
 @inline (v::Var{I})(i::Identity, x) where {I <: AbstractNode} = @inbounds x[v.i] 
@@ -294,3 +294,9 @@ end
     SecondAdjointNodeVar(i, NaN)
 @inline Base.getindex(x::I, i) where {I<:SecondAdjointNodeSource} =
     @inbounds SecondAdjointNodeVar(i, x.inner[i])
+
+
+@inline (v::Null{Nothing})(i, x::V) where {T, V <: AbstractVector{T}} = zero(T)
+@inline (v::Null{N})(i, x::V) where {N, T, V <: AbstractVector{T}} = T(v.value)
+@inline (v::Null{N})(i, x::AdjointNodeSource{T}) where {N,T} = AdjointNull()
+@inline (v::Null{N})(i, x::SecondAdjointNodeSource{T}) where {N,T} = SecondAdjointNull()
