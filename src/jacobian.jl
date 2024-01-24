@@ -14,6 +14,18 @@ Performs sparse jacobian evaluation via the reverse pass on the computation (sub
 - `adj`: adjoint propagated up to the current node
 """
 @inline function jrpass(
+    d::AdjointNull,
+    comp,
+    i,
+    y1,
+    y2,
+    o1,
+    cnt,
+    adj,
+) 
+    return cnt
+end
+@inline function jrpass(
     d::D,
     comp,
     i,

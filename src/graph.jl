@@ -8,12 +8,35 @@ abstract type AbstractAdjointNode end
 abstract type AbstractSecondAdjointNode end
 
 """
+    Null
+A null node
+
+"""
+struct Null <: AbstractNode end
+
+"""
+    Null
+A null node
+
+"""
+struct AdjointNull <: AbstractAdjointNode end
+
+"""
+    Null
+A null node
+
+"""
+struct SecondAdjointNull <: AbstractSecondAdjointNode end
+
+
+"""
     VarSource
 
 A source of variable nodes
 
 """
 struct VarSource <: AbstractNode end
+
 
 """
     Var{I}
@@ -99,6 +122,9 @@ Par(iter::Type{T}, idx...) where {T<:NamedTuple} = NamedTuple{T.parameters[1]}(
 
 struct Identity end
 
+@inline (v::Null)(i, x) = zero(eltype(x))
+@inline (v::Null)(i, x::AdjointNodeSource{T}) where T = AdjointNull()
+@inline (v::Null)(i, x::SecondAdjointNodeSource{T}) where T = SecondAdjointNull()
 @inline (v::Var{I})(i, x) where {I <: AbstractNode} = @inbounds x[v.i(i, x)]
 @inline (v::Var{I})(i, x) where {I} = @inbounds x[v.i]
 @inline (v::Var{I})(i::Identity, x) where {I <: AbstractNode} = @inbounds x[v.i] 

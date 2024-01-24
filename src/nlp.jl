@@ -106,7 +106,7 @@ An ExaCore
   number of constraint patterns: ... 0
 
 julia> using CUDA
-
+       
 julia> c = ExaCore(Float32, CUDABackend())
 An ExaCore
 
@@ -398,6 +398,20 @@ function constraint(
     
     _constraint(c, f, pars, start, lcon, ucon)
 end
+
+function constraint(
+    c::C,
+    n;
+    start = zero(T),
+    lcon = zero(T),
+    ucon = zero(T),
+) where {T,C<:ExaCore{T}}
+
+    f = _simdfunction(Null(), c.ncon, c.nnzj, c.nnzh)
+    
+    _constraint(c, f, 1:n, start, lcon, ucon)
+end
+
 
 function _constraint(c, f, pars, start, lcon, ucon)
     nitr = length(pars)
