@@ -1,7 +1,7 @@
 module ExaModelsJuMP
 
-import ExaModels, JuMP
-import JuMP.MOI, ExaModels.NLPModels
+import ExaModels: ExaModels, NLPModels
+import JuMP: JuMP, MOI, MOIU
 
 
 function list!(bin, e, p)
@@ -49,46 +49,105 @@ function ExaModels.ExaModel(jm::JuMP.GenericModel{T}) where T
     # objective
     jobjs = jm_cache.model.objective
     bin = nothing
+    
     bin = exafy_obj(jobjs.scalar_nonlinear, bin)
+    bin = exafy_obj(jobjs.scalar_affine, bin)
+    bin = exafy_obj(jobjs.scalar_quadratic, bin)
     
     build_objective(c, bin)
     
     # constraint
     jcons = jm_cache.model.constraints
 
-    neq = getncon(jcons.moi_scalarnonlinearfunction.moi_equalto)
-    nge = getncon(jcons.moi_scalarnonlinearfunction.moi_greaterthan)
-    nle = getncon(jcons.moi_scalarnonlinearfunction.moi_lessthan)
-
-    ncon = neq + nge + nle
-
     bin = nothing
-
-    # cons = ExaModels.constraint(c, ncons; start = y0, lcon= lcon, ucon = ucon)
-
-    y0 = similar(x0, ncon)
-    lcon = similar(x0, ncon)
-    ucon = similar(x0, ncon)
-
-    for (i,(c,e)) in jcons.moi_scalarnonlinearfunction.moi_equalto.constraints
-        y0[i.value] = zero(eltype(x0))
-        lcon[i.value] = e.value
-        ucon[i.value] = e.value
-
-        e,p = _exafy(c)
-        bin = list!(bin, e, p)
-    end
+    offset = 0
     
-    # bin = exafy_con(jcons.moi_scalarnonlinearfunction, bin)
-    f = ExaModels._simdfunction(bin[1], c.ncon, c.nnzj, c.nnzh)
-    ExaModels._constraint(c, f, bin[2], y0, lcon, ucon)
+    y0 = similar(x0, 0)
+    lcon = similar(x0, 0)
+    ucon = similar(x0, 0)
+
+    bin, offset = exafy_con(jcons.moi_scalarnonlinearfunction, bin, offset, y0, lcon, ucon)
+    bin, offset = exafy_con(jcons.moi_scalaraffinefunction, bin, offset, y0, lcon, ucon)
+    bin, offset = exafy_con(jcons.moi_scalarquadraticfunction, bin, offset, y0, lcon, ucon)
+
+    build_constraint(c, bin, y0, lcon, ucon)
     
+
+    m = ExaModels.ExaModel(c)
+
+
+    m.meta.lcon .= lcon
+    m.meta.ucon .= ucon
     
-    ExaModels.ExaModel(c)
+    return m
 end
+
+function exafy_con(cons, bin, offset, y0, lcon, ucon)
+    bin, offset = _exafy_con(cons.moi_equalto, bin, offset, y0, lcon, ucon)
+    bin, offset = _exafy_con(cons.moi_greaterthan, bin, offset, y0, lcon, ucon)
+    bin, offset = _exafy_con(cons.moi_lessthan, bin, offset, y0, lcon, ucon)
+    bin, offset = _exafy_con(cons.moi_interval, bin, offset, y0, lcon, ucon)
+    return bin, offset
+end
+
+function _exafy_con(cons::MOIU.VectorOfConstraints, bin, offset, y0, lcon, ucon)
+    l = length(cons.constraints)
+    
+    resize!(y0, offset + l)
+    resize!(lcon, offset + l)
+    resize!(ucon, offset + l)
+    
+    for (i,(c,e)) in cons.constraints
+        
+        _exafy_con_update_vector(i,e,y0, lcon, ucon, offset)
+        
+        bin = list!(bin, _exafy(c)...)
+    end
+
+    return bin, (offset += l)
+end
+
+
+function _exafy_con(::Nothing, bin, offset, y0, lcon, ucon)
+    return bin, offset
+end
+
+function _exafy_con_update_vector(i, e::MOI.Interval{T}, y0, lcon, ucon, offset) where T
+    y0[offset + i.value] = zero(T)
+    lcon[offset + i.value] = e.lower
+    ucon[offset + i.value] = e.upper
+end
+
+function _exafy_con_update_vector(i, e::MOI.LessThan{T}, y0, lcon, ucon, offset) where T
+    y0[offset + i.value] = zero(T)
+    lcon[offset + i.value] = -Inf
+    ucon[offset + i.value] = e.upper
+end
+
+function _exafy_con_update_vector(i, e::MOI.GreaterThan{T}, y0, lcon, ucon, offset) where T
+    y0[offset + i.value] = zero(T)
+    ucon[offset + i.value] = Inf
+    lcon[offset + i.value] = e.lower
+end
+
+function _exafy_con_update_vector(i, e::MOI.EqualTo{T}, y0, lcon, ucon, offset) where T
+    y0[offset + i.value] = zero(T)
+    lcon[offset + i.value] = e.value
+    ucon[offset + i.value] = e.value
+end
+
+
 
 getncon(cons) = length(cons.constraints)
 getncon(::Nothing) = 0
+
+function build_constraint(c, bin, y0, lcon, ucon)
+    build_constraint(c, bin[3], y0, lcon, ucon)
+    f = ExaModels._simdfunction(bin[1], c.ncon, c.nnzj, c.nnzh)
+    ExaModels._constraint(c, f, bin[2], y0, lcon, ucon)
+end
+
+function build_constraint(c, ::Nothing, y0, lcon, ucon) end
 
 function build_objective(c, bin)
     build_objective(c, bin[3])
@@ -98,7 +157,22 @@ end
 
 function build_objective(c, ::Nothing) end
 
-function exafy_obj(o::MOI.ScalarNonlinearFunction, bin)
+function exafy_obj(o::Nothing, bin) end
+
+function exafy_obj(o::MOI.ScalarQuadraticFunction{T}, bin) where T
+    for m in o.affine_terms
+        e,p = _exafy(m)
+        bin = list!(bin, e, p)
+    end
+    for m in o.quadratic_terms
+        e,p = _exafy(m)
+        bin = list!(bin, e, p)
+    end
+    
+    return list!(bin, ExaModels.Null(o.constant), (1,))
+end
+    
+function exafy_obj(o::MOI.ScalarNonlinearFunction, bin) 
     offset = 0.
     if o.head == :+;
         for m in o.args
@@ -128,9 +202,7 @@ function exafy_obj(o::MOI.ScalarNonlinearFunction, bin)
         bin = list!(bin, e, p)
     end
 
-    bin = list!(bin, ExaModels.Null(offset), (1,))
-
-    return bin
+    return list!(bin, ExaModels.Null(offset), (1,))
 end
 
 function _exafy(v::MOI.VariableIndex, p = ())
