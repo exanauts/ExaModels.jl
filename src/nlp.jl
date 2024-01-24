@@ -344,13 +344,18 @@ Objective
 """
 function objective(c::C, gen) where {C<:ExaCore}
     f = SIMDFunction(gen, c.nobj, c.nnzg, c.nnzh)
+    pars = gen.iter
+    
+    _objective(c, f, pars)
+end
 
-    nitr = length(gen.iter)
+function _objective(c, f, pars)
+    nitr = length(pars)
     c.nobj += nitr
     c.nnzg += nitr * f.o1step
     c.nnzh += nitr * f.o2step
 
-    c.obj = Objective(c.obj, f, gen.iter)
+    c.obj = Objective(c.obj, f, pars)
 end
 
 """
@@ -389,7 +394,13 @@ function constraint(
 ) where {T,C<:ExaCore{T}}
 
     f = SIMDFunction(gen, c.ncon, c.nnzj, c.nnzh)
-    nitr = length(gen.iter)
+    pars = gen.iter
+    
+    _constraint(c, f, pars, start, lcon, ucon)
+end
+
+function _constraint(c, f, pars, start, lcon, ucon)
+    nitr = length(pars)
     o = c.ncon
     c.ncon += nitr
     c.nnzj += nitr * f.o1step
@@ -399,20 +410,26 @@ function constraint(
     c.lcon = append!(c.lcon, lcon, nitr)
     c.ucon = append!(c.ucon, ucon, nitr)
 
-    c.con = Constraint(c.con, f, gen.iter, o)
+    c.con = Constraint(c.con, f, pars, o)
 end
 
 function constraint!(c::C, c1, gen) where {C<:ExaCore}
     f = SIMDFunction(gen, offset0(c1, 0), c.nnzj, c.nnzh)
+    pars = gen.iter
+
+    _constraint!(c, f, pars)
+end
+
+function _constraint!(c, f, pars)
     oa = c.nconaug
 
-    nitr = length(gen.iter)
+    nitr = length(pars)
 
     c.nconaug += nitr
     c.nnzj += nitr * f.o1step
     c.nnzh += nitr * f.o2step
 
-    c.con = ConstraintAug(c.con, f, gen.iter, oa)
+    c.con = ConstraintAug(c.con, f, pars, oa)
 end
 
 

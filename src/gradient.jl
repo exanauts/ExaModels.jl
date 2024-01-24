@@ -39,7 +39,6 @@ function gradient!(y, f, x, adj)
     end
     return y
 end
-
 function gradient!(y, f, x, p, adj)
     graph = f(p, AdjointNodeSource(x))
     drpass(graph, y, adj)
@@ -72,7 +71,6 @@ end
     @inbounds y[o1+comp(cnt += 1)] += adj
     return cnt
 end
-
 @inline function grpass(d::AdjointNodeVar, comp::Nothing, y, o1, cnt, adj) # despecialization
     push!(y, d.i)
     return (cnt += 1)
@@ -90,8 +88,7 @@ end
     return cnt
 end
 
-"""
-    sgradient!(y, f, x, adj)
+""" sgradient!(y, f, x, adj)
 
 Performs sparse gradient evalution
 
