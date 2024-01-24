@@ -1,5 +1,4 @@
-@inline (a::Pair{P,S} where {P<:AbstractNode,S<:AbstractNode})(i, x) =
-    a.second(i, x)
+@inline (a::Pair{P,S} where {P<:AbstractNode,S<:AbstractNode})(i, x) = a.second(i, x)
 
 """
     Compressor{I}

@@ -55,7 +55,7 @@ function WrapperNLPModel(VT, m)
     nnzh = NLPModels.get_nnzh(m)
 
     x_result = VT(undef, nvar)
-    x_result2= VT(undef, nvar)
+    x_result2 = VT(undef, nvar)
     y_result = VT(undef, ncon)
 
     x0 = VT(undef, nvar)
@@ -164,7 +164,7 @@ function NLPModels.grad!(m::WrapperNLPModel, x::AbstractVector, f::AbstractVecto
     NLPModels.grad!(m.inner, m.x_buffer, m.grad_buffer)
     copyto!(m.x_result, m.grad_buffer)
     copyto!(f, m.x_result)
-    return
+    return f
 end
 function NLPModels.jac_coord!(m::WrapperNLPModel, x::AbstractVector, jac::AbstractVector)
 
@@ -195,9 +195,9 @@ function NLPModels.hess_coord!(
     return
 end
 
-function buffered_copyto!(a,b,c)
-    copyto!(b,c)
-    copyto!(a,b)
+function buffered_copyto!(a, b, c)
+    copyto!(b, c)
+    copyto!(a, b)
 end
 function NLPModels.jprod_nln!(
     m::WrapperNLPModel,
@@ -209,7 +209,7 @@ function NLPModels.jprod_nln!(
     buffered_copyto!(m.grad_buffer, m.x_result2, v)
 
     NLPModels.jprod_nln!(m.inner, m.x_buffer, m.grad_buffer, m.cons_buffer)
-    
+
     buffered_copyto!(Jv, m.y_result, m.cons_buffer)
     return
 end
@@ -222,9 +222,9 @@ function NLPModels.jtprod_nln!(
 
     buffered_copyto!(m.x_buffer, m.x_result, x)
     buffered_copyto!(m.cons_buffer, m.y_result, v)
-    
+
     NLPModels.jtprod_nln!(m.inner, m.x_buffer, m.cons_buffer, m.grad_buffer)
-    
+
     buffered_copyto!(Jtv, m.x_result, m.grad_buffer)
     return
 end
@@ -238,9 +238,9 @@ function NLPModels.hprod!(
 )
 
     buffered_copyto!(m.x_buffer, m.x_result, x)
-    copyto!(m.y_buffer, y)
-    buffered_copyto!(m.grad_buffer, m.x_result, v)
-    
+    buffered_copyto!(m.y_buffer, m.y_result, y)
+    buffered_copyto!(m.grad_buffer, m.x_result2, v)
+
     NLPModels.hprod!(
         m.inner,
         m.x_buffer,
@@ -249,7 +249,7 @@ function NLPModels.hprod!(
         m.v_buffer;
         obj_weight = obj_weight,
     )
-    
-    buffered_copyto!(Hv, m.x_result, m.grad_buffer)
-    return
+
+    buffered_copyto!(Hv, m.x_result, m.v_buffer)
+    return Hv
 end

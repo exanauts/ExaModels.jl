@@ -1,7 +1,7 @@
 name = "ExaModels"
 uuid = "1037b233-b668-4ce9-9b63-f9f681f55dd2"
 authors = ["Sungho Shin <sshin@anl.gov>"]
-version = "0.4.1"
+version = "0.4.2"
 
 [deps]
 NLPModels = "a4795742-8479-5a88-8948-cc11e1c8c1a6"

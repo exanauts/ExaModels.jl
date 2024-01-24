@@ -169,7 +169,7 @@ struct ExaModel{T,VT,E,O,C} <: NLPModels.AbstractNLPModel{T,VT}
     ext::E
 end
 
-function Base.show(io::IO, c::ExaModel{T, VT}) where {T, VT}
+function Base.show(io::IO, c::ExaModel{T,VT}) where {T,VT}
     println(io, "An ExaModel{$T, $VT, ...}\n")
     Base.show(io, c.meta)
 end
@@ -508,7 +508,7 @@ function grad!(m::ExaModel, x::AbstractVector, f::AbstractVector)
 
     fill!(f, zero(eltype(f)))
     _grad!(m.objs, x, f)
-
+    return f
 end
 
 function _grad!(objs, x, f)
@@ -568,6 +568,7 @@ function hess_coord!(
     _obj_hess_coord!(m.objs, x, y, hess, obj_weight)
     _con_hess_coord!(m.cons, x, y, hess, obj_weight)
 
+    return hess
 end
 _obj_hess_coord!(objs::ObjectiveNull, x, y, hess, obj_weight) = nothing
 function _obj_hess_coord!(objs, x, y, hess, obj_weight)
@@ -593,18 +594,20 @@ function hprod!(
     fill!(Hv, zero(eltype(Hv)))
     _obj_hprod!(m.objs, x, y, v, Hv, obj_weight)
     _con_hprod!(m.cons, x, y, v, Hv, obj_weight)
+
+    return Hv
 end
 
 _obj_hprod!(objs::ObjectiveNull, x, y, v, Hv, obj_weight) = nothing
 function _obj_hprod!(objs, x, y, v, Hv, obj_weight)
     _obj_hprod!(objs.inner, x, y, v, Hv, obj_weight)
-    shessian!((Hv, v), nothing, objs, x, obj_weight, one(eltype(Hv)))
+    shessian!((Hv, v), nothing, objs, x, obj_weight, zero(eltype(Hv)))
 end
 
 _con_hprod!(cons::ConstraintNull, x, y, v, Hv, obj_weight) = nothing
 function _con_hprod!(cons, x, y, v, Hv, obj_weight)
     _con_hprod!(cons.inner, x, y, v, Hv, obj_weight)
-    shessian!((Hv, v), nothing, cons, x, y, one(eltype(Hv)))
+    shessian!((Hv, v), nothing, cons, x, y, zero(eltype(Hv)))
 end
 
 @inbounds @inline offset0(a, i) = offset0(a.f, i)

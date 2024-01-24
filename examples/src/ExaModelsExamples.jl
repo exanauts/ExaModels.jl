@@ -8,6 +8,7 @@ include("opf.jl")
 include("luksanvlcek.jl")
 include("distillation.jl")
 include("quadrotor.jl")
+include("goddard.jl")
 
 const NAMES = filter(names(ExaModelsExamples; all = true)) do x
     str = string(x)
