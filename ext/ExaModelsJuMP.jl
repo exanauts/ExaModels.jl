@@ -70,7 +70,10 @@ function ExaModels.ExaModel(jm::JuMP.GenericModel{T}) where T
     bin, offset = exafy_con(jcons.moi_scalaraffinefunction, bin, offset, y0, lcon, ucon)
     bin, offset = exafy_con(jcons.moi_scalarquadraticfunction, bin, offset, y0, lcon, ucon)
 
-    build_constraint(c, bin, y0, lcon, ucon)
+
+    cons = ExaModels.constraint(c, offset; start = y0, lcon = lcon, ucon = ucon)
+    
+    build_constraint(c, bin)
     
 
     m = ExaModels.ExaModel(c)
@@ -99,9 +102,53 @@ function _exafy_con(cons::MOIU.VectorOfConstraints, bin, offset, y0, lcon, ucon)
     
     for (i,(c,e)) in cons.constraints
         
-        _exafy_con_update_vector(i,e,y0, lcon, ucon, offset)
-        
-        bin = list!(bin, _exafy(c)...)
+        _exafy_con_update_vector(i, e, y0, lcon, ucon, offset)
+
+        if c isa MOI.ScalarAffineFunction
+            for mm in c.terms
+                e,p = _exafy(mm)
+                bin = list!(
+                    bin,
+                    ExaModels.ParIndexed(ExaModels.ParSource(), length(p)+1)=>e,
+                    (p..., offset + i.value)
+                ) # augment data with constraint index
+            end
+            bin = list!(bin, ExaModels.Null(c.constant), (1,))
+        elseif c isa MOI.ScalarQuadraticFunction
+            for mm in c.affine_terms
+                e,p = _exafy(mm)
+                bin = list!(
+                    bin,
+                    ExaModels.ParIndexed(ExaModels.ParSource(), length(p)+1)=>e,
+                    (p..., offset + i.value)
+                ) # augment data with constraint index
+            end
+            for mm in c.quadratic_terms
+                e,p = _exafy(mm)
+                bin = list!(
+                    bin,
+                    ExaModels.ParIndexed(ExaModels.ParSource(), length(p)+1)=>e,
+                    (p..., offset + i.value)
+                ) # augment data with constraint index
+            end
+            bin = list!(bin, ExaModels.Null(c.constant), (1,))
+        elseif c isa MOI.ScalarNonlinearFunction && c.head == :+;
+            for mm in c.args
+                e,p = _exafy(mm)
+                bin = list!(
+                    bin,
+                    ExaModels.ParIndexed(ExaModels.ParSource(), length(p)+1)=>e,
+                    (p..., offset + i.value)
+                ) # augment data with constraint index
+            end
+        else
+            e, p = _exafy(c)
+            bin = list!(
+                bin,
+                ExaModels.ParIndexed(ExaModels.ParSource(), length(p)+1)=>e,
+                (p..., offset + i.value)
+            ) # augment data with constraint index
+        end
     end
 
     return bin, (offset += l)
@@ -141,13 +188,13 @@ end
 getncon(cons) = length(cons.constraints)
 getncon(::Nothing) = 0
 
-function build_constraint(c, bin, y0, lcon, ucon)
-    build_constraint(c, bin[3], y0, lcon, ucon)
-    f = ExaModels._simdfunction(bin[1], c.ncon, c.nnzj, c.nnzh)
-    ExaModels._constraint(c, f, bin[2], y0, lcon, ucon)
+function build_constraint(c, bin)
+    build_constraint(c, bin[3])
+    f = ExaModels._simdfunction(bin[1], 0, c.nnzj, c.nnzh)
+    ExaModels._constraint!(c, f, bin[2])
 end
 
-function build_constraint(c, ::Nothing, y0, lcon, ucon) end
+function build_constraint(c, ::Nothing) end
 
 function build_objective(c, bin)
     build_objective(c, bin[3])
@@ -202,7 +249,7 @@ function exafy_obj(o::MOI.ScalarNonlinearFunction, bin)
         bin = list!(bin, e, p)
     end
 
-    return list!(bin, ExaModels.Null(offset), (1,))
+    return list!(bin, ExaModels.Null(offset), (1,)) # TODO see if this can be empty tuple
 end
 
 function _exafy(v::MOI.VariableIndex, p = ())
@@ -224,17 +271,6 @@ function _exafy(e::MOI.ScalarNonlinearFunction, p = ())
             for e in e.args
         )... 
     ), p
-    # if length(e.args) == 1
-    #     c1, p = _exafy(e.args[1], p)
-    #     return op(e.head)(c1), p
-    # elseif length(e.args) == 2
-    #     c1, p1 = _exafy(e.args[1], p)
-    #     c2, p2 = _exafy(e.args[2], p1)
-    #     p = (p1...,p2...)
-    #     return op(e.head)(c1, c2), p2
-    # else 
-    #     error("Performing $(op(e.head)) to $(length(e.args)) arguments is not suppported")
-    # end
 end
 
 function _exafy(e::MOI.ScalarAffineFunction{T}, p = ()) where T
@@ -252,12 +288,9 @@ function _exafy(e::MOI.ScalarAffineTerm{T}, p = ()) where T
 end
 
 function _exafy(e::MOI.ScalarQuadraticFunction{T}, p = ()) where T
-    t = sum(
-        begin
-            c1, p = _exafy(term, p) 
-            c1
-        end
-        for term in e.quadratic_terms)
+    t = ExaModels.ParIndexed( ExaModels.ParSource(), length(p) + 1)
+    p = (p..., e.constant)
+
     if !isempty(e.affine_terms)
         t += sum(
             begin
@@ -266,7 +299,17 @@ function _exafy(e::MOI.ScalarQuadraticFunction{T}, p = ()) where T
             end
             for term in e.affine_terms)
     end
-    return t + ExaModels.ParIndexed( ExaModels.ParSource(), length(p) + 1), (p..., e.constant)    
+    
+    if !isempty(e.quadratic_terms)
+        t += sum(
+            begin
+                c1, p = _exafy(term, p) 
+                c1
+            end
+            for term in e.quadratic_terms)
+    end
+    
+    return t, p
 end
 
 function _exafy(e::MOI.ScalarQuadraticTerm{T}, p = ()) where T
