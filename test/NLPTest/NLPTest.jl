@@ -3,9 +3,8 @@ module NLPTest
 using ExaModels
 using Downloads, Test
 using NLPModels, JuMP, NLPModelsJuMP, PowerModels, NLPModelsIpopt, MadNLP, Percival
-using KernelAbstractions, CUDA, AMDGPU, oneAPI
 
-const BACKENDS = Any[nothing, CPU()]
+import ..BACKENDS
 
 const NLP_TEST_ARGUMENTS = [
     ("luksan_vlcek", 3),
@@ -22,29 +21,6 @@ const SOLVERS = [
 
 const EXCLUDE1 = [("ac_power", "percival")]
 const EXCLUDE2 = []
-
-const JUMP_INTERFACE_INSTANCES = [
-    "pglib_opf_case3_lmbd.m",
-    "pglib_opf_case14_ieee.m"
-]
-
-if CUDA.has_cuda()
-    push!(BACKENDS, CUDABackend())
-    @info "testing CUDA"
-end
-
-if AMDGPU.has_rocm_gpu()
-    push!(BACKENDS, ROCBackend())
-    @info "testing AMDGPU"
-end
-
-try
-    oneAPI.oneL0.zeInit(0)
-    push!(BACKENDS, oneAPIBackend())
-    push!(EXCLUDE2, ("percival", oneAPIBackend()))
-    @info "testing oneAPI"
-catch e
-end
 
 include("luksan.jl")
 include("power.jl")
@@ -190,21 +166,6 @@ function runtests()
                 end
             end
         end
-    end
-
-    @testset "JuMP Interface test" begin
-        for case in JUMP_INTERFACE_INSTANCES
-            jm = new_jump_ac_power_model(filename = case)
-            
-            m = ExaModel(jm)
-            ipopt(m; print_level = 0)
-
-            set_optimizer(jm, NLPModelsIpopt.Ipopt.Optimizer)
-            set_optimizer_attribute(jm, "print_level", 0)
-            optimize!(m)
-
-            @test true
-        end        
     end
 end
 

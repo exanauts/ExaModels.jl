@@ -3,35 +3,77 @@ module ExaModelsJuMP
 import ExaModels: ExaModels, NLPModels
 import JuMP: JuMP, MOI, MOIU
 
+const SUPPORTED_OBJ_TYPE = [
+    :scalar_nonlinear,
+    :scalar_affine,
+    :scalar_quadratic,
+    :single_variable
+]
+const UNSUPPORTED_OBJ_TYPE = [
+    :vector_nonlinear,
+    :vector_affine,
+    :vector_quadratic,
+    :vector_variables,
+]
+    
+const SUPPORTED_CONS_TYPE = [
+    :moi_scalarnonlinearfunction,
+    :moi_scalaraffinefunction,
+    :moi_scalarquadraticfunction
+]
+const UNSUPPORTED_CONS_TYPE = [
+    :moi_vectoraffinefunction,
+    :moi_vectornonlinearfunction,
+    :moi_vectorquadraticfunction,
+    :moi_vectorofvariables
+]
 
-function list!(bin, e, p)
-    if _list!(bin,e,p)
+"""
+    Abstract data structure for storing expression tree and data arrays
+""" 
+abstract type AbstractBin end
+
+struct Bin{E,P,I} <: AbstractBin
+    head::E
+    data::P
+    inner::I 
+end
+
+struct BinNull <: AbstractBin end
+
+function update_bin!(bin, e, p)
+    if _update_bin!(bin,e,p) # if update succeeded, return the original bin
         return bin
-    else
-        return (e,[p],bin)
+    else # if update has failed, return a new bin
+        return Bin(e,[p],bin) 
     end
 end
-function _list!(bin::Tuple{E,P,I}, e, p) where {E,P,I}
-    
-    if e == bin[1] && p isa eltype(bin[2])
-        push!(bin[2], p)
+function _update_bin!(bin::Bin{E,P,I}, e, p) where {E,P,I}
+    if e == bin.head && p isa eltype(bin.data)
+        push!(bin.data, p)
         return true
     else
-        return _list!(bin[3], e, p)
+        return _update_bin!(bin.inner, e, p)
     end
 end
-
-function _list!(::Nothing, e, p)
+function _update_bin!(::BinNull, e, p)
     return false
 end
 
-function ExaModels.ExaModel(jm::JuMP.GenericModel{T}) where T
+"""
+    ExaModels.ExaModel(jm::JuMP.GenericModel{T}; backend = nothing) where T
 
+!!! Warning: This eature is experimental
+
+Returns an ExaModel from a JuMP model. 
+"""
+function ExaModels.ExaModel(jm::JuMP.GenericModel{T}; backend = nothing) where T
+    
     
     jm_cache = jm.moi_backend.model_cache
 
-    # create exacore
-    c = ExaModels.ExaCore()
+    # create exacore;
+    c = ExaModels.ExaCore(T, backend)
 
     # variables
     jvars = jm_cache.model.variables
@@ -48,76 +90,81 @@ function ExaModels.ExaModel(jm::JuMP.GenericModel{T}) where T
 
     # objective
     jobjs = jm_cache.model.objective
-    bin = nothing
     
-    bin = exafy_obj(jobjs.scalar_nonlinear, bin)
-    bin = exafy_obj(jobjs.scalar_affine, bin)
-    bin = exafy_obj(jobjs.scalar_quadratic, bin)
+    bin = BinNull()
+
+    for field in SUPPORTED_OBJ_TYPE
+        bin = exafy_obj(getfield(jobjs, field), bin)
+    end
+
+    for field in UNSUPPORTED_OBJ_TYPE
+        if getfield(jobjs, field) != nothing
+            error("$field type objective is not supported")
+        end
+    end
     
     build_objective(c, bin)
     
     # constraint
     jcons = jm_cache.model.constraints
 
-    bin = nothing
+    bin = BinNull()
     offset = 0
-    
-    y0 = similar(x0, 0)
     lcon = similar(x0, 0)
     ucon = similar(x0, 0)
 
-    bin, offset = exafy_con(jcons.moi_scalarnonlinearfunction, bin, offset, y0, lcon, ucon)
-    bin, offset = exafy_con(jcons.moi_scalaraffinefunction, bin, offset, y0, lcon, ucon)
-    bin, offset = exafy_con(jcons.moi_scalarquadraticfunction, bin, offset, y0, lcon, ucon)
+    for field in SUPPORTED_CONS_TYPE
+        bin, offset = exafy_con(getfield(jcons, field), bin, offset, lcon, ucon)
+    end
 
+    for field in UNSUPPORTED_CONS_TYPE
+        if getfield(jcons, field) != nothing
+            error("$field type constraint is not supported")
+        end
+    end
 
+    y0 = fill!(similar(lcon), zero(T))
     cons = ExaModels.constraint(c, offset; start = y0, lcon = lcon, ucon = ucon)
+    build_constraint!(c, cons, bin)
     
-    build_constraint(c, bin)
-    
-
-    m = ExaModels.ExaModel(c)
-
-
-    m.meta.lcon .= lcon
-    m.meta.ucon .= ucon
-    
-    return m
+    return ExaModels.ExaModel(c)
 end
 
-function exafy_con(cons, bin, offset, y0, lcon, ucon)
-    bin, offset = _exafy_con(cons.moi_equalto, bin, offset, y0, lcon, ucon)
-    bin, offset = _exafy_con(cons.moi_greaterthan, bin, offset, y0, lcon, ucon)
-    bin, offset = _exafy_con(cons.moi_lessthan, bin, offset, y0, lcon, ucon)
-    bin, offset = _exafy_con(cons.moi_interval, bin, offset, y0, lcon, ucon)
+function exafy_con(cons::Nothing, bin, offset, lcon, ucon)
+    return bin, offset
+end
+function exafy_con(cons, bin, offset, lcon, ucon)
+    bin, offset = _exafy_con(cons.moi_equalto, bin, offset, lcon, ucon)
+    bin, offset = _exafy_con(cons.moi_greaterthan, bin, offset, lcon, ucon)
+    bin, offset = _exafy_con(cons.moi_lessthan, bin, offset, lcon, ucon)
+    bin, offset = _exafy_con(cons.moi_interval, bin, offset, lcon, ucon)
     return bin, offset
 end
 
-function _exafy_con(cons::MOIU.VectorOfConstraints, bin, offset, y0, lcon, ucon)
+function _exafy_con(cons::MOIU.VectorOfConstraints, bin, offset, lcon, ucon)
     l = length(cons.constraints)
     
-    resize!(y0, offset + l)
     resize!(lcon, offset + l)
     resize!(ucon, offset + l)
     
     for (i,(c,e)) in cons.constraints
         
-        _exafy_con_update_vector(i, e, y0, lcon, ucon, offset)
+        _exafy_con_update_vector(i, e, lcon, ucon, offset)
 
         if c isa MOI.ScalarAffineFunction
             for mm in c.terms
                 e,p = _exafy(mm)
-                bin = list!(
+                bin = update_bin!(
                     bin,
-                    ExaModels.ParIndexed(ExaModels.ParSource(), length(p)+1)=>e,
+                    ExaModels.ParIndexed(ExaModels.ParSource(), length(p)+1) => e,
                     (p..., offset + i.value)
                 ) # augment data with constraint index
             end
-            bin = list!(bin, ExaModels.Null(c.constant), (1,))
+            bin = update_bin!(bin, ExaModels.Null(c.constant), (1,))
         elseif c isa MOI.ScalarQuadraticFunction
             for mm in c.affine_terms
                 e,p = _exafy(mm)
-                bin = list!(
+                bin = update_bin!(
                     bin,
                     ExaModels.ParIndexed(ExaModels.ParSource(), length(p)+1)=>e,
                     (p..., offset + i.value)
@@ -125,17 +172,17 @@ function _exafy_con(cons::MOIU.VectorOfConstraints, bin, offset, y0, lcon, ucon)
             end
             for mm in c.quadratic_terms
                 e,p = _exafy(mm)
-                bin = list!(
+                bin = update_bin!(
                     bin,
                     ExaModels.ParIndexed(ExaModels.ParSource(), length(p)+1)=>e,
                     (p..., offset + i.value)
                 ) # augment data with constraint index
             end
-            bin = list!(bin, ExaModels.Null(c.constant), (1,))
-        elseif c isa MOI.ScalarNonlinearFunction && c.head == :+;
+            bin = update_bin!(bin, ExaModels.Null(c.constant), (1,))
+        elseif c isa MOI.ScalarNonlinearFunction && c.head == :+; # TODO maybe: also * Real, -, etc.
             for mm in c.args
                 e,p = _exafy(mm)
-                bin = list!(
+                bin = update_bin!(
                     bin,
                     ExaModels.ParIndexed(ExaModels.ParSource(), length(p)+1)=>e,
                     (p..., offset + i.value)
@@ -143,7 +190,7 @@ function _exafy_con(cons::MOIU.VectorOfConstraints, bin, offset, y0, lcon, ucon)
             end
         else
             e, p = _exafy(c)
-            bin = list!(
+            bin = update_bin!(
                 bin,
                 ExaModels.ParIndexed(ExaModels.ParSource(), length(p)+1)=>e,
                 (p..., offset + i.value)
@@ -155,105 +202,101 @@ function _exafy_con(cons::MOIU.VectorOfConstraints, bin, offset, y0, lcon, ucon)
 end
 
 
-function _exafy_con(::Nothing, bin, offset, y0, lcon, ucon)
+function _exafy_con(::Nothing, bin, offset, lcon, ucon)
     return bin, offset
 end
 
-function _exafy_con_update_vector(i, e::MOI.Interval{T}, y0, lcon, ucon, offset) where T
-    y0[offset + i.value] = zero(T)
+function _exafy_con_update_vector(i, e::MOI.Interval{T}, lcon, ucon, offset) where T
     lcon[offset + i.value] = e.lower
     ucon[offset + i.value] = e.upper
 end
 
-function _exafy_con_update_vector(i, e::MOI.LessThan{T}, y0, lcon, ucon, offset) where T
-    y0[offset + i.value] = zero(T)
+function _exafy_con_update_vector(i, e::MOI.LessThan{T}, lcon, ucon, offset) where T
     lcon[offset + i.value] = -Inf
     ucon[offset + i.value] = e.upper
 end
 
-function _exafy_con_update_vector(i, e::MOI.GreaterThan{T}, y0, lcon, ucon, offset) where T
-    y0[offset + i.value] = zero(T)
+function _exafy_con_update_vector(i, e::MOI.GreaterThan{T}, lcon, ucon, offset) where T
     ucon[offset + i.value] = Inf
     lcon[offset + i.value] = e.lower
 end
 
-function _exafy_con_update_vector(i, e::MOI.EqualTo{T}, y0, lcon, ucon, offset) where T
-    y0[offset + i.value] = zero(T)
+function _exafy_con_update_vector(i, e::MOI.EqualTo{T}, lcon, ucon, offset) where T
     lcon[offset + i.value] = e.value
     ucon[offset + i.value] = e.value
 end
 
 
-
-getncon(cons) = length(cons.constraints)
-getncon(::Nothing) = 0
-
-function build_constraint(c, bin)
-    build_constraint(c, bin[3])
-    f = ExaModels._simdfunction(bin[1], 0, c.nnzj, c.nnzh)
-    ExaModels._constraint!(c, f, bin[2])
+function build_constraint!(c, cons, bin)
+    build_constraint!(c, cons, bin.inner)
+    ExaModels.constraint!(c, cons, bin.head, bin.data)
 end
 
-function build_constraint(c, ::Nothing) end
+function build_constraint!(c, cons, ::BinNull) end
 
 function build_objective(c, bin)
-    build_objective(c, bin[3])
-    f = ExaModels._simdfunction(bin[1], c.nobj, c.nnzg, c.nnzh)
-    ExaModels._objective(c, f, bin[2])
+    build_objective(c, bin.inner)
+    ExaModels.objective(c, bin.head, bin.data) 
 end
 
-function build_objective(c, ::Nothing) end
+function build_objective(c, ::BinNull) end
 
-function exafy_obj(o::Nothing, bin) end
+function exafy_obj(o::Nothing, bin)
+    return bin
+end
+
+function exafy_obj(o::MOI.VariableIndex, bin) where T
+    e,p = _exafy(o)    
+    return update_bin!(bin, e, p)
+end
 
 function exafy_obj(o::MOI.ScalarQuadraticFunction{T}, bin) where T
     for m in o.affine_terms
         e,p = _exafy(m)
-        bin = list!(bin, e, p)
+        bin = update_bin!(bin, e, p)
     end
     for m in o.quadratic_terms
         e,p = _exafy(m)
-        bin = list!(bin, e, p)
+        bin = update_bin!(bin, e, p)
     end
     
-    return list!(bin, ExaModels.Null(o.constant), (1,))
+    return update_bin!(bin, ExaModels.Null(o.constant), (1,))
 end
     
 function exafy_obj(o::MOI.ScalarNonlinearFunction, bin) 
-    offset = 0.
+    constant = 0.
     if o.head == :+;
         for m in o.args
             if m isa MOI.ScalarAffineFunction
                 for mm in m.affine_terms
                     e,p = _exafy(mm)
-                    bin = list!(bin, e, p)
+                    bin = update_bin!(bin, e, p)
                 end
             elseif m isa MOI.ScalarQuadraticFunction
                 for mm in m.affine_terms
                     e,p = _exafy(mm)
-                    bin = list!(bin, e, p)
+                    bin = update_bin!(bin, e, p)
                 end
                 for mm in m.quadratic_terms
                     e,p = _exafy(mm)
-                    bin = list!(bin, e, p)
+                    bin = update_bin!(bin, e, p)
                 end
-                offset += m.constant
+                constant += m.constant
             else
                 e,p = _exafy(m)
-                bin = list!(bin, e, p)
+                bin = update_bin!(bin, e, p)
             end
         end
-
     else
         e, p = _exafy(o)
-        bin = list!(bin, e, p)
+        bin = update_bin!(bin, e, p)
     end
 
-    return list!(bin, ExaModels.Null(offset), (1,)) # TODO see if this can be empty tuple
+    return update_bin!(bin, ExaModels.Null(constant), (1,)) # TODO see if this can be empty tuple
 end
 
 function _exafy(v::MOI.VariableIndex, p = ())
-    i = ExaModels.ParIndexed( ExaModels.ParSource(), length(p) + 1)
+    i = ExaModels.ParIndexed(ExaModels.ParSource(), length(p) + 1)
     return ExaModels.Var(i), (p..., v.value)
 end
 
@@ -324,12 +367,24 @@ function _exafy(e::MOI.ScalarQuadraticTerm{T}, p = ()) where T
     end
 end
 
-# eval is performance killer here. We want to explicitly include symbols for frequently used operations.
+# eval can be a performance killer -- we want to explicitly include symbols for frequently used operations.
 function op(s::Symbol)
     if s == :+;
         return +;
+    elseif s == :-;
+        return -;
     elseif s == :*;
         return *;
+    elseif s == :/;
+        return /;
+    elseif s == :^;
+        return ^;
+    elseif s == :sin;
+        return sin;
+    elseif s == :cos;
+        return cos;
+    elseif s == :exp;
+        return exp;
     else
         return eval(s)
     end

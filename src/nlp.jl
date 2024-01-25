@@ -48,6 +48,7 @@ Base.show(io::IO, v::Constraint) = print(
     """
 Constraint
 
+
   s.t. (...)
        g♭ ≤ [g(x,p)]_{p ∈ P} ≤ g♯
 
@@ -242,23 +243,23 @@ end
     (v.offset - _start(v.size[1]) + 1 - _start(v.size[2]) * _length(v.size[1])),
 )
 
-function append!(a, b::Base.Generator, lb)
+function append!(backend, a, b::Base.Generator, lb)
 
     la = length(a)
     resize!(a, la + lb)
-    map!(b.f, view(a, (la+1):(la+lb)), b.iter)
+    map!(b.f, view(a, (la+1):(la+lb)), convert_array(b.iter, backend))
     return a
 end
 
-function append!(a, b::AbstractArray, lb)
+function append!(backend, a, b::AbstractArray, lb)
 
     la = length(a)
     resize!(a, la + lb)
-    map!(identity, view(a, (la+1):(la+lb)), b)
+    map!(identity, view(a, (la+1):(la+lb)), convert_array(b, backend))
     return a
 end
 
-function append!(a, b::Number, lb)
+function append!(backend, a, b::Number, lb)
 
     la = length(a)
     resize!(a, la + lb)
@@ -313,9 +314,9 @@ function variable(
 
     o = c.nvar
     c.nvar += total(ns)
-    c.x0 = append!(c.x0, start, total(ns))
-    c.lvar = append!(c.lvar, lvar, total(ns))
-    c.uvar = append!(c.uvar, uvar, total(ns))
+    c.x0 = append!(c.backend, c.x0, start, total(ns))
+    c.lvar = append!(c.backend, c.lvar, lvar, total(ns))
+    c.uvar = append!(c.backend, c.uvar, uvar, total(ns))
 
     return Variable(ns, o)
 
@@ -349,13 +350,24 @@ function objective(c::C, gen) where {C<:ExaCore}
     _objective(c, f, pars)
 end
 
+"""
+    objective(core::ExaCore, expr, pars)
+
+Adds objective terms specified by a `expr` and `pars` to `core`, and returns an `Objective` object.
+"""
+function objective(c, expr::N, pars) where N <: AbstractNode
+    f = _simdfunction(expr, c.nobj, c.nnzg, c.nnzh)
+
+    _objective(c, f, pars)
+end
+
 function _objective(c, f, pars)
     nitr = length(pars)
     c.nobj += nitr
     c.nnzg += nitr * f.o1step
     c.nnzh += nitr * f.o2step
 
-    c.obj = Objective(c.obj, f, pars)
+    c.obj = Objective(c.obj, f, convert_array(pars, c.backend))
 end
 
 """
@@ -400,6 +412,25 @@ function constraint(
 end
 
 """
+    constraint(core, expr, pars; start = 0, lcon = 0,  ucon = 0)
+
+Adds constraints specified by a `expr` and `pars` to `core`, and returns an `Constraint` object. 
+"""
+function constraint(
+    c::C,
+    expr::N,
+    par;
+    start = zero(T),
+    lcon = zero(T),
+    ucon = zero(T),
+) where {T, C<:ExaCore{T}, N <: AbstractNode}
+
+    f = _simdfunction(expr, c.ncon, c.nnzj, c.nnzh)
+    
+    _constraint(c, f, pars, start, lcon, ucon)
+end
+
+"""
     constraint(core, n; start = 0, lcon = 0,  ucon = 0)
 
 Adds empty constraints of dimension n, so that later the terms can be added with `constraint!`. 
@@ -425,16 +456,22 @@ function _constraint(c, f, pars, start, lcon, ucon)
     c.nnzj += nitr * f.o1step
     c.nnzh += nitr * f.o2step
 
-    c.y0 = append!(c.y0, start, nitr)
-    c.lcon = append!(c.lcon, lcon, nitr)
-    c.ucon = append!(c.ucon, ucon, nitr)
+    c.y0 = append!(c.backend, c.y0, start, nitr)
+    c.lcon = append!(c.backend, c.lcon, lcon, nitr)
+    c.ucon = append!(c.backend, c.ucon, ucon, nitr)
 
-    c.con = Constraint(c.con, f, pars, o)
+    c.con = Constraint(c.con, f, convert_array(pars, c.backend), o)
 end
 
-function constraint!(c::C, c1, gen) where {C<:ExaCore}
+function constraint!(c::C, c1, gen::Base.Generator) where {C<:ExaCore}
     f = SIMDFunction(gen, offset0(c1, 0), c.nnzj, c.nnzh)
     pars = gen.iter
+
+    _constraint!(c, f, pars)
+end
+
+function constraint!(c::C, c1, expr, pars) where {C<:ExaCore}
+    f = _simdfunction(expr, offset0(c1, 0), c.nnzj, c.nnzh)
 
     _constraint!(c, f, pars)
 end
@@ -448,7 +485,7 @@ function _constraint!(c, f, pars)
     c.nnzj += nitr * f.o1step
     c.nnzh += nitr * f.o2step
 
-    c.con = ConstraintAug(c.con, f, pars, oa)
+    c.con = ConstraintAug(c.con, f, convert_array(pars, c.backend), oa)
 end
 
 
