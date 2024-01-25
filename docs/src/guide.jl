@@ -1,4 +1,4 @@
-# # Getting Started
+# # [Getting Started](@id guide)
 # ExaModels can create nonlinear prgogramming models and allows solving the created models using NLP solvers (in particular, those that are interfaced with `NLPModels`, such as [NLPModelsIpopt](https://github.com/JuliaSmoothOptimizers/NLPModelsIpopt.jl) and [MadNLP](https://github.com/MadNLP/MadNLP.jl). This documentation page will describe how to use `ExaModels` to model and solve nonlinear optimization problems.
 
 # We will first consider the following simple nonlinear program [lukvsan1998indefinitely](@cite):
@@ -10,11 +10,11 @@
 # ```
 # We will follow the following Steps to create the model/solve this optimization problem.
 # - Step 0: import ExaModels.jl
-# - Step 1: create a [`ExaCore`](@ref ExaCore) object, wherein we can progressively build an optimization model.
-# - Step 2: create optimization variables with [`variable`]((@ref variable)), while attaching it to previously created `ExaCore`.
-# - Step 3 (interchangable with Step 3): create objective function with [`objective`](@ref objective), while attaching it to previously created `ExaCore`.
-# - Step 4 (interchangable with Step 2): create constraints with [`constraint`](@ref constraint), while attaching it to previously created `ExaCore`.
-# - Step 5: create an [`ExaModel`](@ref ExaModel) based on the `ExaCore`.
+# - Step 1: create a [`ExaCore`](@ref) object, wherein we can progressively build an optimization model.
+# - Step 2: create optimization variables with [`variable`](@ref), while attaching it to previously created `ExaCore`.
+# - Step 3 (interchangable with Step 3): create objective function with [`objective`](@ref), while attaching it to previously created `ExaCore`.
+# - Step 4 (interchangable with Step 2): create constraints with [`constraint`](@ref), while attaching it to previously created `ExaCore`.
+# - Step 5: create an [`ExaModel`](@ref) based on the `ExaCore`.
 
 # Now, let's jump right in. We import ExaModels via (Step 0):
 using ExaModels
@@ -55,10 +55,10 @@ sol = solution(result, x)
 
 
 # ExaModels provide several APIs similar to this:
-# - [`solution`](@ref solution) inquires the primal solution.
-# - [`multiplier`](@ref multiplier) inquires the dual solution.
-# - [`multiplier_L`](@ref multiplier_L) inquires the lower bound dual solution.
-# - [`multiplier_U`](@ref multiplier_U) inquires the upper bound dual solution.
+# - [`solution`](@ref) inquires the primal solution.
+# - [`multipliers`](@ref) inquires the dual solution.
+# - [`multipliers_L`](@ref) inquires the lower bound dual solution.
+# - [`multipliers_U`](@ref) inquires the upper bound dual solution.
 
 # This concludes a short tutorial on how to use ExaModels to model and solve optimization problems. Want to learn more? Take a look at the following examples, which provide further tutorial on how to use ExaModels.jl. Each of the examples are designed to instruct a few additional techniques.
 # - [Example: Quadrotor](): modeling multiple types of objective values and constraints.

@@ -1,4 +1,4 @@
-# SIMD Abstraction
+# [SIMD Abstraction](@id simd)
 
 In this page, we explain what SIMD abstraction of nonlinear program is, and why it can be beneficial for scalable optimization of large-scale optimization problems. More discussion can be found in our [paper](https://arxiv.org/abs/2307.16830).
 

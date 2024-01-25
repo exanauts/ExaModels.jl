@@ -10,6 +10,7 @@ if !(@isdefined _PAGES)
         "Mathematical Abstraction" => "simd.md",
         "Tutorial" => [
             "guide.md",
+            "jump.md",
             "performance.md",
             "gpu.md",
             "develop.md",
@@ -24,7 +25,7 @@ end
 
 if !(@isdefined _JL_FILENAMES)
     const _JL_FILENAMES =
-        ["guide.jl", "quad.jl", "distillation.jl", "opf.jl", "gpu.jl", "performance.jl"]
+        ["guide.jl", "jump.jl", "quad.jl", "distillation.jl", "opf.jl", "gpu.jl", "performance.jl"]
 end
 
 for jl_filename in _JL_FILENAMES
@@ -52,7 +53,7 @@ bib = CitationBibliography(joinpath(@__DIR__, "src", "refs.bib"))
 
 
 makedocs(
-    bib,
+    plugins=[bib],
     sitename = "ExaModels.jl",
     modules = [ExaModels],
     authors = "Sungho Shin",

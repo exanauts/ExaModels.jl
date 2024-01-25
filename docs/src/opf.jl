@@ -1,4 +1,4 @@
-# # Example: Optimal Power Flow
+# # [Example: Optimal Power Flow](@id opf)
 
 function parse_ac_power_data(filename)
     data = PowerModels.parse_file(filename)
