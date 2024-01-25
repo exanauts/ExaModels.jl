@@ -6,7 +6,7 @@
 
 | **License** | **Documentation** | **Build Status** | **Coverage** | **Citation** |
 |:-----------------:|:----------------:|:----------------:|:----------------:|:----------------:|
-| [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/sshin23/ExaModels.jl/blob/main/LICENSE) | [![doc](https://img.shields.io/badge/docs-stable-blue.svg)](https://sshin23.github.io/ExaModels.jl/stable) [![doc](https://img.shields.io/badge/docs-dev-blue.svg)](https://sshin23.github.io/ExaModels.jl/dev)  | [![build](https://github.com/sshin23/ExaModels.jl/actions/workflows/test.yml/badge.svg)](https://github.com/sshin23/ExaModels.jl/actions/workflows/test.yml) | [![codecov](https://codecov.io/gh/sshin23/ExaModels.jl/branch/main/graph/badge.svg?token=8ViJWBWnZt)](https://codecov.io/gh/sshin23/ExaModels.jl) | [![arXiv](https://img.shields.io/badge/arXiv-2307.16830-b31b1b.svg)](https://arxiv.org/abs/2307.16830) |
+| [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/exanauts/ExaModels.jl/blob/main/LICENSE) | [![doc](https://img.shields.io/badge/docs-stable-blue.svg)](https://exanauts.github.io/ExaModels.jl/stable) [![doc](https://img.shields.io/badge/docs-dev-blue.svg)](https://exanauts.github.io/ExaModels.jl/dev)  | [![build](https://github.com/exanauts/ExaModels.jl/actions/workflows/test.yml/badge.svg)](https://github.com/exanauts/ExaModels.jl/actions/workflows/test.yml) | [![codecov](https://codecov.io/gh/exanauts/ExaModels.jl/branch/main/graph/badge.svg?token=8ViJWBWnZt)](https://codecov.io/gh/exanauts/ExaModels.jl) | [![arXiv](https://img.shields.io/badge/arXiv-2307.16830-b31b1b.svg)](https://arxiv.org/abs/2307.16830) |
 
 ## Overview
 ExaModels.jl employs what we call **[SIMD](https://en.wikipedia.org/wiki/Single_instruction,_multiple_data) abstraction for [nonlinear programs](https://en.wikipedia.org/wiki/Nonlinear_programming)** (NLPs), which allows for the **preservation of the parallelizable structure** within the model equations, facilitating **efficient, parallel [reverse-mode automatic differentiation](https://en.wikipedia.org/wiki/Automatic_differentiation)** on the **[GPU](https://en.wikipedia.org/wiki/Graphics_processing_unit) accelerators**.
@@ -27,7 +27,7 @@ for double-precision arithmetic.
 
 ## Highlight
 The performance comparison of ExaModels with other algebraic modeling systems for evaluating different NLP functions (obj, con, grad, jac, and hess) are shown below. Note that Hessian computations are the typical bottlenecks.
-![benchmark](https://raw.githubusercontent.com/sshin23/ExaModels.jl/main/docs/src/assets/benchmark.svg)
+![benchmark](https://raw.githubusercontent.com/exanauts/ExaModels.jl/main/docs/src/assets/benchmark.svg)
 ## Supporting ExaModels.jl
-- Please report issues and feature requests via the [GitHub issue tracker](https://github.com/sshin/ExaModels.jl/issues).
-- Questions are welcome at [GitHub discussion forum](https://github.com/sshin23/ExaModels.jl/discussions).
+- Please report issues and feature requests via the [GitHub issue tracker](https://github.com/exanatus/ExaModels.jl/issues).
+- Questions are welcome at [GitHub discussion forum](https://github.com/exanauts/ExaModels.jl/discussions).
