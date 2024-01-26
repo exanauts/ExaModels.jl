@@ -245,7 +245,7 @@ function exafy_obj(o::Nothing, bin)
     return bin
 end
 
-function exafy_obj(o::MOI.VariableIndex, bin) where T
+function exafy_obj(o::MOI.VariableIndex, bin)
     e,p = _exafy(o)    
     return update_bin!(bin, e, p)
 end
@@ -263,6 +263,15 @@ function exafy_obj(o::MOI.ScalarQuadraticFunction{T}, bin) where T
     return update_bin!(bin, ExaModels.Null(o.constant), (1,))
 end
     
+function exafy_obj(o::MOI.ScalarAffineFunction{T}, bin) where T
+    for m in o.terms
+        e,p = _exafy(m)
+        bin = update_bin!(bin, e, p)
+    end
+    
+    return update_bin!(bin, ExaModels.Null(o.constant), (1,))
+end
+
 function exafy_obj(o::MOI.ScalarNonlinearFunction, bin) 
     constant = 0.
     if o.head == :+;
