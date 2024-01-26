@@ -76,7 +76,6 @@ Constrant Augmentation
 """,
 )
 
-# TODO: jldoctest, here. Right now, 
 """
 ExaCore([array_type::Type, backend])
 
