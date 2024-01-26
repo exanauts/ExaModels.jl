@@ -658,7 +658,7 @@ function shessian!(y1, y2, f, x, adj1s::V, adj2) where {V<:AbstractVector}
     end
 end
 
-function shessian!(y1, y2, f, p, x, comp, o2, adj1, adj2) where {V<:AbstractVector}
+function shessian!(y1, y2, f, p, x, comp, o2, adj1, adj2) 
     graph = f(p, SecondAdjointNodeSource(x))
     hrpass0(graph, comp, y1, y2, o2, 0, adj1, adj2)
 end

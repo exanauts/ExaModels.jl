@@ -22,6 +22,12 @@ const SOLVERS = [
 const EXCLUDE1 = [("ac_power", "percival")]
 const EXCLUDE2 = []
 
+for backend in BACKENDS
+    if "oneAPIBackend()" == string(backend)
+        push!(EXCLUDE2, ("percival", backend))
+    end
+end
+
 include("luksan.jl")
 include("power.jl")
 
