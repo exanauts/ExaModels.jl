@@ -76,6 +76,7 @@ Constrant Augmentation
 """,
 )
 
+# TODO: jldoctest, here. Right now, 
 """
 ExaCore([array_type::Type, backend])
 
@@ -106,7 +107,7 @@ An ExaCore
   number of constraint patterns: ... 0
 
 julia> using CUDA
-       
+
 julia> c = ExaCore(Float32, CUDABackend())
 An ExaCore
 
