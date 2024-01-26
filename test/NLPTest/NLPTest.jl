@@ -126,7 +126,7 @@ function runtests()
                 m, vars0, cons0 = exa_model(nothing, args)
                 m0 = WrapperNLPModel(m)
 
-                m, vars2, cons2 = jump_model(backend, args)
+                m, vars2, cons2 = jump_model(nothing, args)
                 m2 = MathOptNLPModel(m)
 
                 set_optimizer(m, MadNLP.Optimizer)

@@ -249,6 +249,14 @@ function append!(backend, a, b::Base.Generator, lb)
     return a
 end
 
+function append!(backend, a, b::Base.Generator{UnitRange{I}}, lb) where I
+
+    la = length(a)
+    resize!(a, la + lb)
+    map!(b.f, view(a, (la+1):(la+lb)), b.iter)
+    return a
+end
+
 function append!(backend, a, b::AbstractArray, lb)
 
     la = length(a)

@@ -21,10 +21,10 @@ function runtests()
     @testset "Utils tests" begin
         m, ~ = _exa_luksan_vlcek_model(nothing,3)
 
-        result = NLPModelsIpopt.ipopt(m)
+        result = NLPModelsIpopt.ipopt(m; print_level = 0)
 
         for util_model in UTIL_MODELS
-            util_result = NLPModelsIpopt.ipopt(util_model(m))
+            util_result = NLPModelsIpopt.ipopt(util_model(m); print_level = 0)
 
             @testset "$util_model" begin
                 for field in FIELDS

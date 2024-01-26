@@ -174,7 +174,7 @@ function runtests()
     @testset "JuMP Interface test" begin
         for (model, cases) in JUMP_INTERFACE_INSTANCES
             for case in cases
-                @testset "$model $case $backend" begin
+                @testset "$model $case" begin
                     modelfunction = getfield(@__MODULE__, model)
 
                     # solve JuMP problem
@@ -185,13 +185,14 @@ function runtests()
                     sol = value.(all_variables(jm))
 
                     for backend in BACKENDS
-                        
-                        m = WrapperNLPModel(
-                            ExaModel(jm; backend=backend)
-                        )
-                        result = ipopt(m; print_level = 0)
-                        
-                        @test sol ≈ result.solution atol = 1e-6
+                        @testset "$backend" begin
+                            m = WrapperNLPModel(
+                                ExaModel(jm; backend=backend)
+                            )
+                            result = ipopt(m; print_level = 0)
+                            
+                            @test sol ≈ result.solution atol = 1e-6
+                        end
                     end
                 end
             end
