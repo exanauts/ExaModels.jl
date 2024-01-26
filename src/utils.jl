@@ -37,7 +37,7 @@ function NLPModels.jac_structure!(
     m::M,
     rows::V,
     cols::V,
-) where {M<:TimedNLPModel,V<:AbstractVector}
+    ) where {M<:TimedNLPModel,V<:AbstractVector}
 
     m.stats.jac_structure_cnt += 1
     t = time()
@@ -49,7 +49,7 @@ function NLPModels.hess_structure!(
     m::M,
     rows::V,
     cols::V,
-) where {M<:TimedNLPModel,V<:AbstractVector}
+    ) where {M<:TimedNLPModel,V<:AbstractVector}
 
     m.stats.hess_structure_cnt += 1
     t = time()
@@ -95,7 +95,7 @@ function NLPModels.hess_coord!(
     y::AbstractVector,
     hess::AbstractVector;
     obj_weight = one(eltype(x)),
-)
+    )
 
     m.stats.hess_coord_cnt += 1
     t = time()
@@ -124,139 +124,139 @@ Base.show(io::IO, ::MIME"text/plain", e::TimedNLPModel) = Base.print(io, e);
 # CompressedNLPModels
 
 struct CompressedNLPModel{
-	T,
-	VT <: AbstractVector{T},
-	VI <: AbstractVector{Int},
-	VI2 <: AbstractVector{Tuple{Tuple{Int, Int}, Int}},
-	M <: NLPModels.AbstractNLPModel{T, VT},
-} <: NLPModels.AbstractNLPModel{T, VT}
+	  T,
+	  VT <: AbstractVector{T},
+	  VI <: AbstractVector{Int},
+	  VI2 <: AbstractVector{Tuple{Tuple{Int, Int}, Int}},
+	  M <: NLPModels.AbstractNLPModel{T, VT},
+    } <: NLPModels.AbstractNLPModel{T, VT}
 
-	inner::M
-	jptr::VI
-	jsparsity::VI2
-	hptr::VI
-	hsparsity::VI2
-	buffer::VT
+	  inner::M
+	  jptr::VI
+	  jsparsity::VI2
+	  hptr::VI
+	  hsparsity::VI2
+	  buffer::VT
 
-	meta::NLPModels.NLPModelMeta{T, VT}
-	counters::NLPModels.Counters
+	  meta::NLPModels.NLPModelMeta{T, VT}
+	  counters::NLPModels.Counters
 end
 
 function getptr(array)
-	return push!(
-		pushfirst!(
-			findall(
-				_is_sparsity_not_equal.(@view(array[1:end-1]), @view(array[2:end])),
-			) .+= 1,
-			1,
-		),
-		length(array) + 1,
-	)
+	  return push!(
+		    pushfirst!(
+			      findall(
+				        _is_sparsity_not_equal.(@view(array[1:end-1]), @view(array[2:end])),
+			      ) .+= 1,
+			      1,
+		    ),
+		    length(array) + 1,
+	  )
 end
 _is_sparsity_not_equal(a,b) = first(a) != first(b)
 
 function CompressedNLPModel(m)
 
-	nnzj = NLPModels.get_nnzj(m)
-	Ibuffer = Vector{Int}(undef, nnzj)
-	Jbuffer = Vector{Int}(undef, nnzj)
-	NLPModels.jac_structure!(m, Ibuffer, Jbuffer)
+	  nnzj = NLPModels.get_nnzj(m)
+	  Ibuffer = Vector{Int}(undef, nnzj)
+	  Jbuffer = Vector{Int}(undef, nnzj)
+	  NLPModels.jac_structure!(m, Ibuffer, Jbuffer)
 
-	jsparsity = map(
-		(k, i, j) -> ((j,i), k),
-		1:nnzj,
-		Ibuffer,
-		Jbuffer,
-	)
-	sort!(jsparsity; lt = (a,b) -> a[1] < b[1])
-	jptr = getptr(jsparsity)
+	  jsparsity = map(
+		    (k, i, j) -> ((j,i), k),
+		    1:nnzj,
+		    Ibuffer,
+		    Jbuffer,
+	  )
+	  sort!(jsparsity; lt = (a,b) -> a[1] < b[1])
+	  jptr = getptr(jsparsity)
 
-	nnzh = NLPModels.get_nnzh(m)
-	resize!(Ibuffer, nnzh)
-	resize!(Jbuffer, nnzh)
-	NLPModels.hess_structure!(m, Ibuffer, Jbuffer)
+	  nnzh = NLPModels.get_nnzh(m)
+	  resize!(Ibuffer, nnzh)
+	  resize!(Jbuffer, nnzh)
+	  NLPModels.hess_structure!(m, Ibuffer, Jbuffer)
 
-	hsparsity = map(
-		(k, i, j) -> ((j,i), k),
-		1:nnzh,
-		Ibuffer,
-		Jbuffer,
-	)
-	sort!(hsparsity; lt = (a,b) -> a[1] < b[1])
-	hptr = getptr(hsparsity)
+	  hsparsity = map(
+		    (k, i, j) -> ((j,i), k),
+		    1:nnzh,
+		    Ibuffer,
+		    Jbuffer,
+	  )
+	  sort!(hsparsity; lt = (a,b) -> a[1] < b[1])
+	  hptr = getptr(hsparsity)
 
-	buffer = similar(m.meta.x0, max(nnzj, nnzh))
+	  buffer = similar(m.meta.x0, max(nnzj, nnzh))
 
-	meta = NLPModels.NLPModelMeta(
-		m.meta.nvar,
-		ncon = m.meta.ncon,
-		nnzj = length(jptr)-1,
-		nnzh = length(hptr)-1,
-		x0 = m.meta.x0,
-		lvar = m.meta.lvar,
-		uvar = m.meta.uvar,
-		y0 = m.meta.y0,
-		lcon = m.meta.lcon,
-		ucon = m.meta.ucon,
-	)
+	  meta = NLPModels.NLPModelMeta(
+		    m.meta.nvar,
+		    ncon = m.meta.ncon,
+		    nnzj = length(jptr)-1,
+		    nnzh = length(hptr)-1,
+		    x0 = m.meta.x0,
+		    lvar = m.meta.lvar,
+		    uvar = m.meta.uvar,
+		    y0 = m.meta.y0,
+		    lcon = m.meta.lcon,
+		    ucon = m.meta.ucon,
+	  )
 
-	counters = NLPModels.Counters()
+	  counters = NLPModels.Counters()
 
-	return CompressedNLPModel(
-		m,
-		jptr,
-		jsparsity,
-		hptr,
-		hsparsity,
-		buffer,
-		meta,
-		counters,
-	)
+	  return CompressedNLPModel(
+		    m,
+		    jptr,
+		    jsparsity,
+		    hptr,
+		    hsparsity,
+		    buffer,
+		    meta,
+		    counters,
+	  )
 end
 
 function NLPModels.obj(m::CompressedNLPModel, x::AbstractVector)
-	NLPModels.obj(m.inner, x)
+	  NLPModels.obj(m.inner, x)
 end
 
 function NLPModels.grad!(m::CompressedNLPModel, x::AbstractVector, y::AbstractVector)
-	NLPModels.grad!(m.inner, x, y)
+	  NLPModels.grad!(m.inner, x, y)
 end
 
 function NLPModels.cons!(m::CompressedNLPModel, x::AbstractVector, g::AbstractVector)
-	NLPModels.cons!(m.inner, x, g)
+	  NLPModels.cons!(m.inner, x, g)
 end
 
 function NLPModels.jac_coord!(m::CompressedNLPModel, x::AbstractVector, j::AbstractVector)
-	NLPModels.jac_coord!(m.inner, x, m.buffer)
-	_compress!(j, m.buffer, m.jptr, m.jsparsity)
+	  NLPModels.jac_coord!(m.inner, x, m.buffer)
+	  _compress!(j, m.buffer, m.jptr, m.jsparsity)
 end
 
 function NLPModels.hess_coord!(m::CompressedNLPModel, x::AbstractVector, y::AbstractVector, h::AbstractVector; obj_weight = 1.0)
-	NLPModels.hess_coord!(m.inner, x, y, m.buffer; obj_weight = obj_weight)
-	_compress!(h, m.buffer, m.hptr, m.hsparsity)
+	  NLPModels.hess_coord!(m.inner, x, y, m.buffer; obj_weight = obj_weight)
+	  _compress!(h, m.buffer, m.hptr, m.hsparsity)
 end
 
 function NLPModels.jac_structure!(m::CompressedNLPModel, I::AbstractVector, J::AbstractVector)
-	_structure!(I, J, m.jptr, m.jsparsity)
+	  _structure!(I, J, m.jptr, m.jsparsity)
 end
 
 function NLPModels.hess_structure!(m::CompressedNLPModel, I::AbstractVector, J::AbstractVector)
-	_structure!(I, J, m.hptr, m.hsparsity)
+	  _structure!(I, J, m.hptr, m.hsparsity)
 end
 
 function _compress!(V, buffer, ptr, sparsity)
     fill!(V, zero(eltype(V)))
-	@inbounds @simd for i in 1:length(ptr)-1
-		for j in ptr[i]:ptr[i+1]-1
+	  @simd for i in 1:length(ptr)-1
+		    for j in ptr[i]:ptr[i+1]-1
             V[i] += buffer[sparsity[j][2]]
         end
-	end
+	  end
 end
 
 function _structure!(I, J, ptr, sparsity)
-	@inbounds @simd for i in 1:length(ptr)-1
-		J[i], I[i] = sparsity[ptr[i]][1]
-	end
+	  @simd for i in 1:length(ptr)-1
+		    J[i], I[i] = sparsity[ptr[i]][1]
+	  end
 end
 
 export TimedNLPModel, CompressedNLPModel

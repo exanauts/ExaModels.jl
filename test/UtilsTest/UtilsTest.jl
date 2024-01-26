@@ -1,5 +1,6 @@
 module UtilsTest
 
+using Test
 import ExaModels, NLPModelsIpopt
 import ..NLPTest: _exa_luksan_vlcek_model
 
@@ -16,17 +17,22 @@ FIELDS = [
     :objective
 ]
 
-m = _exa_luksan_vlcek_model(backend,3)
+function runtests()
+    @testset "Utils tests" begin
+        m, ~ = _exa_luksan_vlcek_model(nothing,3)
 
-result = ipopt(m)
+        result = NLPModelsIpopt.ipopt(m)
 
-for util_model in UTIL_MODELS
-    util_result = ipopt(util_model(m))
+        for util_model in UTIL_MODELS
+            util_result = NLPModelsIpopt.ipopt(util_model(m))
 
-    @testset "$util_model"
-    for field in FIELDS
-        @testset "$field" begin
-            @test getfield(util_result, field) ≈ getfield(result, field) atol = 1e-6
+            @testset "$util_model" begin
+                for field in FIELDS
+                    @testset "$field" begin
+                        @test getfield(util_result, field) ≈ getfield(result, field) atol = 1e-6
+                    end
+                end
+            end
         end
     end
 end
