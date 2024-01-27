@@ -481,4 +481,3 @@ function jump_ac_power_model(backend, filename)
     jm, vars = _jump_ac_power_model(backend, filename)
     return MathOptNLPModel(jm)
 end
-

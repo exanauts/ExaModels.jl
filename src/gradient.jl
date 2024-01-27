@@ -61,7 +61,14 @@ Performs dsparse gradient evaluation via the reverse pass on the computation (su
 - `cnt`: counter
 - `adj`: adjoint propagated up to the current node
     """
-@inline function grpass(d::D, comp, y, o1, cnt, adj) where {D<: Union{AdjointNull, ParIndexed}}
+@inline function grpass(
+    d::D,
+    comp,
+    y,
+    o1,
+    cnt,
+    adj,
+) where {D<:Union{AdjointNull,ParIndexed}}
     return cnt
 end
 @inline function grpass(d::D, comp, y, o1, cnt, adj) where {D<:AdjointNode1}

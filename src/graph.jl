@@ -296,7 +296,7 @@ end
     @inbounds SecondAdjointNodeVar(i, x.inner[i])
 
 
-@inline (v::Null{Nothing})(i, x::V) where {T, V <: AbstractVector{T}} = zero(T)
-@inline (v::Null{N})(i, x::V) where {N, T, V <: AbstractVector{T}} = T(v.value)
+@inline (v::Null{Nothing})(i, x::V) where {T,V<:AbstractVector{T}} = zero(T)
+@inline (v::Null{N})(i, x::V) where {N,T,V<:AbstractVector{T}} = T(v.value)
 @inline (v::Null{N})(i, x::AdjointNodeSource{T}) where {N,T} = AdjointNull()
 @inline (v::Null{N})(i, x::SecondAdjointNodeSource{T}) where {N,T} = SecondAdjointNull()
