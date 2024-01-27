@@ -398,4 +398,50 @@ function op(s::Symbol)
     end
 end
 
+struct ExaModelsBackend{B} <: MOI.Nonlinear.AbstractAutomaticDifferentiation
+    backend::B
+end
+mutable struct ExaModelsEvaluator{B, E} <: MOI.AbstractNLPEvaluator
+    backend::B
+    model::E
+end
+
+ExaModels.ExaModelsBackend(backend = nothing) = ExaModelsBackend(backend)
+
+# function _NonlinearOracle(backend::B, objective, constraints) where {B}
+#     return new{B}(
+#         backend,
+        
+#     )
+# end
+
+function MOI.Nonlinear.Evaluator(
+    model::MOI.Nonlinear.Model,
+    backend::ExaModelsBackend{B},
+    ordered_variables::Vector{MOI.VariableIndex},
+) where B
+    # variable_order =
+    #     Dict(x.value => i for (i, x) in enumerate(ordered_variables))
+    # subexpressions = Vector{Any}(undef, length(model.expressions))
+    # for (i, sub) in enumerate(model.expressions)
+    #     subexpressions[i] = _to_expr(model, sub, variable_order, subexpressions)
+    # end
+    # objective = nothing
+    # if model.objective !== nothing
+    #     obj = _to_expr(model, model.objective, variable_order, subexpressions)
+    #     objective = _Function(model, obj)
+    # end
+    # functions = map(values(model.constraints)) do c
+    #     expr = _to_expr(model, c.expression, variable_order, subexpressions)
+    #     return _Function(model, expr)
+    # end
+    return MOI.Nonlinear.Evaluator(
+        model,
+        ExaModelsEvaluator(backend, model)
+    )
+end
+
+MOI.features_available(::ExaModelsEvaluator) = [:Grad,:Hess,:Jac]
+MOI.initialize(evaluator::ExaModelsEvaluator,::Vector{Symbol}) = nothing
+
 end # module

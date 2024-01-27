@@ -35,11 +35,12 @@ include("gradient.jl")
 include("jacobian.jl")
 include("hessian.jl")
 include("nlp.jl")
-include("wrapper.jl")
 include("utils.jl")
 
-export ExaModel,
+export
+    ExaModel,
     ExaCore,
+    ExaModelsBackend,
     data,
     variable,
     objective,
@@ -49,7 +50,6 @@ export ExaModel,
     multipliers,
     multipliers_L,
     multipliers_U,
-    WrapperNLPModel,
     @register_univariate,
     @register_bivariate
 

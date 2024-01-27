@@ -3,3 +3,12 @@ convert_array(v, ::Nothing) = v
 
 # to avoid type privacy
 sort!(array; kwargs...) = Base.sort!(array; kwargs...)
+
+
+
+"""
+    ExaModelsBackend([backend]) 
+
+A examodel automatic differentiation backend for JuMP/MOI models.
+"""
+function ExaModelsBackend end
