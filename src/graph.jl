@@ -8,12 +8,38 @@ abstract type AbstractAdjointNode end
 abstract type AbstractSecondAdjointNode end
 
 """
+    Null
+A null node
+
+"""
+struct Null{T} <: AbstractNode
+    value::T
+end
+Null() = Null(nothing)
+
+"""
+    Null
+A null node
+
+"""
+struct AdjointNull <: AbstractAdjointNode end
+
+"""
+    Null
+A null node
+
+"""
+struct SecondAdjointNull <: AbstractSecondAdjointNode end
+
+
+"""
     VarSource
 
 A source of variable nodes
 
 """
 struct VarSource <: AbstractNode end
+
 
 """
     Var{I}
@@ -268,3 +294,9 @@ end
     SecondAdjointNodeVar(i, NaN)
 @inline Base.getindex(x::I, i) where {I<:SecondAdjointNodeSource} =
     @inbounds SecondAdjointNodeVar(i, x.inner[i])
+
+
+@inline (v::Null{Nothing})(i, x::V) where {T, V <: AbstractVector{T}} = zero(T)
+@inline (v::Null{N})(i, x::V) where {N, T, V <: AbstractVector{T}} = T(v.value)
+@inline (v::Null{N})(i, x::AdjointNodeSource{T}) where {N,T} = AdjointNull()
+@inline (v::Null{N})(i, x::SecondAdjointNodeSource{T}) where {N,T} = SecondAdjointNull()

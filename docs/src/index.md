@@ -8,7 +8,7 @@ Welcome to the documentation of [ExaModels.jl](https://github.com/sshin23/ExaMod
 	**Please help us improve ExaModels and this documentation!** ExaModels is in the early stage of development, and you may encounter unintended behaviors or missing documentations. If you find anything is not working as intended or documentation is missing, please [open issues](https://github.com/sshin/ExaModels.jl/issues) or [pull requests](https://github.com/sshin/ExaModels.jl/pulls) or start [discussions](https://github.com/sshin/ExaModels.jl/discussions). 
 
 ## What is ExaModels.jl?
-ExaModels.jl is an [algebraic modeling](https://en.wikipedia.org/wiki/Algebraic_modeling_language) and [automatic differentiation](https://en.wikipedia.org/wiki/Automatic_differentiation) tool in [Julia Language](https://julialang.org/), specialized for [SIMD](https://en.wikipedia.org/wiki/Single_instruction,_multiple_data) abstraction of [nonlinear programs](https://en.wikipedia.org/wiki/Nonlinear_programming). ExaModels.jl employs what we call [SIMD](https://en.wikipedia.org/wiki/Single_instruction,_multiple_data) abstraction for [nonlinear programs](https://en.wikipedia.org/wiki/Nonlinear_programming) (NLPs), which allows for the preservation of the parallelizable structure within the model equations, facilitating efficient [automatic differentiation](https://en.wikipedia.org/wiki/Automatic_differentiation) either on the single-thread CPUs, multi-threaded CPUs, as well as [GPU accelerators](https://en.wikipedia.org/wiki/Graphics_processing_unit). More details about SIMD abstraction can be found [here](/simd).
+ExaModels.jl is an [algebraic modeling](https://en.wikipedia.org/wiki/Algebraic_modeling_language) and [automatic differentiation](https://en.wikipedia.org/wiki/Automatic_differentiation) tool in [Julia Language](https://julialang.org/), specialized for [SIMD](https://en.wikipedia.org/wiki/Single_instruction,_multiple_data) abstraction of [nonlinear programs](https://en.wikipedia.org/wiki/Nonlinear_programming). ExaModels.jl employs what we call [SIMD](https://en.wikipedia.org/wiki/Single_instruction,_multiple_data) abstraction for [nonlinear programs](https://en.wikipedia.org/wiki/Nonlinear_programming) (NLPs), which allows for the preservation of the parallelizable structure within the model equations, facilitating efficient [automatic differentiation](https://en.wikipedia.org/wiki/Automatic_differentiation) either on the single-thread CPUs, multi-threaded CPUs, as well as [GPU accelerators](https://en.wikipedia.org/wiki/Graphics_processing_unit). More details about SIMD abstraction can be found [here](@ref simd).
 
 ## Key differences from other algebraic modeling tools
 ExaModels.jl is different from other algebraic modeling tools, such as [JuMP](https://github.com/jump-dev/JuMP.jl) or [AMPL](https://ampl.com/), in the following ways:
@@ -40,10 +40,10 @@ a 9241 bus system, derivative evaluation using ExaModels.jl on GPUs
 can be up to two orders of magnitude faster compared to JuMP or
 AMPL. Some benchmark results are available below. The following 
 problems are used for benchmarking:
-- [LuksanVlcek problem](../guide)
-- [Quadrotor control problem](../quad)
-- [Distillation column control problem](../dist)
-- [AC optimal power flow problem](../opf)
+- [LuksanVlcek problem](@ref guide)
+- [Quadrotor control problem](@ref quad)
+- [Distillation column control problem](@ref distillation)
+- [AC optimal power flow problem](@ref opf)
 
 ![benchmark](./assets/benchmark.svg)
 
@@ -54,9 +54,9 @@ ExaModels can be used with any solver that can handle `NLPModel` data type, but 
 
 ## Documentation Structure
 This documentation is structured in the following way.
-- The remainder of [this page](.) highlights several key aspects of ExaModels.jl.
-- The mathematical abstraction---SIMD abstraction of nonlinear programming---of ExaModels.jl is discussed in [Mathematical Abstraction page](./simd).
-- The step-by-step tutorial of using ExaModels.jl can be found in [Tutorial page](./guide).
+- The remainder of this page highlights several key aspects of ExaModels.jl.
+- The mathematical abstraction---SIMD abstraction of nonlinear programming---of ExaModels.jl is discussed in [Mathematical Abstraction page](@ref simd).
+- The step-by-step tutorial of using ExaModels.jl can be found in [Tutorial page](@ref guide).
 - This documentation does not intend to discuss the engineering behind the implementation of ExaModels.jl. Some high-level idea is discussed in [a recent publication](https://arxiv.org/abs/2307.16830), but the full details of the engineering behind it will be discussed in the future publications.
 
 

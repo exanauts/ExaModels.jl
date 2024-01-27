@@ -8,6 +8,9 @@ Performs dense gradient evaluation via the reverse pass on the computation (sub)
 - `y`: result vector
 - `adj`: adjoint propagated up to the current node
 """
+@inline function drpass(d::D, y, adj) where {D<:AdjointNull}
+    nothing
+end
 @inline function drpass(d::D, y, adj) where {D<:AdjointNode1}
     offset = drpass(d.inner, y, adj * d.y)
     nothing
@@ -39,7 +42,6 @@ function gradient!(y, f, x, adj)
     end
     return y
 end
-
 function gradient!(y, f, x, p, adj)
     graph = f(p, AdjointNodeSource(x))
     drpass(graph, y, adj)
@@ -58,7 +60,10 @@ Performs dsparse gradient evaluation via the reverse pass on the computation (su
 - `o1`: index offset
 - `cnt`: counter
 - `adj`: adjoint propagated up to the current node
-"""
+    """
+@inline function grpass(d::D, comp, y, o1, cnt, adj) where {D<: Union{AdjointNull, ParIndexed}}
+    return cnt
+end
 @inline function grpass(d::D, comp, y, o1, cnt, adj) where {D<:AdjointNode1}
     cnt = grpass(d.inner, comp, y, o1, cnt, adj * d.y)
     return cnt
@@ -72,7 +77,6 @@ end
     @inbounds y[o1+comp(cnt += 1)] += adj
     return cnt
 end
-
 @inline function grpass(d::AdjointNodeVar, comp::Nothing, y, o1, cnt, adj) # despecialization
     push!(y, d.i)
     return (cnt += 1)
@@ -90,8 +94,7 @@ end
     return cnt
 end
 
-"""
-    sgradient!(y, f, x, adj)
+""" sgradient!(y, f, x, adj)
 
 Performs sparse gradient evalution
 

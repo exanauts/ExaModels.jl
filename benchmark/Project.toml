@@ -32,7 +32,7 @@ ExaModelsBenchmarkKernelAbstractions = "KernelAbstractions"
 ExaModelsBenchmarkOneAPI = "oneAPI"
 
 [compat]
-AMDGPU = "0.5"
-CUDA = "4"
+AMDGPU = "0.7"
+CUDA = "5"
 KernelAbstractions = "0.9"
 oneAPI = "1"

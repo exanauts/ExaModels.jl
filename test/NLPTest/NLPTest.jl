@@ -3,9 +3,8 @@ module NLPTest
 using ExaModels
 using Downloads, Test
 using NLPModels, JuMP, NLPModelsJuMP, PowerModels, NLPModelsIpopt, MadNLP, Percival
-using KernelAbstractions, CUDA, AMDGPU, oneAPI
 
-const BACKENDS = Any[nothing, CPU()]
+import ..BACKENDS
 
 const NLP_TEST_ARGUMENTS = [
     ("luksan_vlcek", 3),
@@ -23,29 +22,16 @@ const SOLVERS = [
 const EXCLUDE1 = [("ac_power", "percival")]
 const EXCLUDE2 = []
 
-if CUDA.has_cuda()
-    push!(BACKENDS, CUDABackend())
-    @info "testing CUDA"
-end
-
-if AMDGPU.has_rocm_gpu()
-    push!(BACKENDS, ROCBackend())
-    @info "testing AMDGPU"
-end
-
-try
-    oneAPI.oneL0.zeInit(0)
-    push!(BACKENDS, oneAPIBackend())
-    push!(EXCLUDE2, ("percival", oneAPIBackend()))
-    @info "testing oneAPI"
-catch e
+for backend in BACKENDS
+    if "oneAPIBackend()" == string(backend)
+        push!(EXCLUDE2, ("percival", backend))
+    end
 end
 
 include("luksan.jl")
 include("power.jl")
 
 function test_nlp(m1, m2; full = false)
-
     @testset "NLP meta tests" begin
         list = [:nvar, :ncon, :x0, :lvar, :uvar, :y0, :lcon, :ucon]
 
@@ -146,7 +132,7 @@ function runtests()
                 m, vars0, cons0 = exa_model(nothing, args)
                 m0 = WrapperNLPModel(m)
 
-                m, vars2, cons2 = jump_model(backend, args)
+                m, vars2, cons2 = jump_model(nothing, args)
                 m2 = MathOptNLPModel(m)
 
                 set_optimizer(m, MadNLP.Optimizer)

@@ -1,4 +1,4 @@
-# # Example: Quadrotor
+# # [Example: Quadrotor](@id quad)
 
 function quadrotor_model(N = 3; backend = nothing)
 

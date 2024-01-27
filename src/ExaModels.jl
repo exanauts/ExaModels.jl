@@ -23,7 +23,9 @@ import NLPModels:
     jtprod_nln!,
     jprod_nln!
 import SolverCore
+import Printf
 
+include("templates.jl")
 include("graph.jl")
 include("register.jl")
 include("specialization.jl")
@@ -33,8 +35,8 @@ include("gradient.jl")
 include("jacobian.jl")
 include("hessian.jl")
 include("nlp.jl")
-include("templates.jl")
 include("wrapper.jl")
+include("utils.jl")
 
 export ExaModel,
     ExaCore,
