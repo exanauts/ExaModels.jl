@@ -21,4 +21,3 @@ try
 catch e
     @info "excluding oneAPI"
 end
-
