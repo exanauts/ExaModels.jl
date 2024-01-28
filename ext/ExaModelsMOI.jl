@@ -139,63 +139,69 @@ function exafy_con(cons, bin, offset, lcon, ucon)
     return bin, offset
 end
 
-function _exafy_con(cons::MOIU.VectorOfConstraints, bin, offset, lcon, ucon)
-    l = length(cons.constraints)
-    
-    resize!(lcon, offset + l)
-    resize!(ucon, offset + l)
-    
-    for (i,(c,e)) in cons.constraints
-        
-        _exafy_con_update_vector(i, e, lcon, ucon, offset)
 
-        if c isa MOI.ScalarAffineFunction
-            for mm in c.terms
-                e,p = _exafy(mm)
-                bin = update_bin!(
-                    bin,
-                    ExaModels.ParIndexed(ExaModels.ParSource(), length(p)+1) => e,
-                    (p..., offset + i.value)
-                ) # augment data with constraint index
-            end
-            bin = update_bin!(bin, ExaModels.Null(c.constant), (1,))
-        elseif c isa MOI.ScalarQuadraticFunction
-            for mm in c.affine_terms
-                e,p = _exafy(mm)
-                bin = update_bin!(
-                    bin,
-                    ExaModels.ParIndexed(ExaModels.ParSource(), length(p)+1)=>e,
-                    (p..., offset + i.value)
-                ) # augment data with constraint index
-            end
-            for mm in c.quadratic_terms
-                e,p = _exafy(mm)
-                bin = update_bin!(
-                    bin,
-                    ExaModels.ParIndexed(ExaModels.ParSource(), length(p)+1)=>e,
-                    (p..., offset + i.value)
-                ) # augment data with constraint index
-            end
-            bin = update_bin!(bin, ExaModels.Null(c.constant), (1,))
-        elseif c isa MOI.ScalarNonlinearFunction && c.head == :+; # TODO maybe: also * Real, -, etc.
-            for mm in c.args
-                e,p = _exafy(mm)
-                bin = update_bin!(
-                    bin,
-                    ExaModels.ParIndexed(ExaModels.ParSource(), length(p)+1)=>e,
-                    (p..., offset + i.value)
-                ) # augment data with constraint index
-            end
-        else
-            e, p = _exafy(c)
+function _exafy_con(i, c::C, bin, offset) where C <: MOI.ScalarAffineFunction
+    for mm in c.terms
+        e,p = _exafy(mm)
+        bin = update_bin!(
+            bin,
+            ExaModels.ParIndexed(ExaModels.ParSource(), length(p)+1) => e,
+            (p..., offset + i.value)
+        ) # augment data with constraint index
+    end
+    bin = update_bin!(bin, ExaModels.Null(c.constant), (1,))
+    return bin, offset
+end
+function _exafy_con(i, c::C, bin, offset) where C <: MOI.ScalarQuadraticFunction
+    for mm in c.affine_terms
+        e,p = _exafy(mm)
+        bin = update_bin!(
+            bin,
+            ExaModels.ParIndexed(ExaModels.ParSource(), length(p)+1)=>e,
+            (p..., offset + i.value)
+        ) # augment data with constraint index
+    end
+    for mm in c.quadratic_terms
+        e,p = _exafy(mm)
+        bin = update_bin!(
+            bin,
+            ExaModels.ParIndexed(ExaModels.ParSource(), length(p)+1)=>e,
+            (p..., offset + i.value)
+        ) # augment data with constraint index
+    end
+    bin = update_bin!(bin, ExaModels.Null(c.constant), (1,))
+    return bin, offset
+end
+function _exafy_con(i, c::C, bin, offset) where C <: MOI.ScalarNonlinearFunction
+    if c.head == :+
+        for mm in c.args
+            e,p = _exafy(mm)
             bin = update_bin!(
                 bin,
                 ExaModels.ParIndexed(ExaModels.ParSource(), length(p)+1)=>e,
                 (p..., offset + i.value)
             ) # augment data with constraint index
         end
+    else
+        e, p = _exafy(c)
+        bin = update_bin!(
+            bin,
+            ExaModels.ParIndexed(ExaModels.ParSource(), length(p)+1)=>e,
+            (p..., offset + i.value)
+            ) # augment data with constraint index
     end
+    return bin, offset
+end
 
+function _exafy_con(cons::V, bin, offset, lcon, ucon) where V <: MOIU.VectorOfConstraints
+    l = length(cons.constraints)
+    
+    resize!(lcon, offset + l)
+    resize!(ucon, offset + l)
+    for (i,(c,e)) in cons.constraints
+        _exafy_con_update_vector(i, e, lcon, ucon, offset)
+        bin, offset = _exafy_con(i, c, bin, offset)
+    end
     return bin, (offset += l)
 end
 
@@ -402,11 +408,12 @@ end
 #     backend::B
 # end
 mutable struct Optimizer{B,S} <: MOI.ModelLike
-    backend::B
     solver::S
+    backend::B
     model::Union{Nothing, ExaModels.ExaModel}
     result::Union{Nothing, SolverCore.AbstractExecutionStats}
-    options::Dict
+    solve_time::Float64
+    options::Dict{Symbol,Any}
 end
 
 MOI.is_empty(model::Optimizer) = model.model == nothing
@@ -433,7 +440,7 @@ function MOI.supports(
 end
 
 function ExaModels.Optimizer(solver, backend = nothing; kwargs...)
-    return Optimizer(backend, solver, nothing, nothing, Dict(kwargs...))
+    return Optimizer(solver, backend, nothing, nothing, 0., Dict{Symbol,Any}(kwargs...))
 end
 
 function MOI.empty!(model::ExaModelsMOI.Optimizer{Nothing})
@@ -446,17 +453,22 @@ function MOI.copy_to(dest::Optimizer, src::MOI.ModelLike)
 end
 
 function MOI.optimize!(optimizer::Optimizer)
-    optimizer.result = optimizer.solver(optimizer.model; optimizer.options...)
+    optimizer.solve_time = @elapsed begin
+        optimizer.result = optimizer.solver(optimizer.model; optimizer.options...)
+    end
+
+    return optimizer
 end
 
-MOI.get(optimizer::Optimizer, ::MOI.TerminationStatus) = Base.get(_STATUS_CODES, optimizer.result.status, MOI.OTHER_ERROR)
+MOI.get(optimizer::Optimizer, ::MOI.TerminationStatus) = ExaModels.termination_status_translator(optimizer.solver, optimizer.result.status)
+MOI.get(model::Optimizer, attr::Union{MOI.PrimalStatus,MOI.DualStatus}) = ExaModels.result_status_translator(model.solver, model.result.status)
 
 function MOI.get(
     model::Optimizer,
     attr::MOI.VariablePrimal,
     vi::MOI.VariableIndex,
 )
-    # MOI.check_result_index_bounds(model, attr)
+    MOI.check_result_index_bounds(model, attr)
     # MOI.throw_if_not_valid(model, vi)
     # if _is_parameter(vi)
     #     p = model.parameters[vi]
@@ -465,9 +477,55 @@ function MOI.get(
     return model.result.solution[vi.value]
 end
 
+function MOI.get(
+    model::Optimizer,
+    attr::MOI.ConstraintDual,
+    ci::MOI.ConstraintIndex{<:_FUNCTIONS,<:_SETS},
+)
+    MOI.check_result_index_bounds(model, attr)
+    # MOI.throw_if_not_valid(model, ci)
+    s = -1.0
+    return s * model.result.multipliers[ci.value]
+end
+
+function MOI.get(
+    model::Optimizer,
+    attr::MOI.ConstraintDual,
+    ci::MOI.ConstraintIndex{MOI.VariableIndex,MOI.LessThan{Float64}},
+)
+    MOI.check_result_index_bounds(model, attr)
+    # MOI.throw_if_not_valid(model, ci)
+    rc = model.result.multipliers_L[ci.value] - model.result.multipliers_U[ci.value]
+    return min(0.0, rc)
+end
+
+function MOI.get(
+    model::Optimizer,
+    attr::MOI.ConstraintDual,
+    ci::MOI.ConstraintIndex{MOI.VariableIndex,MOI.GreaterThan{Float64}},
+)
+    MOI.check_result_index_bounds(model, attr)
+    # MOI.throw_if_not_valid(model, ci)
+    rc = model.result.multipliers_L[ci.value] - model.result.multipliers_U[ci.value]
+    return max(0.0, rc)
+end
+
+function MOI.get(
+    model::Optimizer,
+    attr::MOI.ConstraintDual,
+    ci::MOI.ConstraintIndex{MOI.VariableIndex,MOI.EqualTo{Float64}},
+)
+    MOI.check_result_index_bounds(model, attr)
+    # MOI.throw_if_not_valid(model, ci)
+    rc = model.result.multipliers_L[ci.value] - model.result.multipliers_U[ci.value]
+    return rc
+end
+
+
 function MOI.get(model::Optimizer, ::MOI.ResultCount)
     return (model.result !== nothing) ? 1 : 0
 end
+
 function MOI.get(model::Optimizer, attr::MOI.ObjectiveValue)
     MOI.check_result_index_bounds(model, attr)
     # scale = (model.sense == MOI.MAX_SENSE) ? -1 : 1
@@ -475,29 +533,13 @@ function MOI.get(model::Optimizer, attr::MOI.ObjectiveValue)
     return model.result.objective
 end
 
-const _STATUS_CODES = Dict{Symbol,MOI.TerminationStatusCode}(
-    :first_order => MOI.LOCALLY_SOLVED,
-    # SOLVED_TO_ACCEPTABLE_LEVEL => MOI.ALMOST_LOCALLY_SOLVED,
-    # SEARCH_DIRECTION_BECOMES_TOO_SMALL => MOI.SLOW_PROGRESS,
-    # DIVERGING_ITERATES => MOI.INFEASIBLE_OR_UNBOUNDED,
-    # INFEASIBLE_PROBLEM_DETECTED => MOI.LOCALLY_INFEASIBLE,
-    # MAXIMUM_ITERATIONS_EXCEEDED => MOI.ITERATION_LIMIT,
-    # MAXIMUM_WALLTIME_EXCEEDED => MOI.TIME_LIMIT,
-    # INITIAL => MOI.OPTIMIZE_NOT_CALLED,
-    # REGULAR
-    # RESTORE
-    # ROBUST
-    # RESTORATION_FAILED => MOI.NUMERICAL_ERROR,
-    # INVALID_NUMBER_DETECTED => MOI.INVALID_MODEL,
-    # ERROR_IN_STEP_COMPUTATION => MOI.NUMERICAL_ERROR,
-    # NOT_ENOUGH_DEGREES_OF_FREEDOM => MOI.INVALID_MODEL,
-    # USER_REQUESTED_STOP => MOI.INTERRUPTED,
-    # INTERNAL_ERROR => MOI.OTHER_ERROR,
-    # INVALID_NUMBER_OBJECTIVE => MOI.INVALID_MODEL,
-    # INVALID_NUMBER_GRADIENT => MOI.INVALID_MODEL,
-    # INVALID_NUMBER_CONSTRAINTS => MOI.INVALID_MODEL,
-    # INVALID_NUMBER_JACOBIAN => MOI.INVALID_MODEL,
-    # INVALID_NUMBER_HESSIAN_LAGRANGIAN => MOI.INVALID_MODEL,
-)
+MOI.get(model::Optimizer, ::MOI.SolveTimeSec) = model.solve_time
+MOI.get(model::Optimizer, ::MOI.SolverName) = "$(string(model.solver)) running with ExaModels"
+
+function MOI.set(model::Optimizer, p::MOI.RawOptimizerAttribute, value)
+    model.options[Symbol(p.name)] = value
+    # No need to reset model.solver because this gets handled in optimize!.
+    return
+end
 
 end # module

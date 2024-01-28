@@ -16,6 +16,7 @@ AMDGPU = "21141c5a-9bdb-4563-92ae-f87d6854732e"
 CUDA = "052768ef-5323-5732-b1bb-66c8b64840ba"
 oneAPI = "8f75cd03-7ff8-4ecb-9b8f-daf728133b1b"
 MathOptInterface = "b8f27783-ece8-5eb3-8dc8-9495eed66fee"
+NLPModelsIpopt = "f4238b75-b362-5c4c-b852-0801c9a21d71"
 
 [extensions]
 ExaModelsAMDGPU = "AMDGPU"
@@ -25,6 +26,7 @@ ExaModelsOneAPI = "oneAPI"
 ExaModelsSpecialFunctions = "SpecialFunctions"
 ExaModelsJuMP = "JuMP"
 ExaModelsMOI = "MathOptInterface"
+ExaModelsIpopt = ["NLPModelsIpopt", "MathOptInterface"]
 
 [compat]
 AMDGPU = "0.7"
@@ -36,6 +38,7 @@ SpecialFunctions = "2"
 julia = "1.9"
 oneAPI = "1"
 MathOptInterface = "1.19"
+NLPModelsIpopt = "0.10"
 
 [extras]
 CUDA = "052768ef-5323-5732-b1bb-66c8b64840ba"

@@ -4,14 +4,7 @@ convert_array(v, ::Nothing) = v
 # to avoid type privacy
 sort!(array; kwargs...) = Base.sort!(array; kwargs...)
 
-
-
-"""
-    ExaModelsBackend([backend]) 
-
-A examodel automatic differentiation backend for JuMP/MOI models.
-"""
-function ExaModelsBackend end
-
-
+# MOI
 function Optimizer end
+function result_status_translator end
+function termination_status_translator end
