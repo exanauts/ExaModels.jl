@@ -1,10 +1,11 @@
 module ExaModelsMOI
 
-import ExaModels: ExaModels, NLPModels
+import ExaModels: ExaModels, NLPModels, SolverCore
 
 import MathOptInterface
 const MOI = MathOptInterface
 const MOIU = MathOptInterface.Utilities
+const MOIB = MathOptInterface.Bridges
 
 const SUPPORTED_OBJ_TYPE = [
     :scalar_nonlinear,
@@ -65,11 +66,9 @@ end
 
 float_type(::MOIU.Model{T}) where T = T
 
-function ExaModels.ExaModel(moi_backend::MathOptInterface.Utilities.CachingOptimizer; backend = nothing)
+function ExaModels.ExaModel(jm_cache::MOI.ModelLike; backend = nothing)
 
-    jm_cache = moi_backend.model_cache
-    
-    T = float_type(moi_backend.model_cache.model)    
+    T = float_type(jm_cache.model)    
     
     # create exacore;
     c = ExaModels.ExaCore(T, backend)
@@ -398,50 +397,107 @@ function op(s::Symbol)
     end
 end
 
-struct ExaModelsBackend{B} <: MOI.Nonlinear.AbstractAutomaticDifferentiation
-    backend::B
-end
-mutable struct ExaModelsEvaluator{B, E} <: MOI.AbstractNLPEvaluator
-    backend::B
-    model::E
-end
 
-ExaModels.ExaModelsBackend(backend = nothing) = ExaModelsBackend(backend)
-
-# function _NonlinearOracle(backend::B, objective, constraints) where {B}
-#     return new{B}(
-#         backend,
-        
-#     )
+# struct EmptyOptimizer{B}
+#     backend::B
 # end
-
-function MOI.Nonlinear.Evaluator(
-    model::MOI.Nonlinear.Model,
-    backend::ExaModelsBackend{B},
-    ordered_variables::Vector{MOI.VariableIndex},
-) where B
-    # variable_order =
-    #     Dict(x.value => i for (i, x) in enumerate(ordered_variables))
-    # subexpressions = Vector{Any}(undef, length(model.expressions))
-    # for (i, sub) in enumerate(model.expressions)
-    #     subexpressions[i] = _to_expr(model, sub, variable_order, subexpressions)
-    # end
-    # objective = nothing
-    # if model.objective !== nothing
-    #     obj = _to_expr(model, model.objective, variable_order, subexpressions)
-    #     objective = _Function(model, obj)
-    # end
-    # functions = map(values(model.constraints)) do c
-    #     expr = _to_expr(model, c.expression, variable_order, subexpressions)
-    #     return _Function(model, expr)
-    # end
-    return MOI.Nonlinear.Evaluator(
-        model,
-        ExaModelsEvaluator(backend, model)
-    )
+mutable struct Optimizer{B,S} <: MOI.ModelLike
+    backend::B
+    solver::S
+    model::Union{Nothing, ExaModels.ExaModel}
+    result::Union{Nothing, SolverCore.AbstractExecutionStats}
+    options::Dict
 end
 
-MOI.features_available(::ExaModelsEvaluator) = [:Grad,:Hess,:Jac]
-MOI.initialize(evaluator::ExaModelsEvaluator,::Vector{Symbol}) = nothing
+MOI.is_empty(model::Optimizer) = model.model == nothing
+
+const _FUNCTIONS = Union{
+    MOI.ScalarAffineFunction{Float64},
+    MOI.ScalarQuadraticFunction{Float64},
+    MOI.ScalarNonlinearFunction,
+}
+const _SETS =
+    Union{MOI.GreaterThan{Float64},MOI.LessThan{Float64},MOI.EqualTo{Float64}}
+function MOI.supports_constraint(
+    ::Optimizer,
+    ::Type{<:Union{MOI.VariableIndex,_FUNCTIONS}},
+    ::Type{<:_SETS},
+)
+    return true
+end
+function MOI.supports(
+    ::Optimizer,
+    ::MOI.ObjectiveFunction{<:Union{MOI.VariableIndex,<:_FUNCTIONS}},
+)
+    return true
+end
+
+function ExaModels.Optimizer(solver, backend = nothing; kwargs...)
+    return Optimizer(backend, solver, nothing, nothing, Dict(kwargs...))
+end
+
+function MOI.empty!(model::ExaModelsMOI.Optimizer{Nothing})
+    model.model = nothing
+end
+
+function MOI.copy_to(dest::Optimizer, src::MOI.ModelLike)
+    dest.model = ExaModels.ExaModel(src)
+    return MOIU.identity_index_map(src)
+end
+
+function MOI.optimize!(optimizer::Optimizer)
+    optimizer.result = optimizer.solver(optimizer.model; optimizer.options...)
+end
+
+MOI.get(optimizer::Optimizer, ::MOI.TerminationStatus) = Base.get(_STATUS_CODES, optimizer.result.status, MOI.OTHER_ERROR)
+
+function MOI.get(
+    model::Optimizer,
+    attr::MOI.VariablePrimal,
+    vi::MOI.VariableIndex,
+)
+    # MOI.check_result_index_bounds(model, attr)
+    # MOI.throw_if_not_valid(model, vi)
+    # if _is_parameter(vi)
+    #     p = model.parameters[vi]
+    #     return model.nlp_model[p]
+    # end
+    return model.result.solution[vi.value]
+end
+
+function MOI.get(model::Optimizer, ::MOI.ResultCount)
+    return (model.result !== nothing) ? 1 : 0
+end
+function MOI.get(model::Optimizer, attr::MOI.ObjectiveValue)
+    MOI.check_result_index_bounds(model, attr)
+    # scale = (model.sense == MOI.MAX_SENSE) ? -1 : 1
+    # return scale * model.result.objective
+    return model.result.objective
+end
+
+const _STATUS_CODES = Dict{Symbol,MOI.TerminationStatusCode}(
+    :first_order => MOI.LOCALLY_SOLVED,
+    # SOLVED_TO_ACCEPTABLE_LEVEL => MOI.ALMOST_LOCALLY_SOLVED,
+    # SEARCH_DIRECTION_BECOMES_TOO_SMALL => MOI.SLOW_PROGRESS,
+    # DIVERGING_ITERATES => MOI.INFEASIBLE_OR_UNBOUNDED,
+    # INFEASIBLE_PROBLEM_DETECTED => MOI.LOCALLY_INFEASIBLE,
+    # MAXIMUM_ITERATIONS_EXCEEDED => MOI.ITERATION_LIMIT,
+    # MAXIMUM_WALLTIME_EXCEEDED => MOI.TIME_LIMIT,
+    # INITIAL => MOI.OPTIMIZE_NOT_CALLED,
+    # REGULAR
+    # RESTORE
+    # ROBUST
+    # RESTORATION_FAILED => MOI.NUMERICAL_ERROR,
+    # INVALID_NUMBER_DETECTED => MOI.INVALID_MODEL,
+    # ERROR_IN_STEP_COMPUTATION => MOI.NUMERICAL_ERROR,
+    # NOT_ENOUGH_DEGREES_OF_FREEDOM => MOI.INVALID_MODEL,
+    # USER_REQUESTED_STOP => MOI.INTERRUPTED,
+    # INTERNAL_ERROR => MOI.OTHER_ERROR,
+    # INVALID_NUMBER_OBJECTIVE => MOI.INVALID_MODEL,
+    # INVALID_NUMBER_GRADIENT => MOI.INVALID_MODEL,
+    # INVALID_NUMBER_CONSTRAINTS => MOI.INVALID_MODEL,
+    # INVALID_NUMBER_JACOBIAN => MOI.INVALID_MODEL,
+    # INVALID_NUMBER_HESSIAN_LAGRANGIAN => MOI.INVALID_MODEL,
+)
 
 end # module

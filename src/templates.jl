@@ -12,3 +12,6 @@ sort!(array; kwargs...) = Base.sort!(array; kwargs...)
 A examodel automatic differentiation backend for JuMP/MOI models.
 """
 function ExaModelsBackend end
+
+
+function Optimizer end
