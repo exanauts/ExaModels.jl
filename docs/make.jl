@@ -75,4 +75,4 @@ makedocs(
 )
 
 
-deploydocs(repo = "github.com/sshin23/ExaModels.jl.git")
+deploydocs(repo = "github.com/exanauts/ExaModels.jl.git")
