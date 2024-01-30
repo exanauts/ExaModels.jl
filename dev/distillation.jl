@@ -1,4 +1,4 @@
-# # Example: Distillation Column
+# # [Example: Distillation Column](@id distillation)
 
 function distillation_column_model(T = 3; backend = nothing)
 
