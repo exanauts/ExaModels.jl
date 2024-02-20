@@ -427,12 +427,12 @@ function ExaModels.Optimizer(solver, backend = nothing; kwargs...)
     return Optimizer(solver, backend, nothing, nothing, 0., Dict{Symbol,Any}(kwargs...))
 end
 
-function MOI.empty!(model::ExaModelsMOI.Optimizer{Nothing})
+function MOI.empty!(model::ExaModelsMOI.Optimizer)
     model.model = nothing
 end
 
 function MOI.copy_to(dest::Optimizer, src::MOI.ModelLike)
-    dest.model = ExaModels.ExaModel(src)
+    dest.model = ExaModels.ExaModel(src; backend = dest.backend)
     return MOIU.identity_index_map(src)
 end
 
