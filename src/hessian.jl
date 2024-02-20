@@ -309,16 +309,7 @@ Performs sparse hessian evaluation (`d²f/dx²` portion) via the reverse pass on
 - `adj`: second adjoint propagated up to the current node
 """
 
-@inline function hrpass(
-    t::SecondAdjointNull,
-    comp,
-    y1,
-    y2,
-    o2,
-    cnt,
-    adj,
-    adj2,
-) 
+@inline function hrpass(t::SecondAdjointNull, comp, y1, y2, o2, cnt, adj, adj2)
     cnt
 end
 @inline function hrpass(
@@ -658,7 +649,7 @@ function shessian!(y1, y2, f, x, adj1s::V, adj2) where {V<:AbstractVector}
     end
 end
 
-function shessian!(y1, y2, f, p, x, comp, o2, adj1, adj2) 
+function shessian!(y1, y2, f, p, x, comp, o2, adj1, adj2)
     graph = f(p, SecondAdjointNodeSource(x))
     hrpass0(graph, comp, y1, y2, o2, 0, adj1, adj2)
 end

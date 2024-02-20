@@ -13,7 +13,7 @@ include("UtilsTest/UtilsTest.jl")
 @testset "ExaModels test" begin
     @info "Running AD Test"
     ADTest.runtests()
-    
+
     @info "Running NLP Test"
     NLPTest.runtests()
 

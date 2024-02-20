@@ -6,7 +6,12 @@ ExaModels.ExaCore(backend::oneAPI.oneAPIBackend) = ExaModels.ExaCore(Float64, ba
 ExaModels.ExaCore(T, backend::oneAPI.oneAPIBackend) =
     ExaModels.ExaCore(x0 = oneAPI.zeros(T, 0), backend = backend)
 
-function ExaModels.append!(backend, a::A, b::Base.Generator{UnitRange{I}}, lb) where {I, A<:oneAPI.oneVector}
+function ExaModels.append!(
+    backend,
+    a::A,
+    b::Base.Generator{UnitRange{I}},
+    lb,
+) where {I,A<:oneAPI.oneVector}
     la = length(a)
     aa = similar(a, la + lb)
     copyto!(view(aa, 1:la), a)
@@ -14,7 +19,7 @@ function ExaModels.append!(backend, a::A, b::Base.Generator{UnitRange{I}}, lb) w
     return aa
 end
 
-function ExaModels.append!(backend, a::A, b::Base.Generator, lb) where { A<:oneAPI.oneVector}
+function ExaModels.append!(backend, a::A, b::Base.Generator, lb) where {A<:oneAPI.oneVector}
     la = length(a)
     aa = similar(a, la + lb)
     copyto!(view(aa, 1:la), a)
@@ -23,7 +28,12 @@ function ExaModels.append!(backend, a::A, b::Base.Generator, lb) where { A<:oneA
     return aa
 end
 
-function ExaModels.append!(backend, a::A, b::V, lb) where {A<:oneAPI.oneVector, V <: AbstractVector}
+function ExaModels.append!(
+    backend,
+    a::A,
+    b::V,
+    lb,
+) where {A<:oneAPI.oneVector,V<:AbstractVector}
     la = length(a)
     aa = similar(a, la + lb)
     copyto!(view(aa, 1:la), a)

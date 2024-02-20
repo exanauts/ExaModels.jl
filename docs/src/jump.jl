@@ -12,7 +12,7 @@ jm = Model()
     jm,
     s[i = 1:N-2],
     3x[i+1]^3 + 2x[i+2] - 5 + sin(x[i+1] - x[i+2])sin(x[i+1] + x[i+2]) + 4x[i+1] -
-        x[i]exp(x[i] - x[i+1]) - 3 == 0.0
+    x[i]exp(x[i] - x[i+1]) - 3 == 0.0
 )
 @objective(jm, Min, sum(100(x[i-1]^2 - x[i])^2 + (x[i-1] - 1)^2 for i = 2:N))
 
@@ -24,6 +24,3 @@ em = ExaModel(jm)
 using NLPModelsIpopt
 
 result = ipopt(em)
-
-
-

@@ -249,7 +249,7 @@ function append!(backend, a, b::Base.Generator, lb)
     return a
 end
 
-function append!(backend, a, b::Base.Generator{UnitRange{I}}, lb) where I
+function append!(backend, a, b::Base.Generator{UnitRange{I}}, lb) where {I}
 
     la = length(a)
     resize!(a, la + lb)
@@ -352,7 +352,7 @@ Objective
 function objective(c::C, gen) where {C<:ExaCore}
     f = SIMDFunction(gen, c.nobj, c.nnzg, c.nnzh)
     pars = gen.iter
-    
+
     _objective(c, f, pars)
 end
 
@@ -361,7 +361,7 @@ end
 
 Adds objective terms specified by a `expr` and `pars` to `core`, and returns an `Objective` object.
 """
-function objective(c, expr::N, pars) where N <: AbstractNode
+function objective(c, expr::N, pars) where {N<:AbstractNode}
     f = _simdfunction(expr, c.nobj, c.nnzg, c.nnzh)
 
     _objective(c, f, pars)
@@ -413,7 +413,7 @@ function constraint(
 
     f = SIMDFunction(gen, c.ncon, c.nnzj, c.nnzh)
     pars = gen.iter
-    
+
     _constraint(c, f, pars, start, lcon, ucon)
 end
 
@@ -429,10 +429,10 @@ function constraint(
     start = zero(T),
     lcon = zero(T),
     ucon = zero(T),
-) where {T, C<:ExaCore{T}, N <: AbstractNode}
+) where {T,C<:ExaCore{T},N<:AbstractNode}
 
     f = _simdfunction(expr, c.ncon, c.nnzj, c.nnzh)
-    
+
     _constraint(c, f, pars, start, lcon, ucon)
 end
 
@@ -450,7 +450,7 @@ function constraint(
 ) where {T,C<:ExaCore{T}}
 
     f = _simdfunction(Null(), c.ncon, c.nnzj, c.nnzh)
-    
+
     _constraint(c, f, 1:n, start, lcon, ucon)
 end
 

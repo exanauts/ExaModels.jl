@@ -5,20 +5,8 @@ using Test, JuMP, ExaModels, PowerModels, NLPModelsIpopt, ..NLPTest
 import ..BACKENDS
 
 const JUMP_INTERFACE_INSTANCES = [
-    (
-        :jump_luksan_vlcek_model,
-        [
-            3,
-            10
-        ]
-    ),
-    (
-        :jump_ac_power_model,
-        [
-            "pglib_opf_case3_lmbd.m",
-            "pglib_opf_case14_ieee.m"
-        ]
-    ),
+    (:jump_luksan_vlcek_model, [3, 10]),
+    (:jump_ac_power_model, ["pglib_opf_case3_lmbd.m", "pglib_opf_case14_ieee.m"]),
 ]
 
 function jump_luksan_vlcek_model(N)
@@ -186,17 +174,15 @@ function runtests()
 
                     for backend in BACKENDS
                         @testset "$backend" begin
-                            m = WrapperNLPModel(
-                                ExaModel(jm; backend=backend)
-                            )
+                            m = WrapperNLPModel(ExaModel(jm; backend = backend))
                             result = ipopt(m; print_level = 0)
-                            
+
                             @test sol ≈ result.solution atol = 1e-6
                         end
                     end
                 end
             end
-        end        
+        end
     end
 end
 
