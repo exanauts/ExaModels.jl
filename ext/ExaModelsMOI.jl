@@ -129,9 +129,10 @@ function exafy_con(cons, bin, offset, lcon, ucon)
 end
 
 
-function _exafy_con(i, c::C, bin, offset) where C <: MOI.ScalarAffineFunction
+function _exafy_con(i, c::C, bin, offset; pos = true) where C <: MOI.ScalarAffineFunction
     for mm in c.terms
-        e,p = _exafy(mm)
+        e, p = _exafy(mm)
+        e = pos ? e : -e
         bin = update_bin!(
             bin,
             ExaModels.ParIndexed(ExaModels.ParSource(), length(p)+1) => e,
@@ -141,9 +142,10 @@ function _exafy_con(i, c::C, bin, offset) where C <: MOI.ScalarAffineFunction
     bin = update_bin!(bin, ExaModels.Null(c.constant), (1,))
     return bin, offset
 end
-function _exafy_con(i, c::C, bin, offset) where C <: MOI.ScalarQuadraticFunction
+function _exafy_con(i, c::C, bin, offset; pos = true) where C <: MOI.ScalarQuadraticFunction
     for mm in c.affine_terms
-        e,p = _exafy(mm)
+        e, p = _exafy(mm)
+        e = pos ? e : -e
         bin = update_bin!(
             bin,
             ExaModels.ParIndexed(ExaModels.ParSource(), length(p)+1)=>e,
@@ -151,7 +153,8 @@ function _exafy_con(i, c::C, bin, offset) where C <: MOI.ScalarQuadraticFunction
         ) # augment data with constraint index
     end
     for mm in c.quadratic_terms
-        e,p = _exafy(mm)
+        e, p = _exafy(mm)
+        e = pos ? e : -e
         bin = update_bin!(
             bin,
             ExaModels.ParIndexed(ExaModels.ParSource(), length(p)+1)=>e,
@@ -161,24 +164,34 @@ function _exafy_con(i, c::C, bin, offset) where C <: MOI.ScalarQuadraticFunction
     bin = update_bin!(bin, ExaModels.Null(c.constant), (1,))
     return bin, offset
 end
-function _exafy_con(i, c::C, bin, offset) where C <: MOI.ScalarNonlinearFunction
+function _exafy_con(i, c::C, bin, offset; pos = true) where C <: MOI.ScalarNonlinearFunction
     if c.head == :+
         for mm in c.args
-            e,p = _exafy(mm)
-            bin = update_bin!(
-                bin,
-                ExaModels.ParIndexed(ExaModels.ParSource(), length(p) + 1) => e,
-                (p..., offset + i.value),
-            ) # augment data with constraint index
+            bin, offset = _exafy_con(i, mm, bin, offset)
         end
+    elseif c.head == :-
+        bin, offset = _exafy_con(i, c.args[1], bin, offset)
+        bin, offset = _exafy_con(i, c.args[2], bin, offset; pos = false)
     else
         e, p = _exafy(c)
+        e = pos ? e : -e
         bin = update_bin!(
             bin,
             ExaModels.ParIndexed(ExaModels.ParSource(), length(p)+1)=>e,
             (p..., offset + i.value)
             ) # augment data with constraint index
     end
+    return bin, offset
+end
+function _exafy_con(i, c::C, bin, offset; pos = true) where C <: Real
+    e = pos ? ExaModels.ParIndexed(ExaModels.ParSource(), 1) : -ExaModels.ParIndexed(ExaModels.ParSource(), 1)
+    bin = update_bin!(
+        bin,
+        ExaModels.ParIndexed(ExaModels.ParSource(), 2)=>
+            0 * ExaModels.Var(1) + e,
+        (c, offset + i.value)
+    )
+
     return bin, offset
 end
 

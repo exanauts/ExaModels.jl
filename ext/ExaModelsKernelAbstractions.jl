@@ -45,14 +45,18 @@ function ExaModels.ExaModel(
     gsparsity = similar(c.x0, Tuple{Int,Int}, c.nnzg)
 
     _grad_structure!(c.backend, c.obj, gsparsity)
-    ExaModels.sort!(gsparsity; lt = ((i, j), (k, l)) -> i < k)
-    gptr = getptr(c.backend, gsparsity)
+    if !isempty(gsparsity)
+        ExaModels.sort!(gsparsity; lt = ((i, j), (k, l)) -> i < k)
+        gptr = getptr(c.backend, gsparsity)
+    end
 
     conaugsparsity = similar(c.x0, Tuple{Int,Int}, c.nconaug)
     _conaug_structure!(c.backend, c.con, conaugsparsity)
-    length(conaugsparsity) > 0 &&
+    if !isempty(conaugsparsity) 
         ExaModels.sort!(conaugsparsity; lt = ((i, j), (k, l)) -> i < k)
-    conaugptr = getptr(c.backend, conaugsparsity)
+        conaugptr = getptr(c.backend, conaugsparsity)
+    end
+    
 
     if prod
         jacbuffer = similar(c.x0, c.nnzj)
@@ -66,15 +70,25 @@ function ExaModels.ExaModel(
         _con_hess_structure!(c.backend, c.con, hesssparsityi, nothing)
         hesssparsityj = copy(hesssparsityi)
 
-        ExaModels.sort!(jacsparsityi; lt = (((i, j), k), ((n, m), l)) -> i < n)
-        ExaModels.sort!(jacsparsityj; lt = (((i, j), k), ((n, m), l)) -> j < m)
-        jacptri = getptr(c.backend, jacsparsityi; cmp = (x, y) -> x[1] == y[1])
-        jacptrj = getptr(c.backend, jacsparsityj; cmp = (x, y) -> x[2] == y[2])
+        if !isempty(jacsparsityi)
+            ExaModels.sort!(jacsparsityi; lt = (((i, j), k), ((n, m), l)) -> i < n)
+            jacptri = getptr(c.backend, jacsparsityi; cmp = (x, y) -> x[1] == y[1])
+        end
+        
+        if !isempty(jacsparsityj)
+            ExaModels.sort!(jacsparsityj; lt = (((i, j), k), ((n, m), l)) -> j < m)
+            jacptrj = getptr(c.backend, jacsparsityj; cmp = (x, y) -> x[2] == y[2])
+        end
 
-        ExaModels.sort!(hesssparsityi; lt = (((i, j), k), ((n, m), l)) -> i < n)
-        ExaModels.sort!(hesssparsityj; lt = (((i, j), k), ((n, m), l)) -> j < m)
-        hessptri = getptr(c.backend, hesssparsityi; cmp = (x, y) -> x[1] == y[1])
-        hessptrj = getptr(c.backend, hesssparsityj; cmp = (x, y) -> x[2] == y[2])
+
+        if !isempty(hesssparsityi)
+            ExaModels.sort!(hesssparsityi; lt = (((i, j), k), ((n, m), l)) -> i < n)
+            hessptri = getptr(c.backend, hesssparsityi; cmp = (x, y) -> x[1] == y[1])
+        end
+        if !isempty(hesssparsityj)
+            ExaModels.sort!(hesssparsityj; lt = (((i, j), k), ((n, m), l)) -> j < m)
+            hessptrj = getptr(c.backend, hesssparsityj; cmp = (x, y) -> x[2] == y[2])
+        end
 
         prodhelper = (
             jacbuffer = jacbuffer,
@@ -149,7 +163,7 @@ function ExaModels.jac_structure!(
     m::ExaModels.ExaModel{T,VT,E} where {T,VT,E<:KAExtension},
     rows::V,
     cols::V,
-) where {V<:AbstractVector}
+    ) where {V<:AbstractVector}
     _jac_structure!(m.ext.backend, m.cons, rows, cols)
 end
 function _jac_structure!(backend, cons, rows, cols)

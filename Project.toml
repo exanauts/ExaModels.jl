@@ -28,7 +28,7 @@ ExaModelsSpecialFunctions = "SpecialFunctions"
 ExaModelsJuMP = "JuMP"
 ExaModelsMOI = "MathOptInterface"
 ExaModelsIpopt = ["NLPModelsIpopt", "MathOptInterface"]
-ExaModelsMadNLP = "MadNLP"
+ExaModelsMadNLP = ["MadNLP", "MathOptInterface"]
 
 [compat]
 AMDGPU = "0.7"
