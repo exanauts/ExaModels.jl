@@ -266,8 +266,9 @@ function ExaModels.grad!(
     x::V,
     y::V,
     ) where {V<:AbstractVector}
-    if !isempty(y)
-        gradbuffer = m.ext.gradbuffer
+    gradbuffer = m.ext.gradbuffer
+    
+    if !isempty(gradbuffer)
         fill!(gradbuffer, zero(eltype(gradbuffer)))
         _grad!(m.ext.backend, m.ext.gradbuffer, m.objs, x)
 
