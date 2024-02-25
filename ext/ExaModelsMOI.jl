@@ -169,9 +169,9 @@ function _exafy_con(i, c::C, bin, offset; pos = true) where C <: MOI.ScalarNonli
         for mm in c.args
             bin, offset = _exafy_con(i, mm, bin, offset)
         end
-    elseif c.head == :-
-        bin, offset = _exafy_con(i, c.args[1], bin, offset)
-        bin, offset = _exafy_con(i, c.args[2], bin, offset; pos = false)
+    # elseif c.head == :-
+    #     bin, offset = _exafy_con(i, c.args[1], bin, offset)
+    #     bin, offset = _exafy_con(i, c.args[2], bin, offset; pos = false)
     else
         e, p = _exafy(c)
         e = pos ? e : -e

@@ -164,7 +164,9 @@ function ExaModels.jac_structure!(
     rows::V,
     cols::V,
     ) where {V<:AbstractVector}
-    _jac_structure!(m.ext.backend, m.cons, rows, cols)
+    if !isempty(rows)
+        _jac_structure!(m.ext.backend, m.cons, rows, cols)
+    end
 end
 function _jac_structure!(backend, cons, rows, cols)
     ExaModels.sjacobian!(backend, rows, cols, cons, nothing, NaN)
@@ -179,8 +181,10 @@ function ExaModels.hess_structure!(
     rows::V,
     cols::V,
 ) where {V<:AbstractVector}
-    _obj_hess_structure!(m.ext.backend, m.objs, rows, cols)
-    _con_hess_structure!(m.ext.backend, m.cons, rows, cols)
+    if !isempty(rows)
+        _obj_hess_structure!(m.ext.backend, m.objs, rows, cols)
+        _con_hess_structure!(m.ext.backend, m.cons, rows, cols)
+    end
 end
 
 function _obj_hess_structure!(backend, objs, rows, cols)
@@ -200,10 +204,14 @@ function _con_hess_structure!(backend, cons::ExaModels.ConstraintNull, rows, col
 function ExaModels.obj(
     m::ExaModels.ExaModel{T,VT,E},
     x::AbstractVector,
-) where {T,VT,E<:KAExtension}
-    _obj(m.ext.backend, m.ext.objbuffer, m.objs, x)
-    result = ExaModels.sum(m.ext.objbuffer)
-    return result
+    ) where {T,VT,E<:KAExtension}
+    if !isempty(objbuffer)
+        _obj(m.ext.backend, m.ext.objbuffer, m.objs, x)
+        result = ExaModels.sum(m.ext.objbuffer)
+        return result
+    else
+        return zero(T)
+    end
 end
 function _obj(backend, objbuffer, obj, x)
     kerf(backend)(objbuffer, obj.f, obj.itr, x; ndrange = length(obj.itr))
@@ -257,20 +265,22 @@ function ExaModels.grad!(
     m::ExaModels.ExaModel{T,VT,E} where {T,VT,E<:KAExtension},
     x::V,
     y::V,
-) where {V<:AbstractVector}
-    gradbuffer = m.ext.gradbuffer
-    fill!(gradbuffer, zero(eltype(gradbuffer)))
-    _grad!(m.ext.backend, m.ext.gradbuffer, m.objs, x)
+    ) where {V<:AbstractVector}
+    if !isempty(y)
+        gradbuffer = m.ext.gradbuffer
+        fill!(gradbuffer, zero(eltype(gradbuffer)))
+        _grad!(m.ext.backend, m.ext.gradbuffer, m.objs, x)
 
-    fill!(y, zero(eltype(y)))
-    compress_to_dense(m.ext.backend)(
-        y,
-        gradbuffer,
-        m.ext.gptr,
-        m.ext.gsparsity;
-        ndrange = length(m.ext.gptr) - 1,
-    )
-    synchronize(m.ext.backend)
+        fill!(y, zero(eltype(y)))
+        compress_to_dense(m.ext.backend)(
+            y,
+            gradbuffer,
+            m.ext.gptr,
+            m.ext.gsparsity;
+            ndrange = length(m.ext.gptr) - 1,
+        )
+        synchronize(m.ext.backend)
+    end
 
     return y
 end
