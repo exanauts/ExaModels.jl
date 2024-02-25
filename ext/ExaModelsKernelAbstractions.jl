@@ -205,7 +205,7 @@ function ExaModels.obj(
     m::ExaModels.ExaModel{T,VT,E},
     x::AbstractVector,
     ) where {T,VT,E<:KAExtension}
-    if !isempty(objbuffer)
+    if !isempty(m.ext.objbuffer)
         _obj(m.ext.backend, m.ext.objbuffer, m.objs, x)
         result = ExaModels.sum(m.ext.objbuffer)
         return result
