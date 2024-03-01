@@ -28,7 +28,7 @@ ExaModelsOneAPI = "oneAPI"
 ExaModelsSpecialFunctions = "SpecialFunctions"
 ExaModelsJuMP = "JuMP"
 ExaModelsMOI = "MathOptInterface"
-ExaModelsIpopt = ["Ipopt", "MathOptInterface"]
+ExaModelsIpopt = ["MathOptInterface", "NLPModelsIpopt"]
 ExaModelsMadNLP = ["MadNLP", "MathOptInterface"]
 
 [compat]
