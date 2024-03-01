@@ -6,7 +6,7 @@ import MathOptInterface
 
 const MOI = MathOptInterface
 
-ExaModels.MadNLPOptimizer(backend = nothing; kwargs...) = ExaModels.Optimizer(NLPModelsIpopt.madnlp, nothing; kwargs...)
+ExaModels.MadNLPOptimizer(backend = nothing; kwargs...) = ExaModels.Optimizer(MadNLP.madnlp, nothing; kwargs...)
 
 function ExaModels.result_status_translator(::typeof(MadNLP.madnlp), status)
     Base.get(_RESULT_STATUS_CODES, status, MOI.UNKNOWN_RESULT_STATUS)
