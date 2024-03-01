@@ -45,14 +45,18 @@ function ExaModels.ExaModel(
     gsparsity = similar(c.x0, Tuple{Int,Int}, c.nnzg)
 
     _grad_structure!(c.backend, c.obj, gsparsity)
-    ExaModels.sort!(gsparsity; lt = ((i, j), (k, l)) -> i < k)
+    if !isempty(gsparsity)
+        ExaModels.sort!(gsparsity; lt = ((i, j), (k, l)) -> i < k)
+    end
     gptr = getptr(c.backend, gsparsity)
 
     conaugsparsity = similar(c.x0, Tuple{Int,Int}, c.nconaug)
     _conaug_structure!(c.backend, c.con, conaugsparsity)
-    length(conaugsparsity) > 0 &&
+    if !isempty(conaugsparsity) 
         ExaModels.sort!(conaugsparsity; lt = ((i, j), (k, l)) -> i < k)
+    end
     conaugptr = getptr(c.backend, conaugsparsity)
+    
 
     if prod
         jacbuffer = similar(c.x0, c.nnzj)
@@ -66,14 +70,24 @@ function ExaModels.ExaModel(
         _con_hess_structure!(c.backend, c.con, hesssparsityi, nothing)
         hesssparsityj = copy(hesssparsityi)
 
-        ExaModels.sort!(jacsparsityi; lt = (((i, j), k), ((n, m), l)) -> i < n)
-        ExaModels.sort!(jacsparsityj; lt = (((i, j), k), ((n, m), l)) -> j < m)
+        if !isempty(jacsparsityi)
+            ExaModels.sort!(jacsparsityi; lt = (((i, j), k), ((n, m), l)) -> i < n)
+        end
         jacptri = getptr(c.backend, jacsparsityi; cmp = (x, y) -> x[1] == y[1])
+        
+        if !isempty(jacsparsityj)
+            ExaModels.sort!(jacsparsityj; lt = (((i, j), k), ((n, m), l)) -> j < m)
+        end
         jacptrj = getptr(c.backend, jacsparsityj; cmp = (x, y) -> x[2] == y[2])
 
-        ExaModels.sort!(hesssparsityi; lt = (((i, j), k), ((n, m), l)) -> i < n)
-        ExaModels.sort!(hesssparsityj; lt = (((i, j), k), ((n, m), l)) -> j < m)
+
+        if !isempty(hesssparsityi)
+            ExaModels.sort!(hesssparsityi; lt = (((i, j), k), ((n, m), l)) -> i < n)
+        end
         hessptri = getptr(c.backend, hesssparsityi; cmp = (x, y) -> x[1] == y[1])
+        if !isempty(hesssparsityj)
+            ExaModels.sort!(hesssparsityj; lt = (((i, j), k), ((n, m), l)) -> j < m)
+        end
         hessptrj = getptr(c.backend, hesssparsityj; cmp = (x, y) -> x[2] == y[2])
 
         prodhelper = (
@@ -149,8 +163,10 @@ function ExaModels.jac_structure!(
     m::ExaModels.ExaModel{T,VT,E} where {T,VT,E<:KAExtension},
     rows::V,
     cols::V,
-) where {V<:AbstractVector}
-    _jac_structure!(m.ext.backend, m.cons, rows, cols)
+    ) where {V<:AbstractVector}
+    if !isempty(rows)
+        _jac_structure!(m.ext.backend, m.cons, rows, cols)
+    end
 end
 function _jac_structure!(backend, cons, rows, cols)
     ExaModels.sjacobian!(backend, rows, cols, cons, nothing, NaN)
@@ -165,8 +181,10 @@ function ExaModels.hess_structure!(
     rows::V,
     cols::V,
 ) where {V<:AbstractVector}
-    _obj_hess_structure!(m.ext.backend, m.objs, rows, cols)
-    _con_hess_structure!(m.ext.backend, m.cons, rows, cols)
+    if !isempty(rows)
+        _obj_hess_structure!(m.ext.backend, m.objs, rows, cols)
+        _con_hess_structure!(m.ext.backend, m.cons, rows, cols)
+    end
 end
 
 function _obj_hess_structure!(backend, objs, rows, cols)
@@ -186,10 +204,14 @@ function _con_hess_structure!(backend, cons::ExaModels.ConstraintNull, rows, col
 function ExaModels.obj(
     m::ExaModels.ExaModel{T,VT,E},
     x::AbstractVector,
-) where {T,VT,E<:KAExtension}
-    _obj(m.ext.backend, m.ext.objbuffer, m.objs, x)
-    result = ExaModels.sum(m.ext.objbuffer)
-    return result
+    ) where {T,VT,E<:KAExtension}
+    if !isempty(m.ext.objbuffer)
+        _obj(m.ext.backend, m.ext.objbuffer, m.objs, x)
+        result = ExaModels.sum(m.ext.objbuffer)
+        return result
+    else
+        return zero(T)
+    end
 end
 function _obj(backend, objbuffer, obj, x)
     kerf(backend)(objbuffer, obj.f, obj.itr, x; ndrange = length(obj.itr))
@@ -243,20 +265,23 @@ function ExaModels.grad!(
     m::ExaModels.ExaModel{T,VT,E} where {T,VT,E<:KAExtension},
     x::V,
     y::V,
-) where {V<:AbstractVector}
+    ) where {V<:AbstractVector}
     gradbuffer = m.ext.gradbuffer
-    fill!(gradbuffer, zero(eltype(gradbuffer)))
-    _grad!(m.ext.backend, m.ext.gradbuffer, m.objs, x)
+    
+    if !isempty(gradbuffer)
+        fill!(gradbuffer, zero(eltype(gradbuffer)))
+        _grad!(m.ext.backend, m.ext.gradbuffer, m.objs, x)
 
-    fill!(y, zero(eltype(y)))
-    compress_to_dense(m.ext.backend)(
-        y,
-        gradbuffer,
-        m.ext.gptr,
-        m.ext.gsparsity;
-        ndrange = length(m.ext.gptr) - 1,
-    )
-    synchronize(m.ext.backend)
+        fill!(y, zero(eltype(y)))
+        compress_to_dense(m.ext.backend)(
+            y,
+            gradbuffer,
+            m.ext.gptr,
+            m.ext.gsparsity;
+            ndrange = length(m.ext.gptr) - 1,
+        )
+        synchronize(m.ext.backend)
+    end
 
     return y
 end
