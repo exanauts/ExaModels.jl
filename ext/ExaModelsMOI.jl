@@ -404,11 +404,11 @@ end
 # struct EmptyOptimizer{B}
 #     backend::B
 # end
-mutable struct Optimizer{B,S} <: MOI.ModelLike
+mutable struct Optimizer{B,S} <: MOI.AbstractOptimizer
     solver::S
     backend::B
     model::Union{Nothing, ExaModels.ExaModel}
-    result::Union{Nothing, SolverCore.AbstractExecutionStats}
+    result
     solve_time::Float64
     options::Dict{Symbol,Any}
 end
@@ -451,7 +451,15 @@ end
 
 function MOI.optimize!(optimizer::Optimizer)
     optimizer.solve_time = @elapsed begin
-        optimizer.result = optimizer.solver(optimizer.model; optimizer.options...)
+        result = optimizer.solver(optimizer.model; optimizer.options...)
+        optimizer.result = (
+            objective = result.objective,
+            solution = Array(result.solution),
+            multipliers = Array(result.multipliers),
+            multipliers_L = Array(result.multipliers_L),
+            multipliers_U = Array(result.multipliers_U),
+            status = result.status
+        )
     end
 
     return optimizer
