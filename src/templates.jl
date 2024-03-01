@@ -6,5 +6,7 @@ sort!(array; kwargs...) = Base.sort!(array; kwargs...)
 
 # MOI
 function Optimizer end
+function IpoptOptimizer end
+function MadNLPOptimizer end
 function result_status_translator end
 function termination_status_translator end
