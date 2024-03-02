@@ -52,11 +52,11 @@ function ExaModels.ExaModel(
 
     conaugsparsity = similar(c.x0, Tuple{Int,Int}, c.nconaug)
     _conaug_structure!(c.backend, c.con, conaugsparsity)
-    if !isempty(conaugsparsity) 
+    if !isempty(conaugsparsity)
         ExaModels.sort!(conaugsparsity; lt = ((i, j), (k, l)) -> i < k)
     end
     conaugptr = getptr(c.backend, conaugsparsity)
-    
+
 
     if prod
         jacbuffer = similar(c.x0, c.nnzj)
@@ -74,7 +74,7 @@ function ExaModels.ExaModel(
             ExaModels.sort!(jacsparsityi; lt = (((i, j), k), ((n, m), l)) -> i < n)
         end
         jacptri = getptr(c.backend, jacsparsityi; cmp = (x, y) -> x[1] == y[1])
-        
+
         if !isempty(jacsparsityj)
             ExaModels.sort!(jacsparsityj; lt = (((i, j), k), ((n, m), l)) -> j < m)
         end
@@ -163,7 +163,7 @@ function ExaModels.jac_structure!(
     m::ExaModels.ExaModel{T,VT,E} where {T,VT,E<:KAExtension},
     rows::V,
     cols::V,
-    ) where {V<:AbstractVector}
+) where {V<:AbstractVector}
     if !isempty(rows)
         _jac_structure!(m.ext.backend, m.cons, rows, cols)
     end
@@ -204,7 +204,7 @@ function _con_hess_structure!(backend, cons::ExaModels.ConstraintNull, rows, col
 function ExaModels.obj(
     m::ExaModels.ExaModel{T,VT,E},
     x::AbstractVector,
-    ) where {T,VT,E<:KAExtension}
+) where {T,VT,E<:KAExtension}
     if !isempty(m.ext.objbuffer)
         _obj(m.ext.backend, m.ext.objbuffer, m.objs, x)
         result = ExaModels.sum(m.ext.objbuffer)
@@ -265,9 +265,9 @@ function ExaModels.grad!(
     m::ExaModels.ExaModel{T,VT,E} where {T,VT,E<:KAExtension},
     x::V,
     y::V,
-    ) where {V<:AbstractVector}
+) where {V<:AbstractVector}
     gradbuffer = m.ext.gradbuffer
-    
+
     if !isempty(gradbuffer)
         fill!(gradbuffer, zero(eltype(gradbuffer)))
         _grad!(m.ext.backend, m.ext.gradbuffer, m.objs, x)

@@ -37,8 +37,7 @@ include("hessian.jl")
 include("nlp.jl")
 include("utils.jl")
 
-export
-    ExaModel,
+export ExaModel,
     ExaCore,
     ExaModelsBackend,
     data,
