@@ -509,11 +509,4 @@ function _structure!(I, J, ptr, sparsity)
     end
 end
 
-export 
-    WrapperNLPModel,
-    TimedNLPModel,
-    CompressedNLPModel
-
-
-
-
+export WrapperNLPModel, TimedNLPModel, CompressedNLPModel

@@ -14,7 +14,8 @@ function ExaModels.termination_status_translator(::typeof(NLPModelsIpopt.ipopt),
     Base.get(_TERMINATION_STATUS_CODES, status, MOI.OTHER_ERROR)
 end
 
-ExaModels.IpoptOptimizer(; kwargs...) = ExaModels.Optimizer(NLPModelsIpopt.ipopt, nothing; kwargs...)
+ExaModels.IpoptOptimizer(; kwargs...) =
+    ExaModels.Optimizer(NLPModelsIpopt.ipopt, nothing; kwargs...)
 
 const _RESULT_STATUS_CODES = Dict{Symbol,MathOptInterface.ResultStatusCode}(
     :first_order => MOI.FEASIBLE_POINT,
@@ -29,7 +30,7 @@ const _TERMINATION_STATUS_CODES = Dict{Symbol,MOI.TerminationStatusCode}(
     :max_iter => MOI.ITERATION_LIMIT,
     :max_time => MOI.TIME_LIMIT,
     :user => MOI.INTERRUPTED,
-    :exception=> MOI.OTHER_ERROR,
+    :exception => MOI.OTHER_ERROR,
 )
 
 end
