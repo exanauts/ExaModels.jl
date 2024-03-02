@@ -57,8 +57,8 @@ float_type(::MOIU.Model{T}) where {T} = T
 
 function ExaModels.ExaModel(jm_cache::MOI.ModelLike; backend = nothing)
 
-    T = float_type(jm_cache.model)    
-    
+    T = float_type(jm_cache.model)
+
     # create exacore;
     c = ExaModels.ExaCore(T, backend)
 
@@ -129,27 +129,27 @@ function exafy_con(cons, bin, offset, lcon, ucon)
 end
 
 
-function _exafy_con(i, c::C, bin, offset; pos = true) where C <: MOI.ScalarAffineFunction
+function _exafy_con(i, c::C, bin, offset; pos = true) where {C<:MOI.ScalarAffineFunction}
     for mm in c.terms
         e, p = _exafy(mm)
         e = pos ? e : -e
         bin = update_bin!(
             bin,
-            ExaModels.ParIndexed(ExaModels.ParSource(), length(p)+1) => e,
-            (p..., offset + i.value)
+            ExaModels.ParIndexed(ExaModels.ParSource(), length(p) + 1) => e,
+            (p..., offset + i.value),
         ) # augment data with constraint index
     end
     bin = update_bin!(bin, ExaModels.Null(c.constant), (1,))
     return bin, offset
 end
-function _exafy_con(i, c::C, bin, offset; pos = true) where C <: MOI.ScalarQuadraticFunction
+function _exafy_con(i, c::C, bin, offset; pos = true) where {C<:MOI.ScalarQuadraticFunction}
     for mm in c.affine_terms
         e, p = _exafy(mm)
         e = pos ? e : -e
         bin = update_bin!(
             bin,
-            ExaModels.ParIndexed(ExaModels.ParSource(), length(p)+1)=>e,
-            (p..., offset + i.value)
+            ExaModels.ParIndexed(ExaModels.ParSource(), length(p) + 1) => e,
+            (p..., offset + i.value),
         ) # augment data with constraint index
     end
     for mm in c.quadratic_terms
@@ -157,50 +157,51 @@ function _exafy_con(i, c::C, bin, offset; pos = true) where C <: MOI.ScalarQuadr
         e = pos ? e : -e
         bin = update_bin!(
             bin,
-            ExaModels.ParIndexed(ExaModels.ParSource(), length(p)+1)=>e,
-            (p..., offset + i.value)
+            ExaModels.ParIndexed(ExaModels.ParSource(), length(p) + 1) => e,
+            (p..., offset + i.value),
         ) # augment data with constraint index
     end
     bin = update_bin!(bin, ExaModels.Null(c.constant), (1,))
     return bin, offset
 end
-function _exafy_con(i, c::C, bin, offset; pos = true) where C <: MOI.ScalarNonlinearFunction
+function _exafy_con(i, c::C, bin, offset; pos = true) where {C<:MOI.ScalarNonlinearFunction}
     if c.head == :+
         for mm in c.args
             bin, offset = _exafy_con(i, mm, bin, offset)
         end
-    # elseif c.head == :-
-    #     bin, offset = _exafy_con(i, c.args[1], bin, offset)
-    #     bin, offset = _exafy_con(i, c.args[2], bin, offset; pos = false)
+        # elseif c.head == :-
+        #     bin, offset = _exafy_con(i, c.args[1], bin, offset)
+        #     bin, offset = _exafy_con(i, c.args[2], bin, offset; pos = false)
     else
         e, p = _exafy(c)
         e = pos ? e : -e
         bin = update_bin!(
             bin,
-            ExaModels.ParIndexed(ExaModels.ParSource(), length(p)+1)=>e,
-            (p..., offset + i.value)
-            ) # augment data with constraint index
+            ExaModels.ParIndexed(ExaModels.ParSource(), length(p) + 1) => e,
+            (p..., offset + i.value),
+        ) # augment data with constraint index
     end
     return bin, offset
 end
-function _exafy_con(i, c::C, bin, offset; pos = true) where C <: Real
-    e = pos ? ExaModels.ParIndexed(ExaModels.ParSource(), 1) : -ExaModels.ParIndexed(ExaModels.ParSource(), 1)
+function _exafy_con(i, c::C, bin, offset; pos = true) where {C<:Real}
+    e =
+        pos ? ExaModels.ParIndexed(ExaModels.ParSource(), 1) :
+        -ExaModels.ParIndexed(ExaModels.ParSource(), 1)
     bin = update_bin!(
         bin,
-        ExaModels.ParIndexed(ExaModels.ParSource(), 2)=>
-            0 * ExaModels.Var(1) + e,
-        (c, offset + i.value)
+        ExaModels.ParIndexed(ExaModels.ParSource(), 2) => 0 * ExaModels.Var(1) + e,
+        (c, offset + i.value),
     )
 
     return bin, offset
 end
 
-function _exafy_con(cons::V, bin, offset, lcon, ucon) where V <: MOIU.VectorOfConstraints
+function _exafy_con(cons::V, bin, offset, lcon, ucon) where {V<:MOIU.VectorOfConstraints}
     l = length(cons.constraints)
-    
+
     resize!(lcon, offset + l)
     resize!(ucon, offset + l)
-    for (i,(c,e)) in cons.constraints
+    for (i, (c, e)) in cons.constraints
         _exafy_con_update_vector(i, e, lcon, ucon, offset)
         bin, offset = _exafy_con(i, c, bin, offset)
     end
@@ -407,8 +408,8 @@ end
 mutable struct Optimizer{B,S} <: MOI.AbstractOptimizer
     solver::S
     backend::B
-    model::Union{Nothing, ExaModels.ExaModel}
-    result
+    model::Union{Nothing,ExaModels.ExaModel}
+    result::Any
     solve_time::Float64
     options::Dict{Symbol,Any}
 end
@@ -420,8 +421,7 @@ const _FUNCTIONS = Union{
     MOI.ScalarQuadraticFunction{Float64},
     MOI.ScalarNonlinearFunction,
 }
-const _SETS =
-    Union{MOI.GreaterThan{Float64},MOI.LessThan{Float64},MOI.EqualTo{Float64}}
+const _SETS = Union{MOI.GreaterThan{Float64},MOI.LessThan{Float64},MOI.EqualTo{Float64}}
 function MOI.supports_constraint(
     ::Optimizer,
     ::Type{<:Union{MOI.VariableIndex,_FUNCTIONS}},
@@ -437,7 +437,7 @@ function MOI.supports(
 end
 
 function ExaModels.Optimizer(solver, backend = nothing; kwargs...)
-    return Optimizer(solver, backend, nothing, nothing, 0., Dict{Symbol,Any}(kwargs...))
+    return Optimizer(solver, backend, nothing, nothing, 0.0, Dict{Symbol,Any}(kwargs...))
 end
 
 function MOI.empty!(model::ExaModelsMOI.Optimizer)
@@ -458,21 +458,19 @@ function MOI.optimize!(optimizer::Optimizer)
             multipliers = Array(result.multipliers),
             multipliers_L = Array(result.multipliers_L),
             multipliers_U = Array(result.multipliers_U),
-            status = result.status
+            status = result.status,
         )
     end
 
     return optimizer
 end
 
-MOI.get(optimizer::Optimizer, ::MOI.TerminationStatus) = ExaModels.termination_status_translator(optimizer.solver, optimizer.result.status)
-MOI.get(model::Optimizer, attr::Union{MOI.PrimalStatus,MOI.DualStatus}) = ExaModels.result_status_translator(model.solver, model.result.status)
+MOI.get(optimizer::Optimizer, ::MOI.TerminationStatus) =
+    ExaModels.termination_status_translator(optimizer.solver, optimizer.result.status)
+MOI.get(model::Optimizer, attr::Union{MOI.PrimalStatus,MOI.DualStatus}) =
+    ExaModels.result_status_translator(model.solver, model.result.status)
 
-function MOI.get(
-    model::Optimizer,
-    attr::MOI.VariablePrimal,
-    vi::MOI.VariableIndex,
-)
+function MOI.get(model::Optimizer, attr::MOI.VariablePrimal, vi::MOI.VariableIndex)
     MOI.check_result_index_bounds(model, attr)
     # MOI.throw_if_not_valid(model, vi)
     # if _is_parameter(vi)
@@ -539,7 +537,8 @@ function MOI.get(model::Optimizer, attr::MOI.ObjectiveValue)
 end
 
 MOI.get(model::Optimizer, ::MOI.SolveTimeSec) = model.solve_time
-MOI.get(model::Optimizer, ::MOI.SolverName) = "$(string(model.solver)) running with ExaModels"
+MOI.get(model::Optimizer, ::MOI.SolverName) =
+    "$(string(model.solver)) running with ExaModels"
 
 function MOI.set(model::Optimizer, p::MOI.RawOptimizerAttribute, value)
     model.options[Symbol(p.name)] = value
