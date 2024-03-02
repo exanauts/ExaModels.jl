@@ -68,8 +68,10 @@ function ExaModels.ExaModel(jm_cache::MOI.ModelLike; backend = nothing)
     uvar = jvars.upper
     x0 = fill!(similar(lvar), 0.0)
     nvar = length(lvar)
+
     if haskey(jm_cache.varattr, MOI.VariablePrimalStart())
-        for (k, v) in jm_cache.varattr[MOI.VariablePrimalStart()]
+        list = jm_cache.varattr[MOI.VariablePrimalStart()]
+        for (k, v) in list
             x0[k.value] = v
         end
     end
@@ -432,6 +434,13 @@ end
 function MOI.supports(
     ::Optimizer,
     ::MOI.ObjectiveFunction{<:Union{MOI.VariableIndex,<:_FUNCTIONS}},
+)
+    return true
+end
+function MOI.supports(
+    ::Optimizer,
+    ::MOI.VariablePrimalStart,
+    ::Type{MOI.VariableIndex},
 )
     return true
 end
