@@ -1,8 +1,9 @@
-# # JuMP Interface
+# # JuMP Interface (Experimental)
 
+# ## JuMP to an ExaModel
 # We have an experimental interface to JuMP model. A JuMP model can be directly converted to a `ExaModel`. It is as simple as this:
 
-using ExaModels, JuMP
+using ExaModels, JuMP, CUDA
 
 N = 10
 jm = Model()
@@ -16,11 +17,23 @@ jm = Model()
 )
 @objective(jm, Min, sum(100(x[i-1]^2 - x[i])^2 + (x[i-1] - 1)^2 for i = 2:N))
 
-em = ExaModel(jm)
+em = ExaModel(jm; backend = CUDABackend())
 
 # Here, note that only scalar objective/constraints created via `@constraint` and `@objective` API are supported. Older syntax like `@NLconstraint` and `@NLobjective` are not supported.
-# We can solve the model using any of the solvers supported by ExaModels. For example, we can use Ipopt:
+# We can solve the model using any of the solvers supported by ExaModels. For example, we can use MadNLP:
 
-using NLPModelsIpopt
+using MadNLP, MadNLPGPU
 
-result = ipopt(em)
+result = madnlp(em)
+
+
+# ## JuMP Optimizer
+# Alternatively, one can use the `Optimizer` interface provided by `ExaModels`. This feature can be used as follows.
+
+using ExaModels, JuMP, CUDA
+using MadNLP, MadNLPGPU
+
+set_optimizer(jm, () -> ExaModels.MadNLPOptimizer(CUDABackend()))
+optimize!(jm)
+
+# Again, only scalar objective/constraints created via `@constraint` and `@objective` API are supported. Older syntax like `@NLconstraint` and `@NLobjective` are not supported.
