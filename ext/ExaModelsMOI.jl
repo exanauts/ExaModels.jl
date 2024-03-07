@@ -437,11 +437,7 @@ function MOI.supports(
 )
     return true
 end
-function MOI.supports(
-    ::Optimizer,
-    ::MOI.VariablePrimalStart,
-    ::Type{MOI.VariableIndex},
-)
+function MOI.supports(::Optimizer, ::MOI.VariablePrimalStart, ::Type{MOI.VariableIndex})
     return true
 end
 
