@@ -85,7 +85,7 @@ end
 
 function deploy(result)
     # Define the repository URL and the branch to deploy to
-    repo_url = "git@github.com:sshin23/ExaModels.jl.git"
+    repo_url = "git@github.com:exanauts/ExaModels.jl.git"
     branch = "benchmark-results"
 
     # Clone the repository into a temporary directory
@@ -318,7 +318,7 @@ function read_results(
     ),
 )
     # Define the repository URL and the branch to deploy to
-    repo_url = "git@github.com:sshin23/ExaModels.jl.git"
+    repo_url = "git@github.com:exanauts/ExaModels.jl.git"
     branch = "benchmark-results"
 
     # Clone the repository into a temporary directory
