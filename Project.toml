@@ -43,7 +43,7 @@ oneAPI = "1"
 MathOptInterface = "1.19"
 Ipopt = "1.6"
 NLPModelsIpopt = "0.10"
-MadNLP = "0.7"
+MadNLP = "0.8"
 
 [extras]
 CUDA = "052768ef-5323-5732-b1bb-66c8b64840ba"
