@@ -10,7 +10,6 @@ if !(@isdefined _PAGES)
         "Mathematical Abstraction" => "simd.md",
         "Tutorial" => [
             "guide.md",
-            "jump.md",
             "performance.md",
             "gpu.md",
             "develop.md",
@@ -18,6 +17,7 @@ if !(@isdefined _PAGES)
             "distillation.md",
             "opf.md",
         ],
+        "JuMP Interface (experimental)" => "jump.md",
         "API Manual" => "core.md",
         "References" => "ref.md",
     ]
