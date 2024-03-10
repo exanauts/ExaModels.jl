@@ -149,7 +149,7 @@ function ExaCore(backend)
     return ExaCore(; backend = backend)
 end
 
-ExaCore(::Type{T}; backend = nothing, kwargs...) where T <: AbstractFloat = ExaCore(x0 = convert_array(zeros(T,0), backend); kwargs...)
+ExaCore(::Type{T}; backend = nothing, kwargs...) where T <: AbstractFloat = ExaCore(x0 = convert_array(zeros(T,0), backend); backend = backend, kwargs...)
 
 depth(a) = depth(a.inner) + 1
 depth(a::ObjectiveNull) = 0
