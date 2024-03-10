@@ -32,6 +32,8 @@ x = variable(c, N; start = (mod(i, 2) == 1 ? -1.2 : 1.0 for i = 1:N))
 
 # The objective can be set as follows:
 objective(c, 100 * (x[i-1]^2 - x[i])^2 + (x[i-1] - 1)^2 for i = 2:N)
+# !!! note
+#     Note that the terms here are summed, without explicitly using `sum( ... )` syntax.
 
 # The constraints can be set as follows:
 constraint(

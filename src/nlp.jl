@@ -331,7 +331,7 @@ end
 """
     objective(core::ExaCore, generator)
 
-Adds objective terms specified by a `generator` to `core`, and returns an `Objective` object. 
+Adds objective terms specified by a `generator` to `core`, and returns an `Objective` object. Note: it is assumed that the terms are summed.
 
 ## Example
 ```jldoctest
