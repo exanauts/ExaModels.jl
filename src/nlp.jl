@@ -77,7 +77,7 @@ Constrant Augmentation
 )
 
 """
-ExaCore([array_type::Type; backend = backend, minimize = true])
+ExaCore([array_eltype::Type; backend = backend, minimize = true])
 
 Returns an intermediate data object `ExaCore`, which later can be used for creating `ExaModel`
 
@@ -107,7 +107,7 @@ An ExaCore
 
 julia> using CUDA
 
-julia> c = ExaCore(Float32, CUDABackend())
+julia> c = ExaCore(Float32; backend = CUDABackend())
 An ExaCore
 
   Float type: ...................... Float32
