@@ -77,7 +77,7 @@ Constrant Augmentation
 )
 
 """
-ExaCore([array_type::Type, backend])
+ExaCore([array_eltype::Type; backend = backend, minimize = true])
 
 Returns an intermediate data object `ExaCore`, which later can be used for creating `ExaModel`
 
@@ -107,7 +107,7 @@ An ExaCore
 
 julia> using CUDA
 
-julia> c = ExaCore(Float32, CUDABackend())
+julia> c = ExaCore(Float32; backend = CUDABackend())
 An ExaCore
 
   Float type: ...................... Float32
@@ -119,6 +119,7 @@ An ExaCore
 ```
 """
 Base.@kwdef mutable struct ExaCore{T,VT<:AbstractVector{T},B}
+    backend::B = nothing
     obj::AbstractObjective = ObjectiveNull()
     con::AbstractConstraint = ConstraintNull()
     nvar::Int = 0
@@ -129,18 +130,27 @@ Base.@kwdef mutable struct ExaCore{T,VT<:AbstractVector{T},B}
     nnzg::Int = 0
     nnzj::Int = 0
     nnzh::Int = 0
-    x0::VT = zeros(0)
+    x0::VT = convert_array(zeros(0), backend)
     lvar::VT = similar(x0)
     uvar::VT = similar(x0)
     y0::VT = similar(x0)
     lcon::VT = similar(x0)
     ucon::VT = similar(x0)
-    backend::B = nothing
+    minimize::Bool = true
 end
-ExaCore(::Nothing) = ExaCore()
 
-ExaCore(::Type{T}, ::Nothing) where {T<:AbstractFloat} = ExaCore(x0 = zeros(T, 0))
-ExaCore(::Type{T}) where {T<:AbstractFloat} = ExaCore(T, nothing)
+# Deprecated as of v0.7
+function ExaCore(::Type{T}, backend) where T <: AbstractFloat
+    @warn "ExaCore(T, backend) is deprecated. Use ExaCore(T; backend = backend) instead"
+    return ExaCore(T; backend = backend)
+end
+function ExaCore(backend)
+    @warn "ExaCore(backend) is deprecated. Use ExaCore(T; backend = backend) instead"
+    return ExaCore(; backend = backend)
+end
+
+ExaCore(::Type{T}; backend = nothing, kwargs...) where T <: AbstractFloat = ExaCore(x0 = convert_array(zeros(T,0), backend); backend = backend, kwargs...)
+
 depth(a) = depth(a.inner) + 1
 depth(a::ObjectiveNull) = 0
 depth(a::ConstraintNull) = 0
@@ -227,6 +237,7 @@ function ExaModel(c::C; kwargs...) where {C<:ExaCore}
             y0 = c.y0,
             lcon = c.lcon,
             ucon = c.ucon,
+            minimize = c.minimize,
         ),
         NLPModels.Counters(),
         nothing,

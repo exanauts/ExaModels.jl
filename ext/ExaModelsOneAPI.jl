@@ -2,10 +2,6 @@ module ExaModelsOneAPI
 
 import ExaModels, oneAPI
 
-ExaModels.ExaCore(backend::oneAPI.oneAPIBackend) = ExaModels.ExaCore(Float64, backend)
-ExaModels.ExaCore(T, backend::oneAPI.oneAPIBackend) =
-    ExaModels.ExaCore(x0 = oneAPI.zeros(T, 0), backend = backend)
-
 function ExaModels.append!(
     backend,
     a::A,
