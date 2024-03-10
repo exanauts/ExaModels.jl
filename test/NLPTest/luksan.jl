@@ -13,7 +13,7 @@ end
 
 function _exa_luksan_vlcek_model(backend, N)
 
-    c = ExaCore(backend)
+    c = ExaCore(backend = backend)
     x = variable(c, N; start = (luksan_vlcek_x0(i) for i = 1:N))
     s = constraint(c, luksan_vlcek_con(x, i) for i = 1:N-2)
     objective(c, luksan_vlcek_obj(x, i) for i = 2:N)

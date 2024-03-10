@@ -2,10 +2,6 @@ module ExaModelsAMDGPU
 
 import ExaModels, AMDGPU
 
-ExaModels.ExaCore(backend::AMDGPU.ROCBackend) = ExaModels.ExaCore(Float64, backend)
-ExaModels.ExaCore(T, backend::AMDGPU.ROCBackend) =
-    ExaModels.ExaCore(x0 = AMDGPU.zeros(T, 0), backend = backend)
-
 ExaModels.convert_array(v, backend::AMDGPU.ROCBackend) = AMDGPU.ROCArray(v)
 
 ExaModels.sort!(array::A; lt = isless) where {A<:AMDGPU.ROCVector} =

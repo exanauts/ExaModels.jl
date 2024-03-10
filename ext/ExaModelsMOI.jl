@@ -58,9 +58,10 @@ float_type(::MOIU.Model{T}) where {T} = T
 function ExaModels.ExaModel(jm_cache::MOI.ModelLike; backend = nothing)
 
     T = float_type(jm_cache.model)
+    minimize = jm_cache.model.objective.sense == MOI.MIN_SENSE
 
-    # create exacore;
-    c = ExaModels.ExaCore(T, backend)
+    # create exacore
+    c = ExaModels.ExaCore(T; backend = backend, minimize = minimize)
 
     # variables
     jvars = jm_cache.model.variables
@@ -79,7 +80,6 @@ function ExaModels.ExaModel(jm_cache::MOI.ModelLike; backend = nothing)
 
     # objective
     jobjs = jm_cache.model.objective
-
     bin = BinNull()
 
     for field in SUPPORTED_OBJ_TYPE
