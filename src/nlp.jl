@@ -140,7 +140,7 @@ Base.@kwdef mutable struct ExaCore{T,VT<:AbstractVector{T},B}
 end
 
 # Deprecated as of v0.7
-function ExaCore(::Type{T}, backend) where T <: AbstractFloat
+function ExaCore(::Type{T}, backend) where {T<:AbstractFloat}
     @warn "ExaCore(T, backend) is deprecated. Use ExaCore(T; backend = backend) instead"
     return ExaCore(T; backend = backend)
 end
@@ -149,7 +149,8 @@ function ExaCore(backend)
     return ExaCore(; backend = backend)
 end
 
-ExaCore(::Type{T}; backend = nothing, kwargs...) where T <: AbstractFloat = ExaCore(x0 = convert_array(zeros(T,0), backend); backend = backend, kwargs...)
+ExaCore(::Type{T}; backend = nothing, kwargs...) where {T<:AbstractFloat} =
+    ExaCore(x0 = convert_array(zeros(T, 0), backend); backend = backend, kwargs...)
 
 depth(a) = depth(a.inner) + 1
 depth(a::ObjectiveNull) = 0
