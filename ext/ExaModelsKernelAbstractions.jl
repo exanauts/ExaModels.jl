@@ -568,7 +568,6 @@ end
 
 @kernel function kerg(y, @Const(f), @Const(itr), @Const(x), @Const(adj))
     I = @index(Global)
-    println(I)
     @inbounds ExaModels.grpass(
         f.f(idx(itr, I), ExaModels.AdjointNodeSource(x)),
         f.comp1,
@@ -615,7 +614,12 @@ end
     end
 end
 
-idx(itr, I) = itr[I]
-idx(itr::Base.Iterators.ProductIterator{V}, I) where V = tuple((p[i] for (p,i) in zip(itr.iterators,I))...)
+idx(itr, I) = @inbounds itr[I]
+idx(itr::Base.Iterators.ProductIterator{V}, I) where V =  _idx(I-1, itr.iterators, size(itr))
+function _idx(n, (vec1, vec...), (si1, si...))
+    d, r = divrem(n, si1)
+    return (vec1[r + 1], _idx(d, vec, si)...)
+end
+_idx(n, (vec,), ::Tuple{Int}) = @inbounds vec[n + 1]
 
 end # module ExaModelsKernelAbstractions
