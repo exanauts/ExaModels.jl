@@ -670,6 +670,21 @@ function _con_hprod!(cons, x, y, v, Hv, obj_weight)
     shessian!((Hv, v), nothing, cons, x, y, zero(eltype(Hv)))
 end
 
+idx(itr, I) = @inbounds itr[I]
+idx(itr::Base.Iterators.ProductIterator{V}, I) where V =  _idx(I-1, itr.iterators, Base.size(itr))
+function _idx(n, (vec1, vec...), (si1, si...))
+    d, r = divrem(n, si1)
+    return (vec1[r + 1], _idx(d, vec, si)...)
+end
+_idx(n, (vec,), ::Tuple{Int}) = @inbounds vec[n + 1]
+
+idxx(coord, si) = _idxx(coord, si, 1) + 1
+_idxx((c,coord...), (s,si...), a) = a * (c - 1) + _idxx(coord, si, a*s)
+_idxx(::Tuple{}, ::Tuple{}, a) = 0
+
+coord(itr, i, (f,fs...)) = (f(idx(itr,i), nothing), coord(itr, i, fs)...)
+coord(itr, i, ::Tuple{}) = ()
+
 @inbounds @inline offset0(a, i) = offset0(a.f, i)
 @inbounds @inline offset1(a, i) = offset1(a.f, i)
 @inbounds @inline offset2(a, i) = offset2(a.f, i)
@@ -680,6 +695,7 @@ end
 @inbounds @inline offset0(a::C, i) where {C<:ConstraintAug} = offset0(a.f, a.itr, i)
 @inbounds @inline offset0(f::F, itr, i) where {P<:Pair,F<:SIMDFunction{P}} =
     f.o0 + f.f.first(itr[i], nothing)
+@inbounds @inline offset0(f::F, itr, i) where {P<:Pair,F<:SIMDFunction{P}} = f.o0 + idxx(coord(itr, i, f.f.first), Base.size(itr))
 
 for (thing, val) in [(:solution, 1), (:multipliers_L, 0), (:multipliers_U, 2)]
     @eval begin

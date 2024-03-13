@@ -519,7 +519,7 @@ end
 @kernel function kerh(y1, y2, @Const(f), @Const(itr), @Const(x), @Const(adj1), @Const(adj2))
     I = @index(Global)
     @inbounds ExaModels.hrpass0(
-        f.f(idx(itr, I), ExaModels.SecondAdjointNodeSource(x)),
+        f.f(ExaModels.idx(itr, I), ExaModels.SecondAdjointNodeSource(x)),
         f.comp2,
         y1,
         y2,
@@ -541,7 +541,7 @@ end
 )
     I = @index(Global)
     @inbounds ExaModels.hrpass0(
-        f.f(idx(itr, I), ExaModels.SecondAdjointNodeSource(x)),
+        f.f(ExaModels.idx(itr, I), ExaModels.SecondAdjointNodeSource(x)),
         f.comp2,
         y1,
         y2,
@@ -555,7 +555,7 @@ end
 @kernel function kerj(y1, y2, @Const(f), @Const(itr), @Const(x), @Const(adj))
     I = @index(Global)
     @inbounds ExaModels.jrpass(
-        f.f(idx(itr, I), ExaModels.AdjointNodeSource(x)),
+        f.f(ExaModels.idx(itr, I), ExaModels.AdjointNodeSource(x)),
         f.comp1,
         ExaModels.offset0(f, itr, I),
         y1,
@@ -569,7 +569,7 @@ end
 @kernel function kerg(y, @Const(f), @Const(itr), @Const(x), @Const(adj))
     I = @index(Global)
     @inbounds ExaModels.grpass(
-        f.f(idx(itr, I), ExaModels.AdjointNodeSource(x)),
+        f.f(ExaModels.idx(itr, I), ExaModels.AdjointNodeSource(x)),
         f.comp1,
         y,
         ExaModels.offset1(f, I),
@@ -580,11 +580,11 @@ end
 
 @kernel function kerf(y, @Const(f), @Const(itr), @Const(x))
     I = @index(Global)
-    @inbounds y[ExaModels.offset0(f, itr, I)] = f.f(idx(itr, I), x)
+    @inbounds y[ExaModels.offset0(f, itr, I)] = f.f(ExaModels.idx(itr, I), x)
 end
 @kernel function kerf2(y, @Const(f), @Const(itr), @Const(x), @Const(oa))
     I = @index(Global)
-    @inbounds y[oa+I] = f.f(idx(itr, I), x)
+    @inbounds y[oa+I] = f.f(ExaModels.idx(itr, I), x)
 end
 
 
@@ -613,13 +613,5 @@ end
         end
     end
 end
-
-idx(itr, I) = @inbounds itr[I]
-idx(itr::Base.Iterators.ProductIterator{V}, I) where V =  _idx(I-1, itr.iterators, size(itr))
-function _idx(n, (vec1, vec...), (si1, si...))
-    d, r = divrem(n, si1)
-    return (vec1[r + 1], _idx(d, vec, si)...)
-end
-_idx(n, (vec,), ::Tuple{Int}) = @inbounds vec[n + 1]
 
 end # module ExaModelsKernelAbstractions
