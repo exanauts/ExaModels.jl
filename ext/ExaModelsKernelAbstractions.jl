@@ -137,7 +137,7 @@ function ExaModels.ExaModel(
 end
 
 function _conaug_structure!(backend, cons, sparsity)
-    kers(backend)(sparsity, cons.f, cons.itr, cons.oa; ndrange = length(cons.itr))
+    kers(backend)(sparsity, cons.f, cons.itr, cons.oa; ndrange = size(cons.itr))
     _conaug_structure!(backend, cons.inner, sparsity)
     synchronize(backend)
 end
@@ -214,7 +214,7 @@ function ExaModels.obj(
     end
 end
 function _obj(backend, objbuffer, obj, x)
-    kerf(backend)(objbuffer, obj.f, obj.itr, x; ndrange = length(obj.itr))
+    kerf(backend)(objbuffer, obj.f, obj.itr, x; ndrange = size(obj.itr))
     _obj(backend, objbuffer, obj.inner, x)
     synchronize(backend)
 end
@@ -240,7 +240,7 @@ function ExaModels.cons_nln!(
     end
 end
 function _cons_nln!(backend, y, con::ExaModels.Constraint, x)
-    kerf(backend)(y, con.f, con.itr, x; ndrange = length(con.itr))
+    kerf(backend)(y, con.f, con.itr, x; ndrange = size(con.itr))
     _cons_nln!(backend, y, con.inner, x)
     synchronize(backend)
 end
@@ -252,7 +252,7 @@ end
 
 
 function _conaugs!(backend, y, con::ExaModels.ConstraintAug, x)
-    kerf2(backend)(y, con.f, con.itr, x, con.oa; ndrange = length(con.itr))
+    kerf2(backend)(y, con.f, con.itr, x, con.oa; ndrange = size(con.itr))
     _conaugs!(backend, y, con.inner, x)
     synchronize(backend)
 end
@@ -479,7 +479,7 @@ function ExaModels.sgradient!(
     adj,
 ) where {B<:KernelAbstractions.Backend}
 
-    return kerg(backend)(y, f.f, f.itr, x, adj; ndrange = length(f.itr))
+    return kerg(backend)(y, f.f, f.itr, x, adj; ndrange = size(f.itr))
 end
 
 function ExaModels.sjacobian!(
@@ -490,7 +490,7 @@ function ExaModels.sjacobian!(
     x,
     adj,
 ) where {B<:KernelAbstractions.Backend}
-    return kerj(backend)(y1, y2, f.f, f.itr, x, adj; ndrange = length(f.itr))
+    return kerj(backend)(y1, y2, f.f, f.itr, x, adj; ndrange = size(f.itr))
 end
 
 function ExaModels.shessian!(
@@ -502,7 +502,7 @@ function ExaModels.shessian!(
     adj,
     adj2,
 ) where {B<:KernelAbstractions.Backend}
-    return kerh(backend)(y1, y2, f.f, f.itr, x, adj, adj2; ndrange = length(f.itr))
+    return kerh(backend)(y1, y2, f.f, f.itr, x, adj, adj2; ndrange = size(f.itr))
 end
 
 function ExaModels.shessian!(
@@ -514,7 +514,7 @@ function ExaModels.shessian!(
     adj::V,
     adj2,
 ) where {B<:KernelAbstractions.Backend,V<:AbstractVector}
-    return kerh2(backend)(y1, y2, f.f, f.itr, x, adj, adj2; ndrange = length(f.itr))
+    return kerh2(backend)(y1, y2, f.f, f.itr, x, adj, adj2; ndrange = size(f.itr))
 end
 
 @kernel function kerh(y1, y2, @Const(f), @Const(itr), @Const(x), @Const(adj1), @Const(adj2))

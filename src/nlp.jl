@@ -556,8 +556,8 @@ end
 
 function _cons_nln!(cons, x, g)
     _cons_nln!(cons.inner, x, g)
-    @simd for i in eachindex(cons.itr)
-        g[offset0(cons, i)] += cons.f.f(cons.itr[i], x)
+    for (i,p) in enumerate(cons.itr)
+        g[offset0(cons, i)] += cons.f.f(p, x)
     end
 end
 _cons_nln!(cons::ConstraintNull, x, g) = nothing
