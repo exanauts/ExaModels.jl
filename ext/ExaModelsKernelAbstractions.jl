@@ -478,7 +478,6 @@ function ExaModels.sgradient!(
     x,
     adj,
 ) where {B<:KernelAbstractions.Backend}
-
     return kerg(backend)(y, f.f, f.itr, x, adj; ndrange = size(f.itr))
 end
 
@@ -520,7 +519,7 @@ end
 @kernel function kerh(y1, y2, @Const(f), @Const(itr), @Const(x), @Const(adj1), @Const(adj2))
     I = @index(Global)
     @inbounds ExaModels.hrpass0(
-        f.f(itr[I], ExaModels.SecondAdjointNodeSource(x)),
+        f.f(idx(itr, I), ExaModels.SecondAdjointNodeSource(x)),
         f.comp2,
         y1,
         y2,
@@ -542,7 +541,7 @@ end
 )
     I = @index(Global)
     @inbounds ExaModels.hrpass0(
-        f.f(itr[I], ExaModels.SecondAdjointNodeSource(x)),
+        f.f(idx(itr, I), ExaModels.SecondAdjointNodeSource(x)),
         f.comp2,
         y1,
         y2,
@@ -556,7 +555,7 @@ end
 @kernel function kerj(y1, y2, @Const(f), @Const(itr), @Const(x), @Const(adj))
     I = @index(Global)
     @inbounds ExaModels.jrpass(
-        f.f(itr[I], ExaModels.AdjointNodeSource(x)),
+        f.f(idx(itr, I), ExaModels.AdjointNodeSource(x)),
         f.comp1,
         ExaModels.offset0(f, itr, I),
         y1,
@@ -569,8 +568,9 @@ end
 
 @kernel function kerg(y, @Const(f), @Const(itr), @Const(x), @Const(adj))
     I = @index(Global)
+    println(I)
     @inbounds ExaModels.grpass(
-        f.f(itr[I], ExaModels.AdjointNodeSource(x)),
+        f.f(idx(itr, I), ExaModels.AdjointNodeSource(x)),
         f.comp1,
         y,
         ExaModels.offset1(f, I),
@@ -581,11 +581,11 @@ end
 
 @kernel function kerf(y, @Const(f), @Const(itr), @Const(x))
     I = @index(Global)
-    @inbounds y[ExaModels.offset0(f, itr, I)] = f.f(itr[I], x)
+    @inbounds y[ExaModels.offset0(f, itr, I)] = f.f(idx(itr, I), x)
 end
 @kernel function kerf2(y, @Const(f), @Const(itr), @Const(x), @Const(oa))
     I = @index(Global)
-    @inbounds y[oa+I] = f.f(itr[I], x)
+    @inbounds y[oa+I] = f.f(idx(itr, I), x)
 end
 
 
@@ -614,5 +614,8 @@ end
         end
     end
 end
+
+idx(itr, I) = itr[I]
+idx(itr::Base.Iterators.ProductIterator{V}, I) where V = tuple((p[i] for (p,i) in zip(itr.iterators,I))...)
 
 end # module ExaModelsKernelAbstractions
