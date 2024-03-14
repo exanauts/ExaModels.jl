@@ -123,24 +123,24 @@ end
 
 function runtests()
     @testset "NLP test" begin
-        for (name, args) in NLP_TEST_ARGUMENTS
-            @testset "$name $args" begin
+        for backend in BACKENDS
+            @testset "$backend" begin
+                for (name, args) in NLP_TEST_ARGUMENTS
+                    @testset "$name $args" begin
 
-                exa_model = getfield(@__MODULE__, Symbol("_exa_$(name)_model"))
-                jump_model = getfield(@__MODULE__, Symbol("_jump_$(name)_model"))
+                        exa_model = getfield(@__MODULE__, Symbol("_exa_$(name)_model"))
+                        jump_model = getfield(@__MODULE__, Symbol("_jump_$(name)_model"))
 
-                m, vars0, cons0 = exa_model(nothing, args)
-                m0 = WrapperNLPModel(m)
+                        m, vars0, cons0 = exa_model(nothing, args)
+                        m0 = WrapperNLPModel(m)
 
-                m, vars2, cons2 = jump_model(nothing, args)
-                m2 = MathOptNLPModel(m)
+                        m, vars2, cons2 = jump_model(nothing, args)
+                        m2 = MathOptNLPModel(m)
+                        
+                        set_optimizer(m, MadNLP.Optimizer)
+                        set_optimizer_attribute(m, "print_level", MadNLP.ERROR)
+                        optimize!(m)
 
-                set_optimizer(m, MadNLP.Optimizer)
-                set_optimizer_attribute(m, "print_level", MadNLP.ERROR)
-                optimize!(m)
-
-                for backend in BACKENDS
-                    @testset "$backend" begin
 
                         m, vars1, cons1 = exa_model(backend, args)
                         m1 = WrapperNLPModel(m)
@@ -164,11 +164,21 @@ function runtests()
                                 end
                             end
                         end
-
                         result1 = madnlp(m1; print_level = MadNLP.ERROR)
                         test_api(result1, vars1, cons1, vars2, cons2)
                     end
                 end
+
+                m, vars0, cons0 = exa_luksan_vlcek_model(nothing, args; M = 2)
+                m3 = WrapperNLPModel(m)
+
+                m, vars2, cons2 = jump_luksan_vlcek_model(nothing, args; M = 2)
+                m4 = MathOptNLPModel(m)
+
+                @testset "Multi-column constraints" begin
+                    test_nlp(m3, m4; full = false)
+                end
+
             end
         end
     end

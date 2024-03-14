@@ -507,7 +507,6 @@ function _constraint!(c, f, pars)
     c.nconaug += nitr
     c.nnzj += nitr * f.o1step
     c.nnzh += nitr * f.o2step
-
     c.con = ConstraintAug(c.con, f, convert_array(pars, c.backend), oa)
 end
 
@@ -695,7 +694,7 @@ coord(itr, i, ::Tuple{}) = ()
 @inbounds @inline offset0(a::C, i) where {C<:ConstraintAug} = offset0(a.f, a.itr, i)
 @inbounds @inline offset0(f::F, itr, i) where {P<:Pair,F<:SIMDFunction{P}} =
     f.o0 + f.f.first(itr[i], nothing)
-@inbounds @inline offset0(f::F, itr, i) where {P<:Pair,F<:SIMDFunction{P}} = f.o0 + idxx(coord(itr, i, f.f.first), Base.size(itr))
+@inbounds @inline offset0(f::F, itr, i) where {T<:Tuple,P<:Pair{T},F<:SIMDFunction{P}} = f.o0 + idxx(coord(itr, i, f.f.first), Base.size(itr))
 
 for (thing, val) in [(:solution, 1), (:multipliers_L, 0), (:multipliers_U, 2)]
     @eval begin
