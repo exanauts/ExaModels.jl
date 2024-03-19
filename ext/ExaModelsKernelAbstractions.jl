@@ -477,7 +477,7 @@ function ExaModels.sgradient!(
     f,
     x,
     adj,
-) where {B<:KernelAbstractions.Backend}
+    ) where {B<:KernelAbstractions.Backend}
     return kerg(backend)(y, f.f, f.itr, x, adj; ndrange = size(f.itr))
 end
 

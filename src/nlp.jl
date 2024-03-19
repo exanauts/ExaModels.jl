@@ -487,14 +487,14 @@ function _constraint(c, f, pars, start, lcon, ucon)
 end
 
 function constraint!(c::C, c1, gen::Base.Generator) where {C<:ExaCore}
-    f = SIMDFunction(gen, offset0(c1, 0), c.nnzj, c.nnzh)
+    f = SIMDFunction(gen, offset0(c1, 0), c.nnzj, c.nnzh; tsize = Base.size(c1.itr))
     pars = gen.iter
 
     _constraint!(c, f, pars)
 end
 
 function constraint!(c::C, c1, expr, pars) where {C<:ExaCore}
-    f = _simdfunction(expr, offset0(c1, 0), c.nnzj, c.nnzh)
+    f = _simdfunction(expr, offset0(c1, 0), c.nnzj, c.nnzh; tsize = Base.size(c1.itr))
 
     _constraint!(c, f, pars)
 end
@@ -694,7 +694,7 @@ coord(itr, i, ::Tuple{}) = ()
 @inbounds @inline offset0(a::C, i) where {C<:ConstraintAug} = offset0(a.f, a.itr, i)
 @inbounds @inline offset0(f::F, itr, i) where {P<:Pair,F<:SIMDFunction{P}} =
     f.o0 + f.f.first(itr[i], nothing)
-@inbounds @inline offset0(f::F, itr, i) where {T<:Tuple,P<:Pair{T},F<:SIMDFunction{P}} = f.o0 + idxx(coord(itr, i, f.f.first), Base.size(itr))
+@inbounds @inline offset0(f::F, itr, i) where {T<:Tuple,P<:Pair{T},F<:SIMDFunction{P}} = f.o0 + idxx(coord(itr, i, f.f.first), f.tsize)
 
 for (thing, val) in [(:solution, 1), (:multipliers_L, 0), (:multipliers_U, 2)]
     @eval begin
