@@ -37,8 +37,8 @@ Performs dense gradient evalution
 - `adj`: initial adjoint
 """
 function gradient!(y, f, x, adj)
-    for (k,p) in enumerate(f.itr)
-        @inbounds gradient!(y, f.f.f, x, p, adj)
+    @simd for k in eachindex(f.itr)
+        @inbounds gradient!(y, f.f.f, x, f.itr[k], adj)
     end
     return y
 end
@@ -112,7 +112,7 @@ Performs sparse gradient evalution
 - `adj`: initial adjoint
 """
 function sgradient!(y, f, x, adj)
-     for (k,p) in enumerate(f.itr)
+    @simd for k in eachindex(f.itr)
         @inbounds sgradient!(y, f.f.f, f.itr[k], x, f.itr.comp1, offset1(f, k), adj)
     end
     return y

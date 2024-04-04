@@ -101,12 +101,12 @@ Performs sparse jacobian evalution
 - `adj`: initial adjoint
 """
 function sjacobian!(y1, y2, f, x, adj)
-    for (i,p) in enumerate(f.itr)
+    @simd for i in eachindex(f.itr)
         @inbounds sjacobian!(
             y1,
             y2,
             f.f.f,
-            p,
+            f.itr[i],
             x,
             f.f.comp1,
             offset0(f, i),

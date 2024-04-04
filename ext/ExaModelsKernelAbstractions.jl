@@ -137,7 +137,7 @@ function ExaModels.ExaModel(
 end
 
 function _conaug_structure!(backend, cons, sparsity)
-    kers(backend)(sparsity, cons.f, cons.itr, cons.oa; ndrange = size(cons.itr))
+    kers(backend)(sparsity, cons.f, cons.itr, cons.oa; ndrange = length(cons.itr))
     _conaug_structure!(backend, cons.inner, sparsity)
     synchronize(backend)
 end
@@ -214,7 +214,7 @@ function ExaModels.obj(
     end
 end
 function _obj(backend, objbuffer, obj, x)
-    kerf(backend)(objbuffer, obj.f, obj.itr, x; ndrange = size(obj.itr))
+    kerf(backend)(objbuffer, obj.f, obj.itr, x; ndrange = length(obj.itr))
     _obj(backend, objbuffer, obj.inner, x)
     synchronize(backend)
 end
@@ -240,7 +240,7 @@ function ExaModels.cons_nln!(
     end
 end
 function _cons_nln!(backend, y, con::ExaModels.Constraint, x)
-    kerf(backend)(y, con.f, con.itr, x; ndrange = size(con.itr))
+    kerf(backend)(y, con.f, con.itr, x; ndrange = length(con.itr))
     _cons_nln!(backend, y, con.inner, x)
     synchronize(backend)
 end
@@ -252,7 +252,7 @@ end
 
 
 function _conaugs!(backend, y, con::ExaModels.ConstraintAug, x)
-    kerf2(backend)(y, con.f, con.itr, x, con.oa; ndrange = size(con.itr))
+    kerf2(backend)(y, con.f, con.itr, x, con.oa; ndrange = length(con.itr))
     _conaugs!(backend, y, con.inner, x)
     synchronize(backend)
 end
@@ -477,8 +477,9 @@ function ExaModels.sgradient!(
     f,
     x,
     adj,
-    ) where {B<:KernelAbstractions.Backend}
-    return kerg(backend)(y, f.f, f.itr, x, adj; ndrange = size(f.itr))
+) where {B<:KernelAbstractions.Backend}
+
+    return kerg(backend)(y, f.f, f.itr, x, adj; ndrange = length(f.itr))
 end
 
 function ExaModels.sjacobian!(
@@ -489,7 +490,7 @@ function ExaModels.sjacobian!(
     x,
     adj,
 ) where {B<:KernelAbstractions.Backend}
-    return kerj(backend)(y1, y2, f.f, f.itr, x, adj; ndrange = size(f.itr))
+    return kerj(backend)(y1, y2, f.f, f.itr, x, adj; ndrange = length(f.itr))
 end
 
 function ExaModels.shessian!(
@@ -501,7 +502,7 @@ function ExaModels.shessian!(
     adj,
     adj2,
 ) where {B<:KernelAbstractions.Backend}
-    return kerh(backend)(y1, y2, f.f, f.itr, x, adj, adj2; ndrange = size(f.itr))
+    return kerh(backend)(y1, y2, f.f, f.itr, x, adj, adj2; ndrange = length(f.itr))
 end
 
 function ExaModels.shessian!(
@@ -513,13 +514,13 @@ function ExaModels.shessian!(
     adj::V,
     adj2,
 ) where {B<:KernelAbstractions.Backend,V<:AbstractVector}
-    return kerh2(backend)(y1, y2, f.f, f.itr, x, adj, adj2; ndrange = size(f.itr))
+    return kerh2(backend)(y1, y2, f.f, f.itr, x, adj, adj2; ndrange = length(f.itr))
 end
 
 @kernel function kerh(y1, y2, @Const(f), @Const(itr), @Const(x), @Const(adj1), @Const(adj2))
     I = @index(Global)
     @inbounds ExaModels.hrpass0(
-        f.f(ExaModels.idx(itr, I), ExaModels.SecondAdjointNodeSource(x)),
+        f.f(itr[I], ExaModels.SecondAdjointNodeSource(x)),
         f.comp2,
         y1,
         y2,
@@ -541,7 +542,7 @@ end
 )
     I = @index(Global)
     @inbounds ExaModels.hrpass0(
-        f.f(ExaModels.idx(itr, I), ExaModels.SecondAdjointNodeSource(x)),
+        f.f(itr[I], ExaModels.SecondAdjointNodeSource(x)),
         f.comp2,
         y1,
         y2,
@@ -555,7 +556,7 @@ end
 @kernel function kerj(y1, y2, @Const(f), @Const(itr), @Const(x), @Const(adj))
     I = @index(Global)
     @inbounds ExaModels.jrpass(
-        f.f(ExaModels.idx(itr, I), ExaModels.AdjointNodeSource(x)),
+        f.f(itr[I], ExaModels.AdjointNodeSource(x)),
         f.comp1,
         ExaModels.offset0(f, itr, I),
         y1,
@@ -569,7 +570,7 @@ end
 @kernel function kerg(y, @Const(f), @Const(itr), @Const(x), @Const(adj))
     I = @index(Global)
     @inbounds ExaModels.grpass(
-        f.f(ExaModels.idx(itr, I), ExaModels.AdjointNodeSource(x)),
+        f.f(itr[I], ExaModels.AdjointNodeSource(x)),
         f.comp1,
         y,
         ExaModels.offset1(f, I),
@@ -580,11 +581,11 @@ end
 
 @kernel function kerf(y, @Const(f), @Const(itr), @Const(x))
     I = @index(Global)
-    @inbounds y[ExaModels.offset0(f, itr, I)] = f.f(ExaModels.idx(itr, I), x)
+    @inbounds y[ExaModels.offset0(f, itr, I)] = f.f(itr[I], x)
 end
 @kernel function kerf2(y, @Const(f), @Const(itr), @Const(x), @Const(oa))
     I = @index(Global)
-    @inbounds y[oa+I] = f.f(ExaModels.idx(itr, I), x)
+    @inbounds y[oa+I] = f.f(itr[I], x)
 end
 
 

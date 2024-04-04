@@ -13,7 +13,7 @@ struct Compressor{I}
 end
 @inline (i::Compressor{I})(n) where {I} = @inbounds i.inner[n]
 
-struct SIMDFunction{F,C1,C2,T}
+struct SIMDFunction{F,C1,C2}
     f::F
     comp1::C1
     comp2::C2
@@ -22,7 +22,6 @@ struct SIMDFunction{F,C1,C2,T}
     o2::Int
     o1step::Int
     o2step::Int
-    tsize::T
 end
 
 """
@@ -36,14 +35,14 @@ Returns a `SIMDFunction` using the `gen`.
 - `o1`: offset for the derivative evalution
 - `o2`: offset for the second-order derivative evalution
 """
-function SIMDFunction(gen::Base.Generator, o0 = 0, o1 = 0, o2 = 0; tsize = ())
+function SIMDFunction(gen::Base.Generator, o0 = 0, o1 = 0, o2 = 0)
 
     f = gen.f(Par(eltype(gen.iter)))
 
-    _simdfunction(f, o0, o1, o2; tsize = tsize)
+    _simdfunction(f, o0, o1, o2)
 end
 
-function _simdfunction(f, o0, o1, o2; tsize = ())
+function _simdfunction(f, o0, o1, o2)
     d = f(Identity(), AdjointNodeSource(nothing))
     y1 = []
     ExaModels.grpass(d, nothing, y1, nothing, 0, NaN)
@@ -60,5 +59,5 @@ function _simdfunction(f, o0, o1, o2; tsize = ())
     o2step = length(a2)
     c2 = Compressor(Tuple(findfirst(isequal(i), a2) for i in y2))
 
-    SIMDFunction(f, c1, c2, o0, o1, o2, o1step, o2step, tsize)
+    SIMDFunction(f, c1, c2, o0, o1, o2, o1step, o2step)
 end
