@@ -31,7 +31,7 @@ end
 include("luksan.jl")
 include("power.jl")
 
-function test_nlp(m1, m2; full = false)
+function test_nlp(m1, m2; full = false)[
     @testset "NLP meta tests" begin
         list = [:nvar, :ncon, :x0, :lvar, :uvar, :y0, :lcon, :ucon]
 
@@ -169,10 +169,10 @@ function runtests()
                     end
                 end
 
-                m, vars0, cons0 = exa_luksan_vlcek_model(nothing, args; M = 2)
+                m, vars0, cons0 = exa_luksan_vlcek_model(nothing, 3; M = 2)
                 m3 = WrapperNLPModel(m)
 
-                m, vars2, cons2 = jump_luksan_vlcek_model(nothing, args; M = 2)
+                m, vars2, cons2 = jump_luksan_vlcek_model(nothing, 3; M = 2)
                 m4 = MathOptNLPModel(m)
 
                 @testset "Multi-column constraints" begin
