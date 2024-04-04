@@ -31,7 +31,7 @@ end
 include("luksan.jl")
 include("power.jl")
 
-function test_nlp(m1, m2; full = false)[
+function test_nlp(m1, m2; full = false)
     @testset "NLP meta tests" begin
         list = [:nvar, :ncon, :x0, :lvar, :uvar, :y0, :lcon, :ucon]
 
