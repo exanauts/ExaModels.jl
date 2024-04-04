@@ -223,7 +223,7 @@ julia> result = ipopt(m; print_level=0)    # solve the problem
 
 ```
 """
-function ExaModel(c::C) where {C<:ExaCore}
+function ExaModel(c::C; prod = nothing) where {C<:ExaCore}
     return ExaModel(
         c.obj,
         c.con,
@@ -626,7 +626,7 @@ function hess_coord!(
     x::AbstractVector,
     y::AbstractVector,
     hess::AbstractVector;
-    obj_weight = one(eltype(x)),
+   obj_weight = one(eltype(x)),
 )
 
     fill!(hess, zero(eltype(hess)))

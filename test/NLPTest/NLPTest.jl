@@ -170,7 +170,7 @@ function runtests()
                 end
 
                 m3 = WrapperNLPModel(exa_luksan_vlcek_model(nothing, 3; M = 2))
-                m4 = MathOptNLPModel(jump_luksan_vlcek_model(nothing, 3; M = 2))
+                m4 = jump_luksan_vlcek_model(nothing, 3; M = 2)
 
                 @testset "Multi-column constraints" begin
                     test_nlp(m3, m4; full = false)
