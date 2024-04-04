@@ -254,7 +254,8 @@ end
 )
 
 function append!(backend, a, b::Base.Generator, lb)
-
+    b = _adapt_gen(b)
+    
     la = length(a)
     resize!(a, la + lb)
     map!(b.f, view(a, (la+1):(la+lb)), convert_array(b.iter, backend))
@@ -262,7 +263,7 @@ function append!(backend, a, b::Base.Generator, lb)
 end
 
 function append!(backend, a, b::Base.Generator{UnitRange{I}}, lb) where {I}
-
+    
     la = length(a)
     resize!(a, la + lb)
     map!(b.f, view(a, (la+1):(la+lb)), b.iter)
@@ -777,5 +778,5 @@ function multipliers(result::SolverCore.AbstractExecutionStats, y::Constraint)
 end
 
 
-_adapt_gen(gen) = gen
-_adapt_gen(gen::Base.Generator{P}) where P <: Base.Iterators.ProductIterator = Base.Generator(gen.f, collect(gen.iter))
+_adapt_gen(gen) = Base.Generator(gen.f, collect(gen.iter))
+_adapt_gen(gen::Base.Generator{P}) where P <: Union{AbstractArray,AbstractRange} = gen
