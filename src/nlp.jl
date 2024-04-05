@@ -687,20 +687,20 @@ end
     f.o0 + f.f.first(itr[i], nothing)
 @inbounds @inline offset0(f::F, itr, i) where {T<:Tuple,P<:Pair{T},F<:SIMDFunction{P}} = f.o0 + idxx(coord(itr, i, f.f.first), Base.size(itr))
 
-idx(itr, I) = @inbounds itr[I]
-idx(itr::Base.Iterators.ProductIterator{V}, I) where V =  _idx(I-1, itr.iterators, Base.size(itr))
-function _idx(n, (vec1, vec...), (si1, si...))
+@inline idx(itr, I) = @inbounds itr[I]
+@inline idx(itr::Base.Iterators.ProductIterator{V}, I) where V =  _idx(I-1, itr.iterators, Base.size(itr))
+@inline function _idx(n, (vec1, vec...), (si1, si...))
     d, r = divrem(n, si1)
     return (vec1[r + 1], _idx(d, vec, si)...)
 end
-_idx(n, (vec,), ::Tuple{Int}) = @inbounds vec[n + 1]
+@inline _idx(n, (vec,), ::Tuple{Int}) = @inbounds vec[n + 1]
 
-idxx(coord, si) = _idxx(coord, si, 1) + 1
-_idxx((c,coord...), (s,si...), a) = a * (c - 1) + _idxx(coord, si, a*s)
-_idxx(::Tuple{}, ::Tuple{}, a) = 0
+@inline idxx(coord, si) = _idxx(coord, si, 1) + 1
+@inline _idxx(coord, si, a) = a * (coord[1] - 1) + _idxx(coord[2:end], si[2:end], a*si[1])
+@inline _idxx(::Tuple{}, ::Tuple{}, a) = 0
 
-coord(itr, i, (f,fs...)) = (f(idx(itr,i), nothing), coord(itr, i, fs)...)
-coord(itr, i, ::Tuple{}) = ()
+@inline coord(itr, i, (f,fs...)) = (f(idx(itr,i), nothing), coord(itr, i, fs)...)
+@inline coord(itr, i, ::Tuple{}) = ()
 
 for (thing, val) in [(:solution, 1), (:multipliers_L, 0), (:multipliers_U, 2)]
     @eval begin
