@@ -8,6 +8,7 @@ struct ConstraintNull <: AbstractConstraint end
 
 struct Variable{S,O} <: AbstractVariable
     size::S
+    length::O
     offset::O
 end
 Base.show(io::IO, v::Variable) = print(
@@ -245,13 +246,20 @@ function ExaModel(c::C; prod = nothing) where {C<:ExaCore}
     )
 end
 
-@inline Base.getindex(v::V, i) where {V<:Variable} =
-    Var(i + (v.offset - _start(v.size[1]) + 1))
-@inline Base.getindex(v::V, i, j) where {V<:Variable} = Var(
-    i +
-    j * _length(v.size[1]) +
-    (v.offset - _start(v.size[1]) + 1 - _start(v.size[2]) * _length(v.size[1])),
+@inline Base.getindex(v::V, i) where {V<:Variable} = Var(
+    _bound_check(v.offset, v.length, i + (v.offset - _start(v.size[1]) + 1))
 )
+@inline Base.getindex(v::V, is...) where {V<:Variable} = Var(
+    _bound_check(v.offset, v.length, v.offset + idxx(is .- (_start.(v.size) .- 1), _length.(v.size)))
+)
+function _bound_check(offset, length, i::I) where I <: Integer
+    @assert(offset +1 <= i <= offset + length, "Variable out of bound")
+    return i
+end
+function _bound_check(offset, length, i)
+    return i
+end
+
 
 function append!(backend, a, b::Base.Generator, lb)
     b = _adapt_gen(b)
@@ -332,12 +340,13 @@ function variable(
 
 
     o = c.nvar
-    c.nvar += total(ns)
+    len = total(ns)
+    c.nvar += len
     c.x0 = append!(c.backend, c.x0, start, total(ns))
     c.lvar = append!(c.backend, c.lvar, lvar, total(ns))
     c.uvar = append!(c.backend, c.uvar, uvar, total(ns))
 
-    return Variable(ns, o)
+    return Variable(ns, len, o)
 
 end
 
