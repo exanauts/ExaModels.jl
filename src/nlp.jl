@@ -340,10 +340,7 @@ function variable(
 
 end
 
-function variable(
-    c::C;
-    kwargs...
-    ) where {T,C<:ExaCore{T}}
+function variable(c::C; kwargs...) where {T,C<:ExaCore{T}}
 
     return variable(c, 1; kwargs...)[1]
 end
@@ -381,7 +378,7 @@ end
 
 Adds objective terms specified by a `expr` and `pars` to `core`, and returns an `Objective` object.
 """
-function objective(c::C, expr::N, pars = 1:1) where {C<: ExaCore, N<:AbstractNode}
+function objective(c::C, expr::N, pars = 1:1) where {C<:ExaCore,N<:AbstractNode}
     f = _simdfunction(expr, c.nobj, c.nnzg, c.nnzh)
 
     _objective(c, f, pars)
@@ -721,7 +718,8 @@ for (thing, val) in [(:solution, 1), (:multipliers_L, 0), (:multipliers_U, 2)]
     end
 end
 
-solution(result::SolverCore.AbstractExecutionStats, x::Var{I}) where I = return result.solution[x.i]
+solution(result::SolverCore.AbstractExecutionStats, x::Var{I}) where {I} =
+    return result.solution[x.i]
 
 
 """
