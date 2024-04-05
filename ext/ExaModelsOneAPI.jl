@@ -7,7 +7,7 @@ function ExaModels.append!(
     a::A,
     b::Base.Generator{UnitRange{I}},
     lb,
-) where {I,A<:oneAPI.oneVector}
+) where {I,A<:oneAPI.oneArray}
     la = length(a)
     aa = similar(a, la + lb)
     copyto!(view(aa, 1:la), a)
@@ -15,7 +15,7 @@ function ExaModels.append!(
     return aa
 end
 
-function ExaModels.append!(backend, a::A, b::Base.Generator, lb) where {A<:oneAPI.oneVector}
+function ExaModels.append!(backend, a::A, b::Base.Generator, lb) where {A<:oneAPI.oneArray}
     la = length(a)
     aa = similar(a, la + lb)
     copyto!(view(aa, 1:la), a)
@@ -29,7 +29,7 @@ function ExaModels.append!(
     a::A,
     b::V,
     lb,
-) where {A<:oneAPI.oneVector,V<:AbstractVector}
+) where {A<:oneAPI.oneArray,V<:AbstractArray}
     la = length(a)
     aa = similar(a, la + lb)
     copyto!(view(aa, 1:la), a)
@@ -38,7 +38,7 @@ function ExaModels.append!(
 end
 
 
-function ExaModels.append!(backend, a::A, b::Number, lb) where {A<:oneAPI.oneVector}
+function ExaModels.append!(backend, a::A, b::Number, lb) where {A<:oneAPI.oneArray}
     la = length(a)
     aa = similar(a, la + lb)
     copyto!(view(aa, 1:la), a)
@@ -48,16 +48,16 @@ end
 
 ExaModels.convert_array(v, backend::oneAPI.oneAPIBackend) = oneAPI.oneArray(v)
 
-ExaModels.sort!(array::A; lt = isless) where {A<:oneAPI.oneVector} =
+ExaModels.sort!(array::A; lt = isless) where {A<:oneAPI.oneArray} =
     copyto!(array, sort!(Array(array); lt = lt))
 
 # below is type piracy
-function Base.findall(f::F, bitarray::A) where {F<:Function,A<:oneAPI.oneVector}
+function Base.findall(f::F, bitarray::A) where {F<:Function,A<:oneAPI.oneArray}
     a = Array(bitarray)
     b = findall(f, a)
     c = similar(bitarray, eltype(b), length(b))
     return copyto!(c, b)
 end
-Base.findall(bitarray::A) where {A<:oneAPI.oneVector} = Base.findall(identity, bitarray)
+Base.findall(bitarray::A) where {A<:oneAPI.oneArray} = Base.findall(identity, bitarray)
 
 end # module
