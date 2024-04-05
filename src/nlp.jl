@@ -246,18 +246,31 @@ function ExaModel(c::C; prod = nothing) where {C<:ExaCore}
     )
 end
 
-@inline Base.getindex(v::V, i) where {V<:Variable} = Var(
-    _bound_check(v.offset, v.length, i + (v.offset - _start(v.size[1]) + 1))
-)
-@inline Base.getindex(v::V, is...) where {V<:Variable} = Var(
-    _bound_check(v.offset, v.length, v.offset + idxx(is .- (_start.(v.size) .- 1), _length.(v.size)))
-)
-function _bound_check(offset, length, i::I) where I <: Integer
-    @assert(offset +1 <= i <= offset + length, "Variable out of bound")
-    return i
+@inline function Base.getindex(v::V, i) where {V<:Variable}
+    _bound_check(v.size, i)
+    Var(i + (v.offset - _start(v.size[1]) + 1))
 end
-function _bound_check(offset, length, i)
-    return i
+@inline function Base.getindex(v::V, is...) where {V<:Variable}
+    @assert(length(is) == length(v.size), "Variable index dimension error")
+    _bound_check(v.size, is)
+    Var(v.offset + idxx(is .- (_start.(v.size) .- 1), _length.(v.size)))
+end
+
+function _bound_check(sizes, i::I) where I <: Integer
+    __bound_check(sizes[1], i)
+end
+function _bound_check(sizes, is::NTuple{N,I}) where {I <: Integer, N}
+    __bound_check(sizes[1], is[1])
+    _bound_check(sizes[2:end], is[2:end])
+end
+_bound_check(sizes, is) = nothing
+_bound_check(sizes, is::Tuple{}) = nothing
+
+function __bound_check(a::I,b::I) where I <: Integer
+    @assert(1<= b <= a, "Variable index bound error")
+end
+function __bound_check(a::UnitRange{Int},b::I) where I <: Integer
+    @assert(b in a, "Variable index bound error")
 end
 
 
