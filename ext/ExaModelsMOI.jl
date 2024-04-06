@@ -334,13 +334,14 @@ end
 function _exafy(e::MOI.ScalarAffineFunction{T}, p = ()) where {T}
     ec = if !isempty(e.terms)
         sum(begin
-                c1, p = _exafy(term, p)
-                c1
-            end for term in e.terms) + ExaModels.ParIndexed(ExaModels.ParSource(), length(p) + 1)
+            c1, p = _exafy(term, p)
+            c1
+        end for term in e.terms) +
+        ExaModels.ParIndexed(ExaModels.ParSource(), length(p) + 1)
     else
         ExaModels.ParIndexed(ExaModels.ParSource(), length(p) + 1)
     end
-    
+
     return ec, (p..., e.constant)
 end
 

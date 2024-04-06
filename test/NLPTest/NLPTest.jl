@@ -136,7 +136,7 @@ function runtests()
 
                         m, vars2, cons2 = jump_model(nothing, args)
                         m2 = MathOptNLPModel(m)
-                        
+
                         set_optimizer(m, MadNLP.Optimizer)
                         set_optimizer_attribute(m, "print_level", MadNLP.ERROR)
                         optimize!(m)

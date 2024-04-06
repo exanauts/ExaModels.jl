@@ -256,27 +256,27 @@ end
     Var(v.offset + idxx(is .- (_start.(v.size) .- 1), _length.(v.size)))
 end
 
-function _bound_check(sizes, i::I) where I <: Integer
+function _bound_check(sizes, i::I) where {I<:Integer}
     __bound_check(sizes[1], i)
 end
-function _bound_check(sizes, is::NTuple{N,I}) where {I <: Integer, N}
+function _bound_check(sizes, is::NTuple{N,I}) where {I<:Integer,N}
     __bound_check(sizes[1], is[1])
     _bound_check(sizes[2:end], is[2:end])
 end
 _bound_check(sizes, is) = nothing
 _bound_check(sizes, is::Tuple{}) = nothing
 
-function __bound_check(a::I,b::I) where I <: Integer
-    @assert(1<= b <= a, "Variable index bound error")
+function __bound_check(a::I, b::I) where {I<:Integer}
+    @assert(1 <= b <= a, "Variable index bound error")
 end
-function __bound_check(a::UnitRange{Int},b::I) where I <: Integer
+function __bound_check(a::UnitRange{Int}, b::I) where {I<:Integer}
     @assert(b in a, "Variable index bound error")
 end
 
 
 function append!(backend, a, b::Base.Generator, lb)
     b = _adapt_gen(b)
-    
+
     la = length(a)
     resize!(a, la + lb)
     map!(b.f, view(a, (la+1):(la+lb)), convert_array(b.iter, backend))
@@ -284,7 +284,7 @@ function append!(backend, a, b::Base.Generator, lb)
 end
 
 function append!(backend, a, b::Base.Generator{UnitRange{I}}, lb) where {I}
-    
+
     la = length(a)
     resize!(a, la + lb)
     map!(b.f, view(a, (la+1):(la+lb)), b.iter)
@@ -450,8 +450,8 @@ function constraint(
     start = zero(T),
     lcon = zero(T),
     ucon = zero(T),
-    ) where {T,C<:ExaCore{T}}
-    
+) where {T,C<:ExaCore{T}}
+
     gen = _adapt_gen(gen)
     f = SIMDFunction(gen, c.ncon, c.nnzj, c.nnzh)
     pars = gen.iter
@@ -512,7 +512,7 @@ function _constraint(c, f, pars, start, lcon, ucon)
 end
 
 function constraint!(c::C, c1, gen::Base.Generator) where {C<:ExaCore}
-    
+
     gen = _adapt_gen(gen)
     f = SIMDFunction(gen, offset0(c1, 0), c.nnzj, c.nnzh)
     pars = gen.iter
@@ -648,7 +648,7 @@ function hess_coord!(
     x::AbstractVector,
     y::AbstractVector,
     hess::AbstractVector;
-   obj_weight = one(eltype(x)),
+    obj_weight = one(eltype(x)),
 )
 
     fill!(hess, zero(eltype(hess)))
@@ -707,21 +707,23 @@ end
 @inbounds @inline offset0(a::C, i) where {C<:ConstraintAug} = offset0(a.f, a.itr, i)
 @inbounds @inline offset0(f::F, itr, i) where {P<:Pair,F<:SIMDFunction{P}} =
     f.o0 + f.f.first(itr[i], nothing)
-@inbounds @inline offset0(f::F, itr, i) where {T<:Tuple,P<:Pair{T},F<:SIMDFunction{P}} = f.o0 + idxx(coord(itr, i, f.f.first), Base.size(itr))
+@inbounds @inline offset0(f::F, itr, i) where {T<:Tuple,P<:Pair{T},F<:SIMDFunction{P}} =
+    f.o0 + idxx(coord(itr, i, f.f.first), Base.size(itr))
 
 @inline idx(itr, I) = @inbounds itr[I]
-@inline idx(itr::Base.Iterators.ProductIterator{V}, I) where V =  _idx(I-1, itr.iterators, Base.size(itr))
+@inline idx(itr::Base.Iterators.ProductIterator{V}, I) where {V} =
+    _idx(I - 1, itr.iterators, Base.size(itr))
 @inline function _idx(n, (vec1, vec...), (si1, si...))
     d, r = divrem(n, si1)
-    return (vec1[r + 1], _idx(d, vec, si)...)
+    return (vec1[r+1], _idx(d, vec, si)...)
 end
-@inline _idx(n, (vec,), ::Tuple{Int}) = @inbounds vec[n + 1]
+@inline _idx(n, (vec,), ::Tuple{Int}) = @inbounds vec[n+1]
 
 @inline idxx(coord, si) = _idxx(coord, si, 1) + 1
-@inline _idxx(coord, si, a) = a * (coord[1] - 1) + _idxx(coord[2:end], si[2:end], a*si[1])
+@inline _idxx(coord, si, a) = a * (coord[1] - 1) + _idxx(coord[2:end], si[2:end], a * si[1])
 @inline _idxx(::Tuple{}, ::Tuple{}, a) = 0
 
-@inline coord(itr, i, (f,fs...)) = (f(idx(itr,i), nothing), coord(itr, i, fs)...)
+@inline coord(itr, i, (f, fs...)) = (f(idx(itr, i), nothing), coord(itr, i, fs)...)
 @inline coord(itr, i, ::Tuple{}) = ()
 
 for (thing, val) in [(:solution, 1), (:multipliers_L, 0), (:multipliers_U, 2)]
@@ -801,4 +803,4 @@ end
 
 
 _adapt_gen(gen) = Base.Generator(gen.f, collect(gen.iter))
-_adapt_gen(gen::Base.Generator{P}) where P <: Union{AbstractArray,AbstractRange} = gen
+_adapt_gen(gen::Base.Generator{P}) where {P<:Union{AbstractArray,AbstractRange}} = gen
