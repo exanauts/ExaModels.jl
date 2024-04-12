@@ -19,7 +19,7 @@ function quadrotor_model(N = 3; backend = nothing)
     itr1 = [(i, j, Q[j], d(i, j, N)) for (i, j) in Base.product(1:N, 1:n)]
     itr2 = [(j, Qf[j], d(N + 1, j, N)) for j = 1:n]
 
-    c = ExaCore(backend)
+    c = ExaCore(; backend = backend)
 
     x = variable(c, 1:N+1, 1:n)
     u = variable(c, 1:N, 1:p)
