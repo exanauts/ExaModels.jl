@@ -32,7 +32,7 @@ end
 # Now we simply modify this by
 function luksan_vlcek_model(N, backend = nothing)
 
-    c = ExaCore(backend) # specify the backend
+    c = ExaCore(; backend = backend) # specify the backend
     x = variable(c, N; start = (luksan_vlcek_x0(i) for i = 1:N))
     constraint(c, luksan_vlcek_con(x, i) for i = 1:N-2)
     objective(c, luksan_vlcek_obj(x, i) for i = 2:N)
@@ -47,23 +47,22 @@ using ExaModels, NLPModelsIpopt, KernelAbstractions
 m = luksan_vlcek_model(10, CPU())
 ipopt(m)
 
-# For NVIDIA GPUs, we can use `CUDABackend`. However, currently, there are not many optimization solvers that are capable of solving problems on GPUs. The only option right now is using [a development branch in MadNLP.jl](https://github.com/MadNLP/MadNLP.jl/tree/ss/sparse_condensed_2). To use this, first install
+# For NVIDIA GPUs, we can use `CUDABackend`. However, currently, there are not many optimization solvers that are capable of solving problems on GPUs. The only option right now is using [MadNLP.jl](https://github.com/MadNLP/MadNLP.jl). To use this, first install
 # ```julia
-# import Pkg; Pkg.add(name = "MadNLP", rev="ss/sparse_condensed_2")
+# import Pkg; Pkg.add("MadNLPGPU")
 # ```
 # Then, we can run:
 # ```julia
-# using CUDA, MadNLP, MadNLPGPU
+# using CUDA, MadNLPGPU
 # 
 # m = luksan_vlcek_model(10, CUDABackend())
 # madnlp(m)
 # ```
 
-
 # In the case we have arrays for the data, what we need to do is to simply convert the array types to the corresponding device array types. In particular,
 
 function cuda_luksan_vlcek_model(N)
-    c = ExaCore(CUDABackend())
+    c = ExaCore(; backend = CUDABackend())
     d1 = CuArray(1:N-2)
     d2 = CuArray(2:N)
     d3 = CuArray([luksan_vlcek_x0(i) for i = 1:N])
