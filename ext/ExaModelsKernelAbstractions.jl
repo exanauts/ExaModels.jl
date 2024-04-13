@@ -499,7 +499,7 @@ function ExaModels.sjacobian!(
     f,
     x,
     adj,
-    ) where {B<:KernelAbstractions.Backend}
+) where {B<:KernelAbstractions.Backend}
     if !isempty(f.itr)
         kerj(backend)(y1, y2, f.f, f.itr, x, adj; ndrange = length(f.itr))
     end
@@ -527,7 +527,7 @@ function ExaModels.shessian!(
     x,
     adj::V,
     adj2,
-    ) where {B<:KernelAbstractions.Backend,V<:AbstractVector}
+) where {B<:KernelAbstractions.Backend,V<:AbstractVector}
     if !isempty(f.itr)
         kerh2(backend)(y1, y2, f.f, f.itr, x, adj, adj2; ndrange = length(f.itr))
     end
