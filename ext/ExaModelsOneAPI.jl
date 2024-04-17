@@ -16,11 +16,11 @@ function ExaModels.append!(
 end
 
 function ExaModels.append!(backend, a::A, b::Base.Generator, lb) where {A<:oneAPI.oneArray}
+    b = ExaModels._adapt_gen(b)
     la = length(a)
     aa = similar(a, la + lb)
     copyto!(view(aa, 1:la), a)
-    copyto!(view(aa, (la+1):(la+lb)), b)
-    map!(b.f, view(aa, (la+1):(la+lb)), view(aa, (la+1):(la+lb)))
+    map!(b.f, view(aa, (la+1):(la+lb)), ExaModels.convert_array(b.iter, backend))
     return aa
 end
 
