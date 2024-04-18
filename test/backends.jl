@@ -1,21 +1,23 @@
 const BACKENDS = Any[nothing, CPU()]
 
-if CUDA.has_cuda()
+try
+    CUDA.zeros(1)
     push!(BACKENDS, CUDABackend())
     @info "including CUDA"
-else
+catch e
     @info "excluding CUDA"
 end
 
-if AMDGPU.has_rocm_gpu()
+try
+    AMDGPU.zeros(1)
     push!(BACKENDS, ROCBackend())
     @info "including AMDGPU"
-else
+catch e
     @info "excluding AMDGPU"
 end
 
 try
-    oneAPI.oneL0.zeInit(0)
+    oneAPI.zeros(1)
     push!(BACKENDS, oneAPIBackend())
     @info "including oneAPI"
 catch e
