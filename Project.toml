@@ -32,7 +32,7 @@ ExaModelsIpopt = ["MathOptInterface", "NLPModelsIpopt"]
 ExaModelsMadNLP = ["MadNLP", "MathOptInterface"]
 
 [compat]
-AMDGPU = "0.7"
+AMDGPU = "0.7, 0.8"
 CUDA = "5"
 KernelAbstractions = "0.9"
 NLPModels = "0.18, 0.19, 0.20"
