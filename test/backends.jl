@@ -1,23 +1,25 @@
 const BACKENDS = Any[nothing, CPU()]
 
-if CUDA.has_cuda()
+if haskey(ENV, "EXAMODELS_TEST_CUDA")
+    using CUDA
     push!(BACKENDS, CUDABackend())
     @info "including CUDA"
 else
     @info "excluding CUDA"
 end
 
-if AMDGPU.has_rocm_gpu()
+if haskey(ENV, "EXAMODELS_TEST_AMDGPU")
+    using AMDGPU
     push!(BACKENDS, ROCBackend())
     @info "including AMDGPU"
 else
     @info "excluding AMDGPU"
 end
 
-try
-    oneAPI.oneL0.zeInit(0)
+if haskey(ENV, "EXAMODELS_TEST_ONEAPI")
+    using oneAPI
     push!(BACKENDS, oneAPIBackend())
     @info "including oneAPI"
-catch e
+else
     @info "excluding oneAPI"
 end
