@@ -1,6 +1,6 @@
 using Test, ExaModels
 using Random
-using KernelAbstractions, CUDA, AMDGPU, oneAPI
+using KernelAbstractions
 
 Random.seed!(0)
 
