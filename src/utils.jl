@@ -382,6 +382,7 @@ Base.show(io::IO, ::MIME"text/plain", e::TimedNLPModel) = Base.print(io, e);
 struct CompressedNLPModel{
     T,
     VT<:AbstractVector{T},
+    B,
     VI<:AbstractVector{Int},
     VI2<:AbstractVector{Tuple{Tuple{Int,Int},Int}},
     M<:NLPModels.AbstractNLPModel{T,VT},
@@ -394,41 +395,43 @@ struct CompressedNLPModel{
     hsparsity::VI2
     buffer::VT
 
+    backend::B
     meta::NLPModels.NLPModelMeta{T,VT}
     counters::NLPModels.Counters
 end
 
-function getptr(array)
+function getptr(backend::Nothing, array; cmp = (x,y) -> x != y)
     return push!(
         pushfirst!(
-            findall(_is_sparsity_not_equal.(@view(array[1:end-1]), @view(array[2:end]))) .+=
+            findall(cmp.(@view(array[1:end-1]), @view(array[2:end]))) .+=
                 1,
             1,
         ),
         length(array) + 1,
     )
 end
-_is_sparsity_not_equal(a, b) = first(a) != first(b)
 
 function CompressedNLPModel(m)
 
     nnzj = NLPModels.get_nnzj(m)
-    Ibuffer = Vector{Int}(undef, nnzj)
-    Jbuffer = Vector{Int}(undef, nnzj)
+    Ibuffer = similar(m.meta.x0, Int, nnzj)
+    Jbuffer = similar(m.meta.x0, Int, nnzj)
     NLPModels.jac_structure!(m, Ibuffer, Jbuffer)
 
-    jsparsity = map((k, i, j) -> ((j, i), k), 1:nnzj, Ibuffer, Jbuffer)
+    backend = getbackend(m)
+
+    jsparsity = get_compressed_sparsity(nnzj, Ibuffer, Jbuffer, backend)
     sort!(jsparsity; lt = (a, b) -> a[1] < b[1])
-    jptr = getptr(jsparsity)
+    jptr = getptr(backend, jsparsity; cmp = (a, b) -> first(a) != first(b))
 
     nnzh = NLPModels.get_nnzh(m)
     resize!(Ibuffer, nnzh)
     resize!(Jbuffer, nnzh)
     NLPModels.hess_structure!(m, Ibuffer, Jbuffer)
 
-    hsparsity = map((k, i, j) -> ((j, i), k), 1:nnzh, Ibuffer, Jbuffer)
+    hsparsity = get_compressed_sparsity(nnzh, Ibuffer, Jbuffer, backend)
     sort!(hsparsity; lt = (a, b) -> a[1] < b[1])
-    hptr = getptr(hsparsity)
+    hptr = getptr(backend, hsparsity; cmp = (a, b) -> first(a) != first(b))
 
     buffer = similar(m.meta.x0, max(nnzj, nnzh))
 
@@ -447,8 +450,11 @@ function CompressedNLPModel(m)
 
     counters = NLPModels.Counters()
 
-    return CompressedNLPModel(m, jptr, jsparsity, hptr, hsparsity, buffer, meta, counters)
+    return CompressedNLPModel(m, jptr, jsparsity, hptr, hsparsity, buffer, backend, meta, counters)
 end
+
+getbackend(m) = nothing
+get_compressed_sparsity(nnz, Ibuffer, Jbuffer, backend::Nothing) = map((k, i, j) -> ((j, i), k), 1:nnz, Ibuffer, Jbuffer)
 
 function NLPModels.obj(m::CompressedNLPModel, x::AbstractVector)
     NLPModels.obj(m.inner, x)
@@ -464,7 +470,7 @@ end
 
 function NLPModels.jac_coord!(m::CompressedNLPModel, x::AbstractVector, j::AbstractVector)
     NLPModels.jac_coord!(m.inner, x, m.buffer)
-    _compress!(j, m.buffer, m.jptr, m.jsparsity)
+    _compress!(j, m.buffer, m.jptr, m.jsparsity, m.backend)
 end
 
 function NLPModels.hess_coord!(
@@ -475,7 +481,7 @@ function NLPModels.hess_coord!(
     obj_weight = 1.0,
 )
     NLPModels.hess_coord!(m.inner, x, y, m.buffer; obj_weight = obj_weight)
-    _compress!(h, m.buffer, m.hptr, m.hsparsity)
+    _compress!(h, m.buffer, m.hptr, m.hsparsity, m.backend)
 end
 
 function NLPModels.jac_structure!(
@@ -483,7 +489,7 @@ function NLPModels.jac_structure!(
     I::AbstractVector,
     J::AbstractVector,
 )
-    _structure!(I, J, m.jptr, m.jsparsity)
+    _structure!(I, J, m.jptr, m.jsparsity, m.backend)
 end
 
 function NLPModels.hess_structure!(
@@ -491,10 +497,10 @@ function NLPModels.hess_structure!(
     I::AbstractVector,
     J::AbstractVector,
 )
-    _structure!(I, J, m.hptr, m.hsparsity)
+    _structure!(I, J, m.hptr, m.hsparsity, m.backend)
 end
 
-function _compress!(V, buffer, ptr, sparsity)
+function _compress!(V, buffer, ptr, sparsity, backend::Nothing)
     fill!(V, zero(eltype(V)))
     @simd for i = 1:length(ptr)-1
         for j = ptr[i]:ptr[i+1]-1
@@ -503,7 +509,7 @@ function _compress!(V, buffer, ptr, sparsity)
     end
 end
 
-function _structure!(I, J, ptr, sparsity)
+function _structure!(I, J, ptr, sparsity, backend::Nothing)
     @simd for i = 1:length(ptr)-1
         J[i], I[i] = sparsity[ptr[i]][1]
     end
