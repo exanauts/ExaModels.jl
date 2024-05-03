@@ -410,8 +410,12 @@ end
 function CompressedNLPModel(m)
 
     nnzj = NLPModels.get_nnzj(m)
-    Ibuffer = similar(m.meta.x0, Int, nnzj)
-    Jbuffer = similar(m.meta.x0, Int, nnzj)
+    nnzh = NLPModels.get_nnzh(m)
+
+    Ibuffer = similar(m.meta.x0, Int, max(nnzj, nnzh))
+    Jbuffer = similar(m.meta.x0, Int, max(nnzj, nnzh))
+    buffer  = similar(m.meta.x0, max(nnzj, nnzh))
+
     NLPModels.jac_structure!(m, Ibuffer, Jbuffer)
 
     backend = getbackend(m)
@@ -420,16 +424,12 @@ function CompressedNLPModel(m)
     sort!(jsparsity; lt = (a, b) -> a[1] < b[1])
     jptr = getptr(backend, jsparsity; cmp = (a, b) -> first(a) != first(b))
 
-    nnzh = NLPModels.get_nnzh(m)
-    resize!(Ibuffer, nnzh)
-    resize!(Jbuffer, nnzh)
     NLPModels.hess_structure!(m, Ibuffer, Jbuffer)
 
     hsparsity = get_compressed_sparsity(nnzh, Ibuffer, Jbuffer, backend)
     sort!(hsparsity; lt = (a, b) -> a[1] < b[1])
     hptr = getptr(backend, hsparsity; cmp = (a, b) -> first(a) != first(b))
 
-    buffer = similar(m.meta.x0, max(nnzj, nnzh))
 
     meta = NLPModels.NLPModelMeta(
         m.meta.nvar,
