@@ -400,13 +400,9 @@ struct CompressedNLPModel{
     counters::NLPModels.Counters
 end
 
-function getptr(backend::Nothing, array; cmp = (x,y) -> x != y)
+function getptr(backend::Nothing, array; cmp = (x, y) -> x != y)
     return push!(
-        pushfirst!(
-            findall(cmp.(@view(array[1:end-1]), @view(array[2:end]))) .+=
-                1,
-            1,
-        ),
+        pushfirst!(findall(cmp.(@view(array[1:end-1]), @view(array[2:end]))) .+= 1, 1),
         length(array) + 1,
     )
 end
@@ -450,11 +446,22 @@ function CompressedNLPModel(m)
 
     counters = NLPModels.Counters()
 
-    return CompressedNLPModel(m, jptr, jsparsity, hptr, hsparsity, buffer, backend, meta, counters)
+    return CompressedNLPModel(
+        m,
+        jptr,
+        jsparsity,
+        hptr,
+        hsparsity,
+        buffer,
+        backend,
+        meta,
+        counters,
+    )
 end
 
 getbackend(m) = nothing
-get_compressed_sparsity(nnz, Ibuffer, Jbuffer, backend::Nothing) = map((k, i, j) -> ((j, i), k), 1:nnz, Ibuffer, Jbuffer)
+get_compressed_sparsity(nnz, Ibuffer, Jbuffer, backend::Nothing) =
+    map((k, i, j) -> ((j, i), k), 1:nnz, Ibuffer, Jbuffer)
 
 function NLPModels.obj(m::CompressedNLPModel, x::AbstractVector)
     NLPModels.obj(m.inner, x)
