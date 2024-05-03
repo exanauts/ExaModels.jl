@@ -13,7 +13,7 @@ t = @elapsed begin
     m = ExaModel(c)
 end
 
-println(&quot;$t seconds elapsed&quot;)</code></pre><pre><code class="nohighlight hljs">0.098147285 seconds elapsed
+println(&quot;$t seconds elapsed&quot;)</code></pre><pre><code class="nohighlight hljs">0.075701735 seconds elapsed
 </code></pre><p>Even at the second call,</p><pre><code class="language-julia hljs">t = @elapsed begin
     c = ExaCore()
     N = 10
@@ -26,7 +26,7 @@ println(&quot;$t seconds elapsed&quot;)</code></pre><pre><code class="nohighligh
     m = ExaModel(c)
 end
 
-println(&quot;$t seconds elapsed&quot;)</code></pre><pre><code class="nohighlight hljs">0.07499561 seconds elapsed
+println(&quot;$t seconds elapsed&quot;)</code></pre><pre><code class="nohighlight hljs">0.076056381 seconds elapsed
 </code></pre><p>the model creation time can be slightly reduced but the compilation time is still quite significant.</p><p>But instead, if you create a function, we can significantly reduce the model creation time.</p><pre><code class="language-julia hljs">function luksan_vlcek_model(N)
     c = ExaCore()
     x = variable(c, N; start = (mod(i, 2) == 1 ? -1.2 : 1.0 for i = 1:N))
@@ -40,9 +40,9 @@ println(&quot;$t seconds elapsed&quot;)</code></pre><pre><code class="nohighligh
 end
 
 t = @elapsed luksan_vlcek_model(N)
-println(&quot;$t seconds elapsed&quot;)</code></pre><pre><code class="nohighlight hljs">0.087910893 seconds elapsed
+println(&quot;$t seconds elapsed&quot;)</code></pre><pre><code class="nohighlight hljs">0.088258496 seconds elapsed
 </code></pre><pre><code class="language-julia hljs">t = @elapsed luksan_vlcek_model(N)
-println(&quot;$t seconds elapsed&quot;)</code></pre><pre><code class="nohighlight hljs">7.6656e-5 seconds elapsed
+println(&quot;$t seconds elapsed&quot;)</code></pre><pre><code class="nohighlight hljs">7.7303e-5 seconds elapsed
 </code></pre><p>So, the model creation time can be essentially nothing. Thus, if you care about the model creation time, always make sure to write a function for creating the model, and do not directly create a model from the REPL.</p><h2 id="Make-sure-your-array&#39;s-eltype-is-concrete"><a class="docs-heading-anchor" href="#Make-sure-your-array&#39;s-eltype-is-concrete">Make sure your array&#39;s eltype is concrete</a><a id="Make-sure-your-array&#39;s-eltype-is-concrete-1"></a><a class="docs-heading-anchor-permalink" href="#Make-sure-your-array&#39;s-eltype-is-concrete" title="Permalink"></a></h2><p>In order for ExaModels to run for loops over the array you provided without any overhead caused by type inference, the eltype of the data array should always be a concrete type. Furthermore, this is <strong>required</strong> if you want to run ExaModels on GPU accelerators.</p><p>Let&#39;s take an example.</p><pre><code class="language-julia hljs">using ExaModels
 
 N = 1000
@@ -148,7 +148,7 @@ function benchmark_callbacks(m; N = 100)
 end</code></pre><pre><code class="nohighlight hljs">benchmark_callbacks (generic function with 1 method)</code></pre><p>The performance comparison is here:</p><pre><code class="language-julia hljs">m1 = luksan_vlcek_model_concrete(N)
 m2 = luksan_vlcek_model_non_concrete(N)
 
-benchmark_callbacks(m1)</code></pre><pre><code class="nohighlight hljs">(tobj = 9.3063e-7, tcon = 1.90518e-5, tgrad = 1.8988800000000002e-6, tjac = 3.761322e-5, thess = 0.00033341778000000005, tjacs = 8.176000000000001e-6, thesss = 1.399655e-5)</code></pre><pre><code class="language-julia hljs">benchmark_callbacks(m2)</code></pre><pre><code class="nohighlight hljs">(tobj = 6.155362e-5, tcon = 0.00011281268000000001, tgrad = 2.74149e-5, tjac = 0.0001291922, thess = 0.00048579635000000005, tjacs = 9.446422e-5, thesss = 0.00017174855999999998)</code></pre><p>As can be seen here, having concrete eltype dramatically improves the performance. This is because when all the data arrays&#39; eltypes are concrete, the AD evaluations can be performed without any type inferernce, and this should be as fast as highly optimized C/C++/Fortran code.</p><p>When you&#39;re using GPU accelerators, the eltype of the array should always be concrete. In fact, non-concrete etlype will already cause an error when creating the array. For example,</p><pre><code class="language-julia hljs">using CUDA
+benchmark_callbacks(m1)</code></pre><pre><code class="nohighlight hljs">(tobj = 9.506000000000001e-7, tcon = 1.972591e-5, tgrad = 1.93315e-6, tjac = 3.885493e-5, thess = 0.00028932014, tjacs = 8.252020000000001e-6, thesss = 1.385241e-5)</code></pre><pre><code class="language-julia hljs">benchmark_callbacks(m2)</code></pre><pre><code class="nohighlight hljs">(tobj = 6.645748e-5, tcon = 0.00012329989, tgrad = 2.7648750000000002e-5, tjac = 0.00013188466, thess = 0.00049544483, tjacs = 9.670366999999999e-5, thesss = 0.00017667625999999998)</code></pre><p>As can be seen here, having concrete eltype dramatically improves the performance. This is because when all the data arrays&#39; eltypes are concrete, the AD evaluations can be performed without any type inferernce, and this should be as fast as highly optimized C/C++/Fortran code.</p><p>When you&#39;re using GPU accelerators, the eltype of the array should always be concrete. In fact, non-concrete etlype will already cause an error when creating the array. For example,</p><pre><code class="language-julia hljs">using CUDA
 
 try
     arr1 = CuArray(Array{Any}(2:N))
@@ -156,4 +156,4 @@ catch e
     showerror(stdout, e)
 end</code></pre><pre><code class="nohighlight hljs">CuArray only supports element types that are allocated inline.
 Any is not allocated inline
-</code></pre><hr/><p><em>This page was generated using <a href="https://github.com/fredrikekre/Literate.jl">Literate.jl</a>.</em></p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../guide/">« Getting Started</a><a class="docs-footer-nextpage" href="../gpu/">Accelerations »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.4.0 on <span class="colophon-date" title="Thursday 2 May 2024 19:41">Thursday 2 May 2024</span>. Using Julia version 1.9.4.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
+</code></pre><hr/><p><em>This page was generated using <a href="https://github.com/fredrikekre/Literate.jl">Literate.jl</a>.</em></p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../guide/">« Getting Started</a><a class="docs-footer-nextpage" href="../gpu/">Accelerations »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.4.1 on <span class="colophon-date" title="Friday 3 May 2024 11:59">Friday 3 May 2024</span>. Using Julia version 1.9.4.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
