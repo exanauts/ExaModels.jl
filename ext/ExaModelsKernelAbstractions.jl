@@ -14,7 +14,7 @@ ExaModels.ExaCore(T, backend::KernelAbstractions.CPU) =
     ExaModels.ExaCore(x0 = zeros(T, 0), backend = backend)
 ExaModels.ExaCore(backend::KernelAbstractions.CPU) = ExaModels.ExaCore(backend = backend)
 
-function ExaModels.getptr(backend, array; cmp = (x,y) -> x != y)
+function ExaModels.getptr(backend, array; cmp = (x, y) -> x != y)
 
     bitarray = similar(array, Bool, length(array) + 1)
     kergetptr(backend)(cmp, bitarray, array; ndrange = length(array) + 1)
@@ -48,14 +48,14 @@ function ExaModels.ExaModel(
     if !isempty(gsparsity)
         ExaModels.sort!(gsparsity; lt = ((i, j), (k, l)) -> i < k)
     end
-    gptr = ExaModels.getptr(c.backend, gsparsity; cmp = (x,y) -> x[1] != y[1])
+    gptr = ExaModels.getptr(c.backend, gsparsity; cmp = (x, y) -> x[1] != y[1])
 
     conaugsparsity = similar(c.x0, Tuple{Int,Int}, c.nconaug)
     _conaug_structure!(c.backend, c.con, conaugsparsity)
     if !isempty(conaugsparsity)
         ExaModels.sort!(conaugsparsity; lt = ((i, j), (k, l)) -> i < k)
     end
-    conaugptr = ExaModels.getptr(c.backend, conaugsparsity; cmp = (x,y) -> x[1] != y[1])
+    conaugptr = ExaModels.getptr(c.backend, conaugsparsity; cmp = (x, y) -> x[1] != y[1])
 
 
     if prod
@@ -73,22 +73,26 @@ function ExaModels.ExaModel(
         if !isempty(jacsparsityi)
             ExaModels.sort!(jacsparsityi; lt = (((i, j), k), ((n, m), l)) -> i < n)
         end
-        jacptri = ExaModels.getptr(c.backend, jacsparsityi; cmp = (x, y) -> x[1][1] != y[1][1])
+        jacptri =
+            ExaModels.getptr(c.backend, jacsparsityi; cmp = (x, y) -> x[1][1] != y[1][1])
 
         if !isempty(jacsparsityj)
             ExaModels.sort!(jacsparsityj; lt = (((i, j), k), ((n, m), l)) -> j < m)
         end
-        jacptrj = ExaModels.getptr(c.backend, jacsparsityj; cmp = (x, y) -> x[1][2] != y[1][2])
+        jacptrj =
+            ExaModels.getptr(c.backend, jacsparsityj; cmp = (x, y) -> x[1][2] != y[1][2])
 
 
         if !isempty(hesssparsityi)
             ExaModels.sort!(hesssparsityi; lt = (((i, j), k), ((n, m), l)) -> i < n)
         end
-        hessptri = ExaModels.getptr(c.backend, hesssparsityi; cmp = (x, y) -> x[1][1] != y[1][1])
+        hessptri =
+            ExaModels.getptr(c.backend, hesssparsityi; cmp = (x, y) -> x[1][1] != y[1][1])
         if !isempty(hesssparsityj)
             ExaModels.sort!(hesssparsityj; lt = (((i, j), k), ((n, m), l)) -> j < m)
         end
-        hessptrj = ExaModels.getptr(c.backend, hesssparsityj; cmp = (x, y) -> x[1][2] != y[1][2])
+        hessptrj =
+            ExaModels.getptr(c.backend, hesssparsityj; cmp = (x, y) -> x[1][2] != y[1][2])
 
         prodhelper = (
             jacbuffer = jacbuffer,
@@ -631,10 +635,11 @@ end
     end
 end
 
-ExaModels.getbackend(m::ExaModels.ExaModel{T,VT,E}) where {T,VT,E<:KAExtension} = m.ext.backend
+ExaModels.getbackend(m::ExaModels.ExaModel{T,VT,E}) where {T,VT,E<:KAExtension} =
+    m.ext.backend
 function ExaModels._compress!(V, buffer, ptr, sparsity, backend)
     fill!(V, zero(eltype(V)))
-    ker_compress!(backend)(V, buffer, ptr, sparsity; ndrange= length(ptr)-1)
+    ker_compress!(backend)(V, buffer, ptr, sparsity; ndrange = length(ptr) - 1)
     synchronize(backend)
 end
 
@@ -646,7 +651,7 @@ end
 end
 
 function ExaModels._structure!(I, J, ptr, sparsity, backend)
-    ker_structure!(backend)(I, J, ptr, sparsity, ndrange = length(ptr)-1)
+    ker_structure!(backend)(I, J, ptr, sparsity, ndrange = length(ptr) - 1)
     synchronize(backend)
 end
 
@@ -656,14 +661,14 @@ end
 end
 
 function ExaModels.get_compressed_sparsity(nnz, Ibuffer, Jbuffer, backend)
-    sparsity = similar(Ibuffer, Tuple{Tuple{Int,Int},Int},nnz)
+    sparsity = similar(Ibuffer, Tuple{Tuple{Int,Int},Int}, nnz)
     ker_get_compressed_sparsity(backend)(sparsity, Ibuffer, Jbuffer; ndrange = nnz)
     synchronize(backend)
     return sparsity
 end
 @kernel function ker_get_compressed_sparsity(sparsity, @Const(I), @Const(J))
     i = @index(Global)
-    @inbounds sparsity[i] = ((J[i],I[i]), i)
+    @inbounds sparsity[i] = ((J[i], I[i]), i)
 end
 
 end # module ExaModelsKernelAbstractions
