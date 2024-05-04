@@ -414,7 +414,7 @@ function CompressedNLPModel(m)
 
     Ibuffer = similar(m.meta.x0, Int, max(nnzj, nnzh))
     Jbuffer = similar(m.meta.x0, Int, max(nnzj, nnzh))
-    buffer  = similar(m.meta.x0, max(nnzj, nnzh))
+    buffer = similar(m.meta.x0, max(nnzj, nnzh))
 
     NLPModels.jac_structure!(m, Ibuffer, Jbuffer)
 
