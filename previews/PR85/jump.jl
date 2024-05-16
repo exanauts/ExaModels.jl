@@ -3,7 +3,7 @@
 # ## JuMP to an ExaModel
 # We have an experimental interface to JuMP model. A JuMP model can be directly converted to a `ExaModel`. It is as simple as this:
 
-using ExaModels, JuMP, CUDA
+using ExaModels, JuMP, CUDA 
 
 N = 10
 jm = Model()
@@ -22,7 +22,7 @@ em = ExaModel(jm; backend = CUDABackend())
 # Here, note that only scalar objective/constraints created via `@constraint` and `@objective` API are supported. Older syntax like `@NLconstraint` and `@NLobjective` are not supported.
 # We can solve the model using any of the solvers supported by ExaModels. For example, we can use MadNLP:
 
-using MadNLP, MadNLPGPU
+using MadNLPGPU
 
 result = madnlp(em)
 
@@ -31,7 +31,7 @@ result = madnlp(em)
 # Alternatively, one can use the `Optimizer` interface provided by `ExaModels`. This feature can be used as follows.
 
 using ExaModels, JuMP, CUDA
-using MadNLP, MadNLPGPU
+using MadNLPGPU
 
 set_optimizer(jm, () -> ExaModels.MadNLPOptimizer(CUDABackend()))
 optimize!(jm)
