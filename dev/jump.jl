@@ -3,7 +3,7 @@
 # ## JuMP to an ExaModel
 # We have an experimental interface to JuMP model. A JuMP model can be directly converted to a `ExaModel`. It is as simple as this:
 
-using ExaModels, JuMP, CUDA 
+using ExaModels, JuMP, CUDA
 
 N = 10
 jm = Model()
