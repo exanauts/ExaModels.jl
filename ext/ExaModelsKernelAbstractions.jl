@@ -335,17 +335,6 @@ function ExaModels.jtprod_nln!(
 ) where {T,VT,E<:KAExtension{T,VT,Nothing}}
     error("Prodhelper is not defined. Use ExaModels(c; prod=true) to use jtprod_nln!")
 end
-function ExaModels.hprod!(
-    m::ExaModels.ExaModel{T,VT,E},
-    x::AbstractVector,
-    y::AbstractVector,
-    v::AbstractVector,
-    Hv::AbstractVector;
-    obj_weight = one(eltype(x)),
-) where {T,VT,E<:KAExtension{T,VT,Nothing}}
-    error("Prodhelper is not defined. Use ExaModels(c; prod=true) to use hprod!")
-end
-
 function ExaModels.jprod_nln!(
     m::ExaModels.ExaModel{T,VT,E},
     x::AbstractVector,
@@ -396,7 +385,9 @@ function ExaModels.hprod!(
     Hv::AbstractVector;
     obj_weight = one(eltype(x)),
 ) where {T,VT,E<:KAExtension}
-
+    if isnothing(m.ext.prodhelper)
+        error("Prodhelper is not defined. Use ExaModels(c; prod=true) to use hprod!")
+    end
     fill!(Hv, zero(eltype(Hv)))
     fill!(m.ext.prodhelper.hessbuffer, zero(eltype(Hv)))
 
