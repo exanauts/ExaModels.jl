@@ -532,14 +532,21 @@ julia> x = variable(c, 10);
 
 julia> c1 = constraint(c, x[i] for i=1:9; lcon = -1, ucon = (1+i for i=1:9))
 
+This will add the following constraint to the model
+
+s.t. (...)
+g♭ ≤ [g(x,p)]_{p ∈ P} ≤ g♯
+
+where |P| = 9
+
 julia> constraint!(c, c1, x[i+1] for i=1:9)
 
-This will add the following onstraint to the model
+This will expand the existing constraint `c1` by incorporating the generators `x[i+1] for i=1:9` into the model
 
-  s.t. (...)
-       g♭ ≤ [g(x,p)]_{p ∈ P} ≤ g♯
+s.t. (...)
+    g♭ ≤ [g(x,p)]_{p ∈ P} ≤ g♯
 
-  where |P| = 9
+where |P| = 9
 ```
 """
 
