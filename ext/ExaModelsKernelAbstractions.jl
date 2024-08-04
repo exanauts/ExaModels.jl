@@ -117,6 +117,8 @@ function ExaModels.ExaModel(
             c.nvar,
             ncon = c.ncon,
             nnzj = c.nnzj,
+            lin_nnzj = 0,      # fixes Issue #104   
+            nln_nnzj = nnzj,   # fixes Issue #104
             nnzh = c.nnzh,
             x0 = c.x0,
             lvar = c.lvar,
