@@ -112,6 +112,8 @@ function WrapperNLPModel(VT, m)
             lcon = lcon,
             ucon = ucon,
             nnzj = nnzj,
+            lin_nnzj = 0,      # fixes Issue #104   
+            nln_nnzj = nnzj,   # fixes Issue #104
             nnzh = nnzh,
             minimize = m.meta.minimize,
         ),
