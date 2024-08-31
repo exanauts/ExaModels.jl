@@ -161,7 +161,9 @@
     x -> 57.29577951308232286464772187173366546630859375 * 2 * x / (1 + x^2)^2
 )
 @register_univariate(Base.sinh, cosh, sinh)
+@register_univariate(Base.asinh, x -> 1/sqrt(x^2 + 1), x -> - x/sqrt(x^2 + 1)^3)
 @register_univariate(Base.cosh, sinh, cosh)
+@register_univariate(Base.acosh, x -> 1/sqrt((x-1)*(x+1)), x -> - x/sqrt((x - 1)*(x + 1))^3)
 @register_univariate(Base.tanh, x -> 1 - tanh(x)^2, x -> -2 * tanh(x) * (1 - tanh(x)^2))
 @register_univariate(
     Base.csch,
