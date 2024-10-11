@@ -68,7 +68,7 @@ Base.show(io::IO, v::ConstraintAug) = print(
     io,
     """
 
-Constrant Augmentation
+Constant Augmentation
 
   s.t. (...)
        g♭ ≤ (...) + ∑_{p ∈ P} h(x,p) ≤ g♯
@@ -420,7 +420,7 @@ end
 """
     constraint(core, generator; start = 0, lcon = 0,  ucon = 0)
 
-Adds constraints specified by a `generator` to `core`, and returns an `Constraint` object. 
+Adds constraints specified by a `generator` to `core`, and returns an `Constraint` object.
 
 ## Keyword Arguments
 - `start`: The initial guess of the solution. Can either be `Number`, `AbstractArray`, or `Generator`.
@@ -462,7 +462,7 @@ end
 """
     constraint(core, expr [, pars]; start = 0, lcon = 0,  ucon = 0)
 
-Adds constraints specified by a `expr` and `pars` to `core`, and returns an `Constraint` object. 
+Adds constraints specified by a `expr` and `pars` to `core`, and returns an `Constraint` object.
 """
 function constraint(
     c::C,
@@ -481,7 +481,7 @@ end
 """
     constraint(core, n; start = 0, lcon = 0,  ucon = 0)
 
-Adds empty constraints of dimension n, so that later the terms can be added with `constraint!`. 
+Adds empty constraints of dimension n, so that later the terms can be added with `constraint!`.
 """
 function constraint(
     c::C,
@@ -540,8 +540,8 @@ end
 
 
 function jac_structure!(m::ExaModel, rows::AbstractVector, cols::AbstractVector)
-
     _jac_structure!(m.cons, rows, cols)
+    return rows, cols
 end
 
 _jac_structure!(cons::ConstraintNull, rows, cols) = nothing
@@ -551,9 +551,9 @@ function _jac_structure!(cons, rows, cols)
 end
 
 function hess_structure!(m::ExaModel, rows::AbstractVector, cols::AbstractVector)
-
     _obj_hess_structure!(m.objs, rows, cols)
     _con_hess_structure!(m.cons, rows, cols)
+    return rows, cols
 end
 
 _obj_hess_structure!(objs::ObjectiveNull, rows, cols) = nothing
@@ -569,16 +569,16 @@ function _con_hess_structure!(cons, rows, cols)
 end
 
 function obj(m::ExaModel, x::AbstractVector)
-    _obj(m.objs, x)
+    return _obj(m.objs, x)
 end
 
 _obj(objs, x) = _obj(objs.inner, x) + sum(objs.f.f(k, x) for k in objs.itr)
 _obj(objs::ObjectiveNull, x) = zero(eltype(x))
 
 function cons_nln!(m::ExaModel, x::AbstractVector, g::AbstractVector)
-
     fill!(g, zero(eltype(g)))
     _cons_nln!(m.cons, x, g)
+    return g
 end
 
 function _cons_nln!(cons, x, g)
@@ -592,7 +592,6 @@ _cons_nln!(cons::ConstraintNull, x, g) = nothing
 
 
 function grad!(m::ExaModel, x::AbstractVector, f::AbstractVector)
-
     fill!(f, zero(eltype(f)))
     _grad!(m.objs, x, f)
     return f
@@ -605,10 +604,9 @@ end
 _grad!(objs::ObjectiveNull, x, f) = nothing
 
 function jac_coord!(m::ExaModel, x::AbstractVector, jac::AbstractVector)
-
     fill!(jac, zero(eltype(jac)))
     _jac_coord!(m.cons, x, jac)
-
+    return jac
 end
 
 _jac_coord!(cons::ConstraintNull, x, jac) = nothing
@@ -618,10 +616,9 @@ function _jac_coord!(cons, x, jac)
 end
 
 function jprod_nln!(m::ExaModel, x::AbstractVector, v::AbstractVector, Jv::AbstractVector)
-
     fill!(Jv, zero(eltype(Jv)))
     _jprod_nln!(m.cons, x, v, Jv)
-
+    return Jv
 end
 
 _jprod_nln!(cons::ConstraintNull, x, v, Jv) = nothing
@@ -631,10 +628,9 @@ function _jprod_nln!(cons, x, v, Jv)
 end
 
 function jtprod_nln!(m::ExaModel, x::AbstractVector, v::AbstractVector, Jtv::AbstractVector)
-
     fill!(Jtv, zero(eltype(Jtv)))
     _jtprod_nln!(m.cons, x, v, Jtv)
-
+    return Jtv
 end
 
 _jtprod_nln!(cons::ConstraintNull, x, v, Jtv) = nothing
@@ -650,13 +646,12 @@ function hess_coord!(
     hess::AbstractVector;
     obj_weight = one(eltype(x)),
 )
-
     fill!(hess, zero(eltype(hess)))
     _obj_hess_coord!(m.objs, x, y, hess, obj_weight)
     _con_hess_coord!(m.cons, x, y, hess, obj_weight)
-
     return hess
 end
+
 _obj_hess_coord!(objs::ObjectiveNull, x, y, hess, obj_weight) = nothing
 function _obj_hess_coord!(objs, x, y, hess, obj_weight)
     _obj_hess_coord!(objs.inner, x, y, hess, obj_weight)
@@ -677,11 +672,9 @@ function hprod!(
     Hv::AbstractVector;
     obj_weight = one(eltype(x)),
 )
-
     fill!(Hv, zero(eltype(Hv)))
     _obj_hprod!(m.objs, x, y, v, Hv, obj_weight)
     _con_hprod!(m.cons, x, y, v, Hv, obj_weight)
-
     return Hv
 end
 
@@ -737,13 +730,13 @@ for (thing, val) in [(:solution, 1), (:multipliers_L, 0), (:multipliers_U, 2)]
         ```jldoctest
         julia> using ExaModels, NLPModelsIpopt
 
-        julia> c = ExaCore();                     
+        julia> c = ExaCore();
 
         julia> x = variable(c, 1:10, lvar = -1, uvar = 1);
 
         julia> objective(c, (x[i]-2)^2 for i in 1:10);
 
-        julia> m = ExaModel(c);                   
+        julia> m = ExaModel(c);
 
         julia> result = ipopt(m; print_level=0);
 
@@ -776,7 +769,7 @@ Returns the multipliers for constraints `y` associated with `result`, obtained b
 ```jldoctest
 julia> using ExaModels, NLPModelsIpopt
 
-julia> c = ExaCore();                     
+julia> c = ExaCore();
 
 julia> x = variable(c, 1:10, lvar = -1, uvar = 1);
 
@@ -784,7 +777,7 @@ julia> objective(c, (x[i]-2)^2 for i in 1:10);
 
 julia> y = constraint(c, x[i] + x[i+1] for i=1:9; lcon = -1, ucon = (1+i for i=1:9));
 
-julia> m = ExaModel(c);                   
+julia> m = ExaModel(c);
 
 julia> result = ipopt(m; print_level=0);
 

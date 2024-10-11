@@ -124,10 +124,10 @@ function NLPModels.jac_structure!(
     rows::AbstractVector,
     cols::AbstractVector,
 )
-
     NLPModels.jac_structure!(m.inner, m.jac_I_buffer, m.jac_J_buffer)
     copyto!(rows, m.jac_I_buffer)
     copyto!(cols, m.jac_J_buffer)
+    return rows, cols
 end
 
 function NLPModels.hess_structure!(
@@ -135,30 +135,27 @@ function NLPModels.hess_structure!(
     rows::AbstractVector,
     cols::AbstractVector,
 )
-
     NLPModels.hess_structure!(m.inner, m.hess_I_buffer, m.hess_J_buffer)
     copyto!(rows, m.hess_I_buffer)
     copyto!(cols, m.hess_J_buffer)
+    return rows, cols
 end
 
 function NLPModels.obj(m::WrapperNLPModel, x::AbstractVector)
-
     copyto!(m.x_result, x)
     copyto!(m.x_buffer, m.x_result)
     o = NLPModels.obj(m.inner, m.x_buffer)
     return o
 end
 function NLPModels.cons_nln!(m::WrapperNLPModel, x::AbstractVector, g::AbstractVector)
-
     copyto!(m.x_result, x)
     copyto!(m.x_buffer, m.x_result)
     NLPModels.cons_nln!(m.inner, m.x_buffer, m.cons_buffer)
     copyto!(m.y_result, m.cons_buffer)
     copyto!(g, m.y_result)
-    return
+    return g
 end
 function NLPModels.grad!(m::WrapperNLPModel, x::AbstractVector, f::AbstractVector)
-
     copyto!(m.x_result, x)
     copyto!(m.x_buffer, m.x_result)
     NLPModels.grad!(m.inner, m.x_buffer, m.grad_buffer)
@@ -167,12 +164,11 @@ function NLPModels.grad!(m::WrapperNLPModel, x::AbstractVector, f::AbstractVecto
     return f
 end
 function NLPModels.jac_coord!(m::WrapperNLPModel, x::AbstractVector, jac::AbstractVector)
-
     copyto!(m.x_result, x)
     copyto!(m.x_buffer, m.x_result)
     NLPModels.jac_coord!(m.inner, m.x_buffer, m.jac_buffer)
     copyto!(jac, m.jac_buffer)
-    return
+    return jac
 end
 function NLPModels.hess_coord!(
     m::WrapperNLPModel,
@@ -181,7 +177,6 @@ function NLPModels.hess_coord!(
     hess::AbstractVector;
     obj_weight = one(eltype(x)),
 )
-
     copyto!(m.x_buffer, x)
     copyto!(m.y_buffer, y)
     NLPModels.hess_coord!(
@@ -192,7 +187,7 @@ function NLPModels.hess_coord!(
         obj_weight = obj_weight,
     )
     copyto!(unsafe_wrap(Array, pointer(hess), length(hess)), m.hess_buffer)
-    return
+    return hess
 end
 
 function buffered_copyto!(a, b, c)
@@ -211,7 +206,7 @@ function NLPModels.jprod_nln!(
     NLPModels.jprod_nln!(m.inner, m.x_buffer, m.grad_buffer, m.cons_buffer)
 
     buffered_copyto!(Jv, m.y_result, m.cons_buffer)
-    return
+    return Jv
 end
 function NLPModels.jtprod_nln!(
     m::WrapperNLPModel,
@@ -226,7 +221,7 @@ function NLPModels.jtprod_nln!(
     NLPModels.jtprod_nln!(m.inner, m.x_buffer, m.cons_buffer, m.grad_buffer)
 
     buffered_copyto!(Jtv, m.x_result, m.grad_buffer)
-    return
+    return Jtv
 end
 function NLPModels.hprod!(
     m::WrapperNLPModel,
@@ -299,6 +294,7 @@ function NLPModels.jac_structure!(
     t = time()
     NLPModels.jac_structure!(m.inner, rows, cols)
     m.stats.jac_structure_time += time() - t
+    return rows, cols
 end
 
 function NLPModels.hess_structure!(
@@ -311,10 +307,10 @@ function NLPModels.hess_structure!(
     t = time()
     NLPModels.hess_structure!(m.inner, rows, cols)
     m.stats.hess_structure_time += time() - t
+    return rows, cols
 end
 
 function NLPModels.obj(m::TimedNLPModel, x::AbstractVector)
-
     m.stats.obj_cnt += 1
     t = time()
     o = NLPModels.obj(m.inner, x)
@@ -322,28 +318,25 @@ function NLPModels.obj(m::TimedNLPModel, x::AbstractVector)
     return o
 end
 function NLPModels.cons!(m::TimedNLPModel, x::AbstractVector, g::AbstractVector)
-
     m.stats.cons_cnt += 1
     t = time()
     NLPModels.cons!(m.inner, x, g)
     m.stats.cons_time += time() - t
-    return
+    return g
 end
 function NLPModels.grad!(m::TimedNLPModel, x::AbstractVector, f::AbstractVector)
-
     m.stats.grad_cnt += 1
     t = time()
     NLPModels.grad!(m.inner, x, f)
     m.stats.grad_time += time() - t
-    return
+    return f
 end
 function NLPModels.jac_coord!(m::TimedNLPModel, x::AbstractVector, jac::AbstractVector)
-
     m.stats.jac_coord_cnt += 1
     t = time()
     NLPModels.jac_coord!(m.inner, x, jac)
     m.stats.jac_coord_time += time() - t
-    return
+    return jac
 end
 function NLPModels.hess_coord!(
     m::TimedNLPModel,
@@ -352,12 +345,11 @@ function NLPModels.hess_coord!(
     hess::AbstractVector;
     obj_weight = one(eltype(x)),
 )
-
     m.stats.hess_coord_cnt += 1
     t = time()
     NLPModels.hess_coord!(m.inner, x, y, hess; obj_weight = obj_weight)
     m.stats.hess_coord_time += time() - t
-    return
+    return hess
 end
 
 function Base.print(io::IO, e::TimedNLPModel)
@@ -478,6 +470,7 @@ end
 function NLPModels.jac_coord!(m::CompressedNLPModel, x::AbstractVector, j::AbstractVector)
     NLPModels.jac_coord!(m.inner, x, m.buffer)
     _compress!(j, m.buffer, m.jptr, m.jsparsity, m.backend)
+    return j
 end
 
 function NLPModels.hess_coord!(
@@ -489,6 +482,7 @@ function NLPModels.hess_coord!(
 )
     NLPModels.hess_coord!(m.inner, x, y, m.buffer; obj_weight = obj_weight)
     _compress!(h, m.buffer, m.hptr, m.hsparsity, m.backend)
+    return h
 end
 
 function NLPModels.jac_structure!(
@@ -497,6 +491,7 @@ function NLPModels.jac_structure!(
     J::AbstractVector,
 )
     _structure!(I, J, m.jptr, m.jsparsity, m.backend)
+    return I, J
 end
 
 function NLPModels.hess_structure!(
@@ -505,6 +500,7 @@ function NLPModels.hess_structure!(
     J::AbstractVector,
 )
     _structure!(I, J, m.hptr, m.hsparsity, m.backend)
+    return I, J
 end
 
 function _compress!(V, buffer, ptr, sparsity, backend::Nothing)

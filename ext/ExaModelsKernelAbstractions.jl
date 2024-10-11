@@ -173,6 +173,7 @@ function ExaModels.jac_structure!(
     if !isempty(rows)
         _jac_structure!(m.ext.backend, m.cons, rows, cols)
     end
+    return rows, cols
 end
 function _jac_structure!(backend, cons, rows, cols)
     ExaModels.sjacobian!(backend, rows, cols, cons, nothing, NaN)
@@ -191,6 +192,7 @@ function ExaModels.hess_structure!(
         _obj_hess_structure!(m.ext.backend, m.objs, rows, cols)
         _con_hess_structure!(m.ext.backend, m.cons, rows, cols)
     end
+    return rows, cols
 end
 
 function _obj_hess_structure!(backend, objs, rows, cols)
@@ -246,6 +248,7 @@ function ExaModels.cons_nln!(
         )
         synchronize(m.ext.backend)
     end
+    return y
 end
 function _cons_nln!(backend, y, con::ExaModels.Constraint, x)
     if !isempty(con.itr)
@@ -311,6 +314,7 @@ function ExaModels.jac_coord!(
 ) where {V<:AbstractVector}
     fill!(y, zero(eltype(y)))
     _jac_coord!(m.ext.backend, y, m.cons, x)
+    return y
 end
 function _jac_coord!(backend, y, cons, x)
     ExaModels.sjacobian!(backend, y, nothing, cons, x, one(eltype(y)))
@@ -351,7 +355,7 @@ function ExaModels.jprod_nln!(
     x::AbstractVector,
     v::AbstractVector,
     Jv::AbstractVector,
-) where {T,VT,E<:KAExtension}
+) where {T,VT,E<:KAExtension{T,VT,NamedTuple}}
 
     fill!(Jv, zero(eltype(Jv)))
     fill!(m.ext.prodhelper.jacbuffer, zero(eltype(Jv)))
@@ -366,13 +370,14 @@ function ExaModels.jprod_nln!(
         ndrange = length(m.ext.prodhelper.jacptri) - 1,
     )
     synchronize(m.ext.backend)
+    return Jv
 end
 function ExaModels.jtprod_nln!(
     m::ExaModels.ExaModel{T,VT,E},
     x::AbstractVector,
     v::AbstractVector,
     Jtv::AbstractVector,
-) where {T,VT,E<:KAExtension}
+) where {T,VT,E<:KAExtension{T,VT,NamedTuple}}
 
     fill!(Jtv, zero(eltype(Jtv)))
     fill!(m.ext.prodhelper.jacbuffer, zero(eltype(Jtv)))
@@ -387,6 +392,7 @@ function ExaModels.jtprod_nln!(
         ndrange = length(m.ext.prodhelper.jacptrj) - 1,
     )
     synchronize(m.ext.backend)
+    return Jtv
 end
 function ExaModels.hprod!(
     m::ExaModels.ExaModel{T,VT,E},
@@ -395,7 +401,7 @@ function ExaModels.hprod!(
     v::AbstractVector,
     Hv::AbstractVector;
     obj_weight = one(eltype(x)),
-) where {T,VT,E<:KAExtension}
+) where {T,VT,E<:KAExtension{T,VT,NamedTuple}}
 
     fill!(Hv, zero(eltype(Hv)))
     fill!(m.ext.prodhelper.hessbuffer, zero(eltype(Hv)))
@@ -468,6 +474,7 @@ function ExaModels.hess_coord!(
     fill!(hess, zero(eltype(hess)))
     _obj_hess_coord!(m.ext.backend, hess, m.objs, x, obj_weight)
     _con_hess_coord!(m.ext.backend, hess, m.cons, x, y)
+    return hess
 end
 function _obj_hess_coord!(backend, hess, objs, x, obj_weight)
     ExaModels.shessian!(backend, hess, nothing, objs, x, obj_weight, zero(eltype(hess)))
