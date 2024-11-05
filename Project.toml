@@ -32,7 +32,7 @@ ExaModelsOneAPI = "oneAPI"
 ExaModelsSpecialFunctions = "SpecialFunctions"
 
 [compat]
-AMDGPU = "0.7, 0.8"
+AMDGPU = "1"
 CUDA = "5"
 Ipopt = "1.6"
 KernelAbstractions = "0.9"
@@ -43,7 +43,7 @@ NLPModelsIpopt = "0.10"
 SolverCore = "0.3"
 SpecialFunctions = "2"
 julia = "1.9"
-oneAPI = "1"
+oneAPI = "2"
 
 [extras]
 CUDA = "052768ef-5323-5732-b1bb-66c8b64840ba"
