@@ -67,7 +67,7 @@ steps:
       intel: "*"
     env:
       EXAMODELS_TEST_ONEAPI: "TRUE"
-      OverrideDefaultFP64Settings=: "TRUE"
+      OverrideDefaultFP64Settings: "TRUE"
       IGC_EnableDPEmulation: "TRUE"
     command: |
       julia --color=yes -e '
