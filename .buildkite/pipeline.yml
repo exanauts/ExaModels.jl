@@ -13,6 +13,7 @@ steps:
         using Pkg
         Pkg.add("CUDA")
         Pkg.add("KernelAbstractions")
+        Pkg.add("NLPModels")
         Pkg.develop(path=".")
         include("test/runtests.jl")'
     timeout_in_minutes: 30
@@ -36,6 +37,7 @@ steps:
         using Pkg
         Pkg.add("AMDGPU")
         Pkg.add("KernelAbstractions")
+        Pkg.add("NLPModels")
         Pkg.develop(path=".")
         include("test/runtests.jl")'
     timeout_in_minutes: 30
@@ -54,6 +56,7 @@ steps:
         using Pkg
         Pkg.add("oneAPI")
         Pkg.add("KernelAbstractions")
+        Pkg.add("NLPModels")
         Pkg.develop(path=".")
         include("test/runtests.jl")'
     timeout_in_minutes: 30
