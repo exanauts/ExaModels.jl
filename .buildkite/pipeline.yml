@@ -21,6 +21,7 @@ steps:
         Pkg.add("Percival")
         Pkg.add("PowerModels")
         Pkg.add("MadNLP")
+        Pkg.add("SpecialFunctions")
         Pkg.develop(path=".")
         include("test/runtests.jl")'
     timeout_in_minutes: 30
@@ -52,6 +53,7 @@ steps:
         Pkg.add("Percival")
         Pkg.add("PowerModels")
         Pkg.add("MadNLP")
+        Pkg.add("SpecialFunctions")
         Pkg.develop(path=".")
         include("test/runtests.jl")'
     timeout_in_minutes: 30
@@ -78,6 +80,7 @@ steps:
         Pkg.add("Percival")
         Pkg.add("PowerModels")
         Pkg.add("MadNLP")
+        Pkg.add("SpecialFunctions")
         Pkg.develop(path=".")
         include("test/runtests.jl")'
     timeout_in_minutes: 30
