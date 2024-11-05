@@ -9,12 +9,11 @@ steps:
     env:
       EXAMODELS_TEST_CUDA: "TRUE"
     command: |
-      julia --color=yes --project -e '
+      julia --color=yes -e '
         using Pkg
-        Pkg.develop(path=".")
         Pkg.add("CUDA")
         Pkg.add("KernelAbstractions")
-        Pkg.instantiate()
+        Pkg.develop(path=".")
         include("test/runtests.jl")'
     timeout_in_minutes: 30
 
@@ -33,12 +32,11 @@ steps:
       JULIA_AMDGPU_HIP_MUST_LOAD: "1"
       JULIA_AMDGPU_DISABLE_ARTIFACTS: "1"
     command: |
-      julia --color=yes --project -e '
+      julia --color=yes -e '
         using Pkg
-        Pkg.develop(path=".")
         Pkg.add("AMDGPU")
         Pkg.add("KernelAbstractions")
-        Pkg.instantiate()
+        Pkg.develop(path=".")
         include("test/runtests.jl")'
     timeout_in_minutes: 30
 
@@ -52,12 +50,11 @@ steps:
     env:
       EXAMODELS_TEST_ONEAPI: "TRUE"
     command: |
-      julia --color=yes --project -e '
+      julia --color=yes -e '
         using Pkg
-        Pkg.develop(path=".")
         Pkg.add("oneAPI")
         Pkg.add("KernelAbstractions")
-        Pkg.instantiate()
+        Pkg.develop(path=".")
         include("test/runtests.jl")'
     timeout_in_minutes: 30
 
