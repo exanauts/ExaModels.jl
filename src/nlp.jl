@@ -112,7 +112,7 @@ julia> c = ExaCore(Float32; backend = CUDABackend())
 An ExaCore
 
   Float type: ...................... Float32
-  Array type: ...................... CUDA.CuArray{Float32, 1, CUDA.Mem.DeviceBuffer}
+  Array type: ...................... CUDA.CuArray{Float32, 1, CUDA.DeviceBuffer}
   Backend: ......................... CUDA.CUDAKernels.CUDABackend
 
   number of objective patterns: .... 0
