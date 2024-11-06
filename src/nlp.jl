@@ -67,7 +67,6 @@ end
 Base.show(io::IO, v::ConstraintAug) = print(
     io,
     """
-
 Constraint Augmentation
 
   s.t. (...)
@@ -511,6 +510,35 @@ function _constraint(c, f, pars, start, lcon, ucon)
     c.con = Constraint(c.con, f, convert_array(pars, c.backend), o)
 end
 
+"""
+    constraint!(c::C, c1, gen::Base.Generator) where {C<:ExaCore}
+
+Expands the existing constraint `c1` in `c` by adding additional constraint terms specified by a `generator`.
+
+# Arguments
+- `c::C`: The model to which the constraints are added.
+- `c1`: An initial constraint value or expression.
+- `gen::Base.Generator`: A generator that produces the pair of constraint index and term to be added.
+
+## Example
+```jldoctest
+julia> using ExaModels
+
+julia> c = ExaCore();
+
+julia> x = variable(c, 10);
+
+julia> c1 = constraint(c, x[i] + x[i+1] for i=1:9; lcon = -1, ucon = (1+i for i=1:9));
+
+julia> constraint!(c, c1, i => sin(x[i+1]) for i=4:6)
+Constraint Augmentation
+
+  s.t. (...)
+       g♭ ≤ (...) + ∑_{p ∈ P} h(x,p) ≤ g♯
+
+  where |P| = 3
+```
+"""
 function constraint!(c::C, c1, gen::Base.Generator) where {C<:ExaCore}
 
     gen = _adapt_gen(gen)
@@ -520,6 +548,11 @@ function constraint!(c::C, c1, gen::Base.Generator) where {C<:ExaCore}
     _constraint!(c, f, pars)
 end
 
+"""
+    constraint!(c, c1, expr, pars)
+
+Expands the existing constraint `c1` in `c` by adding addtional constraints terms specified by `expr` and `pars`.
+"""
 function constraint!(c::C, c1, expr, pars) where {C<:ExaCore}
     f = _simdfunction(expr, offset0(c1, 0), c.nnzj, c.nnzh)
 
