@@ -9,7 +9,7 @@ steps:
     env:
       EXAMODELS_TEST_CUDA: 1
     command: |
-      julia --color=yes -e '
+      julia --color=yes --project=./test -e '
         using Pkg
         # Pkg.add("CUDA")
         # Pkg.add("KernelAbstractions")
@@ -42,7 +42,7 @@ steps:
       JULIA_AMDGPU_HIP_MUST_LOAD: "1"
       JULIA_AMDGPU_DISABLE_ARTIFACTS: "1"
     command: |
-      julia --color=yes -e '
+      julia --color=yes --project=./test -e '
         using Pkg
         # Pkg.add("AMDGPU")
         # Pkg.add("KernelAbstractions")
@@ -72,7 +72,7 @@ steps:
       OverrideDefaultFP64Settings: 1
       IGC_EnableDPEmulation: 1
     command: |
-      julia --color=yes -e '
+      julia --color=yes --project=./test -e '
         using Pkg
         # Pkg.add("oneAPI")
         # Pkg.add("KernelAbstractions")
