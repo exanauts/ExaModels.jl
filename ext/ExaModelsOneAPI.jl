@@ -2,8 +2,6 @@ module ExaModelsOneAPI
 
 import ExaModels, oneAPI
 
-ExaModels.sum(a::A) where {A<:oneAPI.oneArray} = Base.sum(Array(a))
-
 function ExaModels.append!(
     backend,
     a::A,
