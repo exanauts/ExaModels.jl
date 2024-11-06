@@ -733,6 +733,8 @@ end
 @inbounds @inline offset0(a::C, i) where {C<:ConstraintAug} = offset0(a.f, a.itr, i)
 @inbounds @inline offset0(f::F, itr, i) where {P<:Pair,F<:SIMDFunction{P}} =
     f.o0 + f.f.first(itr[i], nothing)
+@inbounds @inline offset0(f::F, itr, i) where {I <: Integer, P<:Pair{I},F<:SIMDFunction{P}} =
+    f.o0 + f.f.first
 @inbounds @inline offset0(f::F, itr, i) where {T<:Tuple,P<:Pair{T},F<:SIMDFunction{P}} =
     f.o0 + idxx(coord(itr, i, f.f.first), Base.size(itr))
 
