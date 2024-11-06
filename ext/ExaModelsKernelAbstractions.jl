@@ -401,7 +401,7 @@ function ExaModels.hprod!(
     v::AbstractVector,
     Hv::AbstractVector;
     obj_weight = one(eltype(x)),
-) where {T,VT,N <: NamedTuple, E<:KAExtension{T,VT,NamedTuple}}
+) where {T,VT,N <: NamedTuple, E<:KAExtension{T,VT,N}}
 
     fill!(Hv, zero(eltype(Hv)))
     fill!(m.ext.prodhelper.hessbuffer, zero(eltype(Hv)))
