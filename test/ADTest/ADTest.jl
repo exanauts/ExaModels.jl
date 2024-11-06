@@ -37,7 +37,9 @@ const FUNCTIONS = [
     # ("basic-functions-atand", x-> atand(x[1])), # cannot extend function 
     # ("basic-functions-acotd", x-> acotd(x[1])), # cannot extend function 
     ("basic-functions-sinh", x -> sinh(x[1])),
+    ("basic-functions-asinh", x -> asinh(x[1])),
     ("basic-functions-cosh", x -> cosh(x[1])),
+    ("basic-functions-acosh", x -> acosh(x[1] + 1)),
     ("basic-functions-tanh", x -> tanh(x[1])),
     ("basic-functions-csch", x -> csch(x[1])),
     ("basic-functions-sech", x -> sech(x[1])),

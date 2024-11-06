@@ -32,7 +32,7 @@ ExaModelsOneAPI = "oneAPI"
 ExaModelsSpecialFunctions = "SpecialFunctions"
 
 [compat]
-AMDGPU = "0.7, 0.8"
+AMDGPU = "1"
 CUDA = "5"
 Ipopt = "1.6"
 JuMP = "1"
