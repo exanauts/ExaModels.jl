@@ -514,13 +514,12 @@ end
 """
     constraint!(c::C, c1, gen::Base.Generator) where {C<:ExaCore}
 
-Expands the existing constraint `c1` in `c` with additional constraints specified by a `generator`.
-If `generator` generates more constraints than originally present in `c1`, the new constraints will be added to the model, increasing the total number of constraints
+Expands the existing constraint `c1` in `c` by adding additional constraint terms specified by a `generator`.
 
 # Arguments
 - `c::C`: The model to which the constraints are added.
 - `c1`: An initial constraint value or expression.
-- `gen::Base.Generator`: A generator that produces the constraints to be added.
+- `gen::Base.Generator`: A generator that produces the pair of constraint index and term to be added.
 
 ## Example
 ```jldoctest
@@ -530,26 +529,17 @@ julia> c = ExaCore();
 
 julia> x = variable(c, 10);
 
-julia> c1 = constraint(c, x[i] for i=1:9; lcon = -1, ucon = (1+i for i=1:9))
+julia> c1 = constraint(c, x[i] + x[i+1] for i=1:9; lcon = -1, ucon = (1+i for i=1:9));
 
-This will add the following constraint to the model
+julia> constraint!(c, c1, i => sin(x[i+1]) for i=4:6)
+Constrant Augmentation
 
-s.t. (...)
-g♭ ≤ [g(x,p)]_{p ∈ P} ≤ g♯
+  s.t. (...)
+       g♭ ≤ (...) + ∑_{p ∈ P} h(x,p) ≤ g♯
 
-where |P| = 9
-
-julia> constraint!(c, c1, x[i+1] for i=1:9)
-
-This will expand the existing constraint `c1` by incorporating the generators `x[i+1] for i=1:9` into the model
-
-s.t. (...)
-    g♭ ≤ [g(x,p)]_{p ∈ P} ≤ g♯
-
-where |P| = 9
+  where |P| = 3
 ```
 """
-
 function constraint!(c::C, c1, gen::Base.Generator) where {C<:ExaCore}
 
     gen = _adapt_gen(gen)
@@ -562,9 +552,8 @@ end
 """
     constraint!(c, c1, expr, pars)
 
-Expands the existing constraint `c1` in `c` with addtional constraints specified by `expr` and `pars`.
+Expands the existing constraint `c1` in `c` by adding addtional constraints terms specified by `expr` and `pars`.
 """
-
 function constraint!(c::C, c1, expr, pars) where {C<:ExaCore}
     f = _simdfunction(expr, offset0(c1, 0), c.nnzj, c.nnzh)
 
