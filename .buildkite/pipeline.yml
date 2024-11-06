@@ -11,17 +11,6 @@ steps:
     command: |
       julia --color=yes --project=./test -e '
         using Pkg
-        # Pkg.add("CUDA")
-        # Pkg.add("KernelAbstractions")
-        # Pkg.add("NLPModels")
-        # Pkg.add("JuMP")
-        # Pkg.add("ForwardDiff")
-        # Pkg.add("NLPModelsIpopt")
-        # Pkg.add("NLPModelsJuMP")
-        # Pkg.add("Percival")
-        # Pkg.add("PowerModels")
-        # Pkg.add("MadNLP")
-        # Pkg.add("SpecialFunctions")
         Pkg.develop(path=".")        
         Pkg.instantiate()
         include("test/runtests.jl")'
@@ -44,17 +33,6 @@ steps:
     command: |
       julia --color=yes --project=./test -e '
         using Pkg
-        # Pkg.add("AMDGPU")
-        # Pkg.add("KernelAbstractions")
-        # Pkg.add("NLPModels")
-        # Pkg.add("JuMP")
-        # Pkg.add("ForwardDiff")
-        # Pkg.add("NLPModelsIpopt")
-        # Pkg.add("NLPModelsJuMP")
-        # Pkg.add("Percival")
-        # Pkg.add("PowerModels")
-        # Pkg.add("MadNLP")
-        # Pkg.add("SpecialFunctions")
         Pkg.develop(path=".")        
         Pkg.instantiate()
         include("test/runtests.jl")'
@@ -74,17 +52,6 @@ steps:
     command: |
       julia --color=yes --project=./test -e '
         using Pkg
-        # Pkg.add("oneAPI")
-        # Pkg.add("KernelAbstractions")
-        # Pkg.add("NLPModels")
-        # Pkg.add("JuMP")
-        # Pkg.add("ForwardDiff")
-        # Pkg.add("NLPModelsIpopt")
-        # Pkg.add("NLPModelsJuMP")
-        # Pkg.add("Percival")
-        # Pkg.add("PowerModels")
-        # Pkg.add("MadNLP")
-        # Pkg.add("SpecialFunctions")
         Pkg.develop(path=".")        
         Pkg.instantiate()
         include("test/runtests.jl")'
