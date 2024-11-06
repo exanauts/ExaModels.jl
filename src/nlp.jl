@@ -68,7 +68,7 @@ Base.show(io::IO, v::ConstraintAug) = print(
     io,
     """
 
-Constrant Augmentation
+Constraint Augmentation
 
   s.t. (...)
        g♭ ≤ (...) + ∑_{p ∈ P} h(x,p) ≤ g♯
@@ -532,7 +532,7 @@ julia> x = variable(c, 10);
 julia> c1 = constraint(c, x[i] + x[i+1] for i=1:9; lcon = -1, ucon = (1+i for i=1:9));
 
 julia> constraint!(c, c1, i => sin(x[i+1]) for i=4:6)
-Constrant Augmentation
+Constraint Augmentation
 
   s.t. (...)
        g♭ ≤ (...) + ∑_{p ∈ P} h(x,p) ≤ g♯
