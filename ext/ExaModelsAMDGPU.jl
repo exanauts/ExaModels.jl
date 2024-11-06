@@ -4,9 +4,6 @@ import ExaModels, AMDGPU
 
 ExaModels.convert_array(v, backend::AMDGPU.ROCBackend) = AMDGPU.ROCArray(v)
 
-ExaModels.sort!(array::A; lt = isless) where {A<:AMDGPU.ROCVector} =
-    copyto!(array, sort!(Array(array); lt = lt))
-
 # Below are type piracy
 function Base.findall(f::F, bitarray::A) where {F<:Function,A<:AMDGPU.ROCVector}
     a = Array(bitarray)
