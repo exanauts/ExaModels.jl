@@ -10,10 +10,6 @@ function getitr(gen::UnitRange{Int64})
 end
 function getitr(gen::Base.Iterators.ProductIterator{NTuple{N,UnitRange{Int64}}}) where {N} end
 
-ExaModels.ExaCore(T, backend::KernelAbstractions.CPU) =
-    ExaModels.ExaCore(x0 = zeros(T, 0), backend = backend)
-ExaModels.ExaCore(backend::KernelAbstractions.CPU) = ExaModels.ExaCore(backend = backend)
-
 function ExaModels.getptr(backend, array; cmp = (x, y) -> x != y)
 
     bitarray = similar(array, Bool, length(array) + 1)
