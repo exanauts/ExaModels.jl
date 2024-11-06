@@ -68,7 +68,7 @@ Base.show(io::IO, v::ConstraintAug) = print(
     io,
     """
 
-Constant Augmentation
+Constraint Augmentation
 
   s.t. (...)
        g♭ ≤ (...) + ∑_{p ∈ P} h(x,p) ≤ g♯
