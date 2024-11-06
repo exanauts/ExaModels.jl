@@ -1,0 +1,78 @@
+steps:
+  - label: "Nvidia GPUs -- CUDA.jl"
+    plugins:
+      - JuliaCI/julia#v1:
+          version: "1.10"
+    agents:
+      queue: "juliagpu"
+      cuda: "*"
+    env:
+      EXAMODELS_TEST_CUDA: 1
+    command: |
+      julia --color=yes --project=./test -e '
+        using Pkg
+        Pkg.develop(path=".")        
+        Pkg.instantiate()
+        include("test/runtests.jl")'
+    timeout_in_minutes: 30
+
+  - label: "AMD GPUs -- AMDGPU.jl"
+    plugins:
+      - JuliaCI/julia#v1:
+          version: "1.10"
+    agents:
+      queue: "juliagpu"
+      rocm: "*"
+      rocmgpu: "*"
+    env:
+      EXAMODELS_TEST_AMDGPU: 1
+      JULIA_NUM_THREADS: 4
+      JULIA_AMDGPU_CORE_MUST_LOAD: "1"
+      JULIA_AMDGPU_HIP_MUST_LOAD: "1"
+      JULIA_AMDGPU_DISABLE_ARTIFACTS: "1"
+    command: |
+      julia --color=yes --project=./test -e '
+        using Pkg
+        Pkg.develop(path=".")        
+        Pkg.instantiate()
+        include("test/runtests.jl")'
+    timeout_in_minutes: 30
+
+  - label: "Intel GPUs -- oneAPI.jl"
+    plugins:
+      - JuliaCI/julia#v1:
+          version: "1.10"
+    agents:
+      queue: "juliagpu"
+      intel: "*"
+    env:
+      EXAMODELS_TEST_ONEAPI: 1
+      OverrideDefaultFP64Settings: 1
+      IGC_EnableDPEmulation: 1
+    command: |
+      julia --color=yes --project=./test -e '
+        using Pkg
+        Pkg.develop(path=".")        
+        Pkg.instantiate()
+        include("test/runtests.jl")'
+    timeout_in_minutes: 30
+
+  # - label: "Apple M1 GPUs -- Metal.jl"
+  #   plugins:
+  #     - JuliaCI/julia#v1:
+  #         version: "1.10"
+  #   agents:
+  #     queue: "juliaecosystem"
+  #     os: "macos"
+  #     arch: "aarch64"
+  #   env:
+  #     EXAMODELS_TEST_METAL: "TRUE"
+  #   command: |
+  #     julia --color=yes --project -e '
+  #       using Pkg
+  #       Pkg.develop(path=".")
+  #       Pkg.add("Metal")
+  #       Pkg.add("KernelAbstractions")
+  #       Pkg.instantiate()
+  #       include("test/runtests.jl")'
+  #   timeout_in_minutes: 30
