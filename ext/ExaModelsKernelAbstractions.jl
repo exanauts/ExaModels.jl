@@ -10,10 +10,6 @@ function getitr(gen::UnitRange{Int64})
 end
 function getitr(gen::Base.Iterators.ProductIterator{NTuple{N,UnitRange{Int64}}}) where {N} end
 
-ExaModels.ExaCore(T, backend::KernelAbstractions.CPU) =
-    ExaModels.ExaCore(x0 = zeros(T, 0), backend = backend)
-ExaModels.ExaCore(backend::KernelAbstractions.CPU) = ExaModels.ExaCore(backend = backend)
-
 function ExaModels.getptr(backend, array; cmp = (x, y) -> x != y)
 
     bitarray = similar(array, Bool, length(array) + 1)
@@ -339,17 +335,6 @@ function ExaModels.jtprod_nln!(
 ) where {T,VT,E<:KAExtension{T,VT,Nothing}}
     error("Prodhelper is not defined. Use ExaModels(c; prod=true) to use jtprod_nln!")
 end
-function ExaModels.hprod!(
-    m::ExaModels.ExaModel{T,VT,E},
-    x::AbstractVector,
-    y::AbstractVector,
-    v::AbstractVector,
-    Hv::AbstractVector;
-    obj_weight = one(eltype(x)),
-) where {T,VT,E<:KAExtension{T,VT,Nothing}}
-    error("Prodhelper is not defined. Use ExaModels(c; prod=true) to use hprod!")
-end
-
 function ExaModels.jprod_nln!(
     m::ExaModels.ExaModel{T,VT,E},
     x::AbstractVector,
@@ -403,7 +388,11 @@ function ExaModels.hprod!(
     obj_weight = one(eltype(x)),
 ) where {T,VT,N <: NamedTuple, E<:KAExtension{T,VT,N}}
 
-    fill!(Hv, zero(eltype(Hv)))
+    if isnothing(m.ext.prodhelper)
+        error("Prodhelper is not defined. Use ExaModels(c; prod=true) to use hprod!")
+    end
+
+  fill!(Hv, zero(eltype(Hv)))
     fill!(m.ext.prodhelper.hessbuffer, zero(eltype(Hv)))
 
     _obj_hess_coord!(m.ext.backend, m.ext.prodhelper.hessbuffer, m.objs, x, obj_weight)
