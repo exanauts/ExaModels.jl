@@ -67,7 +67,6 @@ end
 Base.show(io::IO, v::ConstraintAug) = print(
     io,
     """
-
 Constraint Augmentation
 
   s.t. (...)
