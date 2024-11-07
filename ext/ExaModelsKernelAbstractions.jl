@@ -340,7 +340,7 @@ function ExaModels.jprod_nln!(
     x::AbstractVector,
     v::AbstractVector,
     Jv::AbstractVector,
-) where {T,VT,N <: NamedTuple, E<:KAExtension{T,VT,N}}
+) where {T,VT,N<:NamedTuple,E<:KAExtension{T,VT,N}}
 
     fill!(Jv, zero(eltype(Jv)))
     fill!(m.ext.prodhelper.jacbuffer, zero(eltype(Jv)))
@@ -362,7 +362,7 @@ function ExaModels.jtprod_nln!(
     x::AbstractVector,
     v::AbstractVector,
     Jtv::AbstractVector,
-) where {T,VT,N <: NamedTuple, E<:KAExtension{T,VT,N}}
+) where {T,VT,N<:NamedTuple,E<:KAExtension{T,VT,N}}
 
     fill!(Jtv, zero(eltype(Jtv)))
     fill!(m.ext.prodhelper.jacbuffer, zero(eltype(Jtv)))
@@ -386,13 +386,13 @@ function ExaModels.hprod!(
     v::AbstractVector,
     Hv::AbstractVector;
     obj_weight = one(eltype(x)),
-) where {T,VT,N <: NamedTuple, E<:KAExtension{T,VT,N}}
+) where {T,VT,N<:NamedTuple,E<:KAExtension{T,VT,N}}
 
     if isnothing(m.ext.prodhelper)
         error("Prodhelper is not defined. Use ExaModels(c; prod=true) to use hprod!")
     end
 
-  fill!(Hv, zero(eltype(Hv)))
+    fill!(Hv, zero(eltype(Hv)))
     fill!(m.ext.prodhelper.hessbuffer, zero(eltype(Hv)))
 
     _obj_hess_coord!(m.ext.backend, m.ext.prodhelper.hessbuffer, m.objs, x, obj_weight)
@@ -459,7 +459,7 @@ function ExaModels.hess_coord!(
     y::V,
     hess::V;
     obj_weight = one(eltype(y)),
-) where {T,VT,E<:KAExtension, V<:AbstractVector}
+) where {T,VT,E<:KAExtension,V<:AbstractVector}
     fill!(hess, zero(eltype(hess)))
     _obj_hess_coord!(m.ext.backend, hess, m.objs, x, obj_weight)
     _con_hess_coord!(m.ext.backend, hess, m.cons, x, y)

@@ -55,7 +55,7 @@ end
 
 float_type(::MOIU.Model{T}) where {T} = T
 
-function ExaModels.ExaModel(jm_cache::MOI.ModelLike; backend = nothing, prod=false)
+function ExaModels.ExaModel(jm_cache::MOI.ModelLike; backend = nothing, prod = false)
 
     T = float_type(jm_cache.model)
     minimize = jm_cache.model.objective.sense == MOI.MIN_SENSE
@@ -116,7 +116,7 @@ function ExaModels.ExaModel(jm_cache::MOI.ModelLike; backend = nothing, prod=fal
     cons = ExaModels.constraint(c, offset; start = y0, lcon = lcon, ucon = ucon)
     build_constraint!(c, cons, bin)
 
-    return ExaModels.ExaModel(c; prod=prod)
+    return ExaModels.ExaModel(c; prod = prod)
 end
 
 function exafy_con(cons::Nothing, bin, offset, lcon, ucon)
