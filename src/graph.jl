@@ -110,7 +110,7 @@ end
 @inline Base.getindex(n::ParSource, i) = ParIndexed(n, i)
 @inline Base.getindex(n::VarSource, i) = Var(i)
 
-Par(iter::DataType) = ParSource()
+Par(iter::Type) = ParSource()
 Par(iter, idx...) = ParIndexed(Par(iter, idx[2:end]...), idx[1])
 Par(iter::Type{T}, idx...) where {T<:Tuple} =
     Tuple(Par(p, i, idx...) for (i, p) in enumerate(T.parameters))
