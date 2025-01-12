@@ -2,8 +2,6 @@ module ExaModelsAMDGPU
 
 import ExaModels, AMDGPU
 
-ExaModels.convert_array(v, backend::AMDGPU.ROCBackend) = AMDGPU.ROCArray(v)
-
 # Below are type piracy
 function Base.findall(f::F, bitarray::A) where {F<:Function,A<:AMDGPU.ROCVector}
     a = Array(bitarray)

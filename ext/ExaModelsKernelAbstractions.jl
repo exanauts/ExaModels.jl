@@ -3,6 +3,10 @@ module ExaModelsKernelAbstractions
 import ExaModels: ExaModels, NLPModels
 import KernelAbstractions: KernelAbstractions, @kernel, @index, @Const, synchronize, CPU
 
+function ExaModels.convert_array(v, backend) 
+    vg = KernelAbstractions.zeros(backend, eltype(v), length(v))
+    copyto!(vg, v)
+end
 ExaModels.convert_array(v, backend::CPU) = v
 
 function getitr(gen::UnitRange{Int64})

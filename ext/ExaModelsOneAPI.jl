@@ -46,8 +46,6 @@ function ExaModels.append!(backend, a::A, b::Number, lb) where {A<:oneAPI.oneArr
     return aa
 end
 
-ExaModels.convert_array(v, backend::oneAPI.oneAPIBackend) = oneAPI.oneArray(v)
-
 ExaModels.sort!(array::A; lt = isless) where {A<:oneAPI.oneArray} =
     copyto!(array, sort!(Array(array); lt = lt))
 
