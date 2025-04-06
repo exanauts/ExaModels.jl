@@ -14,16 +14,16 @@ function distillation_column_model(T = 3; backend = nothing)
     alpha = 1.6
     dt = 10 / T
     xAf = 0.5
-    xA0s = ExaModels.convert_array([(i, 0.5) for i = 0:NT+1], backend)
+    xA0s = ExaModels.convert_array([(i, 0.5) for i = 0:(NT+1)], backend)
 
-    itr0 = ExaModels.convert_array(collect(Iterators.product(1:T, 1:FT-1)), backend)
-    itr1 = ExaModels.convert_array(collect(Iterators.product(1:T, FT+1:NT)), backend)
-    itr2 = ExaModels.convert_array(collect(Iterators.product(0:T, 0:NT+1)), backend)
+    itr0 = ExaModels.convert_array(collect(Iterators.product(1:T, 1:(FT-1))), backend)
+    itr1 = ExaModels.convert_array(collect(Iterators.product(1:T, (FT+1):NT)), backend)
+    itr2 = ExaModels.convert_array(collect(Iterators.product(0:T, 0:(NT+1))), backend)
 
     c = ExaCore(backend)
 
-    xA = variable(c, 0:T, 0:NT+1; start = 0.5)
-    yA = variable(c, 0:T, 0:NT+1; start = 0.5)
+    xA = variable(c, 0:T, 0:(NT+1); start = 0.5)
+    yA = variable(c, 0:T, 0:(NT+1); start = 0.5)
     u = variable(c, 0:T; start = 1.0)
     V = variable(c, 0:T; start = 1.0)
     L2 = variable(c, 0:T; start = 1.0)

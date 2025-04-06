@@ -260,9 +260,9 @@ end
 ) where {T1<:SecondAdjointNodeVar,T2<:SecondAdjointNodeVar}
     i, j = t1.i, t2.i
     @inbounds if i == j
-        y1[o2+comp(cnt += 1)] += 2 * adj
+        y1[o2+comp(cnt+=1)] += 2 * adj
     else
-        y1[o2+comp(cnt += 1)] += adj
+        y1[o2+comp(cnt+=1)] += adj
     end
     cnt
 end
@@ -527,7 +527,7 @@ end
     adj,
     adj2,
 ) where {T<:SecondAdjointNodeVar}
-    @inbounds y1[o2+comp(cnt += 1)] += adj2
+    @inbounds y1[o2+comp(cnt+=1)] += adj2
     cnt
 end
 @inline function hrpass(

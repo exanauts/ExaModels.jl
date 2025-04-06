@@ -323,12 +323,10 @@ function _exafy(i::R, p) where {R<:Real}
 end
 
 function _exafy(e::MOI.ScalarNonlinearFunction, p = ())
-    return op(e.head)((
-        begin
-            c, p = _exafy(e, p)
-            c
-        end for e in e.args
-    )...), p
+    return op(e.head)((begin
+        c, p = _exafy(e, p)
+        c
+    end for e in e.args)...), p
 end
 
 function _exafy(e::MOI.ScalarAffineFunction{T}, p = ()) where {T}
@@ -548,8 +546,10 @@ function MOI.get(model::Optimizer, attr::MOI.ObjectiveValue)
 end
 
 MOI.get(model::Optimizer, ::MOI.SolveTimeSec) = model.solve_time
-MOI.get(model::Optimizer, ::MOI.SolverName) =
-    "$(string(model.solver)) running with ExaModels"
+MOI.get(
+    model::Optimizer,
+    ::MOI.SolverName,
+) = "$(string(model.solver)) running with ExaModels"
 
 function MOI.set(model::Optimizer, p::MOI.RawOptimizerAttribute, value)
     model.options[Symbol(p.name)] = value

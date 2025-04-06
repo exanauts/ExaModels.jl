@@ -26,7 +26,7 @@ end
     return cnt
 end
 @inline function jrpass(d::D, comp, i, y1, y2, o1, cnt, adj) where {D<:AdjointNodeVar}
-    @inbounds y1[o1+comp(cnt += 1)] += adj
+    @inbounds y1[o1+comp(cnt+=1)] += adj
     return cnt
 end
 @inline function jrpass(
