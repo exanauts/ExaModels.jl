@@ -8,10 +8,10 @@ using ExaModels, JuMP, CUDA
 N = 10
 jm = Model()
 
-@variable(jm, x[i = 1:N], start = mod(i, 2) == 1 ? -1.2 : 1.0)
+@variable(jm, x[i=1:N], start = mod(i, 2) == 1 ? -1.2 : 1.0)
 @constraint(
     jm,
-    s[i = 1:N-2],
+    s[i=1:(N-2)],
     3x[i+1]^3 + 2x[i+2] - 5 + sin(x[i+1] - x[i+2])sin(x[i+1] + x[i+2]) + 4x[i+1] -
     x[i]exp(x[i] - x[i+1]) - 3 == 0.0
 )

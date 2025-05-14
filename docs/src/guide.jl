@@ -39,7 +39,7 @@ objective(c, 100 * (x[i-1]^2 - x[i])^2 + (x[i-1] - 1)^2 for i = 2:N)
 constraint(
     c,
     3x[i+1]^3 + 2 * x[i+2] - 5 + sin(x[i+1] - x[i+2])sin(x[i+1] + x[i+2]) + 4x[i+1] -
-    x[i]exp(x[i] - x[i+1]) - 3 for i = 1:N-2
+    x[i]exp(x[i] - x[i+1]) - 3 for i = 1:(N-2)
 )
 # Finally, we are ready to create an `ExaModel` from the data we have collected in `ExaCore`. Since `ExaCore` includes all the necessary information, we can do this simply by:
 m = ExaModel(c)

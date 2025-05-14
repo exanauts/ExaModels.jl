@@ -18,8 +18,8 @@ function _exa_luksan_vlcek_model(backend, N; M = 1)
 
     c = ExaCore(backend = backend)
     x = variable(c, N, M; start = [luksan_vlcek_x0(i) for i = 1:N, j = 1:M])
-    s = constraint(c, luksan_vlcek_con1(x, i, j) for i = 1:N-2, j = 1:M)
-    constraint!(c, s, (i, j) => luksan_vlcek_con2(x, i, j) for i = 1:N-2, j = 1:M)
+    s = constraint(c, luksan_vlcek_con1(x, i, j) for i = 1:(N-2), j = 1:M)
+    constraint!(c, s, (i, j) => luksan_vlcek_con2(x, i, j) for i = 1:(N-2), j = 1:M)
     objective(c, luksan_vlcek_obj(x, i, j) for i = 2:N, j = 1:M)
 
     return ExaModel(c; prod = true), (x,), (s,)
@@ -33,10 +33,10 @@ end
 function _jump_luksan_vlcek_model(backend, N; M = 1)
     jm = JuMP.Model()
 
-    JuMP.@variable(jm, x[i = 1:N, j = 1:M], start = mod(i, 2) == 1 ? -1.2 : 1.0)
+    JuMP.@variable(jm, x[i=1:N, j=1:M], start = mod(i, 2) == 1 ? -1.2 : 1.0)
     JuMP.@NLconstraint(
         jm,
-        s[i = 1:N-2, j = 1:M],
+        s[i=1:(N-2), j=1:M],
         3x[i+1, j]^3 + 2x[i+2, j] - 5 +
         sin(x[i+1, j] - x[i+2, j])sin(x[i+1, j] + x[i+2, j]) +
         4x[i+1, j] - x[i, j]exp(x[i, j] - x[i+1, j]) - 3 == 0.0
