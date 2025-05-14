@@ -786,7 +786,7 @@ for (thing, val) in [(:solution, 1), (:multipliers_L, 0), (:multipliers_U, 2)]
             o = x.offset
             len = total(x.size)
             s = size(x.size)
-            return reshape(view(result.$thing, o+1:o+len), s...)
+            return reshape(view(result.$thing, (o+1):(o+len)), s...)
         end
     end
 end
@@ -826,7 +826,7 @@ true
 function multipliers(result::SolverCore.AbstractExecutionStats, y::Constraint)
     o = y.offset
     len = length(y.itr)
-    return view(result.multipliers, o+1:o+len)
+    return view(result.multipliers, (o+1):(o+len))
 end
 
 

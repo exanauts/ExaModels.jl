@@ -422,28 +422,28 @@ end
 
 @kernel function kerspmv(y, @Const(x), @Const(coord), @Const(V), @Const(ptr))
     idx = @index(Global)
-    @inbounds for l = ptr[idx]:ptr[idx+1]-1
+    @inbounds for l = ptr[idx]:(ptr[idx+1]-1)
         ((i, j), ind) = coord[l]
         y[i] += V[ind] * x[j]
     end
 end
 @kernel function kerspmv2(y, @Const(x), @Const(coord), @Const(V), @Const(ptr))
     idx = @index(Global)
-    @inbounds for l = ptr[idx]:ptr[idx+1]-1
+    @inbounds for l = ptr[idx]:(ptr[idx+1]-1)
         ((i, j), ind) = coord[l]
         y[j] += V[ind] * x[i]
     end
 end
 @kernel function kersyspmv(y, @Const(x), @Const(coord), @Const(V), @Const(ptr))
     idx = @index(Global)
-    @inbounds for l = ptr[idx]:ptr[idx+1]-1
+    @inbounds for l = ptr[idx]:(ptr[idx+1]-1)
         ((i, j), ind) = coord[l]
         y[i] += V[ind] * x[j]
     end
 end
 @kernel function kersyspmv2(y, @Const(x), @Const(coord), @Const(V), @Const(ptr))
     idx = @index(Global)
-    @inbounds for l = ptr[idx]:ptr[idx+1]-1
+    @inbounds for l = ptr[idx]:(ptr[idx+1]-1)
         ((i, j), ind) = coord[l]
         if i != j
             y[j] += V[ind] * x[i]
@@ -607,7 +607,7 @@ end
 
 @kernel function compress_to_dense(y, @Const(y0), @Const(ptr), @Const(sparsity))
     I = @index(Global)
-    @inbounds for j = ptr[I]:ptr[I+1]-1
+    @inbounds for j = ptr[I]:(ptr[I+1]-1)
         (k, l) = sparsity[j]
         y[k] += y0[l]
     end
@@ -641,7 +641,7 @@ end
 
 @kernel function ker_compress!(V, @Const(buffer), @Const(ptr), @Const(sparsity))
     i = @index(Global)
-    @inbounds for j = ptr[i]:ptr[i+1]-1
+    @inbounds for j = ptr[i]:(ptr[i+1]-1)
         V[i] += buffer[sparsity[j][2]]
     end
 end

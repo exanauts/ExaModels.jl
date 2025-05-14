@@ -394,7 +394,7 @@ end
 
 function getptr(backend::Nothing, array; cmp = (x, y) -> x != y)
     return push!(
-        pushfirst!(findall(cmp.(@view(array[1:end-1]), @view(array[2:end]))) .+= 1, 1),
+        pushfirst!(findall(cmp.(@view(array[1:(end-1)]), @view(array[2:end]))) .+= 1, 1),
         length(array) + 1,
     )
 end
@@ -505,15 +505,15 @@ end
 
 function _compress!(V, buffer, ptr, sparsity, backend::Nothing)
     fill!(V, zero(eltype(V)))
-    @simd for i = 1:length(ptr)-1
-        for j = ptr[i]:ptr[i+1]-1
+    @simd for i = 1:(length(ptr)-1)
+        for j = ptr[i]:(ptr[i+1]-1)
             V[i] += buffer[sparsity[j][2]]
         end
     end
 end
 
 function _structure!(I, J, ptr, sparsity, backend::Nothing)
-    @simd for i = 1:length(ptr)-1
+    @simd for i = 1:(length(ptr)-1)
         J[i], I[i] = sparsity[ptr[i]][1]
     end
 end

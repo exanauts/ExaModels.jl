@@ -21,7 +21,7 @@ function quadrotor_model(N = 3; backend = nothing)
 
     c = ExaCore(; backend = backend)
 
-    x = variable(c, 1:N+1, 1:n)
+    x = variable(c, 1:(N+1), 1:n)
     u = variable(c, 1:N, 1:p)
 
     constraint(c, x[1, i] - x0 for (i, x0) in x0s)
