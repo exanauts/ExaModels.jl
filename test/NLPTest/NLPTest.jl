@@ -45,8 +45,6 @@ function test_nlp(m1, m2; full = false)
                 @test getfield(m1.meta, field) == getfield(m2.meta, field)
             end
         end
-        test_zero_allocations(m1; exclude=[jac_op])
-        test_zero_allocations(m2; exclude=[jac_op])
     end
 
     @testset "NLP callback tests" begin
@@ -144,12 +142,19 @@ function runtests()
                         set_optimizer_attribute(m, "print_level", MadNLP.ERROR)
                         optimize!(m)
 
-
                         m, vars1, cons1 = exa_model(backend, args)
                         m1 = WrapperNLPModel(m)
 
                         @testset "Backend test" begin
                             test_nlp(m0, m1; full = true)
+                        end
+                        @testset "Allocation tests" begin
+                            if m0.meta.x0 isa Array
+                                test_zero_allocations(m0; exclude=[jac_op])
+                            end
+                            if m1.meta.x0 isa Array
+                                test_zero_allocations(m1; exclude=[jac_op])
+                            end
                         end
                         @testset "Comparison to JuMP" begin
                             test_nlp(m1, m2; full = false)
