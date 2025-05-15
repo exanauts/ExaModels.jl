@@ -23,7 +23,7 @@ function luksan_vlcek_model(N)
 
     c = ExaCore()
     x = variable(c, N; start = (luksan_vlcek_x0(i) for i = 1:N))
-    constraint(c, luksan_vlcek_con(x, i) for i = 1:N-2)
+    constraint(c, luksan_vlcek_con(x, i) for i = 1:(N-2))
     objective(c, luksan_vlcek_obj(x, i) for i = 2:N)
 
     return ExaModel(c)
@@ -34,7 +34,7 @@ function luksan_vlcek_model(N, backend = nothing)
 
     c = ExaCore(; backend = backend) # specify the backend
     x = variable(c, N; start = (luksan_vlcek_x0(i) for i = 1:N))
-    constraint(c, luksan_vlcek_con(x, i) for i = 1:N-2)
+    constraint(c, luksan_vlcek_con(x, i) for i = 1:(N-2))
     objective(c, luksan_vlcek_obj(x, i) for i = 2:N)
 
     return ExaModel(c)
@@ -63,7 +63,7 @@ ipopt(m)
 
 function cuda_luksan_vlcek_model(N)
     c = ExaCore(; backend = CUDABackend())
-    d1 = CuArray(1:N-2)
+    d1 = CuArray(1:(N-2))
     d2 = CuArray(2:N)
     d3 = CuArray([luksan_vlcek_x0(i) for i = 1:N])
 

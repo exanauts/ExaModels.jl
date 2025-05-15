@@ -4,10 +4,10 @@
 N = 10
 jm = Model()
 
-@variable(jm, x[i = 1:N], start = mod(i, 2) == 1 ? -1.2 : 1.0)
+@variable(jm, x[i=1:N], start = mod(i, 2) == 1 ? -1.2 : 1.0)
 @constraint(
     jm,
-    s[i = 1:N-2],
+    s[i=1:(N-2)],
     3x[i+1]^3 + 2x[i+2] - 5 + sin(x[i+1] - x[i+2])sin(x[i+1] + x[i+2]) + 4x[i+1] -
     x[i]exp(x[i] - x[i+1]) - 3 == 0.0
 )
@@ -33,7 +33,7 @@ result = madnlp(em)</code></pre><pre><code class="nohighlight hljs">&quot;Execut
 using MadNLPGPU
 
 set_optimizer(jm, () -&gt; ExaModels.MadNLPOptimizer(CUDABackend()))
-optimize!(jm)</code></pre><pre><code class="nohighlight hljs">This is MadNLP version v0.8.5, running with cuDSS v0.4.0
+optimize!(jm)</code></pre><pre><code class="nohighlight hljs">This is MadNLP version v0.8.7, running with cuDSS v0.4.0
 
 Number of nonzeros in constraint Jacobian............:       80
 Number of nonzeros in Lagrangian Hessian.............:      172
@@ -50,32 +50,31 @@ Total number of inequality constraints...............:        0
 
 iter    objective    inf_pr   inf_du lg(mu)  ||d||  lg(rg) alpha_du alpha_pr  ls
    0  2.0570000e+03 2.48e+01 1.00e+02  -1.0 0.00e+00    -  0.00e+00 0.00e+00   0
-   1  2.0474072e+03 2.47e+01 2.97e+01  -1.0 2.27e+00    -  1.00e+00 4.00e-03h  1
-   2  1.1009058e+03 1.49e+01 2.24e+01  -1.0 2.24e+00    -  1.00e+00 1.00e+00h  1
-   3  1.1598222e+02 2.15e+00 5.34e+01  -1.0 2.14e+00    -  1.00e+00 1.00e+00h  1
-   4  6.5263511e+00 1.12e-01 4.74e+00  -1.0 1.72e-01    -  1.00e+00 1.00e+00h  1
-   5  6.2326771e+00 1.64e-03 2.08e-02  -1.0 5.91e-02    -  1.00e+00 1.00e+00h  1
-   6  6.2324576e+00 1.18e-06 1.22e-05  -3.8 1.40e-03    -  9.98e-01 1.00e+00h  1
-   7  6.2323021e+00 5.36e-11 1.98e-06  -5.0 3.12e-05    -  8.90e-01 1.00e+00h  1
+   1  2.0569995e+03 2.48e+01 3.00e-03  -1.0 2.27e+00    -  1.00e+00 2.00e-07h  2
+   2  1.1078123e+03 1.50e+01 2.26e-03  -1.0 2.25e+00    -  1.00e+00 1.00e+00h  1
+   3  1.1173635e+02 2.13e+00 5.34e-03  -1.0 2.13e+00    -  1.00e+00 1.00e+00h  1
+   4  6.4942494e+00 1.16e-01 4.63e-04  -1.0 1.79e-01    -  1.00e+00 1.00e+00h  1
+   5  6.2325804e+00 1.50e-03 1.65e-04  -2.5 5.69e-02    -  1.00e+00 1.00e+00h  1
+   6  6.2324586e+00 1.10e-06 1.95e-06  -3.8 1.36e-03    -  1.00e+00 1.00e+00h  1
 
-Number of Iterations....: 7
+Number of Iterations....: 6
 
                                    (scaled)                 (unscaled)
-Objective...............:   7.8690682927808842e-01    6.2323020878824611e+00
-Dual infeasibility......:   1.9831097993749935e-06    1.5706229611049953e-05
-Constraint violation....:   5.3643245254879693e-11    5.3643245254879693e-11
-Complementarity.........:   1.1122043961250841e-05    8.8086588173106678e-05
-Overall NLP error.......:   8.8086588173106678e-05    8.8086588173106678e-05
+Objective...............:   7.8692659507428142e-01    6.2324586329883100e+00
+Dual infeasibility......:   1.9463268204739185e-06    1.5414908418153436e-05
+Constraint violation....:   1.1022698143399867e-06    1.1022698143399867e-06
+Complementarity.........:   2.5253352960629225e-07    2.0000655544818350e-06
+Overall NLP error.......:   2.0000655544818350e-06    2.0000655544818350e-06
 
 Number of objective function evaluations             = 8
-Number of objective gradient evaluations             = 8
+Number of objective gradient evaluations             = 7
 Number of constraint evaluations                     = 8
-Number of constraint Jacobian evaluations            = 8
-Number of Lagrangian Hessian evaluations             = 7
-Total wall-clock secs in solver (w/o fun. eval./lin. alg.)  =  0.096
-Total wall-clock secs in linear solver                      =  0.013
+Number of constraint Jacobian evaluations            = 7
+Number of Lagrangian Hessian evaluations             = 6
+Total wall-clock secs in solver (w/o fun. eval./lin. alg.)  =  0.097
+Total wall-clock secs in linear solver                      =  0.020
 Total wall-clock secs in NLP function evaluations           =  0.015
-Total wall-clock secs                                       =  0.125
+Total wall-clock secs                                       =  0.132
 
 EXIT: Optimal Solution Found (tol = 1.0e-04).
-</code></pre><p>Again, only scalar objective/constraints created via <code>@constraint</code> and <code>@objective</code> API are supported. Older syntax like <code>@NLconstraint</code> and <code>@NLobjective</code> are not supported.</p><hr/><p><em>This page was generated using <a href="https://github.com/fredrikekre/Literate.jl">Literate.jl</a>.</em></p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../opf/">« Example: Optimal Power Flow</a><a class="docs-footer-nextpage" href="../core/">API Manual »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.8.0 on <span class="colophon-date" title="Friday 7 February 2025 10:13">Friday 7 February 2025</span>. Using Julia version 1.9.4.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
+</code></pre><p>Again, only scalar objective/constraints created via <code>@constraint</code> and <code>@objective</code> API are supported. Older syntax like <code>@NLconstraint</code> and <code>@NLobjective</code> are not supported.</p><hr/><p><em>This page was generated using <a href="https://github.com/fredrikekre/Literate.jl">Literate.jl</a>.</em></p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../opf/">« Example: Optimal Power Flow</a><a class="docs-footer-nextpage" href="../core/">API Manual »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.11.3 on <span class="colophon-date" title="Thursday 15 May 2025 01:49">Thursday 15 May 2025</span>. Using Julia version 1.9.4.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
