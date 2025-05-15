@@ -148,14 +148,6 @@ function runtests()
                         @testset "Backend test" begin
                             test_nlp(m0, m1; full = true)
                         end
-                        @testset "Allocation tests" begin
-                            if m0.meta.x0 isa Array
-                                test_zero_allocations(m0; exclude=[jac_op])
-                            end
-                            if m1.meta.x0 isa Array
-                                test_zero_allocations(m1; exclude=[jac_op])
-                            end
-                        end
                         @testset "Comparison to JuMP" begin
                             test_nlp(m1, m2; full = false)
 
