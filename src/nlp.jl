@@ -711,20 +711,32 @@ end
 function hprod!(
     m::ExaModel,
     x::AbstractVector,
+    v::AbstractVector,
+    Hv::AbstractVector;
+    obj_weight = one(eltype(x)),
+)
+    fill!(Hv, zero(eltype(Hv)))
+    _obj_hprod!(m.objs, x, v, Hv, obj_weight)
+    return Hv
+end
+
+function hprod!(
+    m::ExaModel,
+    x::AbstractVector,
     y::AbstractVector,
     v::AbstractVector,
     Hv::AbstractVector;
     obj_weight = one(eltype(x)),
 )
     fill!(Hv, zero(eltype(Hv)))
-    _obj_hprod!(m.objs, x, y, v, Hv, obj_weight)
+    _obj_hprod!(m.objs, x, v, Hv, obj_weight)
     _con_hprod!(m.cons, x, y, v, Hv, obj_weight)
     return Hv
 end
 
-_obj_hprod!(objs::ObjectiveNull, x, y, v, Hv, obj_weight) = nothing
-function _obj_hprod!(objs, x, y, v, Hv, obj_weight)
-    _obj_hprod!(objs.inner, x, y, v, Hv, obj_weight)
+_obj_hprod!(objs::ObjectiveNull, x, v, Hv, obj_weight) = nothing
+function _obj_hprod!(objs, x, v, Hv, obj_weight)
+    _obj_hprod!(objs.inner, x, v, Hv, obj_weight)
     shessian!((Hv, v), nothing, objs, x, obj_weight, zero(eltype(Hv)))
 end
 

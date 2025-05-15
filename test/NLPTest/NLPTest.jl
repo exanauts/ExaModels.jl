@@ -2,7 +2,8 @@ module NLPTest
 
 using ExaModels
 using Downloads, Test
-using NLPModels, JuMP, NLPModelsJuMP, PowerModels, NLPModelsIpopt, MadNLP, Percival
+using NLPModels, NLPModelsJuMP, NLPModelsIpopt, NLPModelsTest
+using JuMP, PowerModels, MadNLP, Percival
 
 import ..BACKENDS
 
@@ -44,6 +45,8 @@ function test_nlp(m1, m2; full = false)
                 @test getfield(m1.meta, field) == getfield(m2.meta, field)
             end
         end
+        test_zero_allocations(m1; exclude=[jac_op])
+        test_zero_allocations(m2; exclude=[jac_op])
     end
 
     @testset "NLP callback tests" begin
