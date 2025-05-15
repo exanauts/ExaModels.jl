@@ -675,19 +675,30 @@ end
 function hess_coord!(
     m::ExaModel,
     x::AbstractVector,
+    hess::AbstractVector;
+    obj_weight = one(eltype(x)),
+)
+    fill!(hess, zero(eltype(hess)))
+    _obj_hess_coord!(m.objs, x, hess, obj_weight)
+    return hess
+end
+
+function hess_coord!(
+    m::ExaModel,
+    x::AbstractVector,
     y::AbstractVector,
     hess::AbstractVector;
     obj_weight = one(eltype(x)),
 )
     fill!(hess, zero(eltype(hess)))
-    _obj_hess_coord!(m.objs, x, y, hess, obj_weight)
+    _obj_hess_coord!(m.objs, x, hess, obj_weight)
     _con_hess_coord!(m.cons, x, y, hess, obj_weight)
     return hess
 end
 
-_obj_hess_coord!(objs::ObjectiveNull, x, y, hess, obj_weight) = nothing
-function _obj_hess_coord!(objs, x, y, hess, obj_weight)
-    _obj_hess_coord!(objs.inner, x, y, hess, obj_weight)
+_obj_hess_coord!(objs::ObjectiveNull, x, hess, obj_weight) = nothing
+function _obj_hess_coord!(objs, x, hess, obj_weight)
+    _obj_hess_coord!(objs.inner, x, hess, obj_weight)
     shessian!(hess, nothing, objs, x, obj_weight, zero(eltype(hess)))
 end
 
