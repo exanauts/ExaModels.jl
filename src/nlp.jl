@@ -675,19 +675,30 @@ end
 function hess_coord!(
     m::ExaModel,
     x::AbstractVector,
+    hess::AbstractVector;
+    obj_weight = one(eltype(x)),
+)
+    fill!(hess, zero(eltype(hess)))
+    _obj_hess_coord!(m.objs, x, hess, obj_weight)
+    return hess
+end
+
+function hess_coord!(
+    m::ExaModel,
+    x::AbstractVector,
     y::AbstractVector,
     hess::AbstractVector;
     obj_weight = one(eltype(x)),
 )
     fill!(hess, zero(eltype(hess)))
-    _obj_hess_coord!(m.objs, x, y, hess, obj_weight)
+    _obj_hess_coord!(m.objs, x, hess, obj_weight)
     _con_hess_coord!(m.cons, x, y, hess, obj_weight)
     return hess
 end
 
-_obj_hess_coord!(objs::ObjectiveNull, x, y, hess, obj_weight) = nothing
-function _obj_hess_coord!(objs, x, y, hess, obj_weight)
-    _obj_hess_coord!(objs.inner, x, y, hess, obj_weight)
+_obj_hess_coord!(objs::ObjectiveNull, x, hess, obj_weight) = nothing
+function _obj_hess_coord!(objs, x, hess, obj_weight)
+    _obj_hess_coord!(objs.inner, x, hess, obj_weight)
     shessian!(hess, nothing, objs, x, obj_weight, zero(eltype(hess)))
 end
 
@@ -700,20 +711,32 @@ end
 function hprod!(
     m::ExaModel,
     x::AbstractVector,
+    v::AbstractVector,
+    Hv::AbstractVector;
+    obj_weight = one(eltype(x)),
+)
+    fill!(Hv, zero(eltype(Hv)))
+    _obj_hprod!(m.objs, x, v, Hv, obj_weight)
+    return Hv
+end
+
+function hprod!(
+    m::ExaModel,
+    x::AbstractVector,
     y::AbstractVector,
     v::AbstractVector,
     Hv::AbstractVector;
     obj_weight = one(eltype(x)),
 )
     fill!(Hv, zero(eltype(Hv)))
-    _obj_hprod!(m.objs, x, y, v, Hv, obj_weight)
+    _obj_hprod!(m.objs, x, v, Hv, obj_weight)
     _con_hprod!(m.cons, x, y, v, Hv, obj_weight)
     return Hv
 end
 
-_obj_hprod!(objs::ObjectiveNull, x, y, v, Hv, obj_weight) = nothing
-function _obj_hprod!(objs, x, y, v, Hv, obj_weight)
-    _obj_hprod!(objs.inner, x, y, v, Hv, obj_weight)
+_obj_hprod!(objs::ObjectiveNull, x, v, Hv, obj_weight) = nothing
+function _obj_hprod!(objs, x, v, Hv, obj_weight)
+    _obj_hprod!(objs.inner, x, v, Hv, obj_weight)
     shessian!((Hv, v), nothing, objs, x, obj_weight, zero(eltype(Hv)))
 end
 

@@ -2,7 +2,8 @@ module NLPTest
 
 using ExaModels
 using Downloads, Test
-using NLPModels, JuMP, NLPModelsJuMP, PowerModels, NLPModelsIpopt, MadNLP, Percival
+using NLPModels, NLPModelsJuMP, NLPModelsIpopt, NLPModelsTest
+using JuMP, PowerModels, MadNLP, Percival
 
 import ..BACKENDS
 
@@ -140,7 +141,6 @@ function runtests()
                         set_optimizer(m, MadNLP.Optimizer)
                         set_optimizer_attribute(m, "print_level", MadNLP.ERROR)
                         optimize!(m)
-
 
                         m, vars1, cons1 = exa_model(backend, args)
                         m1 = WrapperNLPModel(m)
