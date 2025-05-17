@@ -4,12 +4,11 @@ function quadrotor_model(N = 3; backend = nothing)
 
     n = 9
     p = 4
-    nd = 9
     d(i, j, N) =
         (j == 1 ? 1 * sin(2 * pi / N * i) : 0.0) +
         (j == 3 ? 2 * sin(4 * pi / N * i) : 0.0) +
         (j == 5 ? 2 * i / N : 0.0)
-    dt = 0.01
+    dt = 1/N
     R = fill(1 / 10, 4)
     Q = [1, 0, 1, 0, 1, 0, 1, 1, 1]
     Qf = [1, 0, 1, 0, 1, 0, 1, 1, 1] / dt
