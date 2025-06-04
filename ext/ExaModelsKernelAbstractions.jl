@@ -419,6 +419,44 @@ function ExaModels.hprod!(
 
     return Hv
 end
+function ExaModels.hprod!(
+    m::ExaModels.ExaModel{T,VT,E},
+    x::AbstractVector,
+    v::AbstractVector,
+    Hv::AbstractVector;
+    obj_weight = one(eltype(x)),
+) where {T,VT,N<:NamedTuple,E<:KAExtension{T,VT,N}}
+
+    if isnothing(m.ext.prodhelper)
+        error("Prodhelper is not defined. Use ExaModels(c; prod=true) to use hprod!")
+    end
+
+    fill!(Hv, zero(eltype(Hv)))
+    fill!(m.ext.prodhelper.hessbuffer, zero(eltype(Hv)))
+
+    _obj_hess_coord!(m.ext.backend, m.ext.prodhelper.hessbuffer, m.objs, x, obj_weight)
+    synchronize(m.ext.backend)
+    kersyspmv(m.ext.backend)(
+        Hv,
+        v,
+        m.ext.prodhelper.hesssparsityi,
+        m.ext.prodhelper.hessbuffer,
+        m.ext.prodhelper.hessptri,
+        ndrange = length(m.ext.prodhelper.hessptri) - 1,
+    )
+    synchronize(m.ext.backend)
+    kersyspmv2(m.ext.backend)(
+        Hv,
+        v,
+        m.ext.prodhelper.hesssparsityj,
+        m.ext.prodhelper.hessbuffer,
+        m.ext.prodhelper.hessptrj,
+        ndrange = length(m.ext.prodhelper.hessptrj) - 1,
+    )
+    synchronize(m.ext.backend)
+
+    return Hv
+end
 
 @kernel function kerspmv(y, @Const(x), @Const(coord), @Const(V), @Const(ptr))
     idx = @index(Global)
