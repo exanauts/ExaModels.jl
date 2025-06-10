@@ -605,7 +605,7 @@ function obj(m::ExaModel, x::AbstractVector)
     return _obj(m.objs, x)
 end
 
-_obj(objs, x) = _obj(objs.inner, x) + sum(objs.f.f(k, x) for k in objs.itr)
+_obj(objs, x) = _obj(objs.inner, x) + (isempty(objs.itr) ? zero(eltype(x)) : sum(objs.f.f(k, x) for k in objs.itr))
 _obj(objs::ObjectiveNull, x) = zero(eltype(x))
 
 function cons_nln!(m::ExaModel, x::AbstractVector, g::AbstractVector)
