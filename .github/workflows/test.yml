@@ -28,12 +28,14 @@ jobs:
             env_var: EXAMODELS_TEST_CUDA
             runner: [self-hosted, linux, gpu, cuda]
             julia_depot_path: /home/users/mschanen/julia_depots/delphi
-          # - name: amdgpu
-          #   env_var: EXAMODELS_TEST_AMDGPU
-          #   runner: [self-hosted, linux, gpu, amdgpu]
-          # - name: oneapi
-          #   env_var: EXAMODELS_TEST_ONEAPI
-          #   runner: [self-hosted, linux, gpu, oneapi]
+          - name: amdgpu
+            env_var: EXAMODELS_TEST_AMDGPU
+            runner: [self-hosted, linux, gpu, amdgpu]
+            julia_depot_path: /home/users/mschanen/julia_depots/pinwheel
+          - name: oneapi
+            env_var: EXAMODELS_TEST_ONEAPI
+            runner: [self-hosted, linux, gpu, oneapi]
+            julia_depot_path: /home/users/mschanen/julia_depots/headroom
 
     env:
       ${{ matrix.gpu-type.env_var }}: 1
