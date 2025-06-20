@@ -18,24 +18,29 @@ jobs:
           version: ${{ matrix.julia-version }}
       - uses: julia-actions/julia-buildpkg@latest
       - uses: julia-actions/julia-runtest@latest
-  # test-self-hosted:
-  #   env:
-  #     EXAMODELS_TEST_CUDA: 1
-  #     EXAMODELS_TEST_AMDGPU: 1
-  #     EXAMODELS_TEST_ONEAPI: 1
-  #   runs-on: self-hosted
-  #   strategy:
-  #     matrix:
-  #       julia-version: ['1']
-  #   steps:
-  #     - uses: actions/checkout@v2
-  #     - uses: julia-actions/setup-julia@latest
-  #       with:
-  #         version: ${{ matrix.julia-version }}
-  #     - uses: julia-actions/julia-buildpkg@latest
-  #     - uses: julia-actions/julia-runtest@latest
-  #     - uses: julia-actions/julia-processcoverage@v1
-  #     - uses: codecov/codecov-action@v1 
-  #       with:
-  #         file: lcov.info
-  #         token: ${{ secrets.CODECOV_TOKEN }}
+  test-gpu:
+    runs-on: ${{ matrix.gpu-type.runner }}
+    strategy:
+      matrix:
+        julia-version: ['1']
+        gpu-type:
+          - name: cuda
+            env_var: EXAMODELS_TEST_CUDA
+            runner: [self-hosted, linux, gpu, cuda]
+          # - name: amdgpu
+          #   env_var: EXAMODELS_TEST_AMDGPU
+          #   runner: [self-hosted, linux, gpu, amdgpu]
+          # - name: oneapi
+          #   env_var: EXAMODELS_TEST_ONEAPI
+          #   runner: [self-hosted, linux, gpu, oneapi]
+
+    env:
+      ${{ matrix.gpu-type.env_var }}: 1
+
+    steps:
+      - uses: actions/checkout@v2
+      - uses: julia-actions/setup-julia@latest
+        with:
+          version: ${{ matrix.julia-version }}
+      - uses: julia-actions/julia-buildpkg@latest
+      - uses: julia-actions/julia-runtest@latest
