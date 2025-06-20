@@ -9,7 +9,7 @@ on:
 
 jobs:
   build:
-    runs-on: self-hosted
+    runs-on: [self-hosted, linux, gpu, cuda]
     steps:
       - uses: actions/checkout@v2
       - uses: julia-actions/setup-julia@latest
