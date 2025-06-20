@@ -27,6 +27,7 @@ jobs:
           - name: cuda
             env_var: EXAMODELS_TEST_CUDA
             runner: [self-hosted, linux, gpu, cuda]
+            julia_depot_path: /home/users/mschanen/julia_depots/delphi
           # - name: amdgpu
           #   env_var: EXAMODELS_TEST_AMDGPU
           #   runner: [self-hosted, linux, gpu, amdgpu]
@@ -36,6 +37,7 @@ jobs:
 
     env:
       ${{ matrix.gpu-type.env_var }}: 1
+      ${{ matrix.gpu-type.julia_depot_path}}: 'JULIA_DEPOT_PATH'
 
     steps:
       - uses: actions/checkout@v2
