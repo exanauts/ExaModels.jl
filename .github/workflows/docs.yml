@@ -9,12 +9,12 @@ on:
 
 jobs:
   build:
-    runs-on: self-hosted
+    runs-on: [self-hosted, linux, gpu, cuda]
     steps:
       - uses: actions/checkout@v2
       - uses: julia-actions/setup-julia@latest
         with:
-          version: '1.9'
+          version: '1'
       - name: Install dependencies
         run: julia --project=docs/ -e 'using Pkg; Pkg.Registry.update(); Pkg.develop(PackageSpec(path=pwd())); Pkg.instantiate()'
       - name: Build and deploy
