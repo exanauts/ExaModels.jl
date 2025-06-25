@@ -146,36 +146,36 @@ struct Identity end
 (v::ParSource)(i::Identity, x, θ) = NaN # despecialized
 
 """
-    AdjointNode1{F, T, I}
+    AdjointNode1{F, T, S, I}
 
 A node with one child for first-order forward pass tree
 
 # Fields:
 - `x::T`: function value
-- `y::T`: first-order sensitivity
+- `y::S`: first-order sensitivity
 - `inner::I`: children
 """
-struct AdjointNode1{F,T,I} <: AbstractAdjointNode
+struct AdjointNode1{F,T,S,I} <: AbstractAdjointNode
     x::T
-    y::T
+    y::S
     inner::I
 end
 """
-    AdjointNode2{F, T, I1, I2}
+    AdjointNode2{F, T, S, R, I1, I2}
 
 A node with two children for first-order forward pass tree
 
 # Fields:
 - `x::T`: function value
-- `y1::T`: first-order sensitivity w.r.t. first argument
-- `y2::T`: first-order sensitivity w.r.t. second argument
+- `y1::S`: first-order sensitivity w.r.t. first argument
+- `y2::R`: first-order sensitivity w.r.t. second argument
 - `inner1::I1`: children #1
 - `inner2::I2`: children #2
 """
-struct AdjointNode2{F,T,I1,I2} <: AbstractAdjointNode
+struct AdjointNode2{F,T,S,R,I1,I2} <: AbstractAdjointNode
     x::T
-    y1::T
-    y2::T
+    y1::S
+    y2::R
     inner1::I1
     inner2::I2
 end
@@ -205,10 +205,10 @@ struct AdjointNodeSource{VT}
     inner::VT
 end
 
-@inline AdjointNode1(f::F, x::T, y, inner::I) where {F,T,I} =
-    AdjointNode1{F,T,I}(x, y, inner)
-@inline AdjointNode2(f::F, x::T, y1, y2, inner1::I1, inner2::I2) where {F,T,I1,I2} =
-    AdjointNode2{F,T,I1,I2}(x, y1, y2, inner1, inner2)
+@inline AdjointNode1(f::F, x::T, y::S, inner::I) where {F,T,S,I} =
+    AdjointNode1{F,T,S,I}(x, y, inner)
+@inline AdjointNode2(f::F, x::T, y1::S, y2::R, inner1::I1, inner2::I2) where {F,T,S,R,I1,I2} =
+    AdjointNode2{F,T,S,R,I1,I2}(x, y1, y2, inner1, inner2)
 
 @inline Base.getindex(x::I, i) where {I<:AdjointNodeSource{Nothing}} =
     AdjointNodeVar(i, NaN)
@@ -217,44 +217,44 @@ end
 
 
 """
-    SecondAdjointNode1{F, T, I}
+    SecondAdjointNode1{F, T, S, H, I}
 
 A node with one child for second-order forward pass tree
 
 # Fields:
 - `x::T`: function value
-- `y::T`: first-order sensitivity
-- `h::T`: second-order sensitivity
+- `y::S`: first-order sensitivity
+- `h::H`: second-order sensitivity
 - `inner::I`: DESCRIPTION
 """
-struct SecondAdjointNode1{F,T,I} <: AbstractSecondAdjointNode
+struct SecondAdjointNode1{F,T,S,H,I} <: AbstractSecondAdjointNode
     x::T
-    y::T
-    h::T
+    y::S
+    h::H
     inner::I
 end
 """
-    SecondAdjointNode2{F, T, I1, I2}
+    SecondAdjointNode2{F, T, S, R, H1, H2, H3, I1, I2}
 
 A node with one child for second-order forward pass tree
 
 # Fields:
 - `x::T`: function value
-- `y1::T`: first-order sensitivity w.r.t. first argument
-- `y2::T`: first-order sensitivity w.r.t. first argument
-- `h11::T`: second-order sensitivity w.r.t. first argument
-- `h12::T`: second-order sensitivity w.r.t. first and second argument
-- `h22::T`: second-order sensitivity w.r.t. second argument
+- `y1::S`: first-order sensitivity w.r.t. first argument
+- `y2::R`: first-order sensitivity w.r.t. first argument
+- `h11::H1`: second-order sensitivity w.r.t. first argument
+- `h12::H2`: second-order sensitivity w.r.t. first and second argument
+- `h22::H3`: second-order sensitivity w.r.t. second argument
 - `inner1::I1`: children #1
 - `inner2::I2`: children #2
 """
-struct SecondAdjointNode2{F,T,I1,I2} <: AbstractSecondAdjointNode
+struct SecondAdjointNode2{F,T,S,R,H1,H2,H3,I1,I2} <: AbstractSecondAdjointNode
     x::T
-    y1::T
-    y2::T
-    h11::T
-    h12::T
-    h22::T
+    y1::S
+    y2::R
+    h11::H1
+    h12::H2
+    h22::H3
     inner1::I1
     inner2::I2
 end
@@ -285,20 +285,20 @@ struct SecondAdjointNodeSource{VT}
     inner::VT
 end
 
-@inline SecondAdjointNode1(f::F, x::T, y, h, inner::I) where {F,T,I} =
-    SecondAdjointNode1{F,T,I}(x, y, h, inner)
+@inline SecondAdjointNode1(f::F, x::T, y::S, h::H, inner::I) where {F,T,S,H,I} =
+    SecondAdjointNode1{F,T,S,H,I}(x, y, h, inner)
 @inline SecondAdjointNode2(
     f::F,
     x::T,
-    y1,
-    y2,
-    h11,
-    h12,
-    h22,
+    y1::S,
+    y2::R,
+    h11::H1,
+    h12::H2,
+    h22::H3,
     inner1::I1,
     inner2::I2,
-) where {F,T,I1,I2} =
-    SecondAdjointNode2{F,T,I1,I2}(x, y1, y2, h11, h12, h22, inner1, inner2)
+) where {F,T,S,R,H1,H2,H3,I1,I2} =
+    SecondAdjointNode2{F,T,S,R,H1,H2,H3,I1,I2}(x, y1, y2, h11, h12, h22, inner1, inner2)
 
 @inline Base.getindex(x::I, i) where {I<:SecondAdjointNodeSource{Nothing}} =
     SecondAdjointNodeVar(i, NaN)
@@ -310,3 +310,8 @@ end
 @inline (v::Null{N})(i, x::V, θ) where {N,T,V<:AbstractVector{T}} = T(v.value)
 @inline (v::Null{N})(i, x::AdjointNodeSource{T}, θ) where {N,T} = AdjointNull()
 @inline (v::Null{N})(i, x::SecondAdjointNodeSource{T}, θ) where {N,T} = SecondAdjointNull()
+
+@inline Base.one(::AbstractNode) = Null(1)
+@inline Base.zero(::AbstractNode) = Null(0)
+@inline Base.one(::Type{<:AbstractNode}) = Null(1)
+@inline Base.zero(::Type{<:AbstractNode}) = Null(0)

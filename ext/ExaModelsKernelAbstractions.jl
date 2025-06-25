@@ -40,7 +40,7 @@ function ExaModels.ExaModel(
 
     gsparsity = similar(c.x0, Tuple{Int,Int}, c.nnzg)
 
-    _grad_structure!(c.backend, c.obj, gsparsity)
+    _grad_structure!(c.backend, c.obj, gsparsity, c.θ)
     if !isempty(gsparsity)
         ExaModels.sort!(gsparsity; lt = ((i, j), (k, l)) -> i < k)
     end
@@ -155,12 +155,12 @@ end
 
 
 
-function _grad_structure!(backend, objs, gsparsity)
-    ExaModels.sgradient!(backend, gsparsity, objs, nothing, nothing, NaN)
-    _grad_structure!(backend, objs.inner, gsparsity)
+function _grad_structure!(backend, objs, gsparsity, θ)
+    ExaModels.sgradient!(backend, gsparsity, objs, nothing, θ, NaN)
+    _grad_structure!(backend, objs.inner, gsparsity, θ)
     synchronize(backend)
 end
-function _grad_structure!(backend, objs::ExaModels.ObjectiveNull, gsparsity) end
+function _grad_structure!(backend, objs::ExaModels.ObjectiveNull, gsparsity, θ) end
 
 function ExaModels.jac_structure!(
     m::ExaModels.ExaModel{T,VT,E},

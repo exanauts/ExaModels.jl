@@ -139,6 +139,22 @@ macro register_bivariate(f, df1, df2, ddf11, ddf12, ddf22)
             end
 
             @inline function $f(
+                d1::ExaModels.ParameterNode,
+                d2::D2,
+            ) where {D2<:ExaModels.AbstractAdjointNode}
+                x2 = d2.x
+                ExaModels.AdjointNode1($f, $f(d1, x2), $df2(d1, x2), d2)
+            end
+            
+            @inline function $f(
+                d1::D1,
+                d2::ExaModels.ParameterNode,
+            ) where {D1<:ExaModels.AbstractAdjointNode}
+                x1 = d1.x
+                ExaModels.AdjointNode1($f, $f(x1, d2), $df1(x1, d2), d1)
+            end
+
+            @inline function $f(
                 t1::T1,
                 t2::T2,
             ) where {
@@ -188,6 +204,34 @@ macro register_bivariate(f, df1, df2, ddf11, ddf12, ddf22)
                     $df2(x1, x2),
                     $ddf22(x1, x2),
                     t2,
+                )
+            end
+
+            @inline function $f(
+                d1::ExaModels.ParameterNode,
+                t2::T2,
+            ) where {T2<:ExaModels.AbstractSecondAdjointNode}
+                x2 = t2.x
+                ExaModels.SecondAdjointNode1(
+                    ExaModels.FirstFixed($f),
+                    $f(d1, x2),
+                    $df2(d1, x2),
+                    $ddf22(d1, x2),
+                    t2,
+                )
+            end
+            
+            @inline function $f(
+                t1::T1,
+                d2::ExaModels.ParameterNode,
+            ) where {T1<:ExaModels.AbstractSecondAdjointNode}
+                x1 = t1.x
+                ExaModels.SecondAdjointNode1(
+                    ExaModels.SecondFixed($f),
+                    $f(x1, d2),
+                    $df1(x1, d2),
+                    $ddf11(x1, d2),
+                    t1,
                 )
             end
 
