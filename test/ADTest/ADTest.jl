@@ -108,7 +108,7 @@ const FUNCTIONS = [
 function gradient(f, x)
     T = eltype(x)
     y = fill!(similar(x), zero(T))
-    ExaModels.gradient!(y, (p, x) -> f(x), x, nothing, one(T))
+    ExaModels.gradient!(y, (p, x, θ) -> f(x), x, nothing, nothing, one(T))
     return y
 end
 
@@ -116,7 +116,7 @@ function sgradient(f, x)
     T = eltype(x)
 
     ff = f(ExaModels.VarSource())
-    d = ff(ExaModels.Identity(), ExaModels.AdjointNodeSource(nothing))
+    d = ff(ExaModels.Identity(), ExaModels.AdjointNodeSource(nothing), nothing)
     y1 = []
     ExaModels.grpass(d, nothing, y1, nothing, 0, NaN)
 
@@ -127,8 +127,8 @@ function sgradient(f, x)
     buffer = fill!(similar(x, n), zero(T))
     buffer_I = similar(x, Tuple{Int,Int}, n)
 
-    ExaModels.sgradient!(buffer_I, ff, nothing, nothing, comp, 0, NaN)
-    ExaModels.sgradient!(buffer, ff, nothing, x, comp, 0, one(T))
+    ExaModels.sgradient!(buffer_I, ff, nothing, nothing, nothing, comp, 0, NaN)
+    ExaModels.sgradient!(buffer, ff, nothing, x, nothing, comp, 0, one(T))
 
     y = zeros(length(x))
     y[collect(i for (i, j) in buffer_I)] += buffer
@@ -140,7 +140,7 @@ function sjacobian(f, x)
     T = eltype(x)
 
     ff = f(ExaModels.VarSource())
-    d = ff(ExaModels.Identity(), ExaModels.AdjointNodeSource(nothing))
+    d = ff(ExaModels.Identity(), ExaModels.AdjointNodeSource(nothing), nothing)
     y1 = []
     ExaModels.grpass(d, nothing, y1, nothing, 0, NaN)
 
@@ -152,8 +152,8 @@ function sjacobian(f, x)
     buffer_I = similar(x, Int, n)
     buffer_J = similar(x, Int, n)
 
-    ExaModels.sjacobian!(buffer_I, buffer_J, ff, nothing, nothing, comp, 0, 0, NaN)
-    ExaModels.sjacobian!(buffer, nothing, ff, nothing, x, comp, 0, 0, one(T))
+    ExaModels.sjacobian!(buffer_I, buffer_J, ff, nothing, nothing, nothing, comp, 0, 0, NaN)
+    ExaModels.sjacobian!(buffer, nothing, ff, nothing, x, nothing, comp, 0, 0, one(T))
 
     y = zeros(length(x))
     y[buffer_J] += buffer
@@ -165,7 +165,7 @@ function shessian(f, x)
     T = eltype(x)
 
     ff = f(ExaModels.VarSource())
-    t = ff(ExaModels.Identity(), ExaModels.SecondAdjointNodeSource(nothing))
+    t = ff(ExaModels.Identity(), ExaModels.SecondAdjointNodeSource(nothing), nothing)
     y2 = []
     ExaModels.hrpass0(t, nothing, y2, nothing, nothing, 0, NaN, NaN)
 
@@ -177,8 +177,8 @@ function shessian(f, x)
     buffer_I = similar(x, Int, n)
     buffer_J = similar(x, Int, n)
 
-    ExaModels.shessian!(buffer_I, buffer_J, ff, nothing, nothing, comp, 0, NaN, NaN)
-    ExaModels.shessian!(buffer, nothing, ff, nothing, x, comp, 0, one(T), zero(T))
+    ExaModels.shessian!(buffer_I, buffer_J, ff, nothing, nothing, nothing, comp, 0, NaN, NaN)
+    ExaModels.shessian!(buffer, nothing, ff, nothing, x, nothing, comp, 0, one(T), zero(T))
 
     y = zeros(length(x), length(x))
     for (k, (i, j)) in enumerate(zip(buffer_I, buffer_J))

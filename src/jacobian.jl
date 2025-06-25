@@ -100,7 +100,7 @@ Performs sparse jacobian evalution
 - `x`: variable vector
 - `adj`: initial adjoint
 """
-function sjacobian!(y1, y2, f, x, adj)
+function sjacobian!(y1, y2, f, x, θ, adj)
     @simd for i in eachindex(f.itr)
         @inbounds sjacobian!(
             y1,
@@ -108,6 +108,7 @@ function sjacobian!(y1, y2, f, x, adj)
             f.f.f,
             f.itr[i],
             x,
+            θ,
             f.f.comp1,
             offset0(f, i),
             offset1(f, i),
@@ -116,7 +117,7 @@ function sjacobian!(y1, y2, f, x, adj)
     end
 end
 
-function sjacobian!(y1, y2, f, p, x, comp, o0, o1, adj)
-    graph = f(p, AdjointNodeSource(x))
+function sjacobian!(y1, y2, f, p, x, θ, comp, o0, o1, adj)
+    graph = f(p, AdjointNodeSource(x), θ)
     jrpass(graph, comp, o0, y1, y2, o1, 0, adj)
 end

@@ -1,8 +1,10 @@
 abstract type AbstractVariable end
+abstract type AbstractParameter end
 abstract type AbstractConstraint end
 abstract type AbstractObjective end
 
 struct VariableNull <: AbstractVariable end
+struct ParameterNull <: AbstractParameter end
 struct ObjectiveNull <: AbstractObjective end
 struct ConstraintNull <: AbstractConstraint end
 
@@ -20,7 +22,19 @@ Variable
 """,
 )
 
+struct Parameter{S,O} <: AbstractParameter
+    size::S
+    length::O
+    offset::O
+end
+Base.show(io::IO, v::Parameter) = print(
+    io,
+    """
+Parameter
 
+  p ∈ R^{$(join(size(v.size)," × "))}
+""",
+)
 struct Objective{R,F,I} <: AbstractObjective
     inner::R
     f::F
@@ -123,6 +137,7 @@ Base.@kwdef mutable struct ExaCore{T,VT<:AbstractVector{T},B}
     obj::AbstractObjective = ObjectiveNull()
     con::AbstractConstraint = ConstraintNull()
     nvar::Int = 0
+    npar::Int = 0
     ncon::Int = 0
     nconaug::Int = 0
     nobj::Int = 0
@@ -131,6 +146,7 @@ Base.@kwdef mutable struct ExaCore{T,VT<:AbstractVector{T},B}
     nnzj::Int = 0
     nnzh::Int = 0
     x0::VT = convert_array(zeros(0), backend)
+    θ::VT = similar(x0)
     lvar::VT = similar(x0)
     uvar::VT = similar(x0)
     y0::VT = similar(x0)
@@ -174,6 +190,7 @@ An ExaCore
 struct ExaModel{T,VT,E,O,C} <: NLPModels.AbstractNLPModel{T,VT}
     objs::O
     cons::C
+    θ::VT
     meta::NLPModels.NLPModelMeta{T,VT}
     counters::NLPModels.Counters
     ext::E
@@ -227,6 +244,7 @@ function ExaModel(c::C; prod = nothing) where {C<:ExaCore}
     return ExaModel(
         c.obj,
         c.con,
+        c.θ,
         NLPModels.NLPModelMeta(
             c.nvar,
             ncon = c.ncon,
@@ -254,6 +272,17 @@ end
     _bound_check(v.size, is)
     Var(v.offset + idxx(is .- (_start.(v.size) .- 1), _length.(v.size)))
 end
+
+@inline function Base.getindex(p::P, i) where {P<:Parameter}
+    _bound_check(p.size, i)
+    ParameterNode(i + (p.offset - _start(p.size[1]) + 1))
+end
+@inline function Base.getindex(p::P, is...) where {P<:Parameter}
+    @assert(length(is) == length(p.size), "Parameter index dimension error")
+    _bound_check(p.size, is)
+    ParameterNode(p.offset + idxx(is .- (_start.(p.size) .- 1), _length.(p.size)))
+end
+
 
 function _bound_check(sizes, i::I) where {I<:Integer}
     __bound_check(sizes[1], i)
@@ -361,6 +390,21 @@ function variable(
     return Variable(ns, len, o)
 
 end
+
+function parameter(
+    c::C,
+    start::AbstractArray;
+) where {T,C<:ExaCore{T}}
+
+    ns = Base.size(start)
+    o = c.npar
+    len = total(ns)
+    c.npar += len
+    c.θ = append!(c.backend, c.θ, start, len)
+    return Parameter(ns, len, o)
+
+end
+
 
 function variable(c::C; kwargs...) where {T,C<:ExaCore{T}}
 
@@ -573,105 +617,105 @@ end
 
 
 function jac_structure!(m::ExaModel, rows::AbstractVector, cols::AbstractVector)
-    _jac_structure!(m.cons, rows, cols)
+    _jac_structure!(m.cons, rows, cols, m.θ)
     return rows, cols
 end
 
-_jac_structure!(cons::ConstraintNull, rows, cols) = nothing
-function _jac_structure!(cons, rows, cols)
-    _jac_structure!(cons.inner, rows, cols)
-    sjacobian!(rows, cols, cons, nothing, NaN)
+_jac_structure!(cons::ConstraintNull, rows, cols, θ) = nothing
+function _jac_structure!(cons, rows, cols, θ)
+    _jac_structure!(cons.inner, rows, cols, θ)
+    sjacobian!(rows, cols, cons, nothing, θ, NaN)
 end
 
 function hess_structure!(m::ExaModel, rows::AbstractVector, cols::AbstractVector)
-    _obj_hess_structure!(m.objs, rows, cols)
-    _con_hess_structure!(m.cons, rows, cols)
+    _obj_hess_structure!(m.objs, rows, cols, m.θ)
+    _con_hess_structure!(m.cons, rows, cols, m.θ)
     return rows, cols
 end
 
-_obj_hess_structure!(objs::ObjectiveNull, rows, cols) = nothing
-function _obj_hess_structure!(objs, rows, cols)
-    _obj_hess_structure!(objs.inner, rows, cols)
-    shessian!(rows, cols, objs, nothing, NaN, NaN)
+_obj_hess_structure!(objs::ObjectiveNull, rows, cols, θ) = nothing
+function _obj_hess_structure!(objs, rows, cols, θ)
+    _obj_hess_structure!(objs.inner, rows, cols, θ)
+    shessian!(rows, cols, objs, nothing, θ, NaN, NaN)
 end
 
-_con_hess_structure!(cons::ConstraintNull, rows, cols) = nothing
-function _con_hess_structure!(cons, rows, cols)
-    _con_hess_structure!(cons.inner, rows, cols)
-    shessian!(rows, cols, cons, nothing, NaN, NaN)
+_con_hess_structure!(cons::ConstraintNull, rows, cols, θ) = nothing
+function _con_hess_structure!(cons, rows, cols, θ)
+    _con_hess_structure!(cons.inner, rows, cols, θ)
+    shessian!(rows, cols, cons, nothing, θ, NaN, NaN)
 end
 
 function obj(m::ExaModel, x::AbstractVector)
-    return _obj(m.objs, x)
+    return _obj(m.objs, x, m.θ)
 end
 
-_obj(objs, x) =
-    _obj(objs.inner, x) +
-    (isempty(objs.itr) ? zero(eltype(x)) : sum(objs.f.f(k, x) for k in objs.itr))
-_obj(objs::ObjectiveNull, x) = zero(eltype(x))
+_obj(objs, x, θ) =
+    _obj(objs.inner, x, θ) +
+    (isempty(objs.itr) ? zero(eltype(x)) : sum(objs.f.f(k, x, θ) for k in objs.itr))
+_obj(objs::ObjectiveNull, x, θ) = zero(eltype(x))
 
 function cons_nln!(m::ExaModel, x::AbstractVector, g::AbstractVector)
     fill!(g, zero(eltype(g)))
-    _cons_nln!(m.cons, x, g)
+    _cons_nln!(m.cons, x, m.θ, g)
     return g
 end
 
-function _cons_nln!(cons, x, g)
-    _cons_nln!(cons.inner, x, g)
+function _cons_nln!(cons, x, θ, g)
+    _cons_nln!(cons.inner, x, θ, g)
     @simd for i in eachindex(cons.itr)
-        g[offset0(cons, i)] += cons.f.f(cons.itr[i], x)
+        g[offset0(cons, i)] += cons.f.f(cons.itr[i], x, θ)
     end
 end
-_cons_nln!(cons::ConstraintNull, x, g) = nothing
+_cons_nln!(cons::ConstraintNull, x, θ, g) = nothing
 
 
 
 function grad!(m::ExaModel, x::AbstractVector, f::AbstractVector)
     fill!(f, zero(eltype(f)))
-    _grad!(m.objs, x, f)
+    _grad!(m.objs, x, m.θ, f)
     return f
 end
 
-function _grad!(objs, x, f)
-    _grad!(objs.inner, x, f)
-    gradient!(f, objs, x, one(eltype(f)))
+function _grad!(objs, x, θ, f)
+    _grad!(objs.inner, x, θ, f)
+    gradient!(f, objs, x, θ, one(eltype(f)))
 end
-_grad!(objs::ObjectiveNull, x, f) = nothing
+_grad!(objs::ObjectiveNull, x, θ, f) = nothing
 
 function jac_coord!(m::ExaModel, x::AbstractVector, jac::AbstractVector)
     fill!(jac, zero(eltype(jac)))
-    _jac_coord!(m.cons, x, jac)
+    _jac_coord!(m.cons, x, m.θ, jac)
     return jac
 end
 
-_jac_coord!(cons::ConstraintNull, x, jac) = nothing
-function _jac_coord!(cons, x, jac)
-    _jac_coord!(cons.inner, x, jac)
-    sjacobian!(jac, nothing, cons, x, one(eltype(jac)))
+_jac_coord!(cons::ConstraintNull, x, θ, jac) = nothing
+function _jac_coord!(cons, x, θ, jac)
+    _jac_coord!(cons.inner, x, θ, jac)
+    sjacobian!(jac, nothing, cons, x, θ, one(eltype(jac)))
 end
 
 function jprod_nln!(m::ExaModel, x::AbstractVector, v::AbstractVector, Jv::AbstractVector)
     fill!(Jv, zero(eltype(Jv)))
-    _jprod_nln!(m.cons, x, v, Jv)
+    _jprod_nln!(m.cons, x, m.θ, v, Jv)
     return Jv
 end
 
-_jprod_nln!(cons::ConstraintNull, x, v, Jv) = nothing
-function _jprod_nln!(cons, x, v, Jv)
-    _jprod_nln!(cons.inner, x, v, Jv)
-    sjacobian!((Jv, v), nothing, cons, x, one(eltype(Jv)))
+_jprod_nln!(cons::ConstraintNull, x, θ, v, Jv) = nothing
+function _jprod_nln!(cons, x, θ, v, Jv)
+    _jprod_nln!(cons.inner, x, θ, v, Jv)
+    sjacobian!((Jv, v), nothing, cons, x, θ, one(eltype(Jv)))
 end
 
 function jtprod_nln!(m::ExaModel, x::AbstractVector, v::AbstractVector, Jtv::AbstractVector)
     fill!(Jtv, zero(eltype(Jtv)))
-    _jtprod_nln!(m.cons, x, v, Jtv)
+    _jtprod_nln!(m.cons, x, m.θ, v, Jtv)
     return Jtv
 end
 
-_jtprod_nln!(cons::ConstraintNull, x, v, Jtv) = nothing
-function _jtprod_nln!(cons, x, v, Jtv)
-    _jtprod_nln!(cons.inner, x, v, Jtv)
-    sjacobian!(nothing, (Jtv, v), cons, x, one(eltype(Jtv)))
+_jtprod_nln!(cons::ConstraintNull, x, θ, v, Jtv) = nothing
+function _jtprod_nln!(cons, x, θ, v, Jtv)
+    _jtprod_nln!(cons.inner, x, θ, v, Jtv)
+    sjacobian!(nothing, (Jtv, v), cons, x, θ, one(eltype(Jtv)))
 end
 
 function hess_coord!(
@@ -681,7 +725,7 @@ function hess_coord!(
     obj_weight = one(eltype(x)),
 )
     fill!(hess, zero(eltype(hess)))
-    _obj_hess_coord!(m.objs, x, hess, obj_weight)
+    _obj_hess_coord!(m.objs, x, m.θ, hess, obj_weight)
     return hess
 end
 
@@ -693,21 +737,21 @@ function hess_coord!(
     obj_weight = one(eltype(x)),
 )
     fill!(hess, zero(eltype(hess)))
-    _obj_hess_coord!(m.objs, x, hess, obj_weight)
-    _con_hess_coord!(m.cons, x, y, hess, obj_weight)
+    _obj_hess_coord!(m.objs, x, m.θ, hess, obj_weight)
+    _con_hess_coord!(m.cons, x, m.θ, y, hess, obj_weight)
     return hess
 end
 
-_obj_hess_coord!(objs::ObjectiveNull, x, hess, obj_weight) = nothing
-function _obj_hess_coord!(objs, x, hess, obj_weight)
-    _obj_hess_coord!(objs.inner, x, hess, obj_weight)
-    shessian!(hess, nothing, objs, x, obj_weight, zero(eltype(hess)))
+_obj_hess_coord!(objs::ObjectiveNull, x, θ, hess, obj_weight) = nothing
+function _obj_hess_coord!(objs, x, θ, hess, obj_weight)
+    _obj_hess_coord!(objs.inner, x, θ, hess, obj_weight)
+    shessian!(hess, nothing, objs, x, θ, obj_weight, zero(eltype(hess)))
 end
 
-_con_hess_coord!(cons::ConstraintNull, x, y, hess, obj_weight) = nothing
-function _con_hess_coord!(cons, x, y, hess, obj_weight)
-    _con_hess_coord!(cons.inner, x, y, hess, obj_weight)
-    shessian!(hess, nothing, cons, x, y, zero(eltype(hess)))
+_con_hess_coord!(cons::ConstraintNull, x, θ, y, hess, obj_weight) = nothing
+function _con_hess_coord!(cons, x, θ, y, hess, obj_weight)
+    _con_hess_coord!(cons.inner, x, θ, y, hess, obj_weight)
+    shessian!(hess, nothing, cons, x, θ, y, zero(eltype(hess)))
 end
 
 function hprod!(
@@ -718,7 +762,7 @@ function hprod!(
     obj_weight = one(eltype(x)),
 )
     fill!(Hv, zero(eltype(Hv)))
-    _obj_hprod!(m.objs, x, v, Hv, obj_weight)
+    _obj_hprod!(m.objs, x, m.θ, v, Hv, obj_weight)
     return Hv
 end
 
@@ -731,21 +775,21 @@ function hprod!(
     obj_weight = one(eltype(x)),
 )
     fill!(Hv, zero(eltype(Hv)))
-    _obj_hprod!(m.objs, x, v, Hv, obj_weight)
-    _con_hprod!(m.cons, x, y, v, Hv, obj_weight)
+    _obj_hprod!(m.objs, x, m.θ, v, Hv, obj_weight)
+    _con_hprod!(m.cons, x, m.θ, y, v, Hv, obj_weight)
     return Hv
 end
 
-_obj_hprod!(objs::ObjectiveNull, x, v, Hv, obj_weight) = nothing
-function _obj_hprod!(objs, x, v, Hv, obj_weight)
-    _obj_hprod!(objs.inner, x, v, Hv, obj_weight)
-    shessian!((Hv, v), nothing, objs, x, obj_weight, zero(eltype(Hv)))
+_obj_hprod!(objs::ObjectiveNull, x, θ, v, Hv, obj_weight) = nothing
+function _obj_hprod!(objs, x, θ, v, Hv, obj_weight)
+    _obj_hprod!(objs.inner, x, θ, v, Hv, obj_weight)
+    shessian!((Hv, v), nothing, objs, x, θ, obj_weight, zero(eltype(Hv)))
 end
 
-_con_hprod!(cons::ConstraintNull, x, y, v, Hv, obj_weight) = nothing
-function _con_hprod!(cons, x, y, v, Hv, obj_weight)
-    _con_hprod!(cons.inner, x, y, v, Hv, obj_weight)
-    shessian!((Hv, v), nothing, cons, x, y, zero(eltype(Hv)))
+_con_hprod!(cons::ConstraintNull, x, θ, y, v, Hv, obj_weight) = nothing
+function _con_hprod!(cons, x, θ, y, v, Hv, obj_weight)
+    _con_hprod!(cons.inner, x, θ, y, v, Hv, obj_weight)
+    shessian!((Hv, v), nothing, cons, x, θ, y, zero(eltype(Hv)))
 end
 
 @inbounds @inline offset0(a, i) = offset0(a.f, i)
@@ -757,7 +801,7 @@ end
 @inbounds @inline offset2(f::F, i) where {F<:SIMDFunction} = f.o2 + f.o2step * (i - 1)
 @inbounds @inline offset0(a::C, i) where {C<:ConstraintAug} = offset0(a.f, a.itr, i)
 @inbounds @inline offset0(f::F, itr, i) where {P<:Pair,F<:SIMDFunction{P}} =
-    f.o0 + f.f.first(itr[i], nothing)
+    f.o0 + f.f.first(itr[i], nothing, nothing)
 @inbounds @inline offset0(f::F, itr, i) where {I<:Integer,P<:Pair{I},F<:SIMDFunction{P}} =
     f.o0 + f.f.first
 @inbounds @inline offset0(f::F, itr, i) where {T<:Tuple,P<:Pair{T},F<:SIMDFunction{P}} =
@@ -776,7 +820,7 @@ end
 @inline _idxx(coord, si, a) = a * (coord[1] - 1) + _idxx(coord[2:end], si[2:end], a * si[1])
 @inline _idxx(::Tuple{}, ::Tuple{}, a) = 0
 
-@inline coord(itr, i, (f, fs...)) = (f(idx(itr, i), nothing), coord(itr, i, fs)...)
+@inline coord(itr, i, (f, fs...)) = (f(idx(itr, i), nothing, nothing), coord(itr, i, fs)...)
 @inline coord(itr, i, ::Tuple{}) = ()
 
 for (thing, val) in [(:solution, 1), (:multipliers_L, 0), (:multipliers_U, 2)]
