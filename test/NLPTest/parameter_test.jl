@@ -22,11 +22,11 @@ function exa_luksan_vlcek_parametric(backend, N; M=1, use_parameters=true, param
     x = variable(c, N, M; start = [luksan_vlcek_x0(i) for i = 1:N, j = 1:M])
     
     if use_parameters
-        θ = parameter(c, 1:7)
+        θ = parameter(c, zeros(7))
         if !isnothing(param_values)
-            c.θ .= param_values
+            c.θ .= ExaModels.convert_array(param_values, backend)
         else
-            c.θ .= [100.0, 1.0, 3.0, 2.0, 5.0, 4.0, 3.0]
+            c.θ .= ExaModels.convert_array([100.0, 1.0, 3.0, 2.0, 5.0, 4.0, 3.0], backend)
         end
 
         s = constraint(c, luksan_vlcek_con1_param(x, θ, i, j) for i = 1:(N-2), j = 1:M)
@@ -37,9 +37,17 @@ function exa_luksan_vlcek_parametric(backend, N; M=1, use_parameters=true, param
             param_values = [100.0, 1.0, 3.0, 2.0, 5.0, 4.0, 3.0]
         end
 
-        obj_func = (x, i, j) -> param_values[1] * (x[i-1, j]^2 - x[i, j])^2 + (x[i-1, j] - param_values[2])^2
-        con1_func = (x, i, j) -> param_values[3] * x[i+1, j]^3 + param_values[4] * x[i+2, j] - param_values[5]
-        con2_func = (x, i, j) -> sin(x[i+1, j] - x[i+2, j])sin(x[i+1, j] + x[i+2, j]) + param_values[6] * x[i+1, j] - x[i, j]exp(x[i, j] - x[i+1, j]) - param_values[7]
+        p1 = param_values[1]
+        p2 = param_values[2]
+        p3 = param_values[3]
+        p4 = param_values[4]
+        p5 = param_values[5]
+        p6 = param_values[6]
+        p7 = param_values[7]
+
+        obj_func = (x, i, j) -> p1 * (x[i-1, j]^2 - x[i, j])^2 + (x[i-1, j] - p2)^2
+        con1_func = (x, i, j) -> p3 * x[i+1, j]^3 + p4 * x[i+2, j] - p5
+        con2_func = (x, i, j) -> sin(x[i+1, j] - x[i+2, j])sin(x[i+1, j] + x[i+2, j]) + p6 * x[i+1, j] - x[i, j]exp(x[i, j] - x[i+1, j]) - p7
         
         s = constraint(c, con1_func(x, i, j) for i = 1:(N-2), j = 1:M)
         constraint!(c, s, (i, j) => con2_func(x, i, j) for i = 1:(N-2), j = 1:M)
@@ -50,7 +58,7 @@ function exa_luksan_vlcek_parametric(backend, N; M=1, use_parameters=true, param
 end
 
 function test_function_evaluations(model1, core1, model2, core2)
-    x_test = randn(core1.nvar)
+    x_test = ExaModels.convert_array(randn(core1.nvar),core2.backend)
 
     obj1 = NLPModels.obj(model1, x_test)
     obj2 = NLPModels.obj(model2, x_test)
@@ -66,8 +74,8 @@ function test_function_evaluations(model1, core1, model2, core2)
     grad2 = NLPModels.grad(model2, x_test)
     @test grad1 ≈ grad2 atol=1e-12
     
-    u = randn(core1.nvar)
-    v = randn(core1.ncon)
+    u = ExaModels.convert_array(randn(core1.nvar),core2.backend)
+    v = ExaModels.convert_array(randn(core1.ncon),core2.backend)
     jprod_param = NLPModels.jprod(model2, x_test, u)
     jprod_orig = NLPModels.jprod(model1, x_test, u)
     @test jprod_param ≈ jprod_orig atol=1e-12
@@ -76,7 +84,7 @@ function test_function_evaluations(model1, core1, model2, core2)
     jtprod_orig = NLPModels.jtprod(model1, x_test, v)
     @test jtprod_param ≈ jtprod_orig atol=1e-12
 
-    y_test = randn(core1.ncon)
+    y_test = ExaModels.convert_array(randn(core1.ncon),core2.backend)
     hprod_param = NLPModels.hprod(model2, x_test, y_test, u)
     hprod_orig = NLPModels.hprod(model1, x_test, y_test, u)
     @test hprod_param ≈ hprod_orig atol=1e-12
@@ -134,7 +142,7 @@ function test_parametric_vs_nonparametric(backend)
             m_param, c_param, _, _ = exa_luksan_vlcek_parametric(
                 backend, 3, M=2, use_parameters=true)
             new_params = [75.0, 1.5, 4.0, 3.0, 6.0, 5.0, 2.0]
-            c_param.θ .= new_params
+            c_param.θ .= ExaModels.convert_array(new_params, backend)
             m_nonparam, c_nonparam, _, _ = exa_luksan_vlcek_parametric(
                 backend, 3, M=2, use_parameters=false, param_values=new_params)
             test_function_evaluations(m_param, c_param, m_nonparam, c_nonparam)
