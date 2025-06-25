@@ -31,6 +31,7 @@ end
 
 include("luksan.jl")
 include("power.jl")
+include("parameter_test.jl")
 
 function test_nlp(m1, m2; full = false)
     @testset "NLP meta tests" begin
@@ -176,6 +177,9 @@ function runtests()
                     test_nlp(m3, m4; full = false)
                 end
 
+                @testset "Parameter Test" begin
+                    test_parametric_vs_nonparametric(backend)
+                end
             end
         end
     end
