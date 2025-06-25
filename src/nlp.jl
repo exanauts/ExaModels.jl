@@ -32,7 +32,7 @@ Base.show(io::IO, v::Parameter) = print(
     """
 Parameter
 
-  p ∈ R^{$(join(size(v.size)," × "))}
+  θ ∈ R^{$(join(size(v.size)," × "))}
 """,
 )
 struct Objective{R,F,I} <: AbstractObjective
@@ -45,7 +45,7 @@ Base.show(io::IO, v::Objective) = print(
     """
 Objective
 
-  min (...) + ∑_{p ∈ P} f(x,p)
+  min (...) + ∑_{p ∈ P} f(x,θ,p)
 
   where |P| = $(length(v.itr))
 """,
@@ -64,7 +64,7 @@ Base.show(io::IO, v::Constraint) = print(
 Constraint
 
   s.t. (...)
-       g♭ ≤ [g(x,p)]_{p ∈ P} ≤ g♯
+       g♭ ≤ [g(x,θ,p)]_{p ∈ P} ≤ g♯
 
   where |P| = $(length(v.itr))
 """,
@@ -84,7 +84,7 @@ Base.show(io::IO, v::ConstraintAug) = print(
 Constraint Augmentation
 
   s.t. (...)
-       g♭ ≤ (...) + ∑_{p ∈ P} h(x,p) ≤ g♯
+       g♭ ≤ (...) + ∑_{p ∈ P} h(x,θ,p) ≤ g♯
 
   where |P| = $(length(v.itr))
 """,
@@ -391,6 +391,23 @@ function variable(
 
 end
 
+"""
+    parameter(core, start::AbstractArray)
+
+Adds parameters with initial values specified by `start`, and returns `Parameter` object.
+
+## Example
+```jldoctest
+julia> using ExaModels
+
+julia> c = ExaCore();
+
+julia> θ = parameter(c, (sin(i) for i=1:10))
+Parameter
+
+  θ ∈ R^{10}
+```
+"""
 function parameter(
     c::C,
     start::AbstractArray;
@@ -427,7 +444,7 @@ julia> x = variable(c, 10);
 julia> objective(c, x[i]^2 for i=1:10)
 Objective
 
-  min (...) + ∑_{p ∈ P} f(x,p)
+  min (...) + ∑_{p ∈ P} f(x,θ,p)
 
   where |P| = 10
 ```
@@ -482,7 +499,7 @@ julia> constraint(c, x[i] + x[i+1] for i=1:9; lcon = -1, ucon = (1+i for i=1:9))
 Constraint
 
   s.t. (...)
-       g♭ ≤ [g(x,p)]_{p ∈ P} ≤ g♯
+       g♭ ≤ [g(x,θ,p)]_{p ∈ P} ≤ g♯
 
   where |P| = 9
 ```
@@ -578,7 +595,7 @@ julia> constraint!(c, c1, i => sin(x[i+1]) for i=4:6)
 Constraint Augmentation
 
   s.t. (...)
-       g♭ ≤ (...) + ∑_{p ∈ P} h(x,p) ≤ g♯
+       g♭ ≤ (...) + ∑_{p ∈ P} h(x,θ,p) ≤ g♯
 
   where |P| = 3
 ```
