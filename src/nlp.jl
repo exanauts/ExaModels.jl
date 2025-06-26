@@ -669,32 +669,32 @@ end
 
 
 function jac_structure!(m::ExaModel, rows::AbstractVector, cols::AbstractVector)
-    _jac_structure!(m.cons, rows, cols, m.θ)
+    _jac_structure!(m.cons, rows, cols)
     return rows, cols
 end
 
-_jac_structure!(cons::ConstraintNull, rows, cols, θ) = nothing
-function _jac_structure!(cons, rows, cols, θ)
-    _jac_structure!(cons.inner, rows, cols, θ)
-    sjacobian!(rows, cols, cons, nothing, θ, NaN)
+_jac_structure!(cons::ConstraintNull, rows, cols) = nothing
+function _jac_structure!(cons, rows, cols)
+    _jac_structure!(cons.inner, rows, cols)
+    sjacobian!(rows, cols, cons, nothing, nothing, NaN)
 end
 
 function hess_structure!(m::ExaModel, rows::AbstractVector, cols::AbstractVector)
-    _obj_hess_structure!(m.objs, rows, cols, m.θ)
-    _con_hess_structure!(m.cons, rows, cols, m.θ)
+    _obj_hess_structure!(m.objs, rows, cols)
+    _con_hess_structure!(m.cons, rows, cols)
     return rows, cols
 end
 
-_obj_hess_structure!(objs::ObjectiveNull, rows, cols, θ) = nothing
-function _obj_hess_structure!(objs, rows, cols, θ)
-    _obj_hess_structure!(objs.inner, rows, cols, θ)
-    shessian!(rows, cols, objs, nothing, θ, NaN, NaN)
+_obj_hess_structure!(objs::ObjectiveNull, rows, cols) = nothing
+function _obj_hess_structure!(objs, rows, cols)
+    _obj_hess_structure!(objs.inner, rows, cols)
+    shessian!(rows, cols, objs, nothing, nothing, NaN, NaN)
 end
 
-_con_hess_structure!(cons::ConstraintNull, rows, cols, θ) = nothing
-function _con_hess_structure!(cons, rows, cols, θ)
-    _con_hess_structure!(cons.inner, rows, cols, θ)
-    shessian!(rows, cols, cons, nothing, θ, NaN, NaN)
+_con_hess_structure!(cons::ConstraintNull, rows, cols) = nothing
+function _con_hess_structure!(cons, rows, cols)
+    _con_hess_structure!(cons.inner, rows, cols)
+    shessian!(rows, cols, cons, nothing, nothing, NaN, NaN)
 end
 
 function obj(m::ExaModel, x::AbstractVector)

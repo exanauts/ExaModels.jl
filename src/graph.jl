@@ -139,6 +139,10 @@ struct Identity end
 @inline (v::ParameterNode{I})(::Any, x, θ) where {I} = @inbounds θ[v.i]
 @inline (v::ParameterNode{I})(::Identity, x, θ) where {I<:AbstractNode} = @inbounds θ[v.i]
 
+@inline (v::ParameterNode{I})(i, x, ::Nothing) where {I<:AbstractNode} = NaN
+@inline (v::ParameterNode{I})(::Any, x, ::Nothing) where {I} = NaN
+@inline (v::ParameterNode{I})(::Identity, x, ::Nothing) where {I<:AbstractNode} = NaN
+
 @inline (v::ParSource)(i, x, θ) = i
 @inline (v::ParIndexed{I,n})(i, x, θ) where {I,n} = @inbounds v.inner(i, x, θ)[n]
 

@@ -40,7 +40,7 @@ function ExaModels.ExaModel(
 
     gsparsity = similar(c.x0, Tuple{Int,Int}, c.nnzg)
 
-    _grad_structure!(c.backend, c.obj, gsparsity, c.θ)
+    _grad_structure!(c.backend, c.obj, gsparsity)
     if !isempty(gsparsity)
         ExaModels.sort!(gsparsity; lt = ((i, j), (k, l)) -> i < k)
     end
@@ -60,10 +60,10 @@ function ExaModels.ExaModel(
         jacsparsityi = similar(c.x0, Tuple{Tuple{Int,Int},Int}, c.nnzj)
         hesssparsityi = similar(c.x0, Tuple{Tuple{Int,Int},Int}, c.nnzh)
 
-        _jac_structure!(c.backend, c.con, jacsparsityi, nothing, c.θ)
+        _jac_structure!(c.backend, c.con, jacsparsityi, nothing)
         jacsparsityj = copy(jacsparsityi)
-        _obj_hess_structure!(c.backend, c.obj, hesssparsityi, nothing, c.θ)
-        _con_hess_structure!(c.backend, c.con, hesssparsityi, nothing, c.θ)
+        _obj_hess_structure!(c.backend, c.obj, hesssparsityi, nothing)
+        _con_hess_structure!(c.backend, c.con, hesssparsityi, nothing)
         hesssparsityj = copy(hesssparsityi)
 
         if !isempty(jacsparsityi)
@@ -155,12 +155,12 @@ end
 
 
 
-function _grad_structure!(backend, objs, gsparsity, θ)
-    ExaModels.sgradient!(backend, gsparsity, objs, nothing, θ, NaN)
-    _grad_structure!(backend, objs.inner, gsparsity, θ)
+function _grad_structure!(backend, objs, gsparsity)
+    ExaModels.sgradient!(backend, gsparsity, objs, nothing, nothing, NaN)
+    _grad_structure!(backend, objs.inner, gsparsity)
     synchronize(backend)
 end
-function _grad_structure!(backend, objs::ExaModels.ObjectiveNull, gsparsity, θ) end
+function _grad_structure!(backend, objs::ExaModels.ObjectiveNull, gsparsity) end
 
 function ExaModels.jac_structure!(
     m::ExaModels.ExaModel{T,VT,E},
@@ -168,16 +168,16 @@ function ExaModels.jac_structure!(
     cols::V,
 ) where {T,VT,E<:KAExtension,V<:AbstractVector}
     if !isempty(rows)
-        _jac_structure!(m.ext.backend, m.cons, rows, cols, m.θ)
+        _jac_structure!(m.ext.backend, m.cons, rows, cols)
     end
     return rows, cols
 end
-function _jac_structure!(backend, cons, rows, cols, θ)
-    ExaModels.sjacobian!(backend, rows, cols, cons, nothing, θ, NaN)
-    _jac_structure!(backend, cons.inner, rows, cols, θ)
+function _jac_structure!(backend, cons, rows, cols)
+    ExaModels.sjacobian!(backend, rows, cols, cons, nothing, nothing, NaN)
+    _jac_structure!(backend, cons.inner, rows, cols)
     synchronize(backend)
 end
-function _jac_structure!(backend, cons::ExaModels.ConstraintNull, rows, cols, θ) end
+function _jac_structure!(backend, cons::ExaModels.ConstraintNull, rows, cols) end
 
 
 function ExaModels.hess_structure!(
@@ -186,24 +186,24 @@ function ExaModels.hess_structure!(
     cols::V,
 ) where {T,VT,E<:KAExtension,V<:AbstractVector}
     if !isempty(rows)
-        _obj_hess_structure!(m.ext.backend, m.objs, rows, cols, m.θ)
-        _con_hess_structure!(m.ext.backend, m.cons, rows, cols, m.θ)
+        _obj_hess_structure!(m.ext.backend, m.objs, rows, cols)
+        _con_hess_structure!(m.ext.backend, m.cons, rows, cols)
     end
     return rows, cols
 end
 
-function _obj_hess_structure!(backend, objs, rows, cols, θ)
-    ExaModels.shessian!(backend, rows, cols, objs, nothing, θ, NaN, NaN)
-    _obj_hess_structure!(backend, objs.inner, rows, cols, θ)
+function _obj_hess_structure!(backend, objs, rows, cols)
+    ExaModels.shessian!(backend, rows, cols, objs, nothing, nothing, NaN, NaN)
+    _obj_hess_structure!(backend, objs.inner, rows, cols)
     synchronize(backend)
 end
-function _obj_hess_structure!(backend, objs::ExaModels.ObjectiveNull, rows, cols, θ) end
-function _con_hess_structure!(backend, cons, rows, cols, θ)
-    ExaModels.shessian!(backend, rows, cols, cons, nothing, θ, NaN, NaN)
-    _con_hess_structure!(backend, cons.inner, rows, cols, θ)
+function _obj_hess_structure!(backend, objs::ExaModels.ObjectiveNull, rows, cols) end
+function _con_hess_structure!(backend, cons, rows, cols)
+    ExaModels.shessian!(backend, rows, cols, cons, nothing, nothing, NaN, NaN)
+    _con_hess_structure!(backend, cons.inner, rows, cols)
     synchronize(backend)
 end
-function _con_hess_structure!(backend, cons::ExaModels.ConstraintNull, rows, cols, θ) end
+function _con_hess_structure!(backend, cons::ExaModels.ConstraintNull, rows, cols) end
 
 
 function ExaModels.obj(
