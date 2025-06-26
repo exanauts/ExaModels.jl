@@ -3,7 +3,7 @@ name: build
 on: [pull_request]
 
 jobs:
-  test:
+  github:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
@@ -22,13 +22,17 @@ jobs:
   nvidia:
     runs-on:
       labels: cuda
+    strategy:
+      matrix:
+        julia-version: ['1']
+        julia-arch: [x64]
     steps:
     - name: Checkout code
       uses: actions/checkout@v2
     - name: Setup Julia
       uses: julia-actions/setup-julia@latest
       with:
-        version: '1'
+        version: ${{ matrix.julia-version }}
     - name: Run tests
       env:
         EXAMODELS_TEST_CUDA: 1
@@ -48,7 +52,7 @@ jobs:
     - name: Setup Julia
       uses: julia-actions/setup-julia@latest
       with:
-        version: '1'
+        version: ${{ matrix.julia-version }}
     - name: Run tests
       env:
         EXAMODELS_TEST_AMDGPU: 1
@@ -72,7 +76,7 @@ jobs:
     - name: Setup Julia
       uses: julia-actions/setup-julia@latest
       with:
-        version: '1'
+        version: ${{ matrix.julia-version }}
     - name: Run tests
       env:
         EXAMODELS_TEST_ONEAPI: 1
