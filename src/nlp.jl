@@ -422,6 +422,39 @@ function parameter(
 
 end
 
+"""
+    set_parameter!(core, param, values)
+
+Updates the values of parameters in the core.
+
+## Example
+```jldoctest
+julia> using ExaModels
+
+julia> c = ExaCore();
+
+julia> p = parameter(c, ones(5))
+Parameter
+
+  θ ∈ R^{5}
+
+julia> set_parameter!(c, p, rand(5))  # Update with new values
+```
+"""
+function set_parameter!(
+    c::ExaCore,
+    param::Parameter,
+    values::AbstractArray
+)
+    Base.size(values) != param.size && throw(DimensionMismatch("Parameter size mismatch: expected $(param.size), got $(Base.size(values))"))
+    start_idx = param.offset + 1
+    end_idx = param.offset + param.length
+
+    converted_values = convert_array(values, c.backend)
+    c.θ[start_idx:end_idx] .= converted_values
+    
+    return nothing
+end
 
 function variable(c::C; kwargs...) where {T,C<:ExaCore{T}}
 

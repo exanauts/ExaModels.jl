@@ -24,14 +24,16 @@ function exa_luksan_vlcek_parametric(backend, N; M=1, use_parameters=true, param
     if use_parameters
         θ = parameter(c, zeros(7))
         if !isnothing(param_values)
-            c.θ .= ExaModels.convert_array(param_values, backend)
+            set_parameter!(c, θ, param_values)
         else
-            c.θ .= ExaModels.convert_array([100.0, 1.0, 3.0, 2.0, 5.0, 4.0, 3.0], backend)
+            set_parameter!(c, θ, [100.0, 1.0, 3.0, 2.0, 5.0, 4.0, 3.0])
         end
 
         s = constraint(c, luksan_vlcek_con1_param(x, θ, i, j) for i = 1:(N-2), j = 1:M)
         constraint!(c, s, (i, j) => luksan_vlcek_con2_param(x, θ, i, j) for i = 1:(N-2), j = 1:M)
         objective(c, luksan_vlcek_obj_param(x, θ, i, j) for i = 2:N, j = 1:M)
+        
+        return ExaModel(c; prod = true), c, (x, θ), (s,)
     else
         if isnothing(param_values)
             param_values = [100.0, 1.0, 3.0, 2.0, 5.0, 4.0, 3.0]
@@ -52,9 +54,9 @@ function exa_luksan_vlcek_parametric(backend, N; M=1, use_parameters=true, param
         s = constraint(c, con1_func(x, i, j) for i = 1:(N-2), j = 1:M)
         constraint!(c, s, (i, j) => con2_func(x, i, j) for i = 1:(N-2), j = 1:M)
         objective(c, obj_func(x, i, j) for i = 2:N, j = 1:M)
+        
+        return ExaModel(c; prod = true), c, (x,), (s,)
     end
-    
-    return ExaModel(c; prod = true), c, (x,), (s,)
 end
 
 function test_function_evaluations(model1, core1, model2, core2)
@@ -139,10 +141,10 @@ function test_parametric_vs_nonparametric(backend)
         end
         
         @testset "Modify after build" begin
-            m_param, c_param, _, _ = exa_luksan_vlcek_parametric(
+            m_param, c_param, (_, θ_param), _ = exa_luksan_vlcek_parametric(
                 backend, 3, M=2, use_parameters=true)
             new_params = [75.0, 1.5, 4.0, 3.0, 6.0, 5.0, 2.0]
-            c_param.θ .= ExaModels.convert_array(new_params, backend)
+            set_parameter!(c_param, θ_param, new_params)
             m_nonparam, c_nonparam, _, _ = exa_luksan_vlcek_parametric(
                 backend, 3, M=2, use_parameters=false, param_values=new_params)
             test_function_evaluations(m_param, c_param, m_nonparam, c_nonparam)

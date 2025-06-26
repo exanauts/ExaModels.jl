@@ -1,5 +1,5 @@
 # # [Parameters](@id parameters)
-# Parameters act like fixed variables to the user. Internally, ExaModels keeps track of where parameters appear in the model, making it possible to  them as constants which efficiently modify their value without rebuilding the entire model.
+# Parameters act like fixed variables. Internally, ExaModels keeps track of where parameters appear in the model, making it possible to efficiently modify their value without rebuilding the entire model.
 
 # ### Creating Parametric Models
 # 
@@ -34,11 +34,11 @@ result1 = ipopt(m_param)
 println("Original objective: $(result1.objective)")
 
 # Now change the penalty coefficient and solve again:
-c_param.θ[1] = 200.0  # Double the penalty coefficient
+set_parameter!(c_param, θ, [200.0, 1.0])  # Double the penalty coefficient
 result2 = ipopt(m_param)
 println("Modified penalty objective: $(result2.objective)")
 
 # Try a different offset parameter:
-c_param.θ[2] = 0.5  # Change the offset in the objective
+set_parameter!(c_param, θ, [200.0, 0.5])  # Change the offset in the objective
 result3 = ipopt(m_param)
 println("Modified offset objective: $(result3.objective)")
