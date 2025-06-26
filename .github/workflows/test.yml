@@ -18,6 +18,72 @@ jobs:
           version: ${{ matrix.julia-version }}
       - uses: julia-actions/julia-buildpkg@latest
       - uses: julia-actions/julia-runtest@latest
+
+  nvidia:
+    runs-on:
+      labels: cuda
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v2
+    - name: Setup Julia
+      uses: julia-actions/setup-julia@latest
+      with:
+        version: '1'
+    - name: Run tests
+      env:
+        EXAMODELS_TEST_CUDA: 1
+      run: |
+        julia --color=yes --project=./test -e '
+          using Pkg
+          Pkg.develop(path=".")
+          Pkg.instantiate()
+          include("test/runtests.jl")'
+
+  amd:
+    runs-on: 
+      labels: amdgpu
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v2
+    - name: Setup Julia
+      uses: julia-actions/setup-julia@latest
+      with:
+        version: '1'
+    - name: Run tests
+      env:
+        EXAMODELS_TEST_AMDGPU: 1
+        JULIA_NUM_THREADS: 4
+        JULIA_AMDGPU_CORE_MUST_LOAD: "1"
+        JULIA_AMDGPU_HIP_MUST_LOAD: "1"
+        JULIA_AMDGPU_DISABLE_ARTIFACTS: "1"
+      run: |
+        julia --color=yes --project=./test -e '
+          using Pkg
+          Pkg.develop(path=".")
+          Pkg.instantiate()
+          include("test/runtests.jl")'
+
+  intel:
+    runs-on: 
+      labels: oneapi
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v2
+    - name: Setup Julia
+      uses: julia-actions/setup-julia@latest
+      with:
+        version: '1'
+    - name: Run tests
+      env:
+        EXAMODELS_TEST_ONEAPI: 1
+        OverrideDefaultFP64Settings: 1
+        IGC_EnableDPEmulation: 1
+      run: |
+        julia --color=yes --project=./test -e '
+          using Pkg
+          Pkg.develop(path=".")
+          Pkg.instantiate()
+          include("test/runtests.jl")'
   # test-self-hosted:
   #   env:
   #     EXAMODELS_TEST_CUDA: 1
