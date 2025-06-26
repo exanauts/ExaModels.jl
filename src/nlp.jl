@@ -146,7 +146,7 @@ Base.@kwdef mutable struct ExaCore{T,VT<:AbstractVector{T},B}
     nnzj::Int = 0
     nnzh::Int = 0
     x0::VT = convert_array(zeros(0), backend)
-    θ::VT = similar(x0)
+    θ::VT = similar(x0, 0)
     lvar::VT = similar(x0)
     uvar::VT = similar(x0)
     y0::VT = similar(x0)
@@ -402,7 +402,7 @@ julia> using ExaModels
 
 julia> c = ExaCore();
 
-julia> θ = parameter(c, (sin(i) for i=1:10))
+julia> θ = parameter(c, ones(10))
 Parameter
 
   θ ∈ R^{10}
@@ -446,12 +446,14 @@ function set_parameter!(
     param::Parameter,
     values::AbstractArray
 )
-    Base.size(values) != param.size && throw(DimensionMismatch("Parameter size mismatch: expected $(param.size), got $(Base.size(values))"))
+    if Base.size(values) != param.size 
+        throw(DimensionMismatch("Parameter size mismatch: expected $(param.size), got $(Base.size(values))"))
+    end
+
     start_idx = param.offset + 1
     end_idx = param.offset + param.length
 
-    converted_values = convert_array(values, c.backend)
-    c.θ[start_idx:end_idx] .= converted_values
+    copyto!(c.θ[start_idx:end_idx], values)
     
     return nothing
 end
