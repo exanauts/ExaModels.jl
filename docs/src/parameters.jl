@@ -3,7 +3,7 @@
 
 # ### Creating Parametric Models
 # 
-# Let's modify the example in [Getting Started](@ref) to use parameters. Suppose we want to make the penalty coefficient in the objective function adjustable:
+# Let's modify the example in [Getting Started](@ref index) to use parameters. Suppose we want to make the penalty coefficient in the objective function adjustable:
 
 # First, let's create a core:
 using ExaModels, NLPModelsIpopt
