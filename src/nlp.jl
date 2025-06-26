@@ -453,8 +453,7 @@ function set_parameter!(
     start_idx = param.offset + 1
     end_idx = param.offset + param.length
 
-    converted_values = convert_array(values, c.backend)
-    c.θ[start_idx:end_idx] .= converted_values
+    copyto!(@view(c.θ[start_idx:end_idx]), values)
     
     return nothing
 end
