@@ -43,11 +43,11 @@ function SIMDFunction(gen::Base.Generator, o0 = 0, o1 = 0, o2 = 0)
 end
 
 function _simdfunction(f, o0, o1, o2)
-    d = f(Identity(), AdjointNodeSource(nothing), ParameterSource())
+    d = f(Identity(), AdjointNodeSource(nothing), nothing)
     y1 = []
     ExaModels.grpass(d, nothing, y1, nothing, 0, NaN)
 
-    t = f(Identity(), SecondAdjointNodeSource(nothing), ParameterSource())
+    t = f(Identity(), SecondAdjointNodeSource(nothing), nothing)
     y2 = []
     ExaModels.hrpass0(t, nothing, y2, nothing, nothing, 0, NaN, NaN)
 

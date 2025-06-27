@@ -162,7 +162,7 @@ function sgradient_with_params(f, x, θ)
     T = eltype(x)
 
     ff = f(ExaModels.VarSource(), ExaModels.ParameterSource())
-    d = ff(ExaModels.Identity(), ExaModels.AdjointNodeSource(nothing), θ)
+    d = ff(ExaModels.Identity(), ExaModels.AdjointNodeSource(nothing), nothing)
     y1 = []
     ExaModels.grpass(d, nothing, y1, nothing, 0, NaN)
 
@@ -211,7 +211,7 @@ function sjacobian_with_params(f, x, θ)
     T = eltype(x)
 
     ff = f(ExaModels.VarSource(), ExaModels.ParameterSource())
-    d = ff(ExaModels.Identity(), ExaModels.AdjointNodeSource(nothing), θ)
+    d = ff(ExaModels.Identity(), ExaModels.AdjointNodeSource(nothing), nothing)
     y1 = []
     ExaModels.grpass(d, nothing, y1, nothing, 0, NaN)
 
@@ -267,7 +267,7 @@ function shessian_with_params(f, x, θ)
     T = eltype(x)
 
     ff = f(ExaModels.VarSource(), ExaModels.ParameterSource())
-    t = ff(ExaModels.Identity(), ExaModels.SecondAdjointNodeSource(nothing), θ)
+    t = ff(ExaModels.Identity(), ExaModels.SecondAdjointNodeSource(nothing), nothing)
     y2 = []
     ExaModels.hrpass0(t, nothing, y2, nothing, nothing, 0, NaN, NaN)
 
