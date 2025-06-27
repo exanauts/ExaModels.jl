@@ -314,8 +314,3 @@ end
 @inline (v::Null{N})(i, x::V, θ) where {N,T,V<:AbstractVector{T}} = T(v.value)
 @inline (v::Null{N})(i, x::AdjointNodeSource{T}, θ) where {N,T} = AdjointNull()
 @inline (v::Null{N})(i, x::SecondAdjointNodeSource{T}, θ) where {N,T} = SecondAdjointNull()
-
-@inline Base.one(::AbstractNode) = Null(1)
-@inline Base.zero(::AbstractNode) = Null(0)
-@inline Base.one(::Type{<:AbstractNode}) = Null(1)
-@inline Base.zero(::Type{<:AbstractNode}) = Null(0)
