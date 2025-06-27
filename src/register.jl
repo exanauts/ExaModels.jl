@@ -121,7 +121,7 @@ macro register_bivariate(f, df1, df2, ddf11, ddf12, ddf22)
             @inline function $f(
                 d1::D1,
                 d2::D2,
-            ) where {D1<:ExaModels.AbstractAdjointNode,D2<:Real}
+            ) where {D1<:ExaModels.AbstractAdjointNode,D2<:Union{Real,ExaModels.ParameterNode}}
 
                 x1 = d1.x
                 x2 = d2
@@ -131,27 +131,11 @@ macro register_bivariate(f, df1, df2, ddf11, ddf12, ddf22)
             @inline function $f(
                 d1::D1,
                 d2::D2,
-            ) where {D1<:Real,D2<:ExaModels.AbstractAdjointNode}
+            ) where {D1<:Union{Real,ExaModels.ParameterNode},D2<:ExaModels.AbstractAdjointNode}
 
                 x1 = d1
                 x2 = d2.x
                 ExaModels.AdjointNode1($f, $f(x1, x2), $df2(x1, x2), d2)
-            end
-
-            @inline function $f(
-                d1::ExaModels.ParameterNode,
-                d2::D2,
-            ) where {D2<:ExaModels.AbstractAdjointNode}
-                x2 = d2.x
-                ExaModels.AdjointNode1($f, $f(d1, x2), $df2(d1, x2), d2)
-            end
-            
-            @inline function $f(
-                d1::D1,
-                d2::ExaModels.ParameterNode,
-            ) where {D1<:ExaModels.AbstractAdjointNode}
-                x1 = d1.x
-                ExaModels.AdjointNode1($f, $f(x1, d2), $df1(x1, d2), d1)
             end
 
             @inline function $f(
