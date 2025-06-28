@@ -66,8 +66,8 @@ function exa_ac_power_model_parametric(backend, filename; use_parameters=true)
 
     w = ExaModels.ExaCore(backend = backend)
 
-    pd = parameter(w, [b.pd for b in data.bus])
-    qd = parameter(w, [b.qd for b in data.bus])
+    pd = parameter(w, map(b->b.pd, data.bus))
+    qd = parameter(w, map(b->b.qd, data.bus))
 
     va = ExaModels.variable(w, length(data.bus);)
 
@@ -86,7 +86,7 @@ function exa_ac_power_model_parametric(backend, filename; use_parameters=true)
 
     q = ExaModels.variable(w, length(data.arc); lvar = -data.rate_a, uvar = data.rate_a)
 
-    cost2 = parameter(w, [g.cost2 for g in data.gen])
+    cost2 = parameter(w, map(g->g.cost2, data.gen))
 
     o = ExaModels.objective(
         w,
@@ -146,8 +146,8 @@ function exa_ac_power_model_parametric(backend, filename; use_parameters=true)
         lcon = fill!(similar(data.branch, Float64, length(data.branch)), -Inf),
     )
 
-    bs = parameter(w, [b.bs for b in data.bus])
-    gs = parameter(w, [b.gs for b in data.bus])
+    bs = parameter(w, map(b->b.bs, data.bus))
+    gs = parameter(w, map(b->b.gs, data.bus))
 
     c9 = ExaModels.constraint(w, pd[b.i] + gs[b.i] * vm[b.i]^2 for b in data.bus)
 
