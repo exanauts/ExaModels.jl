@@ -143,7 +143,7 @@ function copy_objective!(c, moim, var_to_idx)
     build_objective!(c, obj_bin)
 end
 
-function ExaModels.ExaModel(moim::MOI.ModelLike; backend = nothing, prod = false)
+function ExaModels.ExaModel(moim::MOI.ModelLike; backend = nothing, prod = false, return_maps = false)
     minimize = MOI.get(moim, MOI.ObjectiveSense()) === MOI.MIN_SENSE
     variables = MOI.get(moim, MOI.ListOfVariableIndices())
     con_types = MOI.get(moim, MOI.ListOfConstraintTypesPresent())
@@ -164,7 +164,11 @@ function ExaModels.ExaModel(moim::MOI.ModelLike; backend = nothing, prod = false
     con_to_idx = copy_constraints!(c, moim, var_to_idx, T)
     copy_objective!(c, moim, var_to_idx)
 
-    return ExaModels.ExaModel(c; prod = prod), (var_to_idx, con_to_idx)
+    if return_maps
+        return ExaModels.ExaModel(c; prod = prod), (var_to_idx, con_to_idx)
+    else
+        return ExaModels.ExaModel(c; prod = prod)
+    end
 end
 
 function _exafy_con(i, c::C, bin, var_to_idx, con_to_idx; pos = true) where {C<:MOI.ScalarAffineFunction}
@@ -561,7 +565,7 @@ function MOI.empty!(model::ExaModelsMOI.Optimizer)
 end
 
 function MOI.copy_to(dest::Optimizer, src::MOI.ModelLike)
-    dest.model, maps = ExaModels.ExaModel(src; backend = dest.backend)
+    dest.model, maps = ExaModels.ExaModel(src; backend = dest.backend, return_maps = true)
     return _make_index_map(src, maps)
 end
 

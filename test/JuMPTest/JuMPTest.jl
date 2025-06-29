@@ -174,7 +174,7 @@ function runtests()
 
                     for backend in BACKENDS
                         @testset "$backend" begin
-                            m = WrapperNLPModel(first(ExaModel(jm; backend = backend)))
+                            m = WrapperNLPModel(ExaModel(jm; backend = backend))
                             result = ipopt(m; print_level = 0)
 
                             @test sol ≈ result.solution atol = 1e-6
