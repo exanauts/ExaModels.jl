@@ -49,7 +49,7 @@ float_type(::Type{MOI.LessThan{T}}) where {T} = T
 float_type(::Type{MOI.EqualTo{T}}) where {T} = T
 float_type(::Type{MOI.Interval{T}}) where {T} = T
 
-function check_supported_and_deduce_T(con_types)
+function check_supported_and_get_T(con_types)
     set_float_types = Set()
     for (F,S) in con_types
         if !(F <: SUPPORTED_FUNC_TYPE_UNION)
@@ -67,6 +67,34 @@ function check_supported_and_deduce_T(con_types)
         error("All constraints must have the same float type. Found $set_float_types")
     else
         first(set_float_types)
+    end
+end
+
+function ExaModels.ExaModel(moim::MOI.ModelLike; backend = nothing, prod = false, return_maps = false)
+    minimize = MOI.get(moim, MOI.ObjectiveSense()) === MOI.MIN_SENSE
+    variables = MOI.get(moim, MOI.ListOfVariableIndices())
+    con_types = MOI.get(moim, MOI.ListOfConstraintTypesPresent())
+    T = check_supported_and_get_T(con_types)
+
+    if !isempty(filter(
+        FS -> (FS[1] <: MOI.VariableIndex) && !(
+               FS[2] <: Union{MOI.GreaterThan{T},MOI.LessThan{T}}
+        ), con_types
+    ))
+        # this is where parameters would error
+        error("Found unsupported variable index constraint")
+    end
+
+    c = ExaModels.ExaCore(T; backend = backend, minimize = minimize)
+
+    var_to_idx = copy_variables!(c, moim, T)
+    con_to_idx = copy_constraints!(c, moim, var_to_idx, T)
+    copy_objective!(c, moim, var_to_idx)
+
+    if return_maps
+        return ExaModels.ExaModel(c; prod = prod), (var_to_idx, con_to_idx)
+    else
+        return ExaModels.ExaModel(c; prod = prod)
     end
 end
 
@@ -106,6 +134,18 @@ function copy_variables!(c, moim, T)
     return var_to_idx
 end
 
+function copy_objective!(c, moim, var_to_idx)
+    obj_type = MOI.get(moim, MOI.ObjectiveFunctionType())
+    if !(obj_type <: SUPPORTED_FUNC_TYPE_UNION)
+        error("Objective function of type $obj_type is not supported")
+    end
+
+    bin = BinNull()
+    bin = exafy_obj(MOI.get(moim, MOI.ObjectiveFunction{obj_type}()), bin, var_to_idx)
+
+    build_objective!(c, bin)
+end
+
 function copy_constraints!(c, moim, var_to_idx, T)
     bin = BinNull()
     offset = 0
@@ -129,46 +169,6 @@ function copy_constraints!(c, moim, var_to_idx, T)
     build_constraint!(c, cons, bin)
 
     return con_to_idx
-end
-
-
-function copy_objective!(c, moim, var_to_idx)
-    obj_type = MOI.get(moim, MOI.ObjectiveFunctionType())
-    if !(obj_type <: SUPPORTED_FUNC_TYPE_UNION)
-        error("Objective function of type $obj_type is not supported")
-    end
-
-    obj_bin = exafy_obj(MOI.get(moim, MOI.ObjectiveFunction{obj_type}()), BinNull(), var_to_idx)
-
-    build_objective!(c, obj_bin)
-end
-
-function ExaModels.ExaModel(moim::MOI.ModelLike; backend = nothing, prod = false, return_maps = false)
-    minimize = MOI.get(moim, MOI.ObjectiveSense()) === MOI.MIN_SENSE
-    variables = MOI.get(moim, MOI.ListOfVariableIndices())
-    con_types = MOI.get(moim, MOI.ListOfConstraintTypesPresent())
-    T = check_supported_and_deduce_T(con_types)
-
-    if !isempty(filter(
-        FS -> (FS[1] <: MOI.VariableIndex) && !(
-               FS[2] <: Union{MOI.GreaterThan{T},MOI.LessThan{T}}
-        ), con_types
-    ))
-        # this is where parameters would error
-        error("Found unsupported variable index constraint")
-    end
-
-    c = ExaModels.ExaCore(T; backend = backend, minimize = minimize)
-
-    var_to_idx = copy_variables!(c, moim, T)
-    con_to_idx = copy_constraints!(c, moim, var_to_idx, T)
-    copy_objective!(c, moim, var_to_idx)
-
-    if return_maps
-        return ExaModels.ExaModel(c; prod = prod), (var_to_idx, con_to_idx)
-    else
-        return ExaModels.ExaModel(c; prod = prod)
-    end
 end
 
 function _exafy_con(i, c::C, bin, var_to_idx, con_to_idx; pos = true) where {C<:MOI.ScalarAffineFunction}
