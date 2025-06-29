@@ -36,7 +36,7 @@ macro register_univariate(f, df, ddf)
             @inline $f(t::T) where {T<:ExaModels.AbstractSecondAdjointNode} =
                 ExaModels.SecondAdjointNode1($f, $f(t.x), $df(t.x), $ddf(t.x), t)
 
-            @inline (n::ExaModels.Node1{typeof($f),I})(i, x) where {I} = $f(n.inner(i, x))
+            @inline (n::ExaModels.Node1{typeof($f),I})(i, x, θ) where {I} = $f(n.inner(i, x, θ))
         end,
     )
 end
@@ -121,7 +121,7 @@ macro register_bivariate(f, df1, df2, ddf11, ddf12, ddf22)
             @inline function $f(
                 d1::D1,
                 d2::D2,
-            ) where {D1<:ExaModels.AbstractAdjointNode,D2<:Real}
+            ) where {D1<:ExaModels.AbstractAdjointNode,D2<:Union{Real,ExaModels.ParameterNode}}
 
                 x1 = d1.x
                 x2 = d2
@@ -131,7 +131,7 @@ macro register_bivariate(f, df1, df2, ddf11, ddf12, ddf22)
             @inline function $f(
                 d1::D1,
                 d2::D2,
-            ) where {D1<:Real,D2<:ExaModels.AbstractAdjointNode}
+            ) where {D1<:Union{Real,ExaModels.ParameterNode},D2<:ExaModels.AbstractAdjointNode}
 
                 x1 = d1
                 x2 = d2.x
@@ -163,7 +163,7 @@ macro register_bivariate(f, df1, df2, ddf11, ddf12, ddf22)
             @inline function $f(
                 t1::T1,
                 t2::T2,
-            ) where {T1<:ExaModels.AbstractSecondAdjointNode,T2<:Real}
+            ) where {T1<:ExaModels.AbstractSecondAdjointNode,T2<:Union{Real,ExaModels.ParameterNode}}
 
                 x1 = t1.x
                 x2 = t2
@@ -178,7 +178,7 @@ macro register_bivariate(f, df1, df2, ddf11, ddf12, ddf22)
             @inline function $f(
                 t1::T1,
                 t2::T2,
-            ) where {T1<:Real,T2<:ExaModels.AbstractSecondAdjointNode}
+            ) where {T1<:Union{Real,ExaModels.ParameterNode},T2<:ExaModels.AbstractSecondAdjointNode}
 
                 x1 = t1
                 x2 = t2.x
@@ -191,12 +191,12 @@ macro register_bivariate(f, df1, df2, ddf11, ddf12, ddf22)
                 )
             end
 
-            @inline (n::ExaModels.Node2{typeof($f),I1,I2})(i, x) where {I1,I2} =
-                $f(n.inner1(i, x), n.inner2(i, x))
-            @inline (n::ExaModels.Node2{typeof($f),I1,I2})(i, x) where {I1<:Real,I2} =
-                $f(n.inner1, n.inner2(i, x))
-            @inline (n::ExaModels.Node2{typeof($f),I1,I2})(i, x) where {I1,I2<:Real} =
-                $f(n.inner1(i, x), n.inner2)
+            @inline (n::ExaModels.Node2{typeof($f),I1,I2})(i, x, θ) where {I1,I2} =
+                $f(n.inner1(i, x, θ), n.inner2(i, x, θ))
+            @inline (n::ExaModels.Node2{typeof($f),I1,I2})(i, x, θ) where {I1<:Real,I2} =
+                $f(n.inner1, n.inner2(i, x, θ))
+            @inline (n::ExaModels.Node2{typeof($f),I1,I2})(i, x, θ) where {I1,I2<:Real} =
+                $f(n.inner1(i, x, θ), n.inner2)
         end,
     )
 end

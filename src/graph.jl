@@ -53,6 +53,12 @@ struct Var{I} <: AbstractNode
     i::I
 end
 
+
+struct ParameterSource <: AbstractNode end
+struct ParameterNode{I} <: AbstractNode
+    i::I
+end
+
 """
     ParSource
 
@@ -109,7 +115,7 @@ end
 
 @inline Base.getindex(n::ParSource, i) = ParIndexed(n, i)
 @inline Base.getindex(n::VarSource, i) = Var(i)
-
+@inline Base.getindex(::ParameterSource, i) = ParameterNode(i)
 Par(iter::Type) = ParSource()
 Par(iter, idx...) = ParIndexed(Par(iter, idx[2:end]...), idx[1])
 Par(iter::Type{T}, idx...) where {T<:Tuple} =
@@ -125,15 +131,23 @@ Par(iter::Type{T}, idx...) where {T<:NamedTuple} = NamedTuple{T.parameters[1]}(
 
 struct Identity end
 
-@inline (v::Var{I})(i, x) where {I<:AbstractNode} = @inbounds x[v.i(i, x)]
-@inline (v::Var{I})(i, x) where {I} = @inbounds x[v.i]
-@inline (v::Var{I})(i::Identity, x) where {I<:AbstractNode} = @inbounds x[v.i]
+@inline (v::Var{I})(i, x, θ) where {I<:AbstractNode} = @inbounds x[v.i(i, x, θ)]
+@inline (v::Var{I})(i, x, θ) where {I} = @inbounds x[v.i]
+@inline (v::Var{I})(i::Identity, x, θ) where {I<:AbstractNode} = @inbounds x[v.i]
 
-@inline (v::ParSource)(i, x) = i
-@inline (v::ParIndexed{I,n})(i, x) where {I,n} = @inbounds v.inner(i, x)[n]
+@inline (v::ParameterNode{I})(i, x, θ) where {I<:AbstractNode} = @inbounds θ[v.i(i, x, θ)]
+@inline (v::ParameterNode{I})(::Any, x, θ) where {I} = @inbounds θ[v.i]
+@inline (v::ParameterNode{I})(::Identity, x, θ) where {I<:AbstractNode} = @inbounds θ[v.i]
 
-(v::ParIndexed)(i::Identity, x) = NaN # despecialized
-(v::ParSource)(i::Identity, x) = NaN # despecialized
+@inline (v::ParameterNode{I})(i, x, ::Nothing) where {I<:AbstractNode} = NaN
+@inline (v::ParameterNode{I})(::Any, x, ::Nothing) where {I} = NaN
+@inline (v::ParameterNode{I})(::Identity, x, ::Nothing) where {I<:AbstractNode} = NaN
+
+@inline (v::ParSource)(i, x, θ) = i
+@inline (v::ParIndexed{I,n})(i, x, θ) where {I,n} = @inbounds v.inner(i, x, θ)[n]
+
+(v::ParIndexed)(i::Identity, x, θ) = NaN # despecialized
+(v::ParSource)(i::Identity, x, θ) = NaN # despecialized
 
 """
     AdjointNode1{F, T, I}
@@ -296,7 +310,7 @@ end
     @inbounds SecondAdjointNodeVar(i, x.inner[i])
 
 
-@inline (v::Null{Nothing})(i, x::V) where {T,V<:AbstractVector{T}} = zero(T)
-@inline (v::Null{N})(i, x::V) where {N,T,V<:AbstractVector{T}} = T(v.value)
-@inline (v::Null{N})(i, x::AdjointNodeSource{T}) where {N,T} = AdjointNull()
-@inline (v::Null{N})(i, x::SecondAdjointNodeSource{T}) where {N,T} = SecondAdjointNull()
+@inline (v::Null{Nothing})(i, x::V, θ) where {T,V<:AbstractVector{T}} = zero(T)
+@inline (v::Null{N})(i, x::V, θ) where {N,T,V<:AbstractVector{T}} = T(v.value)
+@inline (v::Null{N})(i, x::AdjointNodeSource{T}, θ) where {N,T} = AdjointNull()
+@inline (v::Null{N})(i, x::SecondAdjointNodeSource{T}, θ) where {N,T} = SecondAdjointNull()

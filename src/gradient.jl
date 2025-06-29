@@ -36,14 +36,14 @@ Performs dense gradient evalution
 - `x`: variable vector
 - `adj`: initial adjoint
 """
-function gradient!(y, f, x, adj)
+function gradient!(y, f, x, θ, adj)
     @simd for k in eachindex(f.itr)
-        @inbounds gradient!(y, f.f.f, x, f.itr[k], adj)
+        @inbounds gradient!(y, f.f.f, x, θ, f.itr[k], adj)
     end
     return y
 end
-function gradient!(y, f, x, p, adj)
-    graph = f(p, AdjointNodeSource(x))
+function gradient!(y, f, x, θ, p, adj)
+    graph = f(p, AdjointNodeSource(x), θ)
     drpass(graph, y, adj)
     return y
 end
@@ -111,15 +111,15 @@ Performs sparse gradient evalution
 - `x`: variable vector
 - `adj`: initial adjoint
 """
-function sgradient!(y, f, x, adj)
+function sgradient!(y, f, x, θ, adj)
     @simd for k in eachindex(f.itr)
-        @inbounds sgradient!(y, f.f.f, f.itr[k], x, f.itr.comp1, offset1(f, k), adj)
+        @inbounds sgradient!(y, f.f.f, f.itr[k], x, θ, f.itr.comp1, offset1(f, k), adj)
     end
     return y
 end
 
-function sgradient!(y, f, p, x, comp, o1, adj)
-    graph = f(p, AdjointNodeSource(x))
+function sgradient!(y, f, p, x, θ, comp, o1, adj)
+    graph = f(p, AdjointNodeSource(x), θ)
     grpass(graph, comp, y, o1, 0, adj)
     return y
 end

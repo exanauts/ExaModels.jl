@@ -105,10 +105,32 @@ const FUNCTIONS = [
     ),
 ]
 
+const PARAMETER_FUNCTIONS = [
+    ("parameter-basic-1", (x, θ) -> x[1] + θ[1]),
+    ("parameter-basic-2", (x, θ) -> x[1] * θ[1]),
+    ("parameter-basic-3", (x, θ) -> x[1]^2 + θ[1] * x[2]),
+    ("parameter-basic-4", (x, θ) -> sin(x[1]) + cos(θ[1])),
+    ("parameter-basic-5", (x, θ) -> exp(x[1] + θ[1])),
+    ("parameter-basic-6", (x, θ) -> log(x[1]^2 + θ[1]^2)),
+    ("parameter-basic-7", (x, θ) -> x[1] / (1 + θ[1])),
+    ("parameter-basic-8", (x, θ) -> θ[1] * sin(x[1]) + θ[2] * cos(x[2])),
+    ("parameter-composite-1", (x, θ) -> exp(x[1] * θ[1]) + sin(x[2] + θ[2])),
+    ("parameter-composite-2", (x, θ) -> beta(x[1] + θ[1], x[2] + θ[2])),
+    ("parameter-composite-3", (x, θ) -> sqrt(x[1]^2 + θ[1]^2) * log(x[2] + θ[2] + 1)),
+    ("parameter-composite-4", (x, θ) -> gamma(x[1] + 1) * θ[1] + erf(x[2] * θ[2])),
+]
+
 function gradient(f, x)
     T = eltype(x)
     y = fill!(similar(x), zero(T))
-    ExaModels.gradient!(y, (p, x) -> f(x), x, nothing, one(T))
+    ExaModels.gradient!(y, (p, x, θ) -> f(x), x, nothing, nothing, one(T))
+    return y
+end
+
+function gradient_with_params(f, x, θ)
+    T = eltype(x)
+    y = fill!(similar(x), zero(T))
+    ExaModels.gradient!(y, (p, x, θ) -> f(x, θ), x, θ, nothing, one(T))
     return y
 end
 
@@ -116,7 +138,7 @@ function sgradient(f, x)
     T = eltype(x)
 
     ff = f(ExaModels.VarSource())
-    d = ff(ExaModels.Identity(), ExaModels.AdjointNodeSource(nothing))
+    d = ff(ExaModels.Identity(), ExaModels.AdjointNodeSource(nothing), nothing)
     y1 = []
     ExaModels.grpass(d, nothing, y1, nothing, 0, NaN)
 
@@ -127,8 +149,32 @@ function sgradient(f, x)
     buffer = fill!(similar(x, n), zero(T))
     buffer_I = similar(x, Tuple{Int,Int}, n)
 
-    ExaModels.sgradient!(buffer_I, ff, nothing, nothing, comp, 0, NaN)
-    ExaModels.sgradient!(buffer, ff, nothing, x, comp, 0, one(T))
+    ExaModels.sgradient!(buffer_I, ff, nothing, nothing, nothing, comp, 0, NaN)
+    ExaModels.sgradient!(buffer, ff, nothing, x, nothing, comp, 0, one(T))
+
+    y = zeros(length(x))
+    y[collect(i for (i, j) in buffer_I)] += buffer
+
+    return y
+end
+
+function sgradient_with_params(f, x, θ)
+    T = eltype(x)
+
+    ff = f(ExaModels.VarSource(), ExaModels.ParameterSource())
+    d = ff(ExaModels.Identity(), ExaModels.AdjointNodeSource(nothing), nothing)
+    y1 = []
+    ExaModels.grpass(d, nothing, y1, nothing, 0, NaN)
+
+    a1 = unique(y1)
+    comp = ExaModels.Compressor(Tuple(findfirst(isequal(i), a1) for i in y1))
+
+    n = length(a1)
+    buffer = fill!(similar(x, n), zero(T))
+    buffer_I = similar(x, Tuple{Int,Int}, n)
+
+    ExaModels.sgradient!(buffer_I, ff, nothing, nothing, θ, comp, 0, NaN)
+    ExaModels.sgradient!(buffer, ff, nothing, x, θ, comp, 0, one(T))
 
     y = zeros(length(x))
     y[collect(i for (i, j) in buffer_I)] += buffer
@@ -140,7 +186,7 @@ function sjacobian(f, x)
     T = eltype(x)
 
     ff = f(ExaModels.VarSource())
-    d = ff(ExaModels.Identity(), ExaModels.AdjointNodeSource(nothing))
+    d = ff(ExaModels.Identity(), ExaModels.AdjointNodeSource(nothing), nothing)
     y1 = []
     ExaModels.grpass(d, nothing, y1, nothing, 0, NaN)
 
@@ -152,8 +198,33 @@ function sjacobian(f, x)
     buffer_I = similar(x, Int, n)
     buffer_J = similar(x, Int, n)
 
-    ExaModels.sjacobian!(buffer_I, buffer_J, ff, nothing, nothing, comp, 0, 0, NaN)
-    ExaModels.sjacobian!(buffer, nothing, ff, nothing, x, comp, 0, 0, one(T))
+    ExaModels.sjacobian!(buffer_I, buffer_J, ff, nothing, nothing, nothing, comp, 0, 0, NaN)
+    ExaModels.sjacobian!(buffer, nothing, ff, nothing, x, nothing, comp, 0, 0, one(T))
+
+    y = zeros(length(x))
+    y[buffer_J] += buffer
+
+    return y
+end
+
+function sjacobian_with_params(f, x, θ)
+    T = eltype(x)
+
+    ff = f(ExaModels.VarSource(), ExaModels.ParameterSource())
+    d = ff(ExaModels.Identity(), ExaModels.AdjointNodeSource(nothing), nothing)
+    y1 = []
+    ExaModels.grpass(d, nothing, y1, nothing, 0, NaN)
+
+    a1 = unique(y1)
+    comp = ExaModels.Compressor(Tuple(findfirst(isequal(i), a1) for i in y1))
+
+    n = length(a1)
+    buffer = fill!(similar(x, n), zero(T))
+    buffer_I = similar(x, Int, n)
+    buffer_J = similar(x, Int, n)
+
+    ExaModels.sjacobian!(buffer_I, buffer_J, ff, nothing, nothing, θ, comp, 0, 0, NaN)
+    ExaModels.sjacobian!(buffer, nothing, ff, nothing, x, θ, comp, 0, 0, one(T))
 
     y = zeros(length(x))
     y[buffer_J] += buffer
@@ -165,7 +236,7 @@ function shessian(f, x)
     T = eltype(x)
 
     ff = f(ExaModels.VarSource())
-    t = ff(ExaModels.Identity(), ExaModels.SecondAdjointNodeSource(nothing))
+    t = ff(ExaModels.Identity(), ExaModels.SecondAdjointNodeSource(nothing), nothing)
     y2 = []
     ExaModels.hrpass0(t, nothing, y2, nothing, nothing, 0, NaN, NaN)
 
@@ -177,8 +248,8 @@ function shessian(f, x)
     buffer_I = similar(x, Int, n)
     buffer_J = similar(x, Int, n)
 
-    ExaModels.shessian!(buffer_I, buffer_J, ff, nothing, nothing, comp, 0, NaN, NaN)
-    ExaModels.shessian!(buffer, nothing, ff, nothing, x, comp, 0, one(T), zero(T))
+    ExaModels.shessian!(buffer_I, buffer_J, ff, nothing, nothing, nothing, comp, 0, NaN, NaN)
+    ExaModels.shessian!(buffer, nothing, ff, nothing, x, nothing, comp, 0, one(T), zero(T))
 
     y = zeros(length(x), length(x))
     for (k, (i, j)) in enumerate(zip(buffer_I, buffer_J))
@@ -192,6 +263,36 @@ function shessian(f, x)
     return y
 end
 
+function shessian_with_params(f, x, θ)
+    T = eltype(x)
+
+    ff = f(ExaModels.VarSource(), ExaModels.ParameterSource())
+    t = ff(ExaModels.Identity(), ExaModels.SecondAdjointNodeSource(nothing), nothing)
+    y2 = []
+    ExaModels.hrpass0(t, nothing, y2, nothing, nothing, 0, NaN, NaN)
+
+    a2 = unique(y2)
+    comp = ExaModels.Compressor(Tuple(findfirst(isequal(i), a2) for i in y2))
+
+    n = length(a2)
+    buffer = fill!(similar(x, n), zero(T))
+    buffer_I = similar(x, Int, n)
+    buffer_J = similar(x, Int, n)
+
+    ExaModels.shessian!(buffer_I, buffer_J, ff, nothing, nothing, θ, comp, 0, NaN, NaN)
+    ExaModels.shessian!(buffer, nothing, ff, nothing, x, θ, comp, 0, one(T), zero(T))
+
+    y = zeros(length(x), length(x))
+    for (k, (i, j)) in enumerate(zip(buffer_I, buffer_J))
+        if i == j
+            y[i, j] += buffer[k]
+        else
+            y[i, j] += buffer[k]
+            y[j, i] += buffer[k]
+        end
+    end
+    return y
+end
 function runtests()
     @testset "AD test" begin
         for (name, f) in FUNCTIONS
@@ -203,6 +304,21 @@ function runtests()
                 @test sgradient(f, x0) ≈ g atol = 1e-6
                 @test sjacobian(f, x0) ≈ g atol = 1e-6
                 @test shessian(f, x0) ≈ h atol = 1e-6
+            end
+        end
+        @testset "Parameter tests" begin
+            for (name, f) in PARAMETER_FUNCTIONS
+                x0 = rand(10)
+                θ0 = rand(5)
+                @testset "$name" begin
+                    f_fixed_θ = x -> f(x, θ0)
+                    g = ForwardDiff.gradient(f_fixed_θ, x0)
+                    h = ForwardDiff.hessian(f_fixed_θ, x0)
+                    @test gradient_with_params(f, x0, θ0) ≈ g atol = 1e-6
+                    @test sgradient_with_params(f, x0, θ0) ≈ g atol = 1e-6
+                    @test sjacobian_with_params(f, x0, θ0) ≈ g atol = 1e-6
+                    @test shessian_with_params(f, x0, θ0) ≈ h atol = 1e-6
+                end
             end
         end
     end
