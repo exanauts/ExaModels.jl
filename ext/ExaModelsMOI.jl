@@ -688,9 +688,9 @@ function _make_index_map(model::MOI.ModelLike, var_to_idx, con_to_idx)
     variables = MOI.get(model, MOI.ListOfVariableIndices())
     map = MOI.Utilities.IndexMap()
     for x in variables
-        map[x] = var_to_idx[x]
+        map[x] = typeof(x)(var_to_idx[x])
     end
-    for (F, S) in MOI.get(model, MOI.Utilities.ListOfConstraintTypesPresent())
+    for (F, S) in MOI.get(model, MOI.ListOfConstraintTypesPresent())
         _make_constraints_map(model, map.con_map[F, S], con_to_idx)
     end
     return map
@@ -701,7 +701,7 @@ function _make_constraints_map(
     con_to_idx
 ) where {F,S}
     for c in MOI.get(model, MOI.ListOfConstraintIndices{F,S}())
-        map[c] = con_to_idx[c]
+        map[c] = typeof(c)(con_to_idx[c])
     end
     return
 end
