@@ -48,20 +48,30 @@ float_type(::Type{MOI.GreaterThan{T}}) where {T} = T
 float_type(::Type{MOI.LessThan{T}}) where {T} = T
 float_type(::Type{MOI.EqualTo{T}}) where {T} = T
 float_type(::Type{MOI.Interval{T}}) where {T} = T
+float_type(::Type{MOI.ScalarAffineFunction{T}}) where {T} = T
+float_type(::Type{MOI.ScalarQuadraticFunction{T}}) where {T} = T
+float_type(::Type{MOI.ScalarNonlinearFunction}) = nothing
+float_type(::Type{MOI.VariableIndex}) = nothing
 
 function check_supported_and_get_T(moim)
     con_types = MOI.get(moim, MOI.ListOfConstraintTypesPresent())
-    set_float_types = Set()
+    float_types = Set()
     for (F,S) in con_types
         !(F <: SUPPORTED_FUNC_TYPE_UNION) && error("Unsupported function type $F.")
         !(S <: SUPPORTED_SET_TYPE_UNION) && error("Unsupported set type $S.")
-        push!(set_float_types, float_type(S))
+        FT = float_type(F)
+        ST = float_type(S)
+        !isnothing(FT) && push!(float_types, FT)
+        !isnothing(ST) && push!(float_types, ST)
     end
-    push!(set_float_types, MOI.get(moim, MOI.ObjectiveFunctionType()))
-    isempty(set_float_types) && error("Cannot determine float type") # FIXME: what if all nonlinear?
-    (length(set_float_types) > 1) && error("Got multiple float types $set_float_types")
 
-    T = first(set_float_types)
+    obj_type = float_type(MOI.get(moim, MOI.ObjectiveFunctionType()))
+    !isnothing(obj_type) && push!(float_types, obj_type)
+
+    isempty(float_types) && error("Cannot determine float type") # FIXME: what if just nonlinear obj?
+    (length(float_types) > 1) && error("Got multiple float types $float_types")
+
+    T = first(float_types)
 
     if !isempty(filter(
         FS -> (FS[1] <: MOI.VariableIndex) && !(
