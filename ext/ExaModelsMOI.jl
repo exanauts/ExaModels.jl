@@ -7,19 +7,20 @@ const MOI = MathOptInterface
 const MOIU = MathOptInterface.Utilities
 const MOIB = MathOptInterface.Bridges
 
-const SUPPORTED_OBJ_TYPE =
-    [:scalar_nonlinear, :scalar_affine, :scalar_quadratic, :single_variable]
-const UNSUPPORTED_OBJ_TYPE =
-    [:vector_nonlinear, :vector_affine, :vector_quadratic, :vector_variables]
-
-const SUPPORTED_CONS_TYPE =
-    [:moi_scalarnonlinearfunction, :moi_scalaraffinefunction, :moi_scalarquadraticfunction]
-const UNSUPPORTED_CONS_TYPE = [
-    :moi_vectoraffinefunction,
-    :moi_vectornonlinearfunction,
-    :moi_vectorquadraticfunction,
-    :moi_vectorofvariables,
+const SUPPORTED_FUNC_TYPE = [
+    MOI.ScalarAffineFunction,
+    MOI.ScalarQuadraticFunction,
+    MOI.ScalarNonlinearFunction,
+    MOI.VariableIndex,
 ]
+const SUPPORTED_SET_TYPE = [
+    MOI.GreaterThan,
+    MOI.LessThan,
+    MOI.EqualTo,
+    MOI.Interval,
+]
+const SUPPORTED_FUNC_TYPE_UNION = Union{SUPPORTED_FUNC_TYPE...}
+const SUPPORTED_SET_TYPE_UNION = Union{SUPPORTED_SET_TYPE...}
 
 """
     Abstract data structure for storing expression tree and data arrays
@@ -53,62 +54,99 @@ function _update_bin!(::BinNull, e, p)
     return false
 end
 
-float_type(::MOIU.Model{T}) where {T} = T
+float_type(::Type{MOI.GreaterThan{T}}) where {T} = T
+float_type(::Type{MOI.LessThan{T}}) where {T} = T
+float_type(::Type{MOI.EqualTo{T}}) where {T} = T
+float_type(::Type{MOI.Interval{T}}) where {T} = T
 
-function ExaModels.ExaModel(jm_cache::MOI.ModelLike; backend = nothing, prod = false)
+function ExaModels.ExaModel(moim::MOI.ModelLike; backend = nothing, prod = false)
+    minimize = MOI.get(moim, MOI.ObjectiveSense()) === MOI.MIN_SENSE
 
-    T = float_type(jm_cache.model)
-    minimize = jm_cache.model.objective.sense == MOI.MIN_SENSE
+    variables = MOI.get(moim, MOI.ListOfVariableIndices())
+    con_types = MOI.get(moim, MOI.ListOfConstraintTypesPresent())
+
+    set_float_types = Set()
+    for (F,S) in con_types
+        if !(F <: SUPPORTED_FUNC_TYPE_UNION)
+            error("Found unsupported function type $F.")
+        end
+        if !(S <: SUPPORTED_SET_TYPE_UNION)
+            error("Found unsupported set type $S.")
+        end
+        push!(set_float_types, float_type(S))
+    end
+
+    T = if isempty(set_float_types)
+        error("Cannot deduce float type from the constraints")
+    elseif length(set_float_types) > 1
+        error("All constraints must have the same float type. Found $set_float_types")
+    else
+        first(set_float_types)
+    end
 
     # create exacore
     c = ExaModels.ExaCore(T; backend = backend, minimize = minimize)
 
     # variables
-    jvars = jm_cache.model.variables
-    lvar = jvars.lower
-    uvar = jvars.upper
-    x0 = fill!(similar(lvar), 0.0)
-    nvar = length(lvar)
+    nvar = length(variables)
+    x0 = zeros(T, nvar)
+    lvar = fill(-T(Inf), nvar)
+    uvar = fill(T(Inf), nvar)
 
-    if haskey(jm_cache.varattr, MOI.VariablePrimalStart())
-        list = jm_cache.varattr[MOI.VariablePrimalStart()]
-        for (k, v) in list
-            x0[k.value] = v
-        end
+    for ci in MOI.get(moim, MOI.ListOfConstraintIndices{MOI.VariableIndex,MOI.GreaterThan{T}}())
+        vi = MOI.get(moim, MOI.ConstraintFunction(), ci)
+        @assert vi isa MOI.VariableIndex
+        lvar[vi.value] = MOI.get(moim, MOI.ConstraintSet(), ci).lower
     end
+    for ci in MOI.get(moim, MOI.ListOfConstraintIndices{MOI.VariableIndex,MOI.LessThan{T}}())
+        vi = MOI.get(moim, MOI.ConstraintFunction(), ci)
+        @assert vi isa MOI.VariableIndex
+        uvar[vi.value] = MOI.get(moim, MOI.ConstraintSet(), ci).upper
+    end
+
+    if !isempty(filter(
+        FS -> (FS[1] <: MOI.VariableIndex) && !(
+            FS[2] <: Union{MOI.GreaterThan{T},MOI.LessThan{T}}
+        ), con_types
+    ))
+        # this is where parameters would error
+        error("Found unsupported variable index constraint")
+    end
+
+    for vi in variables
+        start = MOI.get(moim, MOI.VariablePrimalStart(), vi)
+        isnothing(start) && continue
+        x0[vi.value] = start
+    end
+
     v = ExaModels.variable(c, nvar; start = x0, lvar = lvar, uvar = uvar)
 
     # objective
-    jobjs = jm_cache.model.objective
-    bin = BinNull()
-
-    for field in SUPPORTED_OBJ_TYPE
-        bin = exafy_obj(getfield(jobjs, field), bin)
+    obj_type = MOI.get(moim, MOI.ObjectiveFunctionType())
+    if !(obj_type <: SUPPORTED_FUNC_TYPE_UNION)
+        error("Objective function of type $obj_type is not supported")
     end
 
-    for field in UNSUPPORTED_OBJ_TYPE
-        if getfield(jobjs, field) != nothing
-            error("$field type objective is not supported")
-        end
-    end
+    obj_bin = exafy_obj(
+        MOI.get(moim, MOI.ObjectiveFunction{obj_type}()),
+        BinNull()
+    )
 
-    build_objective(c, bin)
+    build_objective(c, obj_bin)
 
     # constraint
-    jcons = jm_cache.model.constraints
-
     bin = BinNull()
     offset = 0
     lcon = similar(x0, 0)
     ucon = similar(x0, 0)
 
-    for field in SUPPORTED_CONS_TYPE
-        bin, offset = exafy_con(getfield(jcons, field), bin, offset, lcon, ucon)
-    end
-
-    for field in UNSUPPORTED_CONS_TYPE
-        if getfield(jcons, field) != nothing
-            error("$field type constraint is not supported")
+    for F in SUPPORTED_FUNC_TYPE
+        F <: MOI.VariableIndex && continue
+        FT = F <: MOI.ScalarNonlinearFunction ? F : F{T}
+        for S in SUPPORTED_SET_TYPE
+            ST = S{T}
+            cis = MOI.get(moim, MOI.ListOfConstraintIndices{FT,ST}())
+            bin, offset = exafy_con(moim, cis, bin, offset, lcon, ucon)
         end
     end
 
@@ -118,18 +156,6 @@ function ExaModels.ExaModel(jm_cache::MOI.ModelLike; backend = nothing, prod = f
 
     return ExaModels.ExaModel(c; prod = prod)
 end
-
-function exafy_con(cons::Nothing, bin, offset, lcon, ucon)
-    return bin, offset
-end
-function exafy_con(cons, bin, offset, lcon, ucon)
-    bin, offset = _exafy_con(cons.moi_equalto, bin, offset, lcon, ucon)
-    bin, offset = _exafy_con(cons.moi_greaterthan, bin, offset, lcon, ucon)
-    bin, offset = _exafy_con(cons.moi_lessthan, bin, offset, lcon, ucon)
-    bin, offset = _exafy_con(cons.moi_interval, bin, offset, lcon, ucon)
-    return bin, offset
-end
-
 
 function _exafy_con(i, c::C, bin, offset; pos = true) where {C<:MOI.ScalarAffineFunction}
     for mm in c.terms
@@ -198,21 +224,18 @@ function _exafy_con(i, c::C, bin, offset; pos = true) where {C<:Real}
     return bin, offset
 end
 
-function _exafy_con(cons::V, bin, offset, lcon, ucon) where {V<:MOIU.VectorOfConstraints}
-    l = length(cons.constraints)
+function exafy_con(moim, cons::V, bin, offset, lcon, ucon) where {V<:Vector{<:MOI.ConstraintIndex}}
+    l = length(cons)
 
     resize!(lcon, offset + l)
     resize!(ucon, offset + l)
-    for (i, (c, e)) in cons.constraints
-        _exafy_con_update_vector(i, e, lcon, ucon, offset)
-        bin, offset = _exafy_con(i, c, bin, offset)
+    for ci in cons
+        func = MOI.get(moim, MOI.ConstraintFunction(), ci)
+        set = MOI.get(moim, MOI.ConstraintSet(), ci)
+        _exafy_con_update_vector(ci, set, lcon, ucon, offset)
+        bin, offset = _exafy_con(ci, func, bin, offset)
     end
     return bin, (offset += l)
-end
-
-
-function _exafy_con(::Nothing, bin, offset, lcon, ucon)
-    return bin, offset
 end
 
 function _exafy_con_update_vector(i, e::MOI.Interval{T}, lcon, ucon, offset) where {T}
@@ -388,22 +411,92 @@ end
 
 # eval can be a performance killer -- we want to explicitly include symbols for frequently used operations.
 function op(s::Symbol)
-    if s == :+
-        return +
-    elseif s == :-
-        return -
-    elseif s == :*
-        return *
-    elseif s == :/
-        return /
-    elseif s == :^
-        return ^
-    elseif s == :sin
-        return sin
-    elseif s == :cos
-        return cos
-    elseif s == :exp
-        return exp
+    # uni/multi
+    if     s === :+            return + #
+    elseif s === :-            return - #
+    # multi
+    elseif s === :*            return *
+    elseif s === :^            return ^
+    elseif s === :/            return /
+    # uni
+    elseif s === :abs          return abs #
+    elseif s === :sign         return sign
+    elseif s === :sqrt         return sqrt #
+    elseif s === :cbrt         return cbrt #
+    elseif s === :abs2         return abs2 #
+    elseif s === :inv          return inv #
+    elseif s === :log          return log #
+    elseif s === :log10        return log10 #
+    elseif s === :log2         return log2 #
+    elseif s === :log1p        return log1p #
+    elseif s === :exp          return exp #
+    elseif s === :exp2         return exp2 #
+    elseif s === :expm1        error("expm1 not supported")
+    # trig
+    elseif s === :sin          return sin #
+    elseif s === :cos          return cos #
+    elseif s === :tan          return tan #
+    elseif s === :sec          return sec #
+    elseif s === :csc          return csc #
+    elseif s === :cot          return cot #
+    elseif s === :sind         return sind #
+    elseif s === :cosd         return cosd #
+    elseif s === :tand         return tand #
+    elseif s === :secd         return secd #
+    elseif s === :cscd         return cscd #
+    elseif s === :cotd         return cotd #
+    elseif s === :asin         return asin #
+    elseif s === :acos         return acos #
+    elseif s === :atan         return atan #
+    elseif s === :asec         error("asec not supported")
+    elseif s === :acsc         error("acsc not supported")
+    elseif s === :acot         return acot #
+    elseif s === :asind        return asind
+    elseif s === :acosd        return acosd
+    elseif s === :atand        return atand #
+    elseif s === :asecd        return asecd
+    elseif s === :acscd        return acscd
+    elseif s === :acotd        return acotd #
+    elseif s === :sinh         return sinh #
+    elseif s === :cosh         return cosh #
+    elseif s === :tanh         return tanh #
+    elseif s === :sech         return sech #
+    elseif s === :csch         return csch #
+    elseif s === :coth         return coth #
+    elseif s === :asinh        return asinh #
+    elseif s === :acosh        return acosh #
+    elseif s === :atanh        return atanh #
+    elseif s === :asech        error("asech not supported")
+    elseif s === :acsch        error("acsch not supported")
+    elseif s === :acoth        return acoth #
+    # special (commented will use `eval` which would succeed if SpecialFunctions is loaded)
+    elseif s === :deg2rad      error("deg2rad not supported")
+    elseif s === :rad2deg      error("rad2deg not supported")
+    # elseif s === :erf          error("erf not supported")
+    # elseif s === :erfinv       error("erfinv not supported")
+    # elseif s === :erfc         error("erfc not supported")
+    # elseif s === :erfcinv      error("erfcinv not supported")
+    # elseif s === :erfi         error("erfi not supported")
+    # elseif s === :gamma        error("gamma not supported")
+    elseif s === :lgamma       error("lgamma not supported")
+    # elseif s === :digamma      error("digamma not supported")
+    # elseif s === :invdigamma   error("invdigamma not supported")
+    # elseif s === :trigamma     error("trigamma not supported")
+    # elseif s === :airyai       error("airyai not supported")
+    # elseif s === :airybi       error("airybi not supported")
+    # elseif s === :airyaiprime  error("airyaiprime not supported")
+    # elseif s === :airybiprime  error("airybiprime not supported")
+    # elseif s === :besselj0     error("besselj0 not supported")
+    # elseif s === :besselj1     error("besselj1 not supported")
+    # elseif s === :bessely0     error("bessely0 not supported")
+    # elseif s === :bessely1     error("bessely1 not supported")
+    # elseif s === :erfcx        error("erfcx not supported")
+    # elseif s === :dawson       error("dawson not supported")
+    
+    # not in MOI
+    elseif s === :exp10        return exp10
+    elseif s === :beta         return beta
+    elseif s === :logbeta      return logbeta
     else
         return eval(s)
     end
@@ -422,7 +515,7 @@ mutable struct Optimizer{B,S} <: MOI.AbstractOptimizer
     options::Dict{Symbol,Any}
 end
 
-MOI.is_empty(model::Optimizer) = model.model == nothing
+MOI.is_empty(model::Optimizer) = isnothing(model.model)
 
 const _FUNCTIONS = Union{
     MOI.ScalarAffineFunction{Float64},
