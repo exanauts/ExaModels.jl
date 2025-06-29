@@ -49,32 +49,19 @@ float_type(::Type{MOI.LessThan{T}}) where {T} = T
 float_type(::Type{MOI.EqualTo{T}}) where {T} = T
 float_type(::Type{MOI.Interval{T}}) where {T} = T
 
-function check_supported_and_get_T(con_types)
+function check_supported_and_get_T(moim)
+    con_types = MOI.get(moim, MOI.ListOfConstraintTypesPresent())
     set_float_types = Set()
     for (F,S) in con_types
-        if !(F <: SUPPORTED_FUNC_TYPE_UNION)
-            error("Found unsupported function type $F.")
-        end
-        if !(S <: SUPPORTED_SET_TYPE_UNION)
-            error("Found unsupported set type $S.")
-        end
+        !(F <: SUPPORTED_FUNC_TYPE_UNION) && error("Unsupported function type $F.")
+        !(S <: SUPPORTED_SET_TYPE_UNION) && error("Unsupported set type $S.")
         push!(set_float_types, float_type(S))
     end
+    push!(set_float_types, MOI.get(moim, MOI.ObjectiveFunctionType()))
+    isempty(set_float_types) && error("Cannot determine float type") # FIXME: what if all nonlinear?
+    (length(set_float_types) > 1) && error("Got multiple float types $set_float_types")
 
-    if isempty(set_float_types)
-        error("Cannot deduce float type from the constraints")
-    elseif length(set_float_types) > 1
-        error("All constraints must have the same float type. Found $set_float_types")
-    else
-        first(set_float_types)
-    end
-end
-
-function ExaModels.ExaModel(moim::MOI.ModelLike; backend = nothing, prod = false, return_maps = false)
-    minimize = MOI.get(moim, MOI.ObjectiveSense()) === MOI.MIN_SENSE
-    variables = MOI.get(moim, MOI.ListOfVariableIndices())
-    con_types = MOI.get(moim, MOI.ListOfConstraintTypesPresent())
-    T = check_supported_and_get_T(con_types)
+    T = first(set_float_types)
 
     if !isempty(filter(
         FS -> (FS[1] <: MOI.VariableIndex) && !(
@@ -84,6 +71,13 @@ function ExaModels.ExaModel(moim::MOI.ModelLike; backend = nothing, prod = false
         # this is where parameters would error
         error("Found unsupported variable index constraint")
     end
+    
+    return T
+end
+
+function ExaModels.ExaModel(moim::MOI.ModelLike; backend = nothing, prod = false, return_maps = false)
+    minimize = MOI.get(moim, MOI.ObjectiveSense()) === MOI.MIN_SENSE
+    T = check_supported_and_get_T(moim)
 
     c = ExaModels.ExaCore(T; backend = backend, minimize = minimize)
 
@@ -151,6 +145,7 @@ function copy_constraints!(c, moim, var_to_idx, T)
     offset = 0
     lcon = zeros(T, 0)
     ucon = zeros(T, 0)
+    y0 = zeros(T, 0)
     con_to_idx = Dict{MOI.ConstraintIndex, Int}()
 
     for F in SUPPORTED_FUNC_TYPE
@@ -159,12 +154,10 @@ function copy_constraints!(c, moim, var_to_idx, T)
         for S in SUPPORTED_SET_TYPE
             ST = S{T}
             cis = MOI.get(moim, MOI.ListOfConstraintIndices{FT,ST}())
-            bin, offset = exafy_con(moim, cis, bin, offset, lcon, ucon, var_to_idx, con_to_idx)
+            bin, offset = exafy_con(moim, cis, bin, offset, lcon, ucon, y0, var_to_idx, con_to_idx)
         end
     end
 
-    # FIXME: MOI.ConstraintPrimalStart?
-    y0 = fill!(similar(lcon), zero(T))
     cons = ExaModels.constraint(c, offset; start = y0, lcon = lcon, ucon = ucon)
     build_constraint!(c, cons, bin)
 
@@ -239,19 +232,30 @@ function _exafy_con(i, c::C, bin, var_to_idx, con_to_idx; pos = true) where {C<:
     return bin
 end
 
-function exafy_con(moim, cons::V, bin, offset, lcon, ucon, var_to_idx, con_to_idx) where {V<:Vector{<:MOI.ConstraintIndex}}
+function exafy_con(moim, cons::V, bin, offset, lcon, ucon, y0, var_to_idx, con_to_idx) where {V<:Vector{<:MOI.ConstraintIndex}}
     l = length(cons)
 
     resize!(lcon, offset + l)
     resize!(ucon, offset + l)
+    resize!(y0, offset + l)
     for (i, ci) in enumerate(cons)
         func = MOI.get(moim, MOI.ConstraintFunction(), ci)
         set = MOI.get(moim, MOI.ConstraintSet(), ci)
+        start = MOI.get(moim, MOI.ConstraintPrimalStart(), ci)
         con_to_idx[ci] = offset + i
+        _exafy_con_update_start(ci, start, y0, con_to_idx)
         _exafy_con_update_vector(ci, set, lcon, ucon, con_to_idx)
         bin = _exafy_con(ci, func, bin, var_to_idx, con_to_idx)
     end
     return bin, (offset += l)
+end
+
+function _exafy_con_update_start(i, start, y0, con_to_idx)
+    y0[con_to_idx[i]] = start
+end
+
+function _exafy_con_update_start(i, ::Nothing, y0, con_to_idx)
+    y0[con_to_idx[i]] = zero(eltype(y0))
 end
 
 function _exafy_con_update_vector(i, e::MOI.Interval{T}, lcon, ucon, con_to_idx) where {T}
