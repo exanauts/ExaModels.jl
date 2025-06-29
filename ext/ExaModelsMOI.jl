@@ -7,18 +7,8 @@ const MOI = MathOptInterface
 const MOIU = MathOptInterface.Utilities
 const MOIB = MathOptInterface.Bridges
 
-const SUPPORTED_FUNC_TYPE = [
-    MOI.ScalarAffineFunction,
-    MOI.ScalarQuadraticFunction,
-    MOI.ScalarNonlinearFunction,
-    MOI.VariableIndex,
-]
-const SUPPORTED_SET_TYPE = [
-    MOI.GreaterThan,
-    MOI.LessThan,
-    MOI.EqualTo,
-    MOI.Interval,
-]
+const SUPPORTED_FUNC_TYPE = [MOI.ScalarAffineFunction, MOI.ScalarQuadraticFunction, MOI.ScalarNonlinearFunction, MOI.VariableIndex]
+const SUPPORTED_SET_TYPE = [MOI.GreaterThan, MOI.LessThan, MOI.EqualTo, MOI.Interval]
 const SUPPORTED_FUNC_TYPE_UNION = Union{SUPPORTED_FUNC_TYPE...}
 const SUPPORTED_SET_TYPE_UNION = Union{SUPPORTED_SET_TYPE...}
 
@@ -59,12 +49,7 @@ float_type(::Type{MOI.LessThan{T}}) where {T} = T
 float_type(::Type{MOI.EqualTo{T}}) where {T} = T
 float_type(::Type{MOI.Interval{T}}) where {T} = T
 
-function ExaModels.ExaModel(moim::MOI.ModelLike; backend = nothing, prod = false)
-    minimize = MOI.get(moim, MOI.ObjectiveSense()) === MOI.MIN_SENSE
-
-    variables = MOI.get(moim, MOI.ListOfVariableIndices())
-    con_types = MOI.get(moim, MOI.ListOfConstraintTypesPresent())
-
+function check_supported_and_deduce_T(con_types)
     set_float_types = Set()
     for (F,S) in con_types
         if !(F <: SUPPORTED_FUNC_TYPE_UNION)
@@ -76,69 +61,57 @@ function ExaModels.ExaModel(moim::MOI.ModelLike; backend = nothing, prod = false
         push!(set_float_types, float_type(S))
     end
 
-    T = if isempty(set_float_types)
+    if isempty(set_float_types)
         error("Cannot deduce float type from the constraints")
     elseif length(set_float_types) > 1
         error("All constraints must have the same float type. Found $set_float_types")
     else
         first(set_float_types)
     end
+end
 
-    # create exacore
-    c = ExaModels.ExaCore(T; backend = backend, minimize = minimize)
-
-    # variables
-    nvar = length(variables)
-    x0 = zeros(T, nvar)
-    lvar = fill(-T(Inf), nvar)
-    uvar = fill(T(Inf), nvar)
-
+function fill_variable_bounds!(moim, lvar, uvar, var_to_idx, T)
     for ci in MOI.get(moim, MOI.ListOfConstraintIndices{MOI.VariableIndex,MOI.GreaterThan{T}}())
         vi = MOI.get(moim, MOI.ConstraintFunction(), ci)
-        @assert vi isa MOI.VariableIndex
-        lvar[vi.value] = MOI.get(moim, MOI.ConstraintSet(), ci).lower
+        lvar[var_to_idx[vi]] = MOI.get(moim, MOI.ConstraintSet(), ci).lower
     end
     for ci in MOI.get(moim, MOI.ListOfConstraintIndices{MOI.VariableIndex,MOI.LessThan{T}}())
         vi = MOI.get(moim, MOI.ConstraintFunction(), ci)
-        @assert vi isa MOI.VariableIndex
-        uvar[vi.value] = MOI.get(moim, MOI.ConstraintSet(), ci).upper
+        uvar[var_to_idx[vi]] = MOI.get(moim, MOI.ConstraintSet(), ci).upper
     end
+end
 
-    if !isempty(filter(
-        FS -> (FS[1] <: MOI.VariableIndex) && !(
-            FS[2] <: Union{MOI.GreaterThan{T},MOI.LessThan{T}}
-        ), con_types
-    ))
-        # this is where parameters would error
-        error("Found unsupported variable index constraint")
-    end
-
-    for vi in variables
+function fill_variable_start!(moim, x0)
+    var_to_idx = Dict{MOI.VariableIndex, Int}()
+    for (i, vi) in enumerate(MOI.get(moim, MOI.ListOfVariableIndices()))
+        var_to_idx[vi] = i
         start = MOI.get(moim, MOI.VariablePrimalStart(), vi)
         isnothing(start) && continue
-        x0[vi.value] = start
+        x0[i] = start
     end
+    return var_to_idx
+end
 
-    v = ExaModels.variable(c, nvar; start = x0, lvar = lvar, uvar = uvar)
+function copy_variables!(c, moim, T)
+    nvar = MOI.get(moim, MOI.NumberOfVariables())
+    x0 = zeros(T, nvar)
+    var_to_idx = fill_variable_start!(moim, x0)
+    
+    lvar = fill(T(-Inf), nvar)
+    uvar = fill(T(Inf), nvar)
+    fill_variable_bounds!(moim, lvar, uvar, var_to_idx, T)
 
-    # objective
-    obj_type = MOI.get(moim, MOI.ObjectiveFunctionType())
-    if !(obj_type <: SUPPORTED_FUNC_TYPE_UNION)
-        error("Objective function of type $obj_type is not supported")
-    end
+    ExaModels.variable(c, nvar; start = x0, lvar = lvar, uvar = uvar)
 
-    obj_bin = exafy_obj(
-        MOI.get(moim, MOI.ObjectiveFunction{obj_type}()),
-        BinNull()
-    )
+    return var_to_idx
+end
 
-    build_objective(c, obj_bin)
-
-    # constraint
+function copy_constraints!(c, moim, var_to_idx, T)
     bin = BinNull()
     offset = 0
-    lcon = similar(x0, 0)
-    ucon = similar(x0, 0)
+    lcon = zeros(T, 0)
+    ucon = zeros(T, 0)
+    con_to_idx = Dict{MOI.ConstraintIndex, Int}()
 
     for F in SUPPORTED_FUNC_TYPE
         F <: MOI.VariableIndex && continue
@@ -146,116 +119,155 @@ function ExaModels.ExaModel(moim::MOI.ModelLike; backend = nothing, prod = false
         for S in SUPPORTED_SET_TYPE
             ST = S{T}
             cis = MOI.get(moim, MOI.ListOfConstraintIndices{FT,ST}())
-            bin, offset = exafy_con(moim, cis, bin, offset, lcon, ucon)
+            bin, offset = exafy_con(moim, cis, bin, offset, lcon, ucon, var_to_idx, con_to_idx)
         end
     end
 
+    # FIXME: MOI.ConstraintPrimalStart?
     y0 = fill!(similar(lcon), zero(T))
     cons = ExaModels.constraint(c, offset; start = y0, lcon = lcon, ucon = ucon)
     build_constraint!(c, cons, bin)
 
-    return ExaModels.ExaModel(c; prod = prod)
+    return con_to_idx
 end
 
-function _exafy_con(i, c::C, bin, offset; pos = true) where {C<:MOI.ScalarAffineFunction}
+
+function copy_objective!(c, moim, var_to_idx)
+    obj_type = MOI.get(moim, MOI.ObjectiveFunctionType())
+    if !(obj_type <: SUPPORTED_FUNC_TYPE_UNION)
+        error("Objective function of type $obj_type is not supported")
+    end
+
+    obj_bin = exafy_obj(MOI.get(moim, MOI.ObjectiveFunction{obj_type}()), BinNull(), var_to_idx)
+
+    build_objective!(c, obj_bin)
+end
+
+function ExaModels.ExaModel(moim::MOI.ModelLike; backend = nothing, prod = false)
+    minimize = MOI.get(moim, MOI.ObjectiveSense()) === MOI.MIN_SENSE
+    variables = MOI.get(moim, MOI.ListOfVariableIndices())
+    con_types = MOI.get(moim, MOI.ListOfConstraintTypesPresent())
+    T = check_supported_and_deduce_T(con_types)
+
+    if !isempty(filter(
+        FS -> (FS[1] <: MOI.VariableIndex) && !(
+               FS[2] <: Union{MOI.GreaterThan{T},MOI.LessThan{T}}
+        ), con_types
+    ))
+        # this is where parameters would error
+        error("Found unsupported variable index constraint")
+    end
+
+    c = ExaModels.ExaCore(T; backend = backend, minimize = minimize)
+
+    var_to_idx = copy_variables!(c, moim, T)
+    con_to_idx = copy_constraints!(c, moim, var_to_idx, T)
+    copy_objective!(c, moim, var_to_idx)
+
+    return ExaModels.ExaModel(c; prod = prod), (var_to_idx, con_to_idx)
+end
+
+function _exafy_con(i, c::C, bin, var_to_idx, con_to_idx; pos = true) where {C<:MOI.ScalarAffineFunction}
     for mm in c.terms
-        e, p = _exafy(mm)
+        e, p = _exafy(mm, var_to_idx)
         e = pos ? e : -e
         bin = update_bin!(
             bin,
             ExaModels.ParIndexed(ExaModels.ParSource(), length(p) + 1) => e,
-            (p..., offset + i.value),
+            (p..., con_to_idx[i]),
         ) # augment data with constraint index
     end
     bin = update_bin!(bin, ExaModels.Null(c.constant), (1,))
-    return bin, offset
+    return bin
 end
-function _exafy_con(i, c::C, bin, offset; pos = true) where {C<:MOI.ScalarQuadraticFunction}
+function _exafy_con(i, c::C, bin, var_to_idx, con_to_idx; pos = true) where {C<:MOI.ScalarQuadraticFunction}
     for mm in c.affine_terms
-        e, p = _exafy(mm)
+        e, p = _exafy(mm, var_to_idx)
         e = pos ? e : -e
         bin = update_bin!(
             bin,
             ExaModels.ParIndexed(ExaModels.ParSource(), length(p) + 1) => e,
-            (p..., offset + i.value),
+            (p..., con_to_idx[i]),
         ) # augment data with constraint index
     end
     for mm in c.quadratic_terms
-        e, p = _exafy(mm)
+        e, p = _exafy(mm, var_to_idx)
         e = pos ? e : -e
         bin = update_bin!(
             bin,
             ExaModels.ParIndexed(ExaModels.ParSource(), length(p) + 1) => e,
-            (p..., offset + i.value),
+            (p..., con_to_idx[i]),
         ) # augment data with constraint index
     end
     bin = update_bin!(bin, ExaModels.Null(c.constant), (1,))
-    return bin, offset
+    return bin
 end
-function _exafy_con(i, c::C, bin, offset; pos = true) where {C<:MOI.ScalarNonlinearFunction}
+function _exafy_con(i, c::C, bin, var_to_idx, con_to_idx; pos = true) where {C<:MOI.ScalarNonlinearFunction}
     if c.head == :+
         for mm in c.args
-            bin, offset = _exafy_con(i, mm, bin, offset)
+            bin = _exafy_con(i, mm, bin, var_to_idx, con_to_idx)
         end
         # elseif c.head == :-
         #     bin, offset = _exafy_con(i, c.args[1], bin, offset)
         #     bin, offset = _exafy_con(i, c.args[2], bin, offset; pos = false)
     else
-        e, p = _exafy(c)
+        e, p = _exafy(c, var_to_idx)
         e = pos ? e : -e
         bin = update_bin!(
             bin,
             ExaModels.ParIndexed(ExaModels.ParSource(), length(p) + 1) => e,
-            (p..., offset + i.value),
+            (p..., con_to_idx[i]),
         ) # augment data with constraint index
     end
-    return bin, offset
+    return bin
 end
-function _exafy_con(i, c::C, bin, offset; pos = true) where {C<:Real}
+function _exafy_con(i, c::C, bin, var_to_idx, con_to_idx; pos = true) where {C<:Real}
     e =
         pos ? ExaModels.ParIndexed(ExaModels.ParSource(), 1) :
         -ExaModels.ParIndexed(ExaModels.ParSource(), 1)
     bin = update_bin!(
         bin,
+        # FIXME: why do we need 0x1 here?
         ExaModels.ParIndexed(ExaModels.ParSource(), 2) => 0 * ExaModels.Var(1) + e,
-        (c, offset + i.value),
+        (c, con_to_idx[i]),
     )
 
-    return bin, offset
+    return bin
 end
 
-function exafy_con(moim, cons::V, bin, offset, lcon, ucon) where {V<:Vector{<:MOI.ConstraintIndex}}
+function exafy_con(moim, cons::V, bin, offset, lcon, ucon, var_to_idx, con_to_idx) where {V<:Vector{<:MOI.ConstraintIndex}}
     l = length(cons)
 
     resize!(lcon, offset + l)
     resize!(ucon, offset + l)
-    for ci in cons
+    for (i, ci) in enumerate(cons)
         func = MOI.get(moim, MOI.ConstraintFunction(), ci)
         set = MOI.get(moim, MOI.ConstraintSet(), ci)
-        _exafy_con_update_vector(ci, set, lcon, ucon, offset)
-        bin, offset = _exafy_con(ci, func, bin, offset)
+        con_to_idx[ci] = offset + i
+        _exafy_con_update_vector(ci, set, lcon, ucon, con_to_idx)
+        bin = _exafy_con(ci, func, bin, var_to_idx, con_to_idx)
     end
     return bin, (offset += l)
 end
 
-function _exafy_con_update_vector(i, e::MOI.Interval{T}, lcon, ucon, offset) where {T}
-    lcon[offset+i.value] = e.lower
-    ucon[offset+i.value] = e.upper
+function _exafy_con_update_vector(i, e::MOI.Interval{T}, lcon, ucon, con_to_idx) where {T}
+    lcon[con_to_idx[i]] = e.lower
+    ucon[con_to_idx[i]] = e.upper
 end
 
-function _exafy_con_update_vector(i, e::MOI.LessThan{T}, lcon, ucon, offset) where {T}
-    lcon[offset+i.value] = -Inf
-    ucon[offset+i.value] = e.upper
+function _exafy_con_update_vector(i, e::MOI.LessThan{T}, lcon, ucon, con_to_idx) where {T}
+    lcon[con_to_idx[i]] = -Inf
+    ucon[con_to_idx[i]] = e.upper
 end
 
-function _exafy_con_update_vector(i, e::MOI.GreaterThan{T}, lcon, ucon, offset) where {T}
-    ucon[offset+i.value] = Inf
-    lcon[offset+i.value] = e.lower
+function _exafy_con_update_vector(i, e::MOI.GreaterThan{T}, lcon, ucon, con_to_idx) where {T}
+    ucon[con_to_idx[i]] = Inf
+    lcon[con_to_idx[i]] = e.lower
 end
 
-function _exafy_con_update_vector(i, e::MOI.EqualTo{T}, lcon, ucon, offset) where {T}
-    lcon[offset+i.value] = e.value
-    ucon[offset+i.value] = e.value
+function _exafy_con_update_vector(i, e::MOI.EqualTo{T}, lcon, ucon, con_to_idx) where {T}
+    lcon[con_to_idx[i]] = e.value
+    ucon[con_to_idx[i]] = e.value
 end
 
 
@@ -266,98 +278,98 @@ end
 
 function build_constraint!(c, cons, ::BinNull) end
 
-function build_objective(c, bin)
-    build_objective(c, bin.inner)
+function build_objective!(c, bin)
+    build_objective!(c, bin.inner)
     ExaModels.objective(c, bin.head, bin.data)
 end
 
-function build_objective(c, ::BinNull) end
+function build_objective!(c, ::BinNull) end
 
-function exafy_obj(o::Nothing, bin)
+function exafy_obj(o::Nothing, bin, var_to_idx)
     return bin
 end
 
-function exafy_obj(o::MOI.VariableIndex, bin)
-    e, p = _exafy(o)
+function exafy_obj(o::MOI.VariableIndex, bin, var_to_idx)
+    e, p = _exafy(o, var_to_idx)
     return update_bin!(bin, e, p)
 end
 
-function exafy_obj(o::MOI.ScalarQuadraticFunction{T}, bin) where {T}
+function exafy_obj(o::MOI.ScalarQuadraticFunction{T}, bin, var_to_idx) where {T}
     for m in o.affine_terms
-        e, p = _exafy(m)
+        e, p = _exafy(m, var_to_idx)
         bin = update_bin!(bin, e, p)
     end
     for m in o.quadratic_terms
-        e, p = _exafy(m)
+        e, p = _exafy(m, var_to_idx)
         bin = update_bin!(bin, e, p)
     end
 
     return update_bin!(bin, ExaModels.Null(o.constant), (1,))
 end
 
-function exafy_obj(o::MOI.ScalarAffineFunction{T}, bin) where {T}
+function exafy_obj(o::MOI.ScalarAffineFunction{T}, bin, var_to_idx) where {T}
     for m in o.terms
-        e, p = _exafy(m)
+        e, p = _exafy(m, var_to_idx)
         bin = update_bin!(bin, e, p)
     end
 
     return update_bin!(bin, ExaModels.Null(o.constant), (1,))
 end
 
-function exafy_obj(o::MOI.ScalarNonlinearFunction, bin)
+function exafy_obj(o::MOI.ScalarNonlinearFunction, bin, var_to_idx)
     constant = 0.0
     if o.head == :+
         for m in o.args
             if m isa MOI.ScalarAffineFunction
                 for mm in m.affine_terms
-                    e, p = _exafy(mm)
+                    e, p = _exafy(mm, var_to_idx)
                     bin = update_bin!(bin, e, p)
                 end
             elseif m isa MOI.ScalarQuadraticFunction
                 for mm in m.affine_terms
-                    e, p = _exafy(mm)
+                    e, p = _exafy(mm, var_to_idx)
                     bin = update_bin!(bin, e, p)
                 end
                 for mm in m.quadratic_terms
-                    e, p = _exafy(mm)
+                    e, p = _exafy(mm, var_to_idx)
                     bin = update_bin!(bin, e, p)
                 end
                 constant += m.constant
             else
-                e, p = _exafy(m)
+                e, p = _exafy(m, var_to_idx)
                 bin = update_bin!(bin, e, p)
             end
         end
     else
-        e, p = _exafy(o)
+        e, p = _exafy(o, var_to_idx)
         bin = update_bin!(bin, e, p)
     end
 
     return update_bin!(bin, ExaModels.Null(constant), (1,)) # TODO see if this can be empty tuple
 end
 
-function _exafy(v::MOI.VariableIndex, p = ())
+function _exafy(v::MOI.VariableIndex, var_to_idx, p = ())
     i = ExaModels.ParIndexed(ExaModels.ParSource(), length(p) + 1)
-    return ExaModels.Var(i), (p..., v.value)
+    return ExaModels.Var(i), (p..., var_to_idx[v])
 end
 
-function _exafy(i::R, p) where {R<:Real}
+function _exafy(i::R, var_to_idx, p) where {R<:Real}
     return ExaModels.ParIndexed(ExaModels.ParSource(), length(p) + 1), (p..., i)
 end
 
-function _exafy(e::MOI.ScalarNonlinearFunction, p = ())
+function _exafy(e::MOI.ScalarNonlinearFunction, var_to_idx, p = ())
     return op(e.head)((
         begin
-            c, p = _exafy(e, p)
+            c, p = _exafy(e, var_to_idx, p)
             c
         end for e in e.args
     )...), p
 end
 
-function _exafy(e::MOI.ScalarAffineFunction{T}, p = ()) where {T}
+function _exafy(e::MOI.ScalarAffineFunction{T}, var_to_idx, p = ()) where {T}
     ec = if !isempty(e.terms)
         sum(begin
-            c1, p = _exafy(term, p)
+            c1, p = _exafy(term, var_to_idx, p)
             c1
         end for term in e.terms) +
         ExaModels.ParIndexed(ExaModels.ParSource(), length(p) + 1)
@@ -368,26 +380,26 @@ function _exafy(e::MOI.ScalarAffineFunction{T}, p = ()) where {T}
     return ec, (p..., e.constant)
 end
 
-function _exafy(e::MOI.ScalarAffineTerm{T}, p = ()) where {T}
-    c1, p = _exafy(e.variable, p)
+function _exafy(e::MOI.ScalarAffineTerm{T}, var_to_idx, p = ()) where {T}
+    c1, p = _exafy(e.variable, var_to_idx, p)
     return *(c1, ExaModels.ParIndexed(ExaModels.ParSource(), length(p) + 1)),
     (p..., e.coefficient)
 end
 
-function _exafy(e::MOI.ScalarQuadraticFunction{T}, p = ()) where {T}
+function _exafy(e::MOI.ScalarQuadraticFunction{T}, var_to_idx, p = ()) where {T}
     t = ExaModels.ParIndexed(ExaModels.ParSource(), length(p) + 1)
     p = (p..., e.constant)
 
     if !isempty(e.affine_terms)
         t += sum(begin
-            c1, p = _exafy(term, p)
+            c1, p = _exafy(term, var_to_idx, p)
             c1
         end for term in e.affine_terms)
     end
 
     if !isempty(e.quadratic_terms)
         t += sum(begin
-            c1, p = _exafy(term, p)
+            c1, p = _exafy(term, var_to_idx, p)
             c1
         end for term in e.quadratic_terms)
     end
@@ -395,15 +407,15 @@ function _exafy(e::MOI.ScalarQuadraticFunction{T}, p = ()) where {T}
     return t, p
 end
 
-function _exafy(e::MOI.ScalarQuadraticTerm{T}, p = ()) where {T}
+function _exafy(e::MOI.ScalarQuadraticTerm{T}, var_to_idx, p = ()) where {T}
 
     if e.variable_1 == e.variable_2
-        v, p = _exafy(e.variable_1, p)
+        v, p = _exafy(e.variable_1, var_to_idx, p)
         return ExaModels.ParIndexed(ExaModels.ParSource(), length(p) + 1) * abs2(v),
         (p..., e.coefficient / 2) # it seems that MOI assumes this by default
     else
-        v1, p = _exafy(e.variable_1, p)
-        v2, p = _exafy(e.variable_2, p)
+        v1, p = _exafy(e.variable_1, var_to_idx, p)
+        v2, p = _exafy(e.variable_2, var_to_idx, p)
         return ExaModels.ParIndexed(ExaModels.ParSource(), length(p) + 1) * v1 * v2,
         (p..., e.coefficient)
     end
@@ -412,63 +424,63 @@ end
 # eval can be a performance killer -- we want to explicitly include symbols for frequently used operations.
 function op(s::Symbol)
     # uni/multi
-    if     s === :+            return + #
-    elseif s === :-            return - #
+    if     s === :+  return +
+    elseif s === :-  return -
     # multi
-    elseif s === :*            return *
-    elseif s === :^            return ^
-    elseif s === :/            return /
+    elseif s === :*  return *
+    elseif s === :^  return ^
+    elseif s === :/  return /
     # uni
-    elseif s === :abs          return abs #
-    elseif s === :sign         return sign
-    elseif s === :sqrt         return sqrt #
-    elseif s === :cbrt         return cbrt #
-    elseif s === :abs2         return abs2 #
-    elseif s === :inv          return inv #
-    elseif s === :log          return log #
-    elseif s === :log10        return log10 #
-    elseif s === :log2         return log2 #
-    elseif s === :log1p        return log1p #
-    elseif s === :exp          return exp #
-    elseif s === :exp2         return exp2 #
-    elseif s === :expm1        error("expm1 not supported")
+    elseif s === :abs    return abs
+    elseif s === :sign   error("sign not supported")
+    elseif s === :sqrt   return sqrt
+    elseif s === :cbrt   return cbrt
+    elseif s === :abs2   return abs2
+    elseif s === :inv    return inv
+    elseif s === :log    return log
+    elseif s === :log10  return log10
+    elseif s === :log2   return log2
+    elseif s === :log1p  return log1p
+    elseif s === :exp    return exp
+    elseif s === :exp2   return exp2
+    elseif s === :expm1  error("expm1 not supported")
     # trig
-    elseif s === :sin          return sin #
-    elseif s === :cos          return cos #
-    elseif s === :tan          return tan #
-    elseif s === :sec          return sec #
-    elseif s === :csc          return csc #
-    elseif s === :cot          return cot #
-    elseif s === :sind         return sind #
-    elseif s === :cosd         return cosd #
-    elseif s === :tand         return tand #
-    elseif s === :secd         return secd #
-    elseif s === :cscd         return cscd #
-    elseif s === :cotd         return cotd #
-    elseif s === :asin         return asin #
-    elseif s === :acos         return acos #
-    elseif s === :atan         return atan #
-    elseif s === :asec         error("asec not supported")
-    elseif s === :acsc         error("acsc not supported")
-    elseif s === :acot         return acot #
-    elseif s === :asind        return asind
-    elseif s === :acosd        return acosd
-    elseif s === :atand        return atand #
-    elseif s === :asecd        return asecd
-    elseif s === :acscd        return acscd
-    elseif s === :acotd        return acotd #
-    elseif s === :sinh         return sinh #
-    elseif s === :cosh         return cosh #
-    elseif s === :tanh         return tanh #
-    elseif s === :sech         return sech #
-    elseif s === :csch         return csch #
-    elseif s === :coth         return coth #
-    elseif s === :asinh        return asinh #
-    elseif s === :acosh        return acosh #
-    elseif s === :atanh        return atanh #
-    elseif s === :asech        error("asech not supported")
-    elseif s === :acsch        error("acsch not supported")
-    elseif s === :acoth        return acoth #
+    elseif s === :sin    return sin
+    elseif s === :cos    return cos
+    elseif s === :tan    return tan
+    elseif s === :sec    return sec
+    elseif s === :csc    return csc
+    elseif s === :cot    return cot
+    elseif s === :sind   return sind
+    elseif s === :cosd   return cosd
+    elseif s === :tand   return tand
+    elseif s === :secd   return secd
+    elseif s === :cscd   return cscd
+    elseif s === :cotd   return cotd
+    elseif s === :asin   return asin
+    elseif s === :acos   return acos
+    elseif s === :atan   return atan
+    elseif s === :asec   error("asec not supported")
+    elseif s === :acsc   error("acsc not supported")
+    elseif s === :acot   return acot
+    elseif s === :asind  error("asind not supported")
+    elseif s === :acosd  error("acosd not supported")
+    elseif s === :atand  return atand
+    elseif s === :asecd  error("aced not supported")
+    elseif s === :acscd  error("acscd not supported")
+    elseif s === :acotd  return acotd
+    elseif s === :sinh   return sinh
+    elseif s === :cosh   return cosh
+    elseif s === :tanh   return tanh
+    elseif s === :sech   return sech
+    elseif s === :csch   return csch
+    elseif s === :coth   return coth
+    elseif s === :asinh  return asinh
+    elseif s === :acosh  return acosh
+    elseif s === :atanh  return atanh
+    elseif s === :asech  error("asech not supported")
+    elseif s === :acsch  error("acsch not supported")
+    elseif s === :acoth  return acoth
     # special (commented will use `eval` which would succeed if SpecialFunctions is loaded)
     elseif s === :deg2rad      error("deg2rad not supported")
     elseif s === :rad2deg      error("rad2deg not supported")
@@ -494,9 +506,9 @@ function op(s::Symbol)
     # elseif s === :dawson       error("dawson not supported")
     
     # not in MOI
-    elseif s === :exp10        return exp10
-    elseif s === :beta         return beta
-    elseif s === :logbeta      return logbeta
+    elseif s === :exp10    return exp10
+    elseif s === :beta     return beta
+    elseif s === :logbeta  return logbeta
     else
         return eval(s)
     end
@@ -549,8 +561,8 @@ function MOI.empty!(model::ExaModelsMOI.Optimizer)
 end
 
 function MOI.copy_to(dest::Optimizer, src::MOI.ModelLike)
-    dest.model = ExaModels.ExaModel(src; backend = dest.backend)
-    return MOIU.identity_index_map(src)
+    dest.model, maps = ExaModels.ExaModel(src; backend = dest.backend)
+    return _make_index_map(src, maps)
 end
 
 function MOI.optimize!(optimizer::Optimizer)
@@ -649,6 +661,30 @@ MOI.get(
 function MOI.set(model::Optimizer, p::MOI.RawOptimizerAttribute, value)
     model.options[Symbol(p.name)] = value
     # No need to reset model.solver because this gets handled in optimize!.
+    return
+end
+
+
+_make_index_map(model::MOI.ModelLike, maps) = _make_index_map(model, maps[1], maps[2])
+function _make_index_map(model::MOI.ModelLike, var_to_idx, con_to_idx)
+    variables = MOI.get(model, MOI.ListOfVariableIndices())
+    map = MOI.Utilities.IndexMap()
+    for x in variables
+        map[x] = var_to_idx[x]
+    end
+    for (F, S) in MOI.get(model, MOI.Utilities.ListOfConstraintTypesPresent())
+        _make_constraints_map(model, map.con_map[F, S], con_to_idx)
+    end
+    return map
+end
+function _make_constraints_map(
+    model,
+    map::MOI.Utilities.DoubleDicts.IndexDoubleDictInner{F,S},
+    con_to_idx
+) where {F,S}
+    for c in MOI.get(model, MOI.ListOfConstraintIndices{F,S}())
+        map[c] = con_to_idx[c]
+    end
     return
 end
 
