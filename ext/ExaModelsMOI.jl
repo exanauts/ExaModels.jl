@@ -85,7 +85,12 @@ function check_supported_and_get_T(moim)
     return T
 end
 
-function ExaModels.ExaModel(moim::MOI.ModelLike; backend = nothing, prod = false, return_maps = false)
+function ExaModels.ExaModel(moim::MOI.ModelLike; backend = nothing, prod = false)
+    c, _ = to_exacore(moim; backend = backend)
+    return ExaModels.ExaModel(c; prod = prod)
+end
+
+function to_exacore(moim::MOI.ModelLike; backend = nothing)
     minimize = MOI.get(moim, MOI.ObjectiveSense()) === MOI.MIN_SENSE
     T = check_supported_and_get_T(moim)
 
@@ -95,11 +100,7 @@ function ExaModels.ExaModel(moim::MOI.ModelLike; backend = nothing, prod = false
     con_to_idx = copy_constraints!(c, moim, var_to_idx, T)
     copy_objective!(c, moim, var_to_idx)
 
-    if return_maps
-        return ExaModels.ExaModel(c; prod = prod), (var_to_idx, con_to_idx)
-    else
-        return ExaModels.ExaModel(c; prod = prod)
-    end
+    return c, (var_to_idx, con_to_idx)
 end
 
 function fill_variable_bounds!(moim, lvar, uvar, var_to_idx, T)
@@ -579,7 +580,8 @@ function MOI.empty!(model::ExaModelsMOI.Optimizer)
 end
 
 function MOI.copy_to(dest::Optimizer, src::MOI.ModelLike)
-    dest.model, maps = ExaModels.ExaModel(src; backend = dest.backend, return_maps = true)
+    core, maps = to_exacore(src; backend = dest.backend)
+    dest.model = ExaModels.ExaModel(core; prod = true)
     return _make_index_map(src, maps)
 end
 
