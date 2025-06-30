@@ -44,34 +44,15 @@ function _update_bin!(::BinNull, e, p)
     return false
 end
 
-float_type(::Type{MOI.GreaterThan{T}}) where {T} = T
-float_type(::Type{MOI.LessThan{T}}) where {T} = T
-float_type(::Type{MOI.EqualTo{T}}) where {T} = T
-float_type(::Type{MOI.Interval{T}}) where {T} = T
-float_type(::Type{MOI.ScalarAffineFunction{T}}) where {T} = T
-float_type(::Type{MOI.ScalarQuadraticFunction{T}}) where {T} = T
-float_type(::Type{MOI.ScalarNonlinearFunction}) = nothing
-float_type(::Type{MOI.VariableIndex}) = nothing
-
-function check_supported_and_get_T(moim)
+function check_supported(T, moim)
     con_types = MOI.get(moim, MOI.ListOfConstraintTypesPresent())
-    float_types = Set()
     for (F,S) in con_types
         !(F <: SUPPORTED_FUNC_TYPE_UNION) && error("Unsupported function type $F.")
         !(S <: SUPPORTED_SET_TYPE_UNION) && error("Unsupported set type $S.")
-        FT = float_type(F)
-        ST = float_type(S)
-        !isnothing(FT) && push!(float_types, FT)
-        !isnothing(ST) && push!(float_types, ST)
     end
 
-    obj_type = float_type(MOI.get(moim, MOI.ObjectiveFunctionType()))
-    !isnothing(obj_type) && push!(float_types, obj_type)
-
-    isempty(float_types) && error("Cannot determine float type") # FIXME: what if just nonlinear obj?
-    (length(float_types) > 1) && error("Got multiple float types $float_types")
-
-    T = first(float_types)
+    obj_type = MOI.get(moim, MOI.ObjectiveFunctionType())
+    !(obj_type <: SUPPORTED_FUNC_TYPE_UNION) && error("Unsupported objective function type $obj_type.")
 
     if !isempty(filter(
         FS -> (FS[1] <: MOI.VariableIndex) && !(
@@ -85,14 +66,14 @@ function check_supported_and_get_T(moim)
     return T
 end
 
-function ExaModels.ExaModel(moim::MOI.ModelLike; backend = nothing, prod = false)
-    c, _ = to_exacore(moim; backend = backend)
+function ExaModels.ExaModel(moim::MOI.ModelLike; backend = nothing, prod = false, T=Float64)
+    c, _ = to_exacore(moim; backend = backend, T = T)
     return ExaModels.ExaModel(c; prod = prod)
 end
 
-function to_exacore(moim::MOI.ModelLike; backend = nothing)
+function to_exacore(moim::MOI.ModelLike; backend = nothing, T=Float64)
     minimize = MOI.get(moim, MOI.ObjectiveSense()) === MOI.MIN_SENSE
-    T = check_supported_and_get_T(moim)
+    check_supported(T, moim)
 
     c = ExaModels.ExaCore(T; backend = backend, minimize = minimize)
 
