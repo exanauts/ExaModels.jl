@@ -11,7 +11,7 @@ const SUPPORTED_FUNC_TYPE = [MOI.ScalarAffineFunction, MOI.ScalarQuadraticFuncti
 const SUPPORTED_SET_TYPE = [MOI.GreaterThan, MOI.LessThan, MOI.EqualTo, MOI.Interval]
 const SUPPORTED_FUNC_TYPE_UNION = Union{SUPPORTED_FUNC_TYPE...}
 const SUPPORTED_SET_TYPE_UNION = Union{SUPPORTED_SET_TYPE...}
-
+const PARAMETER_INDEX_THRESHOLD = Int64(4_611_686_018_427_387_904) # div(typemax(Int64),2)+1
 """
     Abstract data structure for storing expression tree and data arrays
 """
@@ -101,9 +101,10 @@ function fill_variable_bounds!(moim, lvar, uvar, var_to_idx, T)
     end
 end
 
-function fill_variable_start!(moim, x0)
+function fill_variable_start!(moim, x0, parameters)
     var_to_idx = Dict{MOI.VariableIndex, Int}()
     for (i, vi) in enumerate(MOI.get(moim, MOI.ListOfVariableIndices()))
+        vi ∈ parameters && continue
         var_to_idx[vi] = i
         start = MOI.get(moim, MOI.VariablePrimalStart(), vi)
         isnothing(start) && continue
@@ -119,7 +120,7 @@ function copy_variables!(c, moim, T)
     nvar = nvarpar - npar
 
     x0 = zeros(T, nvar)
-    var_to_idx = fill_variable_start!(moim, x0)
+    var_to_idx = fill_variable_start!(moim, x0, keys(parameters))
     
     lvar = fill(T(-Inf), nvar)
     uvar = fill(T(Inf), nvar)
@@ -619,12 +620,11 @@ MOI.get(model::Optimizer, attr::Union{MOI.PrimalStatus,MOI.DualStatus}) =
 
 function MOI.get(model::Optimizer, attr::MOI.VariablePrimal, vi::MOI.VariableIndex)
     MOI.check_result_index_bounds(model, attr)
-    # MOI.throw_if_not_valid(model, vi)
-    # if _is_parameter(vi)
-    #     p = model.parameters[vi]
-    #     return model.nlp_model[p]
-    # end
-    return model.result.solution[vi.value]
+    if vi.value > PARAMETER_INDEX_THRESHOLD
+        return model.model.θ[vi.value - PARAMETER_INDEX_THRESHOLD]
+    else
+        return model.result.solution[vi.value]
+    end
 end
 
 function MOI.get(
@@ -701,7 +701,14 @@ function _make_index_map(model::MOI.ModelLike, var_to_idx, con_to_idx)
     variables = MOI.get(model, MOI.ListOfVariableIndices())
     map = MOI.Utilities.IndexMap()
     for x in variables
-        map[x] = typeof(x)(var_to_idx[x][2]) # FIXME: this is wrong...
+        vartype, rawidx = var_to_idx[x]
+        if vartype === :variable
+            map[x] = typeof(x)(rawidx)
+        elseif vartype === :parameter
+            map[x] = typeof(x)(rawidx + PARAMETER_INDEX_THRESHOLD)
+        else
+            error("Unknown variable type $vartype")
+        end
     end
     for (F, S) in MOI.get(model, MOI.ListOfConstraintTypesPresent())
         _make_constraints_map(model, map.con_map[F, S], con_to_idx)
