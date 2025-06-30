@@ -408,10 +408,7 @@ Parameter
   θ ∈ R^{10}
 ```
 """
-function parameter(
-    c::C,
-    start::AbstractArray;
-) where {T,C<:ExaCore{T}}
+function parameter(c::C, start::AbstractArray;) where {T,C<:ExaCore{T}}
 
     ns = Base.size(start)
     o = c.npar
@@ -441,20 +438,20 @@ Parameter
 julia> set_parameter!(c, p, rand(5))  # Update with new values
 ```
 """
-function set_parameter!(
-    c::ExaCore,
-    param::Parameter,
-    values::AbstractArray
-)
-    if Base.size(values) != param.size 
-        throw(DimensionMismatch("Parameter size mismatch: expected $(param.size), got $(Base.size(values))"))
+function set_parameter!(c::ExaCore, param::Parameter, values::AbstractArray)
+    if Base.size(values) != param.size
+        throw(
+            DimensionMismatch(
+                "Parameter size mismatch: expected $(param.size), got $(Base.size(values))",
+            ),
+        )
     end
 
     start_idx = param.offset + 1
     end_idx = param.offset + param.length
 
     copyto!(@view(c.θ[start_idx:end_idx]), values)
-    
+
     return nothing
 end
 
