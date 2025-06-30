@@ -75,7 +75,7 @@ function check_supported_and_get_T(moim)
 
     if !isempty(filter(
         FS -> (FS[1] <: MOI.VariableIndex) && !(
-               FS[2] <: Union{MOI.GreaterThan{T},MOI.LessThan{T}}
+               FS[2] <: Union{MOI.GreaterThan{T},MOI.LessThan{T},MOI.EqualTo{T},MOI.Parameter{T}}
         ), con_types
     ))
         # this is where parameters would error
@@ -112,6 +112,12 @@ function fill_variable_bounds!(moim, lvar, uvar, var_to_idx, T)
         vi = MOI.get(moim, MOI.ConstraintFunction(), ci)
         uvar[var_to_idx[vi]] = MOI.get(moim, MOI.ConstraintSet(), ci).upper
     end
+    for ci in MOI.get(moim, MOI.ListOfConstraintIndices{MOI.VariableIndex,MOI.EqualTo{T}}())
+        vi = MOI.get(moim, MOI.ConstraintFunction(), ci)
+        fixed_val = MOI.get(moim, MOI.ConstraintSet(), ci).value
+        lvar[var_to_idx[vi]] = fixed_val
+        uvar[var_to_idx[vi]] = fixed_val
+    end
 end
 
 function fill_variable_start!(moim, x0)
@@ -126,7 +132,11 @@ function fill_variable_start!(moim, x0)
 end
 
 function copy_variables!(c, moim, T)
-    nvar = MOI.get(moim, MOI.NumberOfVariables())
+    nvarpar = MOI.get(moim, MOI.NumberOfVariables())
+    parameters = _get_parameters(moim, T)
+    npar = length(parameters)
+    nvar = nvarpar - npar
+
     x0 = zeros(T, nvar)
     var_to_idx = fill_variable_start!(moim, x0)
     
@@ -136,7 +146,19 @@ function copy_variables!(c, moim, T)
 
     ExaModels.variable(c, nvar; start = x0, lvar = lvar, uvar = uvar)
 
-    return var_to_idx
+    varpar_to_idx = Dict()
+    for (k,v) in var_to_idx
+        varpar_to_idx[k] = (type=:variable, idx=v)
+    end
+
+    p0 = zeros(T, npar)
+    for (i, (vi, set)) in enumerate(parameters)  #FIXME: consider sorting by index value?
+        p0[i] = T(set.value)
+        varpar_to_idx[vi] = (type=:parameter, idx=i)
+    end
+    ExaModels.parameter(c, p0)
+
+    return varpar_to_idx
 end
 
 function copy_objective!(c, moim, var_to_idx)
@@ -369,7 +391,14 @@ end
 
 function _exafy(v::MOI.VariableIndex, var_to_idx, p = ())
     i = ExaModels.ParIndexed(ExaModels.ParSource(), length(p) + 1)
-    return ExaModels.Var(i), (p..., var_to_idx[v])
+    vartype, idx = var_to_idx[v]
+    if vartype === :variable
+        return ExaModels.Var(i), (p..., idx)
+    elseif vartype === :parameter
+        return ExaModels.ParameterNode(i), (p..., idx)
+    else
+        error("Unknown variable type: $vartype")
+    end
 end
 
 function _exafy(i::R, var_to_idx, p) where {R<:Real}
@@ -690,7 +719,7 @@ function _make_index_map(model::MOI.ModelLike, var_to_idx, con_to_idx)
     variables = MOI.get(model, MOI.ListOfVariableIndices())
     map = MOI.Utilities.IndexMap()
     for x in variables
-        map[x] = typeof(x)(var_to_idx[x])
+        map[x] = typeof(x)(var_to_idx[x][2]) # FIXME: this is wrong...
     end
     for (F, S) in MOI.get(model, MOI.ListOfConstraintTypesPresent())
         _make_constraints_map(model, map.con_map[F, S], con_to_idx)
@@ -706,6 +735,20 @@ function _make_constraints_map(
         map[c] = typeof(c)(con_to_idx[c])
     end
     return
+end
+
+function _get_parameters(moim::MOI.ModelLike, T)
+    cis = MOI.get(
+        moim,
+        MOI.ListOfConstraintIndices{MOI.VariableIndex,MOI.Parameter{T}}(),
+    )
+    parameters = Dict{MOI.VariableIndex,MOI.Parameter{T}}()
+    for ci in cis
+        vi = MOI.get(moim, MOI.ConstraintFunction(), ci)
+        set = MOI.get(moim, MOI.ConstraintSet(), ci)
+        parameters[vi] = set
+    end
+    return parameters
 end
 
 end # module
