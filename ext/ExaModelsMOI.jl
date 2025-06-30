@@ -168,6 +168,7 @@ function copy_constraints!(c, moim, var_to_idx, T)
         for S in SUPPORTED_SET_TYPE
             ST = S{T}
             cis = MOI.get(moim, MOI.ListOfConstraintIndices{FT,ST}())
+            isempty(cis) && continue
             bin, offset = exafy_con(moim, cis, bin, offset, lcon, ucon, y0, var_to_idx, con_to_idx)
         end
     end
