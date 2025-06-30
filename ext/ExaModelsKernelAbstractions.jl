@@ -5,7 +5,7 @@ import KernelAbstractions: KernelAbstractions, @kernel, @index, @Const, synchron
 
 ExaModels.convert_array(v, backend::CPU) = v
 function ExaModels.convert_array(v, backend)
-    arr = allocate(backend, eltype(v), length(v)) 
+    arr = KernelAbstractions.allocate(backend, eltype(v), length(v)) 
     copyto!(arr, v)
     return arr
 end
