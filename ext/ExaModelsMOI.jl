@@ -591,7 +591,7 @@ function MOI.supports_constraint(
 end
 function MOI.supports(
     ::Optimizer,
-    ::MOI.ObjectiveFunction{SUPPORTED_FUNC_TYPE_WITH_VAR},
+    ::MOI.ObjectiveFunction{<:SUPPORTED_FUNC_TYPE_WITH_VAR},
 )
     return true
 end
