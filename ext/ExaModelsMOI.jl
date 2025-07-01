@@ -11,19 +11,13 @@ const SUPPORTED_FUNC_TYPE{T} = Union{
     MOI.ScalarAffineFunction{T},
     MOI.ScalarQuadraticFunction{T},
     MOI.ScalarNonlinearFunction,
-    MOI.VariableIndex,
 }
-const SUPPORTED_SET_TYPE{T} = Union{
-    MOI.GreaterThan{T},
-    MOI.LessThan{T},
-    MOI.EqualTo{T},
-    MOI.Interval{T},
+const SUPPORTED_FUNC_TYPE_WITH_VAR{T} = Union{SUPPORTED_FUNC_TYPE{T},MOI.VariableIndex}
+const SUPPORTED_FUNC_SET_TYPE{T} = Union{
+    MOI.GreaterThan{T}, MOI.LessThan{T}, MOI.EqualTo{T}, MOI.Interval{T},
 }
 const SUPPORTED_VAR_SET_TYPE{T} = Union{
-    MOI.GreaterThan{T},
-    MOI.LessThan{T},
-    MOI.EqualTo{T},
-    MOI.Parameter{T},
+    MOI.GreaterThan{T}, MOI.LessThan{T}, MOI.EqualTo{T}, MOI.Parameter{T},
 }
 const PARAMETER_INDEX_THRESHOLD = Int64(4_611_686_018_427_387_904) # div(typemax(Int64),2)+1
 """
@@ -61,16 +55,16 @@ end
 function check_supported(T, moim)
     con_types = MOI.get(moim, MOI.ListOfConstraintTypesPresent())
     for (F,S) in con_types
-        !(F <: SUPPORTED_FUNC_TYPE) && error("Unsupported function type $F.")
+        !(F <: SUPPORTED_FUNC_TYPE_WITH_VAR) && error("Unsupported function type $F.")
         if F <: MOI.VariableIndex
             !(S <: SUPPORTED_VAR_SET_TYPE) && error("Unsupported variable index constraint $F in $S")
         else
-            !(S <: SUPPORTED_SET_TYPE) && error("Unsupported set type $S")
+            !(S <: SUPPORTED_FUNC_SET_TYPE) && error("Unsupported set type $S")
         end
     end
 
     obj_type = MOI.get(moim, MOI.ObjectiveFunctionType())
-    !(obj_type <: SUPPORTED_FUNC_TYPE) && error("Unsupported objective function type $obj_type.")
+    !(obj_type <: SUPPORTED_FUNC_TYPE_WITH_VAR) && error("Unsupported objective function type $obj_type.")
 
     obj_sense = MOI.get(moim, MOI.ObjectiveSense())
     !(obj_sense in (MOI.MIN_SENSE, MOI.MAX_SENSE)) && error("Unsupported objective sense $obj_sense.")
@@ -584,7 +578,7 @@ MOI.is_empty(model::Optimizer) = isnothing(model.model)
 function MOI.supports_constraint(
     ::Optimizer,
     ::Type{<:SUPPORTED_FUNC_TYPE},
-    ::Type{<:SUPPORTED_SET_TYPE},
+    ::Type{<:SUPPORTED_FUNC_SET_TYPE},
 )
     return true
 end
@@ -597,7 +591,7 @@ function MOI.supports_constraint(
 end
 function MOI.supports(
     ::Optimizer,
-    ::MOI.ObjectiveFunction{SUPPORTED_FUNC_TYPE},
+    ::MOI.ObjectiveFunction{SUPPORTED_FUNC_TYPE_WITH_VAR},
 )
     return true
 end
@@ -652,7 +646,7 @@ end
 function MOI.get(
     model::Optimizer,
     attr::MOI.ConstraintDual,
-    ci::MOI.ConstraintIndex{<:SUPPORTED_FUNC_TYPE,<:SUPPORTED_SET_TYPE},
+    ci::MOI.ConstraintIndex{<:SUPPORTED_FUNC_TYPE,<:SUPPORTED_FUNC_SET_TYPE},
 )
     MOI.check_result_index_bounds(model, attr)
     # MOI.throw_if_not_valid(model, ci)
