@@ -255,7 +255,6 @@ function _exafy_con(i, c::C, bin, var_to_idx, con_to_idx; pos = true) where {C<:
         -ExaModels.ParIndexed(ExaModels.ParSource(), 1)
     bin = update_bin!(
         bin,
-        # FIXME: why do we need 0x1 here?
         ExaModels.ParIndexed(ExaModels.ParSource(), 2) => 0 * ExaModels.Var(1) + e,
         (c, con_to_idx[i]),
     )
