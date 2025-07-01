@@ -7,10 +7,24 @@ const MOI = MathOptInterface
 const MOIU = MathOptInterface.Utilities
 const MOIB = MathOptInterface.Bridges
 
-const SUPPORTED_FUNC_TYPE = [MOI.ScalarAffineFunction, MOI.ScalarQuadraticFunction, MOI.ScalarNonlinearFunction, MOI.VariableIndex]
-const SUPPORTED_SET_TYPE = [MOI.GreaterThan, MOI.LessThan, MOI.EqualTo, MOI.Interval]
-const SUPPORTED_FUNC_TYPE_UNION = Union{SUPPORTED_FUNC_TYPE...}
-const SUPPORTED_SET_TYPE_UNION = Union{SUPPORTED_SET_TYPE...}
+const SUPPORTED_FUNC_TYPE{T} = Union{
+    MOI.ScalarAffineFunction{T},
+    MOI.ScalarQuadraticFunction{T},
+    MOI.ScalarNonlinearFunction,
+    MOI.VariableIndex,
+}
+const SUPPORTED_SET_TYPE{T} = Union{
+    MOI.GreaterThan{T},
+    MOI.LessThan{T},
+    MOI.EqualTo{T},
+    MOI.Interval{T},
+}
+const SUPPORTED_VAR_SET_TYPE{T} = Union{
+    MOI.GreaterThan{T},
+    MOI.LessThan{T},
+    MOI.EqualTo{T},
+    MOI.Parameter{T},
+}
 const PARAMETER_INDEX_THRESHOLD = Int64(4_611_686_018_427_387_904) # div(typemax(Int64),2)+1
 """
     Abstract data structure for storing expression tree and data arrays
@@ -47,23 +61,20 @@ end
 function check_supported(T, moim)
     con_types = MOI.get(moim, MOI.ListOfConstraintTypesPresent())
     for (F,S) in con_types
-        !(F <: SUPPORTED_FUNC_TYPE_UNION) && error("Unsupported function type $F.")
-        !(S <: SUPPORTED_SET_TYPE_UNION) && error("Unsupported set type $S.")
+        !(F <: SUPPORTED_FUNC_TYPE) && error("Unsupported function type $F.")
+        if F <: MOI.VariableIndex
+            !(S <: SUPPORTED_VAR_SET_TYPE) && error("Unsupported variable index constraint $F in $S")
+        else
+            !(S <: SUPPORTED_SET_TYPE) && error("Unsupported set type $S")
+        end
     end
 
     obj_type = MOI.get(moim, MOI.ObjectiveFunctionType())
-    !(obj_type <: SUPPORTED_FUNC_TYPE_UNION) && error("Unsupported objective function type $obj_type.")
+    !(obj_type <: SUPPORTED_FUNC_TYPE) && error("Unsupported objective function type $obj_type.")
 
-    if !isempty(filter(
-        FS -> (FS[1] <: MOI.VariableIndex) && !(
-               FS[2] <: Union{MOI.GreaterThan{T},MOI.LessThan{T},MOI.EqualTo{T},MOI.Parameter{T}}
-        ), con_types
-    ))
-        # this is where parameters would error
-        error("Found unsupported variable index constraint")
-    end
-    
-    return T
+    obj_sense = MOI.get(moim, MOI.ObjectiveSense())
+    !(obj_sense in (MOI.MIN_SENSE, MOI.MAX_SENSE)) && error("Unsupported objective sense $obj_sense.")
+    return obj_sense === MOI.MIN_SENSE
 end
 
 function ExaModels.ExaModel(moim::MOI.ModelLike; backend = nothing, prod = false, T=Float64)
@@ -72,8 +83,7 @@ function ExaModels.ExaModel(moim::MOI.ModelLike; backend = nothing, prod = false
 end
 
 function to_exacore(moim::MOI.ModelLike; backend = nothing, T=Float64)
-    minimize = MOI.get(moim, MOI.ObjectiveSense()) === MOI.MIN_SENSE
-    check_supported(T, moim)
+    minimize = check_supported(T, moim)
 
     c = ExaModels.ExaCore(T; backend = backend, minimize = minimize)
 
@@ -101,10 +111,10 @@ function fill_variable_bounds!(moim, lvar, uvar, var_to_idx, T)
     end
 end
 
-function fill_variable_start!(moim, x0, parameters)
+function fill_variable_start!(moim, x0, param_vis)
     var_to_idx = Dict{MOI.VariableIndex, Int}()
     for (i, vi) in enumerate(MOI.get(moim, MOI.ListOfVariableIndices()))
-        vi ∈ parameters && continue
+        vi ∈ param_vis && continue
         var_to_idx[vi] = i
         start = MOI.get(moim, MOI.VariablePrimalStart(), vi)
         isnothing(start) && continue
@@ -113,6 +123,22 @@ function fill_variable_start!(moim, x0, parameters)
     return var_to_idx
 end
 
+function _get_parameters(moim::MOI.ModelLike, T)
+    cis = MOI.get(
+        moim,
+        MOI.ListOfConstraintIndices{MOI.VariableIndex,MOI.Parameter{T}}(),
+    )
+    parameters = Vector{Tuple{MOI.VariableIndex,MOI.Parameter{T}}}()
+    for ci in cis
+        vi = MOI.get(moim, MOI.ConstraintFunction(), ci)
+        set = MOI.get(moim, MOI.ConstraintSet(), ci)
+        push!(parameters, (vi, set))
+    end
+    sort!(parameters, by = x -> x[1].value)
+    return parameters
+end
+
+
 function copy_variables!(c, moim, T)
     nvarpar = MOI.get(moim, MOI.NumberOfVariables())
     parameters = _get_parameters(moim, T)
@@ -120,7 +146,7 @@ function copy_variables!(c, moim, T)
     nvar = nvarpar - npar
 
     x0 = zeros(T, nvar)
-    var_to_idx = fill_variable_start!(moim, x0, keys(parameters))
+    var_to_idx = fill_variable_start!(moim, x0, first.(parameters))
     
     lvar = fill(T(-Inf), nvar)
     uvar = fill(T(Inf), nvar)
@@ -129,25 +155,24 @@ function copy_variables!(c, moim, T)
     ExaModels.variable(c, nvar; start = x0, lvar = lvar, uvar = uvar)
 
     varpar_to_idx = Dict()
-    for (k,v) in var_to_idx
-        varpar_to_idx[k] = (type=:variable, idx=v)
+    for (vi,i) in var_to_idx
+        varpar_to_idx[vi] = (type=:variable, idx=i)
     end
 
-    p0 = zeros(T, npar)
-    for (i, (vi, set)) in enumerate(parameters)  #FIXME: consider sorting by index value?
-        p0[i] = T(set.value)
-        varpar_to_idx[vi] = (type=:parameter, idx=i)
+    if npar > 0
+        p0 = zeros(T, npar)
+        for (i, (vi, set)) in enumerate(parameters)
+            p0[i] = T(set.value)
+            varpar_to_idx[vi] = (type=:parameter, idx=i)
+        end
+        ExaModels.parameter(c, p0)
     end
-    ExaModels.parameter(c, p0)
 
     return varpar_to_idx
 end
 
 function copy_objective!(c, moim, var_to_idx)
     obj_type = MOI.get(moim, MOI.ObjectiveFunctionType())
-    if !(obj_type <: SUPPORTED_FUNC_TYPE_UNION)
-        error("Objective function of type $obj_type is not supported")
-    end
 
     bin = BinNull()
     bin = exafy_obj(MOI.get(moim, MOI.ObjectiveFunction{obj_type}()), bin, var_to_idx)
@@ -163,17 +188,13 @@ function copy_constraints!(c, moim, var_to_idx, T)
     y0 = zeros(T, 0)
     con_to_idx = Dict{MOI.ConstraintIndex, Int}()
 
-    for F in SUPPORTED_FUNC_TYPE
+    con_types = MOI.get(moim, MOI.ListOfConstraintTypesPresent())
+    for (F,S) in con_types
         F <: MOI.VariableIndex && continue
-        FT = F <: MOI.ScalarNonlinearFunction ? F : F{T}
-        for S in SUPPORTED_SET_TYPE
-            ST = S{T}
-            cis = MOI.get(moim, MOI.ListOfConstraintIndices{FT,ST}())
-            isempty(cis) && continue
-            bin, offset = exafy_con(moim, cis, bin, offset, lcon, ucon, y0, var_to_idx, con_to_idx)
-        end
+        cis = MOI.get(moim, MOI.ListOfConstraintIndices{F,S}())
+        isempty(cis) && continue
+        bin, offset = exafy_con(moim, cis, bin, offset, lcon, ucon, y0, var_to_idx, con_to_idx)
     end
-
     cons = ExaModels.constraint(c, offset; start = y0, lcon = lcon, ucon = ucon)
     build_constraint!(c, cons, bin)
 
@@ -560,22 +581,23 @@ end
 
 MOI.is_empty(model::Optimizer) = isnothing(model.model)
 
-const _FUNCTIONS = Union{
-    MOI.ScalarAffineFunction{Float64},
-    MOI.ScalarQuadraticFunction{Float64},
-    MOI.ScalarNonlinearFunction,
-}
-const _SETS = Union{MOI.GreaterThan{Float64},MOI.LessThan{Float64},MOI.EqualTo{Float64}}
 function MOI.supports_constraint(
     ::Optimizer,
-    ::Type{<:Union{MOI.VariableIndex,_FUNCTIONS}},
-    ::Type{<:_SETS},
+    ::Type{<:SUPPORTED_FUNC_TYPE},
+    ::Type{<:SUPPORTED_SET_TYPE},
+)
+    return true
+end
+function MOI.supports_constraint(
+    ::Optimizer,
+    ::Type{MOI.VariableIndex},
+    ::Type{<:SUPPORTED_VAR_SET_TYPE},
 )
     return true
 end
 function MOI.supports(
     ::Optimizer,
-    ::MOI.ObjectiveFunction{<:Union{MOI.VariableIndex,<:_FUNCTIONS}},
+    ::MOI.ObjectiveFunction{SUPPORTED_FUNC_TYPE},
 )
     return true
 end
@@ -630,7 +652,7 @@ end
 function MOI.get(
     model::Optimizer,
     attr::MOI.ConstraintDual,
-    ci::MOI.ConstraintIndex{<:_FUNCTIONS,<:_SETS},
+    ci::MOI.ConstraintIndex{<:SUPPORTED_FUNC_TYPE,<:SUPPORTED_SET_TYPE},
 )
     MOI.check_result_index_bounds(model, attr)
     # MOI.throw_if_not_valid(model, ci)
@@ -724,20 +746,6 @@ function _make_constraints_map(
         map[c] = typeof(c)(con_to_idx[c])
     end
     return
-end
-
-function _get_parameters(moim::MOI.ModelLike, T)
-    cis = MOI.get(
-        moim,
-        MOI.ListOfConstraintIndices{MOI.VariableIndex,MOI.Parameter{T}}(),
-    )
-    parameters = Dict{MOI.VariableIndex,MOI.Parameter{T}}()
-    for ci in cis
-        vi = MOI.get(moim, MOI.ConstraintFunction(), ci)
-        set = MOI.get(moim, MOI.ConstraintSet(), ci)
-        parameters[vi] = set
-    end
-    return parameters
 end
 
 end # module
