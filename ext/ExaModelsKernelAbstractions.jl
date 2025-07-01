@@ -3,7 +3,16 @@ module ExaModelsKernelAbstractions
 import ExaModels: ExaModels, NLPModels
 import KernelAbstractions: KernelAbstractions, @kernel, @index, @Const, synchronize, CPU
 
-ExaModels.convert_array(v, backend::CPU) = v
+
+ExaModels.convert_array(v::UnitRange{I}, backend::CPU) where {I} = v 
+ExaModels.convert_array(v::UnitRange{I}, backend::Nothing) where {I} = v 
+ExaModels.convert_array(v::UnitRange{I}, backend) where I = ExaModels.convert_array(collect(v), backend)
+
+function ExaModels.convert_array(v, backend)
+    arr = KernelAbstractions.allocate(backend, eltype(v), length(v)) 
+    copyto!(arr, v)
+    return arr
+end
 
 function getitr(gen::UnitRange{Int64})
     return gen
