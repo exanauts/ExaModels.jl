@@ -136,7 +136,12 @@ struct Identity end
 @inline (v::Var{I})(i::Identity, x, θ) where {I<:AbstractNode} = @inbounds x[v.i]
 
 @inline (v::ParameterNode{I})(i, x, θ) where {I<:AbstractNode} = @inbounds θ[v.i(i, x, θ)]
-@inline (v::ParameterNode{I})(i, x, θ) where {I} = @inbounds θ[v.i]
+@inline (v::ParameterNode{I})(::Any, x, θ) where {I} = @inbounds θ[v.i]
+@inline (v::ParameterNode{I})(::Identity, x, θ) where {I<:AbstractNode} = @inbounds θ[v.i]
+
+@inline (v::ParameterNode{I})(i, x, ::Nothing) where {I<:AbstractNode} = NaN
+@inline (v::ParameterNode{I})(::Any, x, ::Nothing) where {I} = NaN
+@inline (v::ParameterNode{I})(::Identity, x, ::Nothing) where {I<:AbstractNode} = NaN
 
 @inline (v::ParSource)(i, x, θ) = i
 @inline (v::ParIndexed{I,n})(i, x, θ) where {I,n} = @inbounds v.inner(i, x, θ)[n]
@@ -309,10 +314,3 @@ end
 @inline (v::Null{N})(i, x::V, θ) where {N,T,V<:AbstractVector{T}} = T(v.value)
 @inline (v::Null{N})(i, x::AdjointNodeSource{T}, θ) where {N,T} = AdjointNull()
 @inline (v::Null{N})(i, x::SecondAdjointNodeSource{T}, θ) where {N,T} = SecondAdjointNull()
-
-
-@inline (v::ParameterNode{N})(i, ::AdjointNodeSource{T}, ::Nothing) where {N,T} = NaN
-@inline (v::ParameterNode{N})(i, ::SecondAdjointNodeSource{T}, ::Nothing) where {N,T} = NaN
-
-@inline (v::ParameterNode{N})(i, ::AdjointNodeSource{T}, ::Nothing) where {N<:AbstractNode,T} = AdjointNull()
-@inline (v::ParameterNode{N})(i, ::SecondAdjointNodeSource{T}, ::Nothing) where {N<:AbstractNode,T} = SecondAdjointNull()
