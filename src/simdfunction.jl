@@ -45,11 +45,11 @@ end
 function _simdfunction(f, o0, o1, o2)
     d = f(Identity(), AdjointNodeSource(nothing), nothing)
     y1 = []
-    ExaModels.grpass(d, nothing, y1, nothing, 0, NaN)
+    d !== NaN && ExaModels.grpass(d, nothing, y1, nothing, 0, NaN)
 
     t = f(Identity(), SecondAdjointNodeSource(nothing), nothing)
     y2 = []
-    ExaModels.hrpass0(t, nothing, y2, nothing, nothing, 0, NaN, NaN)
+    t !== NaN && ExaModels.hrpass0(t, nothing, y2, nothing, nothing, 0, NaN, NaN)
 
     a1 = unique(y1)
     o1step = length(a1)

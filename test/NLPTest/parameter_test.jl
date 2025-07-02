@@ -198,7 +198,24 @@ function test_function_evaluations(model1, core1, model2)
     @test hprod_param ≈ hprod_orig atol=1e-12
 end
 
+function test_param_only()
+    c = ExaModels.ExaCore()
+    x = ExaModels.variable(c, 10)
+    θval = rand(2)
+    θ = ExaModels.parameter(c, θval)
+
+    c1 = ExaModels.constraint(c, θ[i] for i in 1:2)
+    ExaModels.constraint!(c, c1, j => -x[i] for i in 1:10, j in 1:2)
+    em = ExaModels.ExaModel(c)
+
+    xval = rand(10)
+    @test NLPModels.cons(em, xval) ≈ θval .- sum(xval)
+end
+
 function test_parametric_vs_nonparametric(backend)
+    @testset "Basic parametric" begin
+        test_param_only()
+    end
     @testset "Parametric luksan" begin
         @testset "Metadata" begin
             m_param, c_param, _, _ = exa_luksan_vlcek_parametric(
