@@ -186,7 +186,6 @@ function copy_constraints!(c, moim, var_to_idx, T)
     for (F,S) in con_types
         F <: MOI.VariableIndex && continue
         cis = MOI.get(moim, MOI.ListOfConstraintIndices{F,S}())
-        isempty(cis) && continue
         bin, offset = exafy_con(moim, cis, bin, offset, lcon, ucon, y0, var_to_idx, con_to_idx)
     end
     cons = ExaModels.constraint(c, offset; start = y0, lcon = lcon, ucon = ucon)
@@ -359,7 +358,7 @@ function exafy_obj(o::MOI.ScalarNonlinearFunction, bin, var_to_idx)
     if o.head == :+
         for m in o.args
             if m isa MOI.ScalarAffineFunction
-                for mm in m.affine_terms
+                for mm in m.terms
                     e, p = _exafy(mm, var_to_idx)
                     bin = update_bin!(bin, e, p)
                 end
