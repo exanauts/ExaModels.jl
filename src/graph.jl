@@ -113,17 +113,13 @@ struct SecondFixed{F}
     inner::F
 end
 
+@inline Base.getproperty(n::ParSource, s::Symbol) = ParIndexed(n, s)
 @inline Base.getindex(n::ParSource, i) = ParIndexed(n, i)
+@inline Base.indexed_iterate(n::ParSource, idx, start = 1) = (ParIndexed(n, idx), idx + 1)
+
+
 @inline Base.getindex(n::VarSource, i) = Var(i)
 @inline Base.getindex(::ParameterSource, i) = ParameterNode(i)
-Par(iter::Type) = ParSource()
-Par(iter, idx...) = ParIndexed(Par(iter, idx[2:end]...), idx[1])
-Par(iter::Type{T}, idx...) where {T<:Tuple} =
-    Tuple(Par(p, i, idx...) for (i, p) in enumerate(T.parameters))
-
-Par(iter::Type{T}, idx...) where {T<:NamedTuple} = NamedTuple{T.parameters[1]}(
-    Par(p, i, idx...) for (i, p) in enumerate(T.parameters[2].parameters)
-)
 
 @inline Node1(f::F, inner::I) where {F,I} = Node1{F,I}(inner)
 @inline Node2(f::F, inner1::I1, inner2::I2) where {F,I1,I2} = Node2{F,I1,I2}(inner1, inner2)
@@ -144,7 +140,7 @@ struct Identity end
 @inline (v::ParameterNode{I})(::Identity, x, ::Nothing) where {I<:AbstractNode} = NaN
 
 @inline (v::ParSource)(i, x, θ) = i
-@inline (v::ParIndexed{I,n})(i, x, θ) where {I,n} = @inbounds v.inner(i, x, θ)[n]
+@inline (v::ParIndexed{I,n})(i, x, θ) where {I,n} = @inbounds getfield(v.inner(i, x, θ), n)
 
 (v::ParIndexed)(i::Identity, x, θ) = NaN # despecialized
 (v::ParSource)(i::Identity, x, θ) = NaN # despecialized

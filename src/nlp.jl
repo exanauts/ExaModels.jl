@@ -703,7 +703,7 @@ end
 
 _obj(objs, x, θ) =
     _obj(objs.inner, x, θ) +
-    (isempty(objs.itr) ? zero(eltype(x)) : sum(objs.f.f(k, x, θ) for k in objs.itr))
+    (isempty(objs.itr) ? zero(eltype(x)) : sum(objs.f(k, x, θ) for k in objs.itr))
 _obj(objs::ObjectiveNull, x, θ) = zero(eltype(x))
 
 function cons_nln!(m::ExaModel, x::AbstractVector, g::AbstractVector)
@@ -715,7 +715,7 @@ end
 function _cons_nln!(cons, x, θ, g)
     _cons_nln!(cons.inner, x, θ, g)
     @simd for i in eachindex(cons.itr)
-        g[offset0(cons, i)] += cons.f.f(cons.itr[i], x, θ)
+        g[offset0(cons, i)] += cons.f(cons.itr[i], x, θ)
     end
 end
 _cons_nln!(cons::ConstraintNull, x, θ, g) = nothing
