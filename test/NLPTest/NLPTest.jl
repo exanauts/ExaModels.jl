@@ -12,6 +12,8 @@ const NLP_TEST_ARGUMENTS = [
     ("luksan_vlcek", 20),
     ("ac_power", "pglib_opf_case3_lmbd.m"),
     ("ac_power", "pglib_opf_case14_ieee.m"),
+    ("struct_ac_power", "pglib_opf_case3_lmbd.m"),
+    ("struct_ac_power", "pglib_opf_case14_ieee.m"),
 ]
 
 const SOLVERS = [
@@ -32,6 +34,7 @@ end
 include("luksan.jl")
 include("power.jl")
 include("parameter_test.jl")
+include("power_struct.jl")
 
 function test_nlp(m1, m2; full = false)
     @testset "NLP meta tests" begin
@@ -179,6 +182,10 @@ function runtests()
 
                 @testset "Parameter Test" begin
                     test_parametric_vs_nonparametric(backend)
+                end
+
+                @testset "Struct data" begin
+                    m, vars, cons = exa_ac_power_model(backend, filename)
                 end
             end
         end
