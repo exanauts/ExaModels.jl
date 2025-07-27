@@ -116,13 +116,13 @@ end
 @inline Base.getindex(n::ParSource, i) = ParIndexed(n, i)
 @inline Base.getindex(n::VarSource, i) = Var(i)
 @inline Base.getindex(::ParameterSource, i) = ParameterNode(i)
-Par(iter::Type) = ParSource()
-Par(iter, idx...) = ParIndexed(Par(iter, idx[2:end]...), idx[1])
-Par(iter::Type{T}, idx...) where {T<:Tuple} =
-    Tuple(Par(p, i, idx...) for (i, p) in enumerate(T.parameters))
-
-Par(iter::Type{T}, idx...) where {T<:NamedTuple} = NamedTuple{T.parameters[1]}(
-    Par(p, i, idx...) for (i, p) in enumerate(T.parameters[2].parameters)
+Par(iter::Type{T}) where {T <: Number} = ParSource()
+Par(iter::Type{T}, idx...) where {T <: Number} = ParIndexed(Par(iter, idx[2:end]...), idx[1])
+Par(iter::Type{T}, idx...) where {T <: Tuple} = Tuple(
+    Par(p, i, idx...) for (i, p) in enumerate(fieldtypes(T))
+)
+Par(iter::Type{T}, idx...) where T = NamedTuple{fieldnames(T)}(
+    Par(p, i, idx...) for (i, p) in enumerate(fieldtypes(T))
 )
 
 @inline Node1(f::F, inner::I) where {F,I} = Node1{F,I}(inner)
