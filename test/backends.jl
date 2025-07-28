@@ -23,3 +23,11 @@ if haskey(ENV, "EXAMODELS_TEST_ONEAPI")
 else
     @info "excluding oneAPI"
 end
+
+if haskey(ENV, "EXAMODELS_TEST_POCL")
+    using ExaModelsPoCL
+    push!(BACKENDS, OpenCLBackend())
+    @info "including PoCL"
+else
+    @info "excluding PoCL"
+end

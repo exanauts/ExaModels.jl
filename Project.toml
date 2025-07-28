@@ -29,6 +29,7 @@ ExaModelsKernelAbstractions = "KernelAbstractions"
 ExaModelsMOI = "MathOptInterface"
 ExaModelsMadNLP = ["MadNLP", "MathOptInterface"]
 ExaModelsOneAPI = "oneAPI"
+ExaModelsPoCL = ["OpenCL", "pocl_jll"]
 ExaModelsSpecialFunctions = "SpecialFunctions"
 
 [compat]
