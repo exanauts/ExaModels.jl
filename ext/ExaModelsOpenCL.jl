@@ -1,6 +1,6 @@
-module ExaModelsPoCL
+module ExaModelsOpenCL
 
-import ExaModels, OpenCL, pocl_jll
+import ExaModels, OpenCL
 
 ExaModels.convert_array(v, backend::OpenCL.OpenCLBackend) = OpenCL.CLArray(v)
 
