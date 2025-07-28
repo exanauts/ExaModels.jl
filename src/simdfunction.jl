@@ -37,10 +37,6 @@ Returns a `SIMDFunction` using the `gen`.
 """
 function SIMDFunction(gen::Base.Generator, o0 = 0, o1 = 0, o2 = 0)
 
-    if !isbitstype(eltype(gen.iter))
-        error("The generator must be iterable with a bitstype element.")
-    end
-    
     f = gen.f(Par(eltype(gen.iter)))
 
     _simdfunction(f, o0, o1, o2)
