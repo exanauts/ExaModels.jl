@@ -24,6 +24,9 @@ struct SIMDFunction{F,C1,C2}
     o2step::Int
 end
 
+(sf::SIMDFunction{F,C1,C2})(i, x, θ) where {F,C1,C2} = sf.f(i, x, θ)
+(sf::SIMDFunction{F,C1,C2})(i, x, θ) where {F <: Real,C1,C2} = sf.f
+
 """
     SIMDFunction(gen::Base.Generator, o0 = 0, o1 = 0, o2 = 0)
 
@@ -42,11 +45,15 @@ function SIMDFunction(gen::Base.Generator, o0 = 0, o1 = 0, o2 = 0)
     _simdfunction(f, o0, o1, o2)
 end
 
+function _simdfunction(f::F, o0, o1, o2) where F <: Real
+    SIMDFunction(f, ExaModels.Compressor{Tuple{}}(()), ExaModels.Compressor{Tuple{}}(()), o0, o1, o2, 0, 0)
+end
+
 function _simdfunction(f, o0, o1, o2)
     d = f(Identity(), AdjointNodeSource(nothing), nothing)
     y1 = []
     ExaModels.grpass(d, nothing, y1, nothing, 0, NaN)
-
+    
     t = f(Identity(), SecondAdjointNodeSource(nothing), nothing)
     y2 = []
     ExaModels.hrpass0(t, nothing, y2, nothing, nothing, 0, NaN, NaN)

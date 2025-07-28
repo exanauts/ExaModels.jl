@@ -38,7 +38,7 @@ Performs dense gradient evalution
 """
 function gradient!(y, f, x, θ, adj)
     @simd for k in eachindex(f.itr)
-        @inbounds gradient!(y, f.f.f, x, θ, f.itr[k], adj)
+        @inbounds gradient!(y, f.f, x, θ, f.itr[k], adj)
     end
     return y
 end
@@ -68,7 +68,7 @@ Performs dsparse gradient evaluation via the reverse pass on the computation (su
     o1,
     cnt,
     adj,
-) where {D<:Union{AdjointNull,ParIndexed}}
+) where {D<:Union{AdjointNull,ParIndexed,Real}}
     return cnt
 end
 @inline function grpass(d::D, comp, y, o1, cnt, adj) where {D<:AdjointNode1}
@@ -113,7 +113,7 @@ Performs sparse gradient evalution
 """
 function sgradient!(y, f, x, θ, adj)
     @simd for k in eachindex(f.itr)
-        @inbounds sgradient!(y, f.f.f, f.itr[k], x, θ, f.itr.comp1, offset1(f, k), adj)
+        @inbounds sgradient!(y, f.f, f.itr[k], x, θ, f.itr.comp1, offset1(f, k), adj)
     end
     return y
 end

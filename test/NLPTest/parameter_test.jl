@@ -1,5 +1,6 @@
 using ExaModels
 using Test
+using SparseArrays
 
 function luksan_vlcek_obj_param(x, θ, i, j)
     # θ[1] = 100, θ[2] = 1
@@ -198,7 +199,50 @@ function test_function_evaluations(model1, core1, model2)
     @test hprod_param ≈ hprod_orig atol=1e-12
 end
 
+function test_real_only()
+    c = ExaModels.ExaCore()
+    x = ExaModels.variable(c, 10)
+
+    c1 = ExaModels.constraint(c, 1. for i in 1:2)
+    o  = ExaModels.objective(c, 1. for i in 1:2)
+    ExaModels.constraint!(c, c1, j => -(x[i]-1)^2 for i in 1:10, j in 1:2)
+    em = ExaModels.ExaModel(c)
+
+    xval = rand(10)
+    yval = randn(2)
+
+    @test NLPModels.obj(em, xval) ≈ 2.
+    @test NLPModels.cons(em, xval) ≈ ones(2) .- sum((xval.-1).^2)
+    @test NLPModels.jac(em, xval) ≈ [(-2 .* (xval .- 1))'; (-2 .* (xval .- 1))']
+    @test NLPModels.hess(em, xval, yval) ≈ spdiagm(0=>fill(-2 * sum(yval), (10,)))
+end
+
+function test_param_only()
+    c = ExaModels.ExaCore()
+    x = ExaModels.variable(c, 10)
+    θval = rand(2)
+    θ = ExaModels.parameter(c, θval)
+
+    c1 = ExaModels.constraint(c, θ[i] for i in 1:2)
+    o  = ExaModels.objective(c, θ[i] for i in 1:2)
+    
+    ExaModels.constraint!(c, c1, j => -(x[i]-1)^2 for i in 1:10, j in 1:2)
+    em = ExaModels.ExaModel(c)
+
+    xval = rand(10)
+    yval = randn(2)
+
+    @test NLPModels.obj(em, xval) ≈ sum(θval)
+    @test NLPModels.cons(em, xval) ≈ θval .- sum((xval.-1).^2)
+    @test NLPModels.jac(em, xval) ≈ [(-2 .* (xval .- 1))'; (-2 .* (xval .- 1))']
+    @test NLPModels.hess(em, xval, yval) ≈ spdiagm(0=>fill(-2 * sum(yval), (10,)))
+end
+
 function test_parametric_vs_nonparametric(backend)
+    @testset "Basic parametric" begin
+        test_real_only()
+        test_param_only()
+    end
     @testset "Parametric luksan" begin
         @testset "Metadata" begin
             m_param, c_param, _, _ = exa_luksan_vlcek_parametric(
