@@ -37,7 +37,7 @@ Returns a `SIMDFunction` using the `gen`.
 """
 function SIMDFunction(gen::Base.Generator, o0 = 0, o1 = 0, o2 = 0)
 
-    f = gen.f(ParSource(eltype(gen.iter)))
+    f = gen.f(ParSource())
 
     _simdfunction(f, o0, o1, o2)
 end
