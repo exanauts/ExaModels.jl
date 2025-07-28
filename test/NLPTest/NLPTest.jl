@@ -12,6 +12,8 @@ const NLP_TEST_ARGUMENTS = [
     ("luksan_vlcek", 20),
     ("ac_power", "pglib_opf_case3_lmbd.m"),
     ("ac_power", "pglib_opf_case14_ieee.m"),
+    ("struct_ac_power", "pglib_opf_case3_lmbd.m"),
+    ("struct_ac_power", "pglib_opf_case14_ieee.m"),
 ]
 
 const SOLVERS = [
@@ -20,7 +22,7 @@ const SOLVERS = [
     ("percival", nlp -> percival(nlp)),
 ]
 
-const EXCLUDE1 = [("ac_power", "percival")]
+const EXCLUDE1 = [("ac_power", "percival"), ("struct_ac_power", "percival")]
 const EXCLUDE2 = []
 
 for backend in BACKENDS
@@ -32,6 +34,7 @@ end
 include("luksan.jl")
 include("power.jl")
 include("parameter_test.jl")
+include("power_struct.jl")
 
 function test_nlp(m1, m2; full = false)
     @testset "NLP meta tests" begin
