@@ -25,7 +25,7 @@ else
 end
 
 if haskey(ENV, "EXAMODELS_TEST_POCL")
-    using ExaModelsPoCL
+    using OpenCL, pocl_jll
     push!(BACKENDS, OpenCLBackend())
     @info "including PoCL"
 else
