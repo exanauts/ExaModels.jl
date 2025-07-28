@@ -144,7 +144,7 @@ struct Identity end
 @inline (v::ParameterNode{I})(::Identity, x, ::Nothing) where {I<:AbstractNode} = NaN
 
 @inline (v::ParSource)(i, x, θ) = i
-@inline (v::ParIndexed{I,n})(i, x, θ) where {I,n} = @inbounds v.inner(i, x, θ)[n]
+@inline (v::ParIndexed{I,n})(i, x, θ) where {I,n} = @inbounds getfield(v.inner(i, x, θ), n)
 
 (v::ParIndexed)(i::Identity, x, θ) = NaN # despecialized
 (v::ParSource)(i::Identity, x, θ) = NaN # despecialized

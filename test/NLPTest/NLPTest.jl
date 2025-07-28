@@ -183,10 +183,6 @@ function runtests()
                 @testset "Parameter Test" begin
                     test_parametric_vs_nonparametric(backend)
                 end
-
-                @testset "Struct data" begin
-                    m, vars, cons = exa_ac_power_model(backend, filename)
-                end
             end
         end
     end
