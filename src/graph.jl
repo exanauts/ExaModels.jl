@@ -113,9 +113,9 @@ struct SecondFixed{F}
     inner::F
 end
 
-@inline Base.getproperty(n::ParSource, s::Symbol) where T = ParIndexed(n, s)
-@inline Base.getindex(n::ParSource, i) where T = ParIndexed(n, i)
-@inline Base.indexed_iterate(n::ParSource, idx, start = 1) where T = (ParIndexed(n, idx), idx + 1)
+@inline Base.getproperty(n::ParSource, s::Symbol) = ParIndexed(n, s)
+@inline Base.getindex(n::ParSource, i) = ParIndexed(n, i)
+@inline Base.indexed_iterate(n::ParSource, idx, start = 1) = (ParIndexed(n, idx), idx + 1)
 
 
 @inline Base.getindex(n::VarSource, i) = Var(i)
@@ -139,11 +139,11 @@ struct Identity end
 @inline (v::ParameterNode{I})(::Any, x, ::Nothing) where {I} = NaN
 @inline (v::ParameterNode{I})(::Identity, x, ::Nothing) where {I<:AbstractNode} = NaN
 
-@inline (v::ParSource)(i, x, θ) where T = i
+@inline (v::ParSource)(i, x, θ) = i
 @inline (v::ParIndexed{I,n})(i, x, θ) where {I,n} = @inbounds getfield(v.inner(i, x, θ), n)
 
 (v::ParIndexed)(i::Identity, x, θ) = NaN # despecialized
-(v::ParSource)(i::Identity, x, θ) where T = NaN # despecialized
+(v::ParSource)(i::Identity, x, θ) = NaN # despecialized
 
 """
     AdjointNode1{F, T, I}
