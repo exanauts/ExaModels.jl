@@ -19,6 +19,8 @@ MathOptInterface = "b8f27783-ece8-5eb3-8dc8-9495eed66fee"
 NLPModelsIpopt = "f4238b75-b362-5c4c-b852-0801c9a21d71"
 SpecialFunctions = "276daf66-3868-5448-9aa4-cd146d93841b"
 oneAPI = "8f75cd03-7ff8-4ecb-9b8f-daf728133b1b"
+OpenCL = "08131aa3-fb12-5dee-8b74-c09406e224a2"
+pocl_jll = "627d6b7a-bbe6-5189-83e7-98cc0a5aeadd"
 
 [extensions]
 ExaModelsAMDGPU = "AMDGPU"
