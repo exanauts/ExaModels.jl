@@ -28,6 +28,7 @@ if haskey(ENV, "EXAMODELS_TEST_POCL")
     using OpenCL, pocl_jll
     push!(BACKENDS, OpenCLBackend())
     @info "including PoCL"
+    OpenCL.versioninfo()
 else
     @info "excluding PoCL"
 end
