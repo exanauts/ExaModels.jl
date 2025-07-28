@@ -66,7 +66,7 @@ A source of parameterized data
 
 """
 struct ParSource{T} <: AbstractNode end
-ParSource(T) = ParSource{T}()
+ParSource(T = Nothing) = ParSource{T}()
 
 """
     ParIndexed{I, J}
