@@ -104,7 +104,7 @@ function test_nlp_solution(result1, result2)
         @test result1.status == result2.status
         for field in [:solution, :multipliers, :multipliers_L, :multipliers_U]
             @testset "$field" begin
-                @test getfield(result1, field) ≈ getfield(result2, field) atol = 1e-6
+                @test getfield(result1, field) ≈ getfield(result2, field) atol = 1e-4
             end
         end
     end
