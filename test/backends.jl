@@ -30,6 +30,7 @@ if haskey(ENV, "EXAMODELS_TEST_POCL")
         push!(BACKENDS, OpenCLBackend())
         @info "including PoCL"
         OpenCL.versioninfo()
+        @info "OpenCL Device:" OpenCL.cl.device()
     else
         @info "excluding PoCL (cannot use pocl_jll when running on Windows as administrator)"
     end
