@@ -18,7 +18,7 @@ jobs:
       - uses: julia-actions/julia-buildpkg@latest
       - uses: julia-actions/julia-runtest@latest
         env:
-          EXAMODELS_TEST_POCL: ${{ matrix.os != 'windows-latest' && '1' || '' }}
+          EXAMODELS_TEST_POCL: 1
 
   nvidia:
     runs-on:

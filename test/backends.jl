@@ -26,9 +26,13 @@ end
 
 if haskey(ENV, "EXAMODELS_TEST_POCL")
     using OpenCL, pocl_jll
-    push!(BACKENDS, OpenCLBackend())
-    @info "including PoCL"
-    OpenCL.versioninfo()
+    if !(Sys.iswindows() && OpenCL.cl.is_high_integrity_level())
+        push!(BACKENDS, OpenCLBackend())
+        @info "including PoCL"
+        OpenCL.versioninfo()
+    else
+        @info "excluding PoCL (cannot use pocl_jll when running on Windows as administrator)"
+    end
 else
     @info "excluding PoCL"
 end
