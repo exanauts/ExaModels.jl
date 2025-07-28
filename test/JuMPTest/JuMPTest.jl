@@ -60,22 +60,22 @@ function fixed_variable_e2etest()
     JuMP.@constraint(jm, sum(x) == p)
     JuMP.@objective(jm, Min, sum(x))
 
-    @test_broken em = ExaModel(jm) # FIXME: merge #158
-    # @test only(em.meta.lcon) == only(em.meta.ucon) == 0.0
-    # @test only(em.θ) == 1.0
-    # wcons = em.cons
-    # @test typeof(wcons) <: ExaModels.ConstraintAug
-    # @test typeof(wcons.f.f) <: ExaModels.Null
-    # cons = wcons.inner
-    # @test typeof(cons) <: ExaModels.ConstraintAug
-    # @test typeof(cons.f.f) <: Pair
-    # @test typeof(cons.f.f.second) <: ExaModels.Node2{typeof(*), ExaModels.ParameterNode{T1}, T2} where {T1<:ExaModels.ParIndexed,T2<:ExaModels.ParIndexed}
-    # @test typeof(cons.inner) <: ExaModels.ConstraintAug
-    # @test typeof(cons.inner.f.f) <: Pair
-    # @test typeof(cons.inner.f.f.second) <: ExaModels.Node2{typeof(*), ExaModels.Var{T1}, T2} where {T1<:ExaModels.ParIndexed,T2<:ExaModels.ParIndexed}
-    # @test typeof(cons.inner.inner) <: ExaModels.Constraint
-    # @test typeof(cons.inner.inner.f.f) <: ExaModels.Null{Nothing}
-    # @test typeof(cons.inner.inner.inner) <: ExaModels.ConstraintNull
+    em = ExaModel(jm)
+    @test only(em.meta.lcon) == only(em.meta.ucon) == 0.0
+    @test only(em.θ) == 1.0
+    wcons = em.cons
+    @test typeof(wcons) <: ExaModels.ConstraintAug
+    @test typeof(wcons.f.f) <: ExaModels.Null
+    cons = wcons.inner
+    @test typeof(cons) <: ExaModels.ConstraintAug
+    @test typeof(cons.f.f) <: Pair
+    @test typeof(cons.f.f.second) <: ExaModels.Node2{typeof(*), ExaModels.ParameterNode{T1}, T2} where {T1<:ExaModels.ParIndexed,T2<:ExaModels.ParIndexed}
+    @test typeof(cons.inner) <: ExaModels.ConstraintAug
+    @test typeof(cons.inner.f.f) <: Pair
+    @test typeof(cons.inner.f.f.second) <: ExaModels.Node2{typeof(*), ExaModels.Var{T1}, T2} where {T1<:ExaModels.ParIndexed,T2<:ExaModels.ParIndexed}
+    @test typeof(cons.inner.inner) <: ExaModels.Constraint
+    @test typeof(cons.inner.inner.f.f) <: ExaModels.Null{Nothing}
+    @test typeof(cons.inner.inner.inner) <: ExaModels.ConstraintNull
 
     jm = JuMP.Model()
     JuMP.@variable(jm, x)
