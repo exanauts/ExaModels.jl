@@ -60,12 +60,13 @@ struct ParameterNode{I} <: AbstractNode
 end
 
 """
-    ParSource
+    ParSource{T}
 
 A source of parameterized data
 
 """
-struct ParSource <: AbstractNode end
+struct ParSource{T} <: AbstractNode end
+ParSource(T) = ParSource{T}()
 
 """
     ParIndexed{I, J}
@@ -113,8 +114,11 @@ struct SecondFixed{F}
     inner::F
 end
 
-@inline Base.getproperty(n::ParSource, s::Symbol) = ParIndexed(n, s)
-@inline Base.getindex(n::ParSource, i) = ParIndexed(n, i)
+@inline Base.getproperty(n::ParSource{T}, s::Symbol) where T = ParIndexed(n, s)
+@inline Base.getindex(n::ParSource{T}, i) where T = ParIndexed(n, i)
+@inline Base.indexed_iterate(n::ParSource{T}, idx, start = 1) where T = (ParIndexed(n, idx), idx + 1)
+
+
 @inline Base.getindex(n::VarSource, i) = Var(i)
 @inline Base.getindex(::ParameterSource, i) = ParameterNode(i)
 
@@ -136,11 +140,11 @@ struct Identity end
 @inline (v::ParameterNode{I})(::Any, x, ::Nothing) where {I} = NaN
 @inline (v::ParameterNode{I})(::Identity, x, ::Nothing) where {I<:AbstractNode} = NaN
 
-@inline (v::ParSource)(i, x, θ) = i
+@inline (v::ParSource{T})(i, x, θ) where T = i
 @inline (v::ParIndexed{I,n})(i, x, θ) where {I,n} = @inbounds getfield(v.inner(i, x, θ), n)
 
 (v::ParIndexed)(i::Identity, x, θ) = NaN # despecialized
-(v::ParSource)(i::Identity, x, θ) = NaN # despecialized
+(v::ParSource{T})(i::Identity, x, θ) where T = NaN # despecialized
 
 """
     AdjointNode1{F, T, I}
