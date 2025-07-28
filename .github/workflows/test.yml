@@ -37,6 +37,7 @@ jobs:
     - name: Run tests
       env:
         EXAMODELS_TEST_CUDA: 1
+        EXAMODELS_TEST_POCL: 1
       run: |
         julia --color=yes --project=./test -e '
           using Pkg
@@ -62,6 +63,7 @@ jobs:
     - name: Run tests
       env:
         EXAMODELS_TEST_AMDGPU: 1
+        EXAMODELS_TEST_POCL: 1
         JULIA_NUM_THREADS: 4
         JULIA_AMDGPU_CORE_MUST_LOAD: "1"
         JULIA_AMDGPU_HIP_MUST_LOAD: "1"
@@ -91,6 +93,7 @@ jobs:
     - name: Run tests
       env:
         EXAMODELS_TEST_ONEAPI: 1
+        EXAMODELS_TEST_POCL: 1
         OverrideDefaultFP64Settings: 1
         IGC_EnableDPEmulation: 1
       run: |
