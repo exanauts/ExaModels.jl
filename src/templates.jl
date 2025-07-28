@@ -3,7 +3,6 @@ convert_array(v, ::Nothing) = v
 
 # to avoid type privacy
 sort!(array; kwargs...) = Base.sort!(array; kwargs...)
-findall(args...) = Base.findall(args...)
 
 # MOI
 function Optimizer end
