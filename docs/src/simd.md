@@ -8,7 +8,7 @@ The mathematical statement of the problem formulation is as follows.
 \begin{aligned}
   \min_{x^\flat\leq x \leq x^\sharp}
   & \sum_{l\in[L]}\sum_{i\in [I_l]} f^{(l)}(x; p^{(l)}_i)\\
-  \text{s.t.}\; &\left[g^{(m)}(x; q_j)\right]_{j\in [J_m]} +\sum_{n\in [N_m]}\sum_{k\in [K_n]}h^{(n)}(x; s^{(n)}_{k}) =0,\quad \forall m\in[M]
+  \text{s.t.}\; &g^\flat \leq \left[g^{(m)}(x; q_j)\right]_{j\in [J_m]} +\sum_{n\in [N_m]}\sum_{k\in [K_n]}h^{(n)}(x; s^{(n)}_{k}) \leq g^\sharp,\quad \forall m\in[M]
 \end{aligned}
 ```
 where $f^{(\ell)}(\cdot,\cdot)$, $g^{(m)}(\cdot,\cdot)$, and
