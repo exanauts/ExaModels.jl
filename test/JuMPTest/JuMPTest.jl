@@ -30,7 +30,7 @@ function fixed_variable_e2etest()
     JuMP.@variable(jm, x[1:N])
     JuMP.fix(x[1], 1.0)
     JuMP.@constraint(jm, sum(x) == 1.0)
-    JuMP.@objective(jm, Min, sum(2*x[i]^2 for i in 1:N))
+    JuMP.@objective(jm, Min, sum(2*x[i]^2 for i = 1:N))
 
     em = ExaModel(jm)
     @test only(em.meta.lcon) == only(em.meta.ucon) == 1.0
@@ -44,14 +44,22 @@ function fixed_variable_e2etest()
     @test typeof(cons) <: ExaModels.ConstraintAug
     @test typeof(cons.f.f) <: Pair
 
-    @test typeof(cons.f.f.second) <: ExaModels.Node2{typeof(*), ExaModels.Var{T1}, T2} where {T1<:ExaModels.ParIndexed,T2<:ExaModels.ParIndexed}
+    @test typeof(cons.f.f.second) <: ExaModels.Node2{
+        typeof(*),
+        ExaModels.Var{T1},
+        T2,
+    } where {T1<:ExaModels.ParIndexed,T2<:ExaModels.ParIndexed}
 
     @test typeof(cons.inner) <: ExaModels.Constraint
     @test typeof(cons.inner.f.f) <: ExaModels.Null{Nothing}
     @test typeof(cons.inner.inner) <: ExaModels.ConstraintNull
 
     @test typeof(em.objs.f.f) <: ExaModels.Null
-    @test typeof(em.objs.inner.f.f) <: ExaModels.Node2{typeof(*), T1, ExaModels.Node1{typeof(abs2), ExaModels.Var{T2}}} where {T1<:ExaModels.ParIndexed,T2<:ExaModels.ParIndexed}
+    @test typeof(em.objs.inner.f.f) <: ExaModels.Node2{
+        typeof(*),
+        T1,
+        ExaModels.Node1{typeof(abs2),ExaModels.Var{T2}},
+    } where {T1<:ExaModels.ParIndexed,T2<:ExaModels.ParIndexed}
 
     jm = JuMP.Model()
 
@@ -69,10 +77,18 @@ function fixed_variable_e2etest()
     cons = wcons.inner
     @test typeof(cons) <: ExaModels.ConstraintAug
     @test typeof(cons.f.f) <: Pair
-    @test typeof(cons.f.f.second) <: ExaModels.Node2{typeof(*), ExaModels.ParameterNode{T1}, T2} where {T1<:ExaModels.ParIndexed,T2<:ExaModels.ParIndexed}
+    @test typeof(cons.f.f.second) <: ExaModels.Node2{
+        typeof(*),
+        ExaModels.ParameterNode{T1},
+        T2,
+    } where {T1<:ExaModels.ParIndexed,T2<:ExaModels.ParIndexed}
     @test typeof(cons.inner) <: ExaModels.ConstraintAug
     @test typeof(cons.inner.f.f) <: Pair
-    @test typeof(cons.inner.f.f.second) <: ExaModels.Node2{typeof(*), ExaModels.Var{T1}, T2} where {T1<:ExaModels.ParIndexed,T2<:ExaModels.ParIndexed}
+    @test typeof(cons.inner.f.f.second) <: ExaModels.Node2{
+        typeof(*),
+        ExaModels.Var{T1},
+        T2,
+    } where {T1<:ExaModels.ParIndexed,T2<:ExaModels.ParIndexed}
     @test typeof(cons.inner.inner) <: ExaModels.Constraint
     @test typeof(cons.inner.inner.f.f) <: ExaModels.Null{Nothing}
     @test typeof(cons.inner.inner.inner) <: ExaModels.ConstraintNull
@@ -87,7 +103,7 @@ function no_constraints_e2etest()
     N=5
     jm = JuMP.Model()
     JuMP.@variable(jm, x[1:N])
-    JuMP.@objective(jm, Max, sum(sin(x[i]) for i in 1:N))
+    JuMP.@objective(jm, Max, sum(sin(x[i]) for i = 1:N))
 
     em = ExaModel(jm)
 
@@ -95,12 +111,13 @@ function no_constraints_e2etest()
     @test typeof(em.cons.inner) <: ExaModels.ConstraintNull
 
     @test typeof(em.objs.f.f) <: ExaModels.Null
-    @test typeof(em.objs.inner.f.f) <: ExaModels.Node1{typeof(sin), ExaModels.Var{T1}} where {T1<:ExaModels.ParIndexed}
+    @test typeof(em.objs.inner.f.f) <:
+          ExaModels.Node1{typeof(sin),ExaModels.Var{T1}} where {T1<:ExaModels.ParIndexed}
 
     N=5
     jm = JuMP.Model()
     JuMP.@variable(jm, x[1:N])
-    JuMP.@objective(jm, Max, sin(sum(x[i] for i in 1:N)))
+    JuMP.@objective(jm, Max, sin(sum(x[i] for i = 1:N)))
 
     em = ExaModel(jm)
 
@@ -109,17 +126,18 @@ function no_constraints_e2etest()
 
     @test typeof(em.objs.f.f) <: ExaModels.Null
     # broken since ExaMOI fails to detect SIMD in this case
-    @test_broken typeof(em.objs.inner.f.f) <: ExaModels.Node1{typeof(sin), ExaModels.Var{T1}} where {T1}
+    @test_broken typeof(em.objs.inner.f.f) <:
+                 ExaModels.Node1{typeof(sin),ExaModels.Var{T1}} where {T1}
 end
 function generic_e2etest()
     N=5
     jm = JuMP.GenericModel{Float32}()
     JuMP.@variable(jm, x[1:N])
     JuMP.@constraint(jm, sum(x) == 1.0f0)
-    JuMP.@objective(jm, Min, sum(x[i]^2 for i in 1:N))
+    JuMP.@objective(jm, Min, sum(x[i]^2 for i = 1:N))
 
     em = ExaModel(jm)
-    
+
     @test typeof(em) <: ExaModel{Float32}
     @test typeof(getindex.(em.cons.inner.itr, 2)) <: Vector{Float32}
 end

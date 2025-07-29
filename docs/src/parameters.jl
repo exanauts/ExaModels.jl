@@ -22,8 +22,9 @@ objective(c_param, θ[1] * (x_p[i-1]^2 - x_p[i])^2 + (x_p[i-1] - θ[2])^2 for i 
 # Add the same constraints as before:
 constraint(
     c_param,
-    3x_p[i+1]^3 + 2 * x_p[i+2] - 5 + sin(x_p[i+1] - x_p[i+2])sin(x_p[i+1] + x_p[i+2]) + 4x_p[i+1] -
-    x_p[i]exp(x_p[i] - x_p[i+1]) - 3 for i = 1:(N-2)
+    3x_p[i+1]^3 + 2 * x_p[i+2] - 5 +
+    sin(x_p[i+1] - x_p[i+2])sin(x_p[i+1] + x_p[i+2]) +
+    4x_p[i+1] - x_p[i]exp(x_p[i] - x_p[i+1]) - 3 for i = 1:(N-2)
 )
 
 # Create the model as before:

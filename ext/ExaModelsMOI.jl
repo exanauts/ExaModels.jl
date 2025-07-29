@@ -13,12 +13,10 @@ const SUPPORTED_FUNC_TYPE{T} = Union{
     MOI.ScalarNonlinearFunction,
 }
 const SUPPORTED_FUNC_TYPE_WITH_VAR{T} = Union{SUPPORTED_FUNC_TYPE{T},MOI.VariableIndex}
-const SUPPORTED_FUNC_SET_TYPE{T} = Union{
-    MOI.GreaterThan{T}, MOI.LessThan{T}, MOI.EqualTo{T}, MOI.Interval{T},
-}
-const SUPPORTED_VAR_SET_TYPE{T} = Union{
-    MOI.GreaterThan{T}, MOI.LessThan{T}, MOI.EqualTo{T}, MOI.Parameter{T},
-}
+const SUPPORTED_FUNC_SET_TYPE{T} =
+    Union{MOI.GreaterThan{T},MOI.LessThan{T},MOI.EqualTo{T},MOI.Interval{T}}
+const SUPPORTED_VAR_SET_TYPE{T} =
+    Union{MOI.GreaterThan{T},MOI.LessThan{T},MOI.EqualTo{T},MOI.Parameter{T}}
 const PARAMETER_INDEX_THRESHOLD = Int64(4_611_686_018_427_387_904) # div(typemax(Int64),2)+1
 """
     Abstract data structure for storing expression tree and data arrays
@@ -54,29 +52,37 @@ end
 
 function check_supported(T, moim)
     con_types = MOI.get(moim, MOI.ListOfConstraintTypesPresent())
-    for (F,S) in con_types
+    for (F, S) in con_types
         !(F <: SUPPORTED_FUNC_TYPE_WITH_VAR) && error("Unsupported function type $F.")
         if F <: MOI.VariableIndex
-            !(S <: SUPPORTED_VAR_SET_TYPE) && error("Unsupported variable index constraint $F in $S")
+            !(S <: SUPPORTED_VAR_SET_TYPE) &&
+                error("Unsupported variable index constraint $F in $S")
         else
             !(S <: SUPPORTED_FUNC_SET_TYPE) && error("Unsupported set type $S")
         end
     end
 
     obj_type = MOI.get(moim, MOI.ObjectiveFunctionType())
-    !(obj_type <: SUPPORTED_FUNC_TYPE_WITH_VAR) && error("Unsupported objective function type $obj_type.")
+    !(obj_type <: SUPPORTED_FUNC_TYPE_WITH_VAR) &&
+        error("Unsupported objective function type $obj_type.")
 
     obj_sense = MOI.get(moim, MOI.ObjectiveSense())
-    !(obj_sense in (MOI.MIN_SENSE, MOI.MAX_SENSE)) && error("Unsupported objective sense $obj_sense.")
+    !(obj_sense in (MOI.MIN_SENSE, MOI.MAX_SENSE)) &&
+        error("Unsupported objective sense $obj_sense.")
     return obj_sense === MOI.MIN_SENSE
 end
 
-function ExaModels.ExaModel(moim::MOI.ModelLike; backend = nothing, prod = false, T=Float64)
+function ExaModels.ExaModel(
+    moim::MOI.ModelLike;
+    backend = nothing,
+    prod = false,
+    T = Float64,
+)
     c, _ = to_exacore(moim; backend = backend, T = T)
     return ExaModels.ExaModel(c; prod = prod)
 end
 
-function to_exacore(moim::MOI.ModelLike; backend = nothing, T=Float64)
+function to_exacore(moim::MOI.ModelLike; backend = nothing, T = Float64)
     minimize = check_supported(T, moim)
 
     c = ExaModels.ExaCore(T; backend = backend, minimize = minimize)
@@ -89,11 +95,13 @@ function to_exacore(moim::MOI.ModelLike; backend = nothing, T=Float64)
 end
 
 function fill_variable_bounds!(moim, lvar, uvar, var_to_idx, T)
-    for ci in MOI.get(moim, MOI.ListOfConstraintIndices{MOI.VariableIndex,MOI.GreaterThan{T}}())
+    for ci in
+        MOI.get(moim, MOI.ListOfConstraintIndices{MOI.VariableIndex,MOI.GreaterThan{T}}())
         vi = MOI.get(moim, MOI.ConstraintFunction(), ci)
         lvar[var_to_idx[vi]] = MOI.get(moim, MOI.ConstraintSet(), ci).lower
     end
-    for ci in MOI.get(moim, MOI.ListOfConstraintIndices{MOI.VariableIndex,MOI.LessThan{T}}())
+    for ci in
+        MOI.get(moim, MOI.ListOfConstraintIndices{MOI.VariableIndex,MOI.LessThan{T}}())
         vi = MOI.get(moim, MOI.ConstraintFunction(), ci)
         uvar[var_to_idx[vi]] = MOI.get(moim, MOI.ConstraintSet(), ci).upper
     end
@@ -106,7 +114,7 @@ function fill_variable_bounds!(moim, lvar, uvar, var_to_idx, T)
 end
 
 function fill_variable_start!(moim, x0, param_vis)
-    var_to_idx = Dict{MOI.VariableIndex, Int}()
+    var_to_idx = Dict{MOI.VariableIndex,Int}()
     for (i, vi) in enumerate(MOI.get(moim, MOI.ListOfVariableIndices()))
         vi ∈ param_vis && continue
         var_to_idx[vi] = i
@@ -118,10 +126,7 @@ function fill_variable_start!(moim, x0, param_vis)
 end
 
 function _get_parameters(moim::MOI.ModelLike, T)
-    cis = MOI.get(
-        moim,
-        MOI.ListOfConstraintIndices{MOI.VariableIndex,MOI.Parameter{T}}(),
-    )
+    cis = MOI.get(moim, MOI.ListOfConstraintIndices{MOI.VariableIndex,MOI.Parameter{T}}())
     parameters = Vector{Tuple{MOI.VariableIndex,MOI.Parameter{T}}}()
     for ci in cis
         vi = MOI.get(moim, MOI.ConstraintFunction(), ci)
@@ -141,7 +146,7 @@ function copy_variables!(c, moim, T)
 
     x0 = zeros(T, nvar)
     var_to_idx = fill_variable_start!(moim, x0, first.(parameters))
-    
+
     lvar = fill(T(-Inf), nvar)
     uvar = fill(T(Inf), nvar)
     fill_variable_bounds!(moim, lvar, uvar, var_to_idx, T)
@@ -149,15 +154,15 @@ function copy_variables!(c, moim, T)
     ExaModels.variable(c, nvar; start = x0, lvar = lvar, uvar = uvar)
 
     varpar_to_idx = Dict()
-    for (vi,i) in var_to_idx
-        varpar_to_idx[vi] = (type=:variable, idx=i)
+    for (vi, i) in var_to_idx
+        varpar_to_idx[vi] = (type = :variable, idx = i)
     end
 
     if npar > 0
         p0 = zeros(T, npar)
         for (i, (vi, set)) in enumerate(parameters)
             p0[i] = T(set.value)
-            varpar_to_idx[vi] = (type=:parameter, idx=i)
+            varpar_to_idx[vi] = (type = :parameter, idx = i)
         end
         ExaModels.parameter(c, p0)
     end
@@ -180,13 +185,14 @@ function copy_constraints!(c, moim, var_to_idx, T)
     lcon = zeros(T, 0)
     ucon = zeros(T, 0)
     y0 = zeros(T, 0)
-    con_to_idx = Dict{MOI.ConstraintIndex, Int}()
+    con_to_idx = Dict{MOI.ConstraintIndex,Int}()
 
     con_types = MOI.get(moim, MOI.ListOfConstraintTypesPresent())
-    for (F,S) in con_types
+    for (F, S) in con_types
         F <: MOI.VariableIndex && continue
         cis = MOI.get(moim, MOI.ListOfConstraintIndices{F,S}())
-        bin, offset = exafy_con(moim, cis, bin, offset, lcon, ucon, y0, var_to_idx, con_to_idx)
+        bin, offset =
+            exafy_con(moim, cis, bin, offset, lcon, ucon, y0, var_to_idx, con_to_idx)
     end
     cons = ExaModels.constraint(c, offset; start = y0, lcon = lcon, ucon = ucon)
     build_constraint!(c, cons, bin)
@@ -194,7 +200,14 @@ function copy_constraints!(c, moim, var_to_idx, T)
     return con_to_idx
 end
 
-function _exafy_con(i, c::C, bin, var_to_idx, con_to_idx; pos = true) where {C<:MOI.ScalarAffineFunction}
+function _exafy_con(
+    i,
+    c::C,
+    bin,
+    var_to_idx,
+    con_to_idx;
+    pos = true,
+) where {C<:MOI.ScalarAffineFunction}
     for mm in c.terms
         e, p = _exafy(mm, var_to_idx)
         e = pos ? e : -e
@@ -207,7 +220,14 @@ function _exafy_con(i, c::C, bin, var_to_idx, con_to_idx; pos = true) where {C<:
     bin = update_bin!(bin, ExaModels.Null(c.constant), (1,))
     return bin
 end
-function _exafy_con(i, c::C, bin, var_to_idx, con_to_idx; pos = true) where {C<:MOI.ScalarQuadraticFunction}
+function _exafy_con(
+    i,
+    c::C,
+    bin,
+    var_to_idx,
+    con_to_idx;
+    pos = true,
+) where {C<:MOI.ScalarQuadraticFunction}
     for mm in c.affine_terms
         e, p = _exafy(mm, var_to_idx)
         e = pos ? e : -e
@@ -229,7 +249,14 @@ function _exafy_con(i, c::C, bin, var_to_idx, con_to_idx; pos = true) where {C<:
     bin = update_bin!(bin, ExaModels.Null(c.constant), (1,))
     return bin
 end
-function _exafy_con(i, c::C, bin, var_to_idx, con_to_idx; pos = true) where {C<:MOI.ScalarNonlinearFunction}
+function _exafy_con(
+    i,
+    c::C,
+    bin,
+    var_to_idx,
+    con_to_idx;
+    pos = true,
+) where {C<:MOI.ScalarNonlinearFunction}
     if c.head == :+
         for mm in c.args
             bin = _exafy_con(i, mm, bin, var_to_idx, con_to_idx)
@@ -261,7 +288,17 @@ function _exafy_con(i, c::C, bin, var_to_idx, con_to_idx; pos = true) where {C<:
     return bin
 end
 
-function exafy_con(moim, cons::V, bin, offset, lcon, ucon, y0, var_to_idx, con_to_idx) where {V<:Vector{<:MOI.ConstraintIndex}}
+function exafy_con(
+    moim,
+    cons::V,
+    bin,
+    offset,
+    lcon,
+    ucon,
+    y0,
+    var_to_idx,
+    con_to_idx,
+) where {V<:Vector{<:MOI.ConstraintIndex}}
     l = length(cons)
 
     resize!(lcon, offset + l)
@@ -297,7 +334,13 @@ function _exafy_con_update_vector(i, e::MOI.LessThan{T}, lcon, ucon, con_to_idx)
     ucon[con_to_idx[i]] = e.upper
 end
 
-function _exafy_con_update_vector(i, e::MOI.GreaterThan{T}, lcon, ucon, con_to_idx) where {T}
+function _exafy_con_update_vector(
+    i,
+    e::MOI.GreaterThan{T},
+    lcon,
+    ucon,
+    con_to_idx,
+) where {T}
     ucon[con_to_idx[i]] = Inf
     lcon[con_to_idx[i]] = e.lower
 end
@@ -402,12 +445,10 @@ function _exafy(i::R, var_to_idx, p) where {R<:Real}
 end
 
 function _exafy(e::MOI.ScalarNonlinearFunction, var_to_idx, p = ())
-    return op(e.head)((
-        begin
-            c, p = _exafy(e, var_to_idx, p)
-            c
-        end for e in e.args
-    )...), p
+    return op(e.head)((begin
+        c, p = _exafy(e, var_to_idx, p)
+        c
+    end for e in e.args)...), p
 end
 
 function _exafy(e::MOI.ScalarAffineFunction{T}, var_to_idx, p = ()) where {T}
@@ -468,91 +509,151 @@ end
 # eval can be a performance killer -- we want to explicitly include symbols for frequently used operations.
 function op(s::Symbol)
     # uni/multi
-    if     s === :+  return +
-    elseif s === :-  return -
-    # multi
-    elseif s === :*  return *
-    elseif s === :^  return ^
-    elseif s === :/  return /
-    # uni
-    elseif s === :abs    return abs
-    elseif s === :sign   error("sign not supported")
-    elseif s === :sqrt   return sqrt
-    elseif s === :cbrt   return cbrt
-    elseif s === :abs2   return abs2
-    elseif s === :inv    return inv
-    elseif s === :log    return log
-    elseif s === :log10  return log10
-    elseif s === :log2   return log2
-    elseif s === :log1p  return log1p
-    elseif s === :exp    return exp
-    elseif s === :exp2   return exp2
-    elseif s === :expm1  error("expm1 not supported")
-    # trig
-    elseif s === :sin    return sin
-    elseif s === :cos    return cos
-    elseif s === :tan    return tan
-    elseif s === :sec    return sec
-    elseif s === :csc    return csc
-    elseif s === :cot    return cot
-    elseif s === :sind   return sind
-    elseif s === :cosd   return cosd
-    elseif s === :tand   return tand
-    elseif s === :secd   return secd
-    elseif s === :cscd   return cscd
-    elseif s === :cotd   return cotd
-    elseif s === :asin   return asin
-    elseif s === :acos   return acos
-    elseif s === :atan   return atan
-    elseif s === :asec   error("asec not supported")
-    elseif s === :acsc   error("acsc not supported")
-    elseif s === :acot   return acot
-    elseif s === :asind  error("asind not supported")
-    elseif s === :acosd  error("acosd not supported")
-    elseif s === :atand  return atand
-    elseif s === :asecd  error("aced not supported")
-    elseif s === :acscd  error("acscd not supported")
-    elseif s === :acotd  return acotd
-    elseif s === :sinh   return sinh
-    elseif s === :cosh   return cosh
-    elseif s === :tanh   return tanh
-    elseif s === :sech   return sech
-    elseif s === :csch   return csch
-    elseif s === :coth   return coth
-    elseif s === :asinh  return asinh
-    elseif s === :acosh  return acosh
-    elseif s === :atanh  return atanh
-    elseif s === :asech  error("asech not supported")
-    elseif s === :acsch  error("acsch not supported")
-    elseif s === :acoth  return acoth
-    # special (commented will use `eval` which would succeed if SpecialFunctions is loaded)
-    elseif s === :deg2rad      error("deg2rad not supported")
-    elseif s === :rad2deg      error("rad2deg not supported")
-    # elseif s === :erf          error("erf not supported")
-    # elseif s === :erfinv       error("erfinv not supported")
-    # elseif s === :erfc         error("erfc not supported")
-    # elseif s === :erfcinv      error("erfcinv not supported")
-    # elseif s === :erfi         error("erfi not supported")
-    # elseif s === :gamma        error("gamma not supported")
-    elseif s === :lgamma       error("lgamma not supported")
-    # elseif s === :digamma      error("digamma not supported")
-    # elseif s === :invdigamma   error("invdigamma not supported")
-    # elseif s === :trigamma     error("trigamma not supported")
-    # elseif s === :airyai       error("airyai not supported")
-    # elseif s === :airybi       error("airybi not supported")
-    # elseif s === :airyaiprime  error("airyaiprime not supported")
-    # elseif s === :airybiprime  error("airybiprime not supported")
-    # elseif s === :besselj0     error("besselj0 not supported")
-    # elseif s === :besselj1     error("besselj1 not supported")
-    # elseif s === :bessely0     error("bessely0 not supported")
-    # elseif s === :bessely1     error("bessely1 not supported")
-    # elseif s === :erfcx        error("erfcx not supported")
-    # elseif s === :dawson       error("dawson not supported")
-    
-    # not in MOI
-    elseif s === :exp10    return exp10
-    elseif s === :beta     return beta
-    elseif s === :logbeta  return logbeta
+    if s === :+
+        return +
+    elseif s === :-
+        return -
+        # multi
+    elseif s === :*
+        return *
+    elseif s === :^
+        return ^
+    elseif s === :/
+        return /
+        # uni
+    elseif s === :abs
+        return abs
+    elseif s === :sign
+        error("sign not supported")
+    elseif s === :sqrt
+        return sqrt
+    elseif s === :cbrt
+        return cbrt
+    elseif s === :abs2
+        return abs2
+    elseif s === :inv
+        return inv
+    elseif s === :log
+        return log
+    elseif s === :log10
+        return log10
+    elseif s === :log2
+        return log2
+    elseif s === :log1p
+        return log1p
+    elseif s === :exp
+        return exp
+    elseif s === :exp2
+        return exp2
+    elseif s === :expm1
+        error("expm1 not supported")
+        # trig
+    elseif s === :sin
+        return sin
+    elseif s === :cos
+        return cos
+    elseif s === :tan
+        return tan
+    elseif s === :sec
+        return sec
+    elseif s === :csc
+        return csc
+    elseif s === :cot
+        return cot
+    elseif s === :sind
+        return sind
+    elseif s === :cosd
+        return cosd
+    elseif s === :tand
+        return tand
+    elseif s === :secd
+        return secd
+    elseif s === :cscd
+        return cscd
+    elseif s === :cotd
+        return cotd
+    elseif s === :asin
+        return asin
+    elseif s === :acos
+        return acos
+    elseif s === :atan
+        return atan
+    elseif s === :asec
+        error("asec not supported")
+    elseif s === :acsc
+        error("acsc not supported")
+    elseif s === :acot
+        return acot
+    elseif s === :asind
+        error("asind not supported")
+    elseif s === :acosd
+        error("acosd not supported")
+    elseif s === :atand
+        return atand
+    elseif s === :asecd
+        error("aced not supported")
+    elseif s === :acscd
+        error("acscd not supported")
+    elseif s === :acotd
+        return acotd
+    elseif s === :sinh
+        return sinh
+    elseif s === :cosh
+        return cosh
+    elseif s === :tanh
+        return tanh
+    elseif s === :sech
+        return sech
+    elseif s === :csch
+        return csch
+    elseif s === :coth
+        return coth
+    elseif s === :asinh
+        return asinh
+    elseif s === :acosh
+        return acosh
+    elseif s === :atanh
+        return atanh
+    elseif s === :asech
+        error("asech not supported")
+    elseif s === :acsch
+        error("acsch not supported")
+    elseif s === :acoth
+        return acoth
+        # special (commented will use `eval` which would succeed if SpecialFunctions is loaded)
+    elseif s === :deg2rad
+        error("deg2rad not supported")
+    elseif s === :rad2deg
+        error("rad2deg not supported")
+        # elseif s === :erf          error("erf not supported")
+        # elseif s === :erfinv       error("erfinv not supported")
+        # elseif s === :erfc         error("erfc not supported")
+        # elseif s === :erfcinv      error("erfcinv not supported")
+        # elseif s === :erfi         error("erfi not supported")
+        # elseif s === :gamma        error("gamma not supported")
+    elseif s === :lgamma
+        error("lgamma not supported")
+        # elseif s === :digamma      error("digamma not supported")
+        # elseif s === :invdigamma   error("invdigamma not supported")
+        # elseif s === :trigamma     error("trigamma not supported")
+        # elseif s === :airyai       error("airyai not supported")
+        # elseif s === :airybi       error("airybi not supported")
+        # elseif s === :airyaiprime  error("airyaiprime not supported")
+        # elseif s === :airybiprime  error("airybiprime not supported")
+        # elseif s === :besselj0     error("besselj0 not supported")
+        # elseif s === :besselj1     error("besselj1 not supported")
+        # elseif s === :bessely0     error("bessely0 not supported")
+        # elseif s === :bessely1     error("bessely1 not supported")
+        # elseif s === :erfcx        error("erfcx not supported")
+        # elseif s === :dawson       error("dawson not supported")
+
+        # not in MOI
+    elseif s === :exp10
+        return exp10
+    elseif s === :beta
+        return beta
+    elseif s === :logbeta
+        return logbeta
     else
         return eval(s)
     end
@@ -587,10 +688,7 @@ function MOI.supports_constraint(
 )
     return true
 end
-function MOI.supports(
-    ::Optimizer,
-    ::MOI.ObjectiveFunction{<:SUPPORTED_FUNC_TYPE_WITH_VAR},
-)
+function MOI.supports(::Optimizer, ::MOI.ObjectiveFunction{<:SUPPORTED_FUNC_TYPE_WITH_VAR})
     return true
 end
 function MOI.supports(::Optimizer, ::MOI.VariablePrimalStart, ::Type{MOI.VariableIndex})
@@ -635,7 +733,7 @@ MOI.get(model::Optimizer, attr::Union{MOI.PrimalStatus,MOI.DualStatus}) =
 function MOI.get(model::Optimizer, attr::MOI.VariablePrimal, vi::MOI.VariableIndex)
     MOI.check_result_index_bounds(model, attr)
     if vi.value > PARAMETER_INDEX_THRESHOLD
-        return model.model.θ[vi.value - PARAMETER_INDEX_THRESHOLD]
+        return model.model.θ[vi.value-PARAMETER_INDEX_THRESHOLD]
     else
         return model.result.solution[vi.value]
     end
@@ -732,7 +830,7 @@ end
 function _make_constraints_map(
     model,
     map::MOI.Utilities.DoubleDicts.IndexDoubleDictInner{F,S},
-    con_to_idx
+    con_to_idx,
 ) where {F,S}
     for c in MOI.get(model, MOI.ListOfConstraintIndices{F,S}())
         map[c] = typeof(c)(con_to_idx[c])
