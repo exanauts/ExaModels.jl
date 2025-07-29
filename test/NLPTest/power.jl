@@ -121,7 +121,7 @@ function _exa_ac_power_model(backend, filename)
 end
 
 function __exa_ac_power_model(backend, data)
-        
+
     w = ExaModels.ExaCore(backend = backend)
 
     va = ExaModels.variable(w, length(data.bus);)

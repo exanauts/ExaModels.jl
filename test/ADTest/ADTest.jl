@@ -248,7 +248,18 @@ function shessian(f, x)
     buffer_I = similar(x, Int, n)
     buffer_J = similar(x, Int, n)
 
-    ExaModels.shessian!(buffer_I, buffer_J, ff, nothing, nothing, nothing, comp, 0, NaN, NaN)
+    ExaModels.shessian!(
+        buffer_I,
+        buffer_J,
+        ff,
+        nothing,
+        nothing,
+        nothing,
+        comp,
+        0,
+        NaN,
+        NaN,
+    )
     ExaModels.shessian!(buffer, nothing, ff, nothing, x, nothing, comp, 0, one(T), zero(T))
 
     y = zeros(length(x), length(x))

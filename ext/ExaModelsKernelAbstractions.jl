@@ -576,7 +576,16 @@ function ExaModels.shessian!(
     end
 end
 
-@kernel function kerh(y1, y2, @Const(f), @Const(itr), @Const(x), @Const(θ), @Const(adj1), @Const(adj2))
+@kernel function kerh(
+    y1,
+    y2,
+    @Const(f),
+    @Const(itr),
+    @Const(x),
+    @Const(θ),
+    @Const(adj1),
+    @Const(adj2)
+)
     I = @index(Global)
     @inbounds ExaModels.hrpass0(
         f(itr[I], ExaModels.SecondAdjointNodeSource(x), θ),
