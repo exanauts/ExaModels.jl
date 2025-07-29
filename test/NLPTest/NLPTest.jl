@@ -29,6 +29,9 @@ for backend in BACKENDS
     if "oneAPIBackend()" == string(backend)
         push!(EXCLUDE2, ("percival", backend))
     end
+    if "OpenCLBackend()" == string(backend)
+        push!(EXCLUDE2, ("percival", backend))
+    end
 end
 
 include("luksan.jl")
