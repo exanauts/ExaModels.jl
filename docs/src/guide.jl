@@ -86,8 +86,7 @@ println("Number of iterations: $(result.iter)")
 # ## Solutions
 # The solution values for variable `x` can be inquired by:
 sol = solution(result, x)
-# This will return the primal solution of the variable `x` as a vector. Dual solutions can be inquired similarly, by using the `multipliers` function. For example, if we want to inquire the dual solution of the constraints, we can do it as follows:
-duals = multipliers(result, m.constraints)
+# This will return the primal solution of the variable `x` as a vector. Dual solutions can be inquired similarly, by using the `multipliers` function. 
 
 
 
