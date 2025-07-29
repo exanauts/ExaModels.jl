@@ -21,10 +21,12 @@ using ExaModels
 # Now, all the functions that are necessary for creating model are imported to into `Main`.
 
 
+# ## ExaCore
 # An `ExaCore` object can be created simply by (Step 1):
 c = ExaCore()
 # This is where our optimziation model information will be progressively stored. This object is not yet an `NLPModel`, but it will essentially store all the necessary information.
 
+# ## Variables
 # Now, let's create the optimziation variables. From the problem definition, we can see that we will need $N$ scalar variables. We will choose $N=10$, and create the variable $x\in\mathbb{R}^{N}$ with the follwoing command:
 N = 10
 x = variable(c, N; start = (mod(i, 2) == 1 ? -1.2 : 1.0 for i = 1:N))
@@ -33,43 +35,43 @@ x = variable(c, N; start = (mod(i, 2) == 1 ? -1.2 : 1.0 for i = 1:N))
 # x = variable(c, N; start = (mod(i, 2) == 1 ? -1.2 : 1.0 for i = 1:N), lvar = 0.0, uvar = 10.0)
 # ```
 
+# ## Objective
 # The objective can be set as follows:
 objective(c, 100 * (x[i-1]^2 - x[i])^2 + (x[i-1] - 1)^2 for i = 2:N)
 # !!! note
 #     Note that the terms here are summed, without explicitly using `sum( ... )` syntax.
 
+# ## Constraints
 # The constraints can be set as follows:
 constraint(
     c,
     3x[i+1]^3 + 2 * x[i+2] - 5 + sin(x[i+1] - x[i+2])sin(x[i+1] + x[i+2]) + 4x[i+1] -
     x[i]exp(x[i] - x[i+1]) - 3 for i = 1:(N-2)
 )
-# !!! note
-#    Note that `ExaModels` always assume that the constraints are doubly-bounded inequalities. That is, the constraint above is treated as
-#    ```math
-#     g^\flat \leq \left[g^{(m)}(x; q_j)\right]_{j\in [J_m]} +\sum_{n\in [N_m]}\sum_{k\in [K_n]}h^{(n)}(x; s^{(n)}_{k}) \leq g^\sharp
-#    ```
-#    where `g^\flat` and `g^\sharp` are the lower and upper bounds of the constraint, respectively. In this case, both bounds are zero, i.e., `g^\flat = g^\sharp = 0`.
+# 
+# Note that `ExaModels` always assume that the constraints are doubly-bounded inequalities. That is, the constraint above is treated as
+# ```math
+#  g^\flat \leq \left[g^{(m)}(x; q_j)\right]_{j\in [J_m]} +\sum_{n\in [N_m]}\sum_{k\in [K_n]}h^{(n)}(x; s^{(n)}_{k}) \leq g^\sharp
+# ```
+# where `g^\flat` and `g^\sharp` are the lower and upper bounds of the constraint, respectively. In this case, both bounds are zero, i.e., `g^\flat = g^\sharp = 0`.
 #
 # You can use the keyword arguments `lcon` and `ucon` to specify the lower and upper bounds of the constraints, respectively. For example, if we wanted to set the lower bound of the constraint to -1 and the upper bound to 1, we could do it as follows:
-# ```julia
-# constraint(
-#     c,
-#     3x[i+1]^3 + 2 * x[i+2] - 5 + sin(x[i+1] - x[i+2])sin(x[i+1] + x[i+2]) + 4x[i+1] -
-#     x[i]exp(x[i] - x[i+1]) - 3 for i = 1:(N-2);
-#     lcon = -1.0, ucon = 1.0
-# )
-# ```
-# If you want to create a single-bounded constraint, you can set `lcon` to `-Inf` or `ucon` to `Inf`. For example, if we wanted to set the lower bound of the constraint to -1 and the upper bound to infinity, we could do it as follows:
-# ```julia
-# constraint(
-#     c,
-#     3x[i+1]^3 + 2 * x[i+2] - 5 + sin(x[i+1] - x[i+2])sin(x[i+1] + x[i+2]) + 4x[i+1] -
-#     x[i]exp(x[i] - x[i+1]) - 3 for i = 1:(N-2);
-#     lcon = -1.0, ucon = Inf
-# )
-# ```
+constraint(
+    c,
+    3x[i+1]^3 + 2 * x[i+2] - 5 + sin(x[i+1] - x[i+2])sin(x[i+1] + x[i+2]) + 4x[i+1] -
+    x[i]exp(x[i] - x[i+1]) - 3 for i = 1:(N-2);
+    lcon = -1.0, ucon = 1.0
+)
 
+# If you want to create a single-bounded constraint, you can set `lcon` to `-Inf` or `ucon` to `Inf`. For example, if we wanted to set the lower bound of the constraint to -1 and the upper bound to infinity, we could do it as follows:
+constraint(
+    c,
+    3x[i+1]^3 + 2 * x[i+2] - 5 + sin(x[i+1] - x[i+2])sin(x[i+1] + x[i+2]) + 4x[i+1] -
+    x[i]exp(x[i] - x[i+1]) - 3 for i = 1:(N-2);
+    lcon = -1.0, ucon = Inf
+)
+
+# ## ExaModel
 # Finally, we are ready to create an `ExaModel` from the data we have collected in `ExaCore`. Since `ExaCore` includes all the necessary information, we can do this simply by:
 m = ExaModel(c)
 
@@ -81,8 +83,12 @@ result = ipopt(m)
 println("Status: $(result.status)")
 println("Number of iterations: $(result.iter)")
 
+# ## Solutions
 # The solution values for variable `x` can be inquired by:
 sol = solution(result, x)
+# This will return the primal solution of the variable `x` as a vector. Dual solutions can be inquired similarly, by using the `multipliers` function. For example, if we want to inquire the dual solution of the constraints, we can do it as follows:
+duals = multipliers(result, m.constraints)
+
 
 
 # ExaModels provide several APIs similar to this:
