@@ -30,7 +30,7 @@ c = ExaCore()
 # Now, let's create the optimziation variables. From the problem definition, we can see that we will need $N$ scalar variables. We will choose $N=10$, and create the variable $x\in\mathbb{R}^{N}$ with the follwoing command:
 N = 10
 x = variable(c, N; start = (mod(i, 2) == 1 ? -1.2 : 1.0 for i = 1:N))
-# This creates the variable `x`, which we will be able to refer to when we create constraints/objective constraionts. Also, this modifies the information in the `ExaCore` object properly so that later an optimization model can be properly created with the necessary information. Observe that we have used the keyword argument `start` to specify the initial guess for the solution. The variable upper and lower bounds can be specified in a similar manner. For example, if we wanted to set the lower bound of the variable `x` to 0.0 and the upper bound to 10.0, we could do it as follows:
+# This creates the variable `x`, which we will be able to refer to when we create constraints/objective constraints. Also, this modifies the information in the `ExaCore` object properly so that later an optimization model can be properly created with the necessary information. Observe that we have used the keyword argument `start` to specify the initial guess for the solution. The variable upper and lower bounds can be specified in a similar manner. For example, if we wanted to set the lower bound of the variable `x` to 0.0 and the upper bound to 10.0, we could do it as follows:
 # ```julia
 # x = variable(c, N; start = (mod(i, 2) == 1 ? -1.2 : 1.0 for i = 1:N), lvar = 0.0, uvar = 10.0)
 # ```

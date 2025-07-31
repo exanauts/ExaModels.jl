@@ -75,11 +75,11 @@ Number of Iterations....: 6
 
                                    (scaled)                 (unscaled)
 Objective...............:   7.8692659500473017e-01    6.2324586324374636e+00
-Dual infeasibility......:   7.9746301767912855e-10    6.3159071000186987e-09
-Constraint violation....:   8.3542062156993779e-12    8.3542062156993779e-12
+Dual infeasibility......:   7.9746955363607132e-10    6.3159588647976857e-09
+Constraint violation....:   8.3546503049092280e-12    8.3546503049092280e-12
 Variable bound violation:   0.0000000000000000e+00    0.0000000000000000e+00
 Complementarity.........:   0.0000000000000000e+00    0.0000000000000000e+00
-Overall NLP error.......:   7.9746301767912855e-10    6.3159071000186987e-09
+Overall NLP error.......:   7.9746955363607132e-10    6.3159588647976857e-09
 
 
 Number of objective function evaluations             = 7
@@ -89,7 +89,7 @@ Number of inequality constraint evaluations          = 0
 Number of equality constraint Jacobian evaluations   = 7
 Number of inequality constraint Jacobian evaluations = 0
 Number of Lagrangian Hessian evaluations             = 6
-Total seconds in IPOPT                               = 0.288
+Total seconds in IPOPT                               = 0.545
 
 EXIT: Optimal Solution Found.
 Original objective: 6.232458632437464
@@ -123,12 +123,12 @@ iter    objective    inf_pr   inf_du lg(mu)  ||d||  lg(rg) alpha_du alpha_pr  ls
 Number of Iterations....: 6
 
                                    (scaled)                 (unscaled)
-Objective...............:   5.4592422674819974e-01    8.6474397516914845e+00
-Dual infeasibility......:   7.9051456515071309e-10    1.2521750711987297e-08
+Objective...............:   5.4592422674820063e-01    8.6474397516914987e+00
+Dual infeasibility......:   7.9051456536755353e-10    1.2521750715422049e-08
 Constraint violation....:   8.4190432403374871e-12    8.4190432403374871e-12
 Variable bound violation:   0.0000000000000000e+00    0.0000000000000000e+00
 Complementarity.........:   0.0000000000000000e+00    0.0000000000000000e+00
-Overall NLP error.......:   7.9051456515071309e-10    1.2521750711987297e-08
+Overall NLP error.......:   7.9051456536755353e-10    1.2521750715422049e-08
 
 
 Number of objective function evaluations             = 7
@@ -138,10 +138,10 @@ Number of inequality constraint evaluations          = 0
 Number of equality constraint Jacobian evaluations   = 7
 Number of inequality constraint Jacobian evaluations = 0
 Number of Lagrangian Hessian evaluations             = 6
-Total seconds in IPOPT                               = 0.002
+Total seconds in IPOPT                               = 0.003
 
 EXIT: Optimal Solution Found.
-Modified penalty objective: 8.647439751691484
+Modified penalty objective: 8.647439751691499
 </code></pre><p>Try a different offset parameter:</p><pre><code class="language-julia hljs">set_parameter!(c_param, θ, [200.0, 0.5])  # Change the offset in the objective
 result3 = ipopt(m_param)
 println(&quot;Modified offset objective: $(result3.objective)&quot;)</code></pre><pre><code class="nohighlight hljs">This is Ipopt version 3.14.17, running with linear solver MUMPS 5.8.0.
@@ -191,4 +191,4 @@ Total seconds in IPOPT                               = 0.002
 
 EXIT: Optimal Solution Found.
 Modified offset objective: 8.845162987294774
-</code></pre><hr/><p><em>This page was generated using <a href="https://github.com/fredrikekre/Literate.jl">Literate.jl</a>.</em></p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../gpu/">« Accelerations</a><a class="docs-footer-nextpage" href="../develop/">Developing Extensions »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.14.1 on <span class="colophon-date" title="Thursday 31 July 2025 08:11">Thursday 31 July 2025</span>. Using Julia version 1.9.4.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
+</code></pre><hr/><p><em>This page was generated using <a href="https://github.com/fredrikekre/Literate.jl">Literate.jl</a>.</em></p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../gpu/">« Accelerations</a><a class="docs-footer-nextpage" href="../develop/">Developing Extensions »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.14.1 on <span class="colophon-date" title="Thursday 31 July 2025 12:30">Thursday 31 July 2025</span>. Using Julia version 1.9.4.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
