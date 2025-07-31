@@ -445,12 +445,10 @@ function _exafy(i::R, var_to_idx, p) where {R<:Real}
 end
 
 function _exafy(e::MOI.ScalarNonlinearFunction, var_to_idx, p = ())
-    return op(e.head)((
-        begin
-            c, p = _exafy(e, var_to_idx, p)
-            c
-        end for e in e.args
-    )...), p
+    return op(e.head)((begin
+        c, p = _exafy(e, var_to_idx, p)
+        c
+    end for e in e.args)...), p
 end
 
 function _exafy(e::MOI.ScalarAffineFunction{T}, var_to_idx, p = ()) where {T}
