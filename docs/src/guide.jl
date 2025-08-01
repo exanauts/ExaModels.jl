@@ -60,7 +60,8 @@ constraint(
     c,
     3x[i+1]^3 + 2 * x[i+2] - 5 + sin(x[i+1] - x[i+2])sin(x[i+1] + x[i+2]) + 4x[i+1] -
     x[i]exp(x[i] - x[i+1]) - 3 for i = 1:(N-2);
-    lcon = -1.0, ucon = 1.0
+    lcon = -1.0,
+    ucon = 1.0,
 )
 
 # If you want to create a single-bounded constraint, you can set `lcon` to `-Inf` or `ucon` to `Inf`. For example, if we wanted to set the lower bound of the constraint to -1 and the upper bound to infinity, we could do it as follows:
@@ -68,7 +69,8 @@ constraint(
     c,
     3x[i+1]^3 + 2 * x[i+2] - 5 + sin(x[i+1] - x[i+2])sin(x[i+1] + x[i+2]) + 4x[i+1] -
     x[i]exp(x[i] - x[i+1]) - 3 for i = 1:(N-2);
-    lcon = -1.0, ucon = Inf
+    lcon = -1.0,
+    ucon = Inf,
 )
 
 # ## ExaModel
