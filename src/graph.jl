@@ -117,6 +117,10 @@ end
 @inline Base.getindex(n::ParSource, i) = ParIndexed(n, i)
 @inline Base.indexed_iterate(n::ParSource, idx, start = 1) = (ParIndexed(n, idx), idx + 1)
 
+@inline Base.getproperty(v::ParIndexed{I, n}, s::Symbol) where {I, n} = ParIndexed(v, s)
+@inline Base.getindex(v::ParIndexed{I, n}, i) where {I, n} = ParIndexed(v, i)
+@inline Base.indexed_iterate(v::ParIndexed{I, n}, idx, start = 1) where {I, n} = (ParIndexed(v, idx), idx + 1)
+
 
 @inline Base.getindex(n::VarSource, i) = Var(i)
 @inline Base.getindex(::ParameterSource, i) = ParameterNode(i)
