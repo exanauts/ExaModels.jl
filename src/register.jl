@@ -36,7 +36,8 @@ macro register_univariate(f, df, ddf)
             @inline $f(t::T) where {T<:ExaModels.AbstractSecondAdjointNode} =
                 ExaModels.SecondAdjointNode1($f, $f(t.x), $df(t.x), $ddf(t.x), t)
 
-            @inline (n::ExaModels.Node1{typeof($f),I})(i, x, θ) where {I} = $f(n.inner(i, x, θ))
+            @inline (n::ExaModels.Node1{typeof($f),I})(i, x, θ) where {I} =
+                $f(n.inner(i, x, θ))
         end,
     )
 end
@@ -58,22 +59,22 @@ Register a bivariate function `f` to `ExaModels`, so that it can be used within 
 ```jldoctest
 julia> using ExaModels
 
-julia> relu23(x) = (x > 0 || y > 0) ? (x + y)^3 : zero(x)
+julia> relu23(x,y) = (x > 0 || y > 0) ? (x + y)^3 : zero(x)
 relu23 (generic function with 1 method)
 
-julia> drelu231(x) = (x > 0 || y > 0) ? 3 * (x + y)^2 : zero(x)
+julia> drelu231(x,y) = (x > 0 || y > 0) ? 3 * (x + y)^2 : zero(x)
 drelu231 (generic function with 1 method)
 
-julia> drelu232(x) = (x > 0 || y > 0) ? 3 * (x + y)^2  : zero(x)
+julia> drelu232(x,y) = (x > 0 || y > 0) ? 3 * (x + y)^2  : zero(x)
 drelu232 (generic function with 1 method)
 
-julia> ddrelu2311(x) = (x > 0 || y > 0) ? 6 * (x + y) : zero(x)
+julia> ddrelu2311(x,y) = (x > 0 || y > 0) ? 6 * (x + y) : zero(x)
 ddrelu2311 (generic function with 1 method)
 
-julia> ddrelu2312(x) = (x > 0 || y > 0) ? 6 * (x + y) : zero(x)
+julia> ddrelu2312(x,y) = (x > 0 || y > 0) ? 6 * (x + y) : zero(x)
 ddrelu2312 (generic function with 1 method)
 
-julia> ddrelu2322(x) = (x > 0 || y > 0) ? 6 * (x + y) : zero(x)
+julia> ddrelu2322(x,y) = (x > 0 || y > 0) ? 6 * (x + y) : zero(x)
 ddrelu2322 (generic function with 1 method)
 
 julia> @register_bivariate(relu23, drelu231, drelu232, ddrelu2311, ddrelu2312, ddrelu2322)
@@ -121,7 +122,10 @@ macro register_bivariate(f, df1, df2, ddf11, ddf12, ddf22)
             @inline function $f(
                 d1::D1,
                 d2::D2,
-            ) where {D1<:ExaModels.AbstractAdjointNode,D2<:Union{Real,ExaModels.ParameterNode}}
+            ) where {
+                D1<:ExaModels.AbstractAdjointNode,
+                D2<:Union{Real,ExaModels.ParameterNode},
+            }
 
                 x1 = d1.x
                 x2 = d2
@@ -131,7 +135,10 @@ macro register_bivariate(f, df1, df2, ddf11, ddf12, ddf22)
             @inline function $f(
                 d1::D1,
                 d2::D2,
-            ) where {D1<:Union{Real,ExaModels.ParameterNode},D2<:ExaModels.AbstractAdjointNode}
+            ) where {
+                D1<:Union{Real,ExaModels.ParameterNode},
+                D2<:ExaModels.AbstractAdjointNode,
+            }
 
                 x1 = d1
                 x2 = d2.x
@@ -163,7 +170,10 @@ macro register_bivariate(f, df1, df2, ddf11, ddf12, ddf22)
             @inline function $f(
                 t1::T1,
                 t2::T2,
-            ) where {T1<:ExaModels.AbstractSecondAdjointNode,T2<:Union{Real,ExaModels.ParameterNode}}
+            ) where {
+                T1<:ExaModels.AbstractSecondAdjointNode,
+                T2<:Union{Real,ExaModels.ParameterNode},
+            }
 
                 x1 = t1.x
                 x2 = t2
@@ -178,7 +188,10 @@ macro register_bivariate(f, df1, df2, ddf11, ddf12, ddf22)
             @inline function $f(
                 t1::T1,
                 t2::T2,
-            ) where {T1<:Union{Real,ExaModels.ParameterNode},T2<:ExaModels.AbstractSecondAdjointNode}
+            ) where {
+                T1<:Union{Real,ExaModels.ParameterNode},
+                T2<:ExaModels.AbstractSecondAdjointNode,
+            }
 
                 x1 = t1
                 x2 = t2.x
