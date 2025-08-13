@@ -115,7 +115,7 @@ end
 
 @inline Base.getproperty(n::ParSource, s::Symbol) = ParIndexed(n, s)
 @inline Base.getindex(n::ParSource, i) = ParIndexed(n, i)
-@inline Base.indexed_iterate(n::ParSource, idx, start = 1) = (ParIndexed(n, idx), idx + 1)
+@inline Base.indexed_iterate(n::P, idx, start = 1) where P <: Union{ParSource, ParIndexed} = (ParIndexed(n, idx), idx + 1)
 
 
 @inline Base.getindex(n::VarSource, i) = Var(i)
