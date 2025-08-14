@@ -8,12 +8,12 @@ using JuMP, PowerModels, MadNLP, Percival
 import ..BACKENDS
 
 const NLP_TEST_ARGUMENTS = [
+    ("luksan_struct", 3),
+    ("luksan_struct", 20),
     ("luksan_vlcek", 3),
     ("luksan_vlcek", 20),
     ("ac_power", "pglib_opf_case3_lmbd.m"),
     ("ac_power", "pglib_opf_case14_ieee.m"),
-    ("struct_ac_power", "pglib_opf_case3_lmbd.m"),
-    ("struct_ac_power", "pglib_opf_case14_ieee.m"),
 ]
 
 const SOLVERS = [
@@ -36,8 +36,8 @@ end
 
 include("luksan.jl")
 include("power.jl")
+include("luksan_struct.jl")
 include("parameter_test.jl")
-include("power_struct.jl")
 
 function test_nlp(m1, m2; full = false)
     @testset "NLP meta tests" begin
