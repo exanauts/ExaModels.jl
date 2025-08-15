@@ -117,6 +117,10 @@ end
 @inline Base.getindex(n::ParSource, i) = ParIndexed(n, i)
 @inline Base.indexed_iterate(n::P, idx, start = 1) where P <: Union{ParSource, ParIndexed} = (ParIndexed(n, idx), idx + 1)
 
+@inline Base.getproperty(v::ParIndexed{I, n}, s::Symbol) where {I, n} = ParIndexed(v, s)
+@inline Base.getindex(v::ParIndexed{I, n}, i) where {I, n} = ParIndexed(v, i)
+@inline Base.indexed_iterate(v::ParIndexed{I, n}, idx, start = 1) where {I, n} = (ParIndexed(v, idx), idx + 1)
+
 
 @inline Base.getindex(n::VarSource, i) = Var(i)
 @inline Base.getindex(::ParameterSource, i) = ParameterNode(i)
@@ -140,7 +144,7 @@ struct Identity end
 @inline (v::ParameterNode{I})(::Identity, x, ::Nothing) where {I<:AbstractNode} = NaN
 
 @inline (v::ParSource)(i, x, θ) = i
-@inline (v::ParIndexed{I,n})(i, x, θ) where {I,n} = @inbounds getfield(v.inner(i, x, θ), n)
+@inline (v::ParIndexed{I,n})(i, x, θ) where {I,n} = @inbounds getfield(getfield(v, :inner)(i, x, θ), n)
 
 (v::ParIndexed)(i::Identity, x, θ) = NaN # despecialized
 (v::ParSource)(i::Identity, x, θ) = NaN # despecialized
