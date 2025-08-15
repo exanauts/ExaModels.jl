@@ -183,6 +183,9 @@ end
 function test_function_evaluations(model1, core1, model2)
     x_test = ExaModels.convert_array(randn(core1.nvar), core1.backend)
 
+    model1 = WrapperNLPModel(model1)
+    model2 = WrapperNLPModel(model2)
+
     obj1 = NLPModels.obj(model1, x_test)
     obj2 = NLPModels.obj(model2, x_test)
     @test obj1 ≈ obj2 atol=1e-12
