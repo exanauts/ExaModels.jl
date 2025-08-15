@@ -18,6 +18,7 @@ end
 
 if haskey(ENV, "EXAMODELS_TEST_ONEAPI")
     using oneAPI
+    empty!(BACKENDS)  # Clear the BACKENDS array to avoid conflicts
     push!(BACKENDS, oneAPIBackend())
     @info "including oneAPI"
 else
