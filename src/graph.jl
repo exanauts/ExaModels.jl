@@ -92,16 +92,6 @@ struct Node1{F,I} <: AbstractNode
     inner::I
 end
 
-import Base.string, Base.show
-
-Base.string(n::Node1{F,I}) where {F,I} = "($(string_f(F)) $(string(n.inner)))"
-Base.show(io::IO, n::Node1{F,I}) where {F,I} = print(io, string(n))
-
-@inline string_f(::Type{F}) where F = begin
-    s = string(F)
-    startswith(s, "typeof(") ? s[length("typeof(") + 1:end-1] : s
-end
-
 """
     Node2{F, I1, I2}
 
@@ -115,10 +105,6 @@ struct Node2{F,I1,I2} <: AbstractNode
     inner1::I1
     inner2::I2
 end
-
-# accounts for some level of precedence
-Base.string(n::Node2{F,I1,I2}) where {F,I1,I2} = "($(string(n.inner1))) $(string_f(F)) ($(string(n.inner2)))"
-Base.show(io::IO, n::Node2{F,I1,I2}) where {F,I1,I2} = print(io, string(n))
 
 struct FirstFixed{F}
     inner::F
