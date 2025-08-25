@@ -1,4 +1,4 @@
-# # Accelerations
+# # CPU and GPU acceleration
 # One of the key features of ExaModels.jl is being able to evaluate derivatives either on multi-threaded CPUs or GPU accelerators. Currently, GPU acceleration is only tested for NVIDIA GPUs. If you'd like to use multi-threaded CPU acceleration, start julia with
 # ```
 # $ julia -t 4 # using 4 threads
@@ -78,3 +78,13 @@ end
 # m = cuda_luksan_vlcek_model(10)
 # madnlp(m)
 # ```
+# Since ExaModels builds on [KernelAbstractions.jl](https://github.com/JuliaGPU/KernelAbstractions.jl),
+# it can in principle target multiple hardware backends.
+# The following backends are provided by the JuliaGPU ecosystem:
+#
+# - `CPU()` for multi-threaded CPU execution
+# - `CUDABackend()` for NVIDIA GPUs ([CUDA.jl](https://github.com/JuliaGPU/CUDA.jl))
+# - `ROCBackend()` for AMD GPUs ([AMDGPU.jl](https://github.com/JuliaGPU/AMDGPU.jl))
+# - `OneAPIBackend()` for Intel GPUs ([oneAPI.jl](https://github.com/JuliaGPU/oneAPI.jl))
+# - `MetalBackend()` for Apple GPUs ([Metal.jl](https://github.com/JuliaGPU/Metal.jl))
+# - `OpenCLBackend()` for generic OpenCL devices ([OpenCL.jl](https://github.com/JuliaGPU/OpenCL.jl))
