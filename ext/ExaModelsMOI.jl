@@ -120,7 +120,11 @@ function fill_variable_start!(moim, x0, param_vis)
         vi ∈ param_vis && continue
         i += 1
         var_to_idx[vi] = i
-        start = MOI.get(moim, MOI.VariablePrimalStart(), vi)
+        start = if MOI.supports(moim, MOI.VariablePrimalStart(), typeof(vi))
+            MOI.get(moim, MOI.VariablePrimalStart(), vi)
+        else
+            nothing
+        end
         isnothing(start) && continue
         x0[i] = start
     end
@@ -310,10 +314,14 @@ function exafy_con(
         func = MOI.get(moim, MOI.ConstraintFunction(), ci)
         set = MOI.get(moim, MOI.ConstraintSet(), ci)
         con_to_idx[ci] = offset + i
-        if MOI.supports(moim, MOI.ConstraintPrimalStart(), typeof(ci))
-            start = MOI.get(moim, MOI.ConstraintPrimalStart(), ci)
-            _exafy_con_update_start(ci, start, y0, con_to_idx)
+        start = if MOI.supports(
+            moim, MOI.ConstraintPrimalStart(), typeof(ci)
+        )
+            MOI.get(moim, MOI.ConstraintPrimalStart(), ci)
+        else
+            nothing
         end
+        _exafy_con_update_start(ci, start, y0, con_to_idx)
         _exafy_con_update_vector(ci, set, lcon, ucon, con_to_idx)
         bin = _exafy_con(ci, func, bin, var_to_idx, con_to_idx)
     end
