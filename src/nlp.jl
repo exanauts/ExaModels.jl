@@ -136,6 +136,9 @@ Base.@kwdef mutable struct ExaCore{T,VT<:AbstractVector{T},B}
     backend::B = nothing
     obj::AbstractObjective = ObjectiveNull()
     con::AbstractConstraint = ConstraintNull()
+    # for use with testing. excludes vars / cons created via expression()
+    fake_var_inds::Set{Int} = Set{Int}()
+    fake_con_inds::Set{Int} = Set{Int}()
     nvar::Int = 0
     npar::Int = 0
     ncon::Int = 0
@@ -194,6 +197,9 @@ struct ExaModel{T,VT,E,O,C} <: NLPModels.AbstractNLPModel{T,VT}
     meta::NLPModels.NLPModelMeta{T,VT}
     counters::NLPModels.Counters
     ext::E
+    # for use with testing. excludes vars / cons created via expression()
+    fake_var_inds::Set{Int}
+    fake_con_inds::Set{Int}
 end
 
 function Base.show(io::IO, c::ExaModel{T,VT}) where {T,VT}
@@ -260,6 +266,8 @@ function ExaModel(c::C; prod = nothing) where {C<:ExaCore}
         ),
         NLPModels.Counters(),
         nothing,
+        c.fake_var_inds,
+        c.fake_con_inds,
     )
 end
 
@@ -664,6 +672,61 @@ function _constraint!(c, f, pars)
     c.con = ConstraintAug(c.con, f, convert_array(pars, c.backend), oa)
 end
 
+"""
+    expression(core, generator)
+
+Adds epressions specified by a `generator` to `core`, and returns an `Expression` object.
+
+## Example
+```jldoctest
+julia> using ExaModels
+
+julia> c = ExaCore();
+
+julia> x = variable(c, 10);
+
+julia> e = expression(c, x[i] for i=1:9)
+Expression
+    e ≤ [g(x,θ,p)]_{p ∈ P}
+
+  where |P| = 9
+```
+"""
+function expression(
+    c::C,
+    gen::Base.Generator,
+    ns...,
+) where {T,C<:ExaCore{T}}
+    old_nvar = c.nvar
+    v = variable(c, ns...)
+    union!(c.fake_var_inds, Set(old_nvar+1:c.nvar))
+    function f(d)
+        i = d[1]
+        x = d[2]
+        return gen.f(x) - v[i]
+    end
+    old_ncon = c.ncon
+    constraint(c, Base.Generator(f, enumerate(gen.iter)))
+    union!(c.fake_con_inds, Set(old_ncon+1:c.ncon))
+    return v
+end
+
+"""
+    expression(core, expr [, pars])
+
+Adds expressions specified by a `expr` and `pars` to `core`, and returns an `Expression` object.
+"""
+function expression(
+    c::C,
+    expr::N,
+    pars = 1:1,
+    ns...,
+) where {T,C<:ExaCore{T},N<:AbstractNode}
+
+    f = _simdfunction(expr, c.nexp, c.nne1, c.nne2)
+
+    _expression(c, f, pars, ns)
+end
 
 function jac_structure!(m::ExaModel, rows::AbstractVector, cols::AbstractVector)
     _jac_structure!(m.cons, rows, cols)
