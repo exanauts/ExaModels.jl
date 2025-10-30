@@ -1,11 +1,13 @@
 abstract type AbstractVariable end
 abstract type AbstractParameter end
 abstract type AbstractConstraint end
+abstract type AbstractExpression end
 abstract type AbstractObjective end
 
 struct VariableNull <: AbstractVariable end
 struct ParameterNull <: AbstractParameter end
 struct ObjectiveNull <: AbstractObjective end
+struct ExpressionNull <: AbstractExpression end
 struct ConstraintNull <: AbstractConstraint end
 
 struct Variable{S,O} <: AbstractVariable
@@ -52,6 +54,26 @@ Objective
 )
 
 
+struct Expression{R,F,I,O,S} <: AbstractExpression
+    inner::R
+    f::F
+    itr::I
+    offset::O
+    size::S
+end
+Base.show(io::IO, v::Expression) = print(
+    io,
+    """
+Expression
+
+  s.t. (...)
+       g♭ ≤ [g(x,θ,p)]_{p ∈ P} ≤ g♯
+
+  where |P| = $(length(v.itr))
+""",
+)
+
+
 struct Constraint{R,F,I,O} <: AbstractConstraint
     inner::R
     f::F
@@ -70,6 +92,12 @@ Constraint
 """,
 )
 
+struct ExpressionAug{R,F,I} <: AbstractConstraint
+    inner::R
+    f::F
+    itr::I
+    oa::Int
+end
 
 struct ConstraintAug{R,F,I} <: AbstractConstraint
     inner::R
@@ -132,15 +160,16 @@ An ExaCore
   number of constraint patterns: ... 0
 ```
 """
-Base.@kwdef mutable struct ExaCore{T,VT<:AbstractVector{T},B}
+Base.@kwdef mutable struct ExaCore{T,VT<:AbstractVector{T},VTI<:AbstractVector{UInt},B}
     backend::B = nothing
     obj::AbstractObjective = ObjectiveNull()
     con::AbstractConstraint = ConstraintNull()
-    # for use with testing. excludes vars / cons created via expression()
-    fake_var_inds::Set{Int} = Set{Int}()
-    fake_con_inds::Set{Int} = Set{Int}()
+    exp::AbstractExpression = ExpressionNull()
+    varis::Vector{UInt} = UInt[]
+    isexp::VTI = convert_array(zeros(UInt, 0), backend)
     nvar::Int = 0
     npar::Int = 0
+    nexp::Int = 0
     ncon::Int = 0
     nconaug::Int = 0
     nobj::Int = 0
@@ -174,6 +203,7 @@ ExaCore(::Type{T}; backend = nothing, kwargs...) where {T<:AbstractFloat} =
 depth(a) = depth(a.inner) + 1
 depth(a::ObjectiveNull) = 0
 depth(a::ConstraintNull) = 0
+depth(a::ExpressionNull) = 0
 
 Base.show(io::IO, c::ExaCore{T,VT,B}) where {T,VT,B} = print(
     io,
@@ -190,16 +220,17 @@ An ExaCore
 )
 
 
-struct ExaModel{T,VT,E,O,C} <: NLPModels.AbstractNLPModel{T,VT}
+struct ExaModel{T,VT,VTI,E,O,C,EX} <: NLPModels.AbstractNLPModel{T,VT}
     objs::O
     cons::C
+    exps::EX
+    varis::Vector{UInt}
+    isexp::VTI
+    nexp::Int
     θ::VT
     meta::NLPModels.NLPModelMeta{T,VT}
     counters::NLPModels.Counters
     ext::E
-    # for use with testing. excludes vars / cons created via expression()
-    fake_var_inds::Set{Int}
-    fake_con_inds::Set{Int}
 end
 
 function Base.show(io::IO, c::ExaModel{T,VT}) where {T,VT}
@@ -250,6 +281,10 @@ function ExaModel(c::C; prod = nothing) where {C<:ExaCore}
     return ExaModel(
         c.obj,
         c.con,
+        c.exp,
+        c.varis,
+        c.isexp,
+        c.nexp,
         c.θ,
         NLPModels.NLPModelMeta(
             c.nvar,
@@ -266,8 +301,6 @@ function ExaModel(c::C; prod = nothing) where {C<:ExaCore}
         ),
         NLPModels.Counters(),
         nothing,
-        c.fake_var_inds,
-        c.fake_con_inds,
     )
 end
 
@@ -279,6 +312,16 @@ end
     @assert(length(is) == length(v.size), "Variable index dimension error")
     _bound_check(v.size, is)
     Var(v.offset + idxx(is .- (_start.(v.size) .- 1), _length.(v.size)))
+end
+
+@inline function Base.getindex(e::E, i) where {E<:Expression}
+    _bound_check(e.size, i)
+    Var(i + (e.offset - _start(e.size[1]) + 1))
+end
+@inline function Base.getindex(e::E, is...) where {E<:Expression}
+    @assert(length(is) == length(e.size), "Expression index dimension error. Got $(length(is)) dimensions, expected $(length(e.size)).")
+    _bound_check(e.size, is)
+    Var(e.offset + idxx(is .- (_start.(e.size) .- 1), _length.(e.size)))
 end
 
 @inline function Base.getindex(p::P, i) where {P<:Parameter}
@@ -308,7 +351,6 @@ end
 function __bound_check(a::UnitRange{Int}, b::I) where {I<:Integer}
     @assert(b in a, "Variable index bound error")
 end
-
 
 function append!(backend, a, b::Base.Generator, lb)
     b = _adapt_gen(b)
@@ -386,17 +428,16 @@ function variable(
     lvar = T(-Inf),
     uvar = T(Inf),
 ) where {T,C<:ExaCore{T}}
-
-
     o = c.nvar
     len = total(ns)
     c.nvar += len
+    c.varis = vcat(c.varis, (o+1):c.nvar)
+    append!(c.backend, c.isexp, (typemax(UInt) for _ in 1:len), len)
     c.x0 = append!(c.backend, c.x0, start, total(ns))
     c.lvar = append!(c.backend, c.lvar, lvar, total(ns))
     c.uvar = append!(c.backend, c.uvar, uvar, total(ns))
 
     return Variable(ns, len, o)
-
 end
 
 """
@@ -672,6 +713,7 @@ function _constraint!(c, f, pars)
     c.con = ConstraintAug(c.con, f, convert_array(pars, c.backend), oa)
 end
 
+
 """
     expression(core, generator)
 
@@ -697,35 +739,34 @@ function expression(
     gen::Base.Generator,
     ns...,
 ) where {T,C<:ExaCore{T}}
-    old_nvar = c.nvar
-    v = variable(c, ns...)
-    union!(c.fake_var_inds, Set(old_nvar+1:c.nvar))
-    function f(d)
-        i = d[1]
-        x = d[2]
-        return gen.f(x) - v[i]
-    end
-    old_ncon = c.ncon
-    constraint(c, Base.Generator(f, enumerate(gen.iter)))
-    union!(c.fake_con_inds, Set(old_ncon+1:c.ncon))
-    return v
-end
 
-"""
-    expression(core, expr [, pars])
-
-Adds expressions specified by a `expr` and `pars` to `core`, and returns an `Expression` object.
-"""
-function expression(
-    c::C,
-    expr::N,
-    pars = 1:1,
-    ns...,
-) where {T,C<:ExaCore{T},N<:AbstractNode}
-
-    f = _simdfunction(expr, c.nexp, c.nne1, c.nne2)
+    gen = _adapt_gen(gen)
+    f = SIMDFunction(gen, c.nvar, c.nnzj, c.nnzh)
+    pars = gen.iter
 
     _expression(c, f, pars, ns)
+end
+
+function _expression(c, f, pars, ns)
+    nitr = length(pars)
+    len = total(ns)
+    o = c.nvar
+    c.nvar += len
+    append!(c.backend, c.isexp, (1+c.nexp):(len+c.nexp), len)
+    c.nexp += len
+    start = convert_array(zeros(len), c.backend)
+    lvar = convert_array(zeros(len), c.backend)
+    uvar = convert_array(zeros(len), c.backend)
+    # TODO: this fails if lvar / uvar infinite and f is trig (for example)
+    #@simd for i in 1:nitr
+    #    start[i] = f.f(pars[i], c.x0, c.θ)
+    #    lvar[i] = f.f(pars[i], c.lvar, c.θ)
+    #    uvar[i] = f.f(pars[i], c.uvar, c.θ)
+    #end
+    c.x0 = append!(c.backend, c.x0, start, len)
+    c.lvar = append!(c.backend, c.lvar, lvar, len)
+    c.uvar = append!(c.backend, c.uvar, uvar, len)
+    c.exp = Expression(c.exp, f, convert_array(pars, c.backend), o, ns)
 end
 
 function jac_structure!(m::ExaModel, rows::AbstractVector, cols::AbstractVector)
@@ -757,7 +798,17 @@ function _con_hess_structure!(cons, rows, cols)
     shessian!(rows, cols, cons, nothing, nothing, NaN, NaN)
 end
 
+expr!(m, x, θ) = _expr!(m.exps, m, x, θ)
+function _expr!(expr, m, x, θ)
+    _expr!(expr.inner, m, x, θ)
+    @simd for i in eachindex(expr.itr)
+        x[offset0(expr, i)] = expr.f(expr.itr[i], x, θ)
+    end
+end
+_expr!(expr::ExpressionNull, m, x, θ) = nothing
+
 function obj(m::ExaModel, x::AbstractVector)
+    expr!(m, x, m.θ)
     return _obj(m.objs, x, m.θ)
 end
 
@@ -767,6 +818,7 @@ _obj(objs, x, θ) =
 _obj(objs::ObjectiveNull, x, θ) = zero(eltype(x))
 
 function cons_nln!(m::ExaModel, x::AbstractVector, g::AbstractVector)
+    expr!(m, x, m.θ)
     fill!(g, zero(eltype(g)))
     _cons_nln!(m.cons, x, m.θ, g)
     return g
@@ -780,9 +832,13 @@ function _cons_nln!(cons, x, θ, g)
 end
 _cons_nln!(cons::ConstraintNull, x, θ, g) = nothing
 
-
-
 function grad!(m::ExaModel, x::AbstractVector, f::AbstractVector)
+    expr!(m, x, m.θ)
+    egrad = zeros(m.nexp, length(x))
+    @info typeof(egrad)
+    @info Base.size(egrad)
+    @info Base.size(egrad[i+o])
+    egrad!(egrad, m, x)
     fill!(f, zero(eltype(f)))
     _grad!(m.objs, x, m.θ, f)
     return f
@@ -795,6 +851,7 @@ end
 _grad!(objs::ObjectiveNull, x, θ, f) = nothing
 
 function jac_coord!(m::ExaModel, x::AbstractVector, jac::AbstractVector)
+    expr!(m, x, m.θ)
     fill!(jac, zero(eltype(jac)))
     _jac_coord!(m.cons, x, m.θ, jac)
     return jac
@@ -807,6 +864,7 @@ function _jac_coord!(cons, x, θ, jac)
 end
 
 function jprod_nln!(m::ExaModel, x::AbstractVector, v::AbstractVector, Jv::AbstractVector)
+    expr!(m, x, m.θ)
     fill!(Jv, zero(eltype(Jv)))
     _jprod_nln!(m.cons, x, m.θ, v, Jv)
     return Jv
@@ -819,6 +877,7 @@ function _jprod_nln!(cons, x, θ, v, Jv)
 end
 
 function jtprod_nln!(m::ExaModel, x::AbstractVector, v::AbstractVector, Jtv::AbstractVector)
+    expr!(m, x, m.θ)
     fill!(Jtv, zero(eltype(Jtv)))
     _jtprod_nln!(m.cons, x, m.θ, v, Jtv)
     return Jtv
@@ -836,6 +895,7 @@ function hess_coord!(
     hess::AbstractVector;
     obj_weight = one(eltype(x)),
 )
+    expr!(m, x, m.θ)
     fill!(hess, zero(eltype(hess)))
     _obj_hess_coord!(m.objs, x, m.θ, hess, obj_weight)
     return hess
@@ -848,6 +908,7 @@ function hess_coord!(
     hess::AbstractVector;
     obj_weight = one(eltype(x)),
 )
+    expr!(m, x, m.θ)
     fill!(hess, zero(eltype(hess)))
     _obj_hess_coord!(m.objs, x, m.θ, hess, obj_weight)
     _con_hess_coord!(m.cons, x, m.θ, y, hess, obj_weight)
@@ -873,6 +934,7 @@ function hprod!(
     Hv::AbstractVector;
     obj_weight = one(eltype(x)),
 )
+    expr!(m, x, m.θ)
     fill!(Hv, zero(eltype(Hv)))
     _obj_hprod!(m.objs, x, m.θ, v, Hv, obj_weight)
     return Hv
@@ -886,6 +948,7 @@ function hprod!(
     Hv::AbstractVector;
     obj_weight = one(eltype(x)),
 )
+    expr!(m, x, m.θ)
     fill!(Hv, zero(eltype(Hv)))
     _obj_hprod!(m.objs, x, m.θ, v, Hv, obj_weight)
     _con_hprod!(m.cons, x, m.θ, y, v, Hv, obj_weight)

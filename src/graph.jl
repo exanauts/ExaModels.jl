@@ -53,7 +53,6 @@ struct Var{I} <: AbstractNode
     i::I
 end
 
-
 struct ParameterSource <: AbstractNode end
 struct ParameterNode{I} <: AbstractNode
     i::I

@@ -1,3 +1,22 @@
+function egrad!(egrad, m, x)
+    _egrad!(m.isexp, egrad, m.exps, x, m.θ)
+end
+function _egrad!(isexp, egrad, exp, x, θ)
+    if typeof(exp) <: ExpressionNull
+        return 0
+    end
+    o = _egrad!(isexp, egrad, exp.inner, x, θ)
+    @simd for i in eachindex(exp.itr)
+        graph = exp.f.f(exp.itr[i], AdjointNodeSource(x), θ)
+        @info typeof(egrad)
+        @info Base.size(egrad)
+        @info Base.size(egrad[i+o])
+        drpass(isexp, egrad, graph, egrad[i+o], one(eltype(x)))
+        exit()
+    end
+    return o + total(exp.ns)
+end
+
 """
     drpass(d::D, y, adj)
 
@@ -8,20 +27,24 @@ Performs dense gradient evaluation via the reverse pass on the computation (sub)
 - `y`: result vector
 - `adj`: adjoint propagated up to the current node
 """
-@inline function drpass(d::D, y, adj) where {D<:AdjointNull}
+@inline function drpass(isexp, egrad, d::D, y, adj) where {D<:AdjointNull}
     nothing
 end
-@inline function drpass(d::D, y, adj) where {D<:AdjointNode1}
-    offset = drpass(d.inner, y, adj * d.y)
+@inline function drpass(isexp, egrad, d::D, y, adj) where {D<:AdjointNode1}
+    offset = drpass(isexp, egrad, d.inner, y, adj * d.y)
     nothing
 end
-@inline function drpass(d::D, y, adj) where {D<:AdjointNode2}
-    offset = drpass(d.inner1, y, adj * d.y1)
-    offset = drpass(d.inner2, y, adj * d.y2)
+@inline function drpass(isexp, egrad, d::D, y, adj) where {D<:AdjointNode2}
+    offset = drpass(isexp, egrad, d.inner1, y, adj * d.y1)
+    offset = drpass(isexp, egrad, d.inner2, y, adj * d.y2)
     nothing
 end
-@inline function drpass(d::D, y, adj) where {D<:AdjointNodeVar}
-    @inbounds y[d.i] += adj
+@inline function drpass(isexp, egrad, d::D, y, adj) where {D<:AdjointNodeVar}
+    if isexp[d.i] == typemax(UInt)
+        @inbounds y[d.i] += adj
+    else
+        @inbounds y += egrad[isexp[d.i]]
+    end
     nothing
 end
 
@@ -42,9 +65,9 @@ function gradient!(y, f, x, θ, adj)
     end
     return y
 end
-function gradient!(y, f, x, θ, p, adj)
+function gradient!(isexp, egrad, y, f, x, θ, p, adj)
     graph = f(p, AdjointNodeSource(x), θ)
-    drpass(graph, y, adj)
+    drpass(isexp, egrad, graph, y, adj)
     return y
 end
 
