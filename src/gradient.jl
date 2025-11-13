@@ -1,20 +1,16 @@
-function egrad!(egrad, m, x)
-    _egrad!(m.isexp, egrad, m.exps, x, m.θ)
+@inline function egrad!(m, x)
+    _egrad!(m.isexp, m.egrad, m.exps, x, m.θ)
 end
-function _egrad!(isexp, egrad, exp, x, θ)
+@inline @views function _egrad!(isexp, egrad, exp, x, θ)
     if typeof(exp) <: ExpressionNull
         return 0
     end
     o = _egrad!(isexp, egrad, exp.inner, x, θ)
     @simd for i in eachindex(exp.itr)
-        graph = exp.f.f(exp.itr[i], AdjointNodeSource(x), θ)
-        @info typeof(egrad)
-        @info Base.size(egrad)
-        @info Base.size(egrad[i+o])
-        drpass(isexp, egrad, graph, egrad[i+o], one(eltype(x)))
-        exit()
+        graph = exp.f.f(exp.itr[i], AdjointNodeSource(x, isexp), θ)
+        drpass(isexp, egrad, graph, egrad[:,i+o], one(eltype(x)))
     end
-    return o + total(exp.ns)
+    return o + total(exp.size)
 end
 
 """
@@ -40,11 +36,11 @@ end
     nothing
 end
 @inline function drpass(isexp, egrad, d::D, y, adj) where {D<:AdjointNodeVar}
-    if isexp[d.i] == typemax(UInt)
-        @inbounds y[d.i] += adj
-    else
-        @inbounds y += egrad[isexp[d.i]]
-    end
+    @inbounds y[d.i] += adj
+    nothing
+end
+@inline @views function drpass(isexp, egrad, d::D, y, adj) where {D<:AdjointNodeExpr}
+    @inbounds y .+= adj .* egrad[:,isexp[d.i]]
     nothing
 end
 
@@ -59,14 +55,14 @@ Performs dense gradient evalution
 - `x`: variable vector
 - `adj`: initial adjoint
 """
-function gradient!(y, f, x, θ, adj)
+function gradient!(isexp, egrad, y, f, x, θ, adj)
     @simd for k in eachindex(f.itr)
-        @inbounds gradient!(y, f.f, x, θ, f.itr[k], adj)
+        @inbounds gradient!(isexp, egrad, y, f.f, x, θ, f.itr[k], adj)
     end
     return y
 end
 function gradient!(isexp, egrad, y, f, x, θ, p, adj)
-    graph = f(p, AdjointNodeSource(x), θ)
+    graph = f(p, AdjointNodeSource(x, isexp), θ)
     drpass(isexp, egrad, graph, y, adj)
     return y
 end
@@ -142,7 +138,7 @@ function sgradient!(y, f, x, θ, adj)
 end
 
 function sgradient!(y, f, p, x, θ, comp, o1, adj)
-    graph = f(p, AdjointNodeSource(x), θ)
+    graph = f(p, AdjointNodeSource(x, isexp), θ)
     grpass(graph, comp, y, o1, 0, adj)
     return y
 end

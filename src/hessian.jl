@@ -627,7 +627,7 @@ Performs sparse jacobian evalution
 - `adj1`: initial first adjoint
 - `adj2`: initial second adjoint
 """
-function shessian!(y1, y2, f, x, θ, adj1, adj2)
+function shessian!(y1, y2, f, x, θ, adj1, adj2, isexp)
     @simd for k in eachindex(f.itr)
         @inbounds shessian!(
             y1,
@@ -643,7 +643,7 @@ function shessian!(y1, y2, f, x, θ, adj1, adj2)
         )
     end
 end
-function shessian!(y1, y2, f, x, θ, adj1s::V, adj2) where {V<:AbstractVector}
+function shessian!(y1, y2, f, x, θ, adj1s::V, adj2, isexp) where {V<:AbstractVector}
     @simd for k in eachindex(f.itr)
         @inbounds shessian!(
             y1,
@@ -660,7 +660,7 @@ function shessian!(y1, y2, f, x, θ, adj1s::V, adj2) where {V<:AbstractVector}
     end
 end
 
-function shessian!(y1, y2, f, p, x, θ, comp, o2, adj1, adj2)
-    graph = f(p, SecondAdjointNodeSource(x), θ)
+function shessian!(y1, y2, f, p, x, θ, comp, o2, adj1, adj2, isexp)
+    graph = f(p, SecondAdjointNodeSource(x, isexp), θ)
     hrpass0(graph, comp, y1, y2, o2, 0, adj1, adj2)
 end

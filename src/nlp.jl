@@ -220,13 +220,16 @@ An ExaCore
 )
 
 
-struct ExaModel{T,VT,VTI,E,O,C,EX} <: NLPModels.AbstractNLPModel{T,VT}
+struct ExaModel{T,VT,VTI,E,O,C,EX,A} <: NLPModels.AbstractNLPModel{T,VT}
     objs::O
     cons::C
     exps::EX
     varis::Vector{UInt}
     isexp::VTI
     nexp::Int
+    egrad::A
+    eJv::VT
+    eJtv::A
     θ::VT
     meta::NLPModels.NLPModelMeta{T,VT}
     counters::NLPModels.Counters
@@ -285,6 +288,9 @@ function ExaModel(c::C; prod = nothing) where {C<:ExaCore}
         c.varis,
         c.isexp,
         c.nexp,
+        convert_array(zeros(c.nvar, c.nexp), c.backend),
+        convert_array(zeros(c.nexp), c.backend),
+        convert_array(zeros(c.nvar, c.nexp), c.backend),
         c.θ,
         NLPModels.NLPModelMeta(
             c.nvar,
@@ -432,7 +438,7 @@ function variable(
     len = total(ns)
     c.nvar += len
     c.varis = vcat(c.varis, (o+1):c.nvar)
-    append!(c.backend, c.isexp, (typemax(UInt) for _ in 1:len), len)
+    append!(c.backend, c.isexp, (0 for _ in 1:len), len)
     c.x0 = append!(c.backend, c.x0, start, total(ns))
     c.lvar = append!(c.backend, c.lvar, lvar, total(ns))
     c.uvar = append!(c.backend, c.uvar, uvar, total(ns))
@@ -754,6 +760,9 @@ function _expression(c, f, pars, ns)
     c.nvar += len
     append!(c.backend, c.isexp, (1+c.nexp):(len+c.nexp), len)
     c.nexp += len
+    c.nconaug += nitr
+    c.nnzj += nitr * f.o1step
+    c.nnzh += nitr * f.o2step
     start = convert_array(zeros(len), c.backend)
     lvar = convert_array(zeros(len), c.backend)
     uvar = convert_array(zeros(len), c.backend)
@@ -834,21 +843,19 @@ _cons_nln!(cons::ConstraintNull, x, θ, g) = nothing
 
 function grad!(m::ExaModel, x::AbstractVector, f::AbstractVector)
     expr!(m, x, m.θ)
-    egrad = zeros(m.nexp, length(x))
-    @info typeof(egrad)
-    @info Base.size(egrad)
-    @info Base.size(egrad[i+o])
-    egrad!(egrad, m, x)
+    egrad!(m, x)
     fill!(f, zero(eltype(f)))
-    _grad!(m.objs, x, m.θ, f)
+    _grad!(m.isexp, m.egrad, m.objs, x, m.θ, f)
     return f
 end
 
-function _grad!(objs, x, θ, f)
-    _grad!(objs.inner, x, θ, f)
-    gradient!(f, objs, x, θ, one(eltype(f)))
+function _grad!(isexp, egrad, objs, x, θ, f)
+    _grad!(isexp, egrad, objs.inner, x, θ, f)
+    gradient!(isexp, egrad, f, objs, x, θ, one(eltype(f)))
+    @info "_grad!"
+    @info f
 end
-_grad!(objs::ObjectiveNull, x, θ, f) = nothing
+_grad!(isexp, egrad, objs::ObjectiveNull, x, θ, f) = nothing
 
 function jac_coord!(m::ExaModel, x::AbstractVector, jac::AbstractVector)
     expr!(m, x, m.θ)
@@ -864,29 +871,38 @@ function _jac_coord!(cons, x, θ, jac)
 end
 
 function jprod_nln!(m::ExaModel, x::AbstractVector, v::AbstractVector, Jv::AbstractVector)
+    @info "jprod nln"
     expr!(m, x, m.θ)
+    ejac!(m, m.eJv, nothing, x, v)
     fill!(Jv, zero(eltype(Jv)))
-    _jprod_nln!(m.cons, x, m.θ, v, Jv)
+    _jprod_nln!(m.cons, m.isexp, m.eJv, nothing, x, m.θ, v, Jv)
     return Jv
 end
 
-_jprod_nln!(cons::ConstraintNull, x, θ, v, Jv) = nothing
-function _jprod_nln!(cons, x, θ, v, Jv)
-    _jprod_nln!(cons.inner, x, θ, v, Jv)
-    sjacobian!((Jv, v), nothing, cons, x, θ, one(eltype(Jv)))
+_jprod_nln!(cons::ConstraintNull, isexp, ey1, ey2, x, θ, v, Jv) = nothing
+function _jprod_nln!(cons, isexp, ey1, ey2, x, θ, v, Jv)
+    _jprod_nln!(cons.inner, isexp, ey1, ey2, x, θ, v, Jv)
+    sjacobian!(isexp, ey1, ey2, (Jv, v), nothing, cons, x, θ, one(eltype(Jv)))
 end
 
 function jtprod_nln!(m::ExaModel, x::AbstractVector, v::AbstractVector, Jtv::AbstractVector)
     expr!(m, x, m.θ)
+    ejac!(m, nothing, m.eJtv, x, ConstVector(1, length(v)))
+    @info (m.meta.nnzj, m.meta.nvar, m.nexp, m.meta.ncon)
+    @info "FINAL EJAC"
+    @info m.eJv
+    @info Base.size(m.eJtv)
+    @info Base.size(Jtv)
     fill!(Jtv, zero(eltype(Jtv)))
-    _jtprod_nln!(m.cons, x, m.θ, v, Jtv)
+    _jtprod_nln!(m.cons, m.isexp, nothing, m.eJtv, x, m.θ, v, Jtv)
+    @info Jtv
     return Jtv
 end
 
-_jtprod_nln!(cons::ConstraintNull, x, θ, v, Jtv) = nothing
-function _jtprod_nln!(cons, x, θ, v, Jtv)
-    _jtprod_nln!(cons.inner, x, θ, v, Jtv)
-    sjacobian!(nothing, (Jtv, v), cons, x, θ, one(eltype(Jtv)))
+_jtprod_nln!(cons::ConstraintNull, isexp, ey1, ey2, x, θ, v, Jtv) = nothing
+function _jtprod_nln!(cons, isexp, ey1, ey2, x, θ, v, Jtv)
+    _jtprod_nln!(cons.inner, isexp, ey1, ey2, x, θ, v, Jtv)
+    sjacobian!(isexp, ey1, ey2, nothing, (Jtv, v), cons, x, θ, one(eltype(Jtv)))
 end
 
 function hess_coord!(
