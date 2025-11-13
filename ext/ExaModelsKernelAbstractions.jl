@@ -109,6 +109,7 @@ function ExaModels.ExaModel(
     return ExaModels.ExaModel(
         c.obj,
         c.con,
+        c.exp,
         c.θ,
         NLPModels.NLPModelMeta(
             c.nvar,
@@ -122,6 +123,8 @@ function ExaModels.ExaModel(
             lcon = c.lcon,
             ucon = c.ucon,
         ),
+        c.nne1,
+        c.nne2,
         NLPModels.Counters(),
         KAExtension(
             c.backend,

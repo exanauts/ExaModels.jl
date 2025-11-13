@@ -1,3 +1,18 @@
+@inline function egrad!(m, x)
+    _egrad!(m.isexp, m.egrad, m.exps, x, m.θ)
+end
+@inline @views function _egrad!(isexp, egrad, exp, x, θ)
+    if typeof(exp) <: ExpressionNull
+        return 0
+    end
+    o = _egrad!(isexp, egrad, exp.inner, x, θ)
+    @simd for i in eachindex(exp.itr)
+        graph = exp.f.f(exp.itr[i], AdjointNodeSource(x, isexp), θ)
+        drpass(isexp, egrad, graph, egrad[:,i+o], one(eltype(x)))
+    end
+    return o + total(exp.size)
+end
+
 """
     drpass(d::D, y, adj)
 
@@ -8,20 +23,24 @@ Performs dense gradient evaluation via the reverse pass on the computation (sub)
 - `y`: result vector
 - `adj`: adjoint propagated up to the current node
 """
-@inline function drpass(d::D, y, adj) where {D<:AdjointNull}
+@inline function drpass(isexp, egrad, d::D, y, adj) where {D<:AdjointNull}
     nothing
 end
-@inline function drpass(d::D, y, adj) where {D<:AdjointNode1}
-    offset = drpass(d.inner, y, adj * d.y)
+@inline function drpass(isexp, egrad, d::D, y, adj) where {D<:AdjointNode1}
+    offset = drpass(isexp, egrad, d.inner, y, adj * d.y)
     nothing
 end
-@inline function drpass(d::D, y, adj) where {D<:AdjointNode2}
-    offset = drpass(d.inner1, y, adj * d.y1)
-    offset = drpass(d.inner2, y, adj * d.y2)
+@inline function drpass(isexp, egrad, d::D, y, adj) where {D<:AdjointNode2}
+    offset = drpass(isexp, egrad, d.inner1, y, adj * d.y1)
+    offset = drpass(isexp, egrad, d.inner2, y, adj * d.y2)
     nothing
 end
-@inline function drpass(d::D, y, adj) where {D<:AdjointNodeVar}
+@inline function drpass(isexp, egrad, d::D, y, adj) where {D<:AdjointNodeVar}
     @inbounds y[d.i] += adj
+    nothing
+end
+@inline @views function drpass(isexp, egrad, d::D, y, adj) where {D<:AdjointNodeExpr}
+    @inbounds y .+= adj .* egrad[:,isexp[d.i]]
     nothing
 end
 
@@ -36,15 +55,15 @@ Performs dense gradient evalution
 - `x`: variable vector
 - `adj`: initial adjoint
 """
-function gradient!(y, f, x, θ, adj)
+function gradient!(isexp, egrad, y, f, x, θ, adj)
     @simd for k in eachindex(f.itr)
-        @inbounds gradient!(y, f.f, x, θ, f.itr[k], adj)
+        @inbounds gradient!(isexp, egrad, y, f.f, x, θ, f.itr[k], adj)
     end
     return y
 end
-function gradient!(y, f, x, θ, p, adj)
-    graph = f(p, AdjointNodeSource(x), θ)
-    drpass(graph, y, adj)
+function gradient!(isexp, egrad, y, f, x, θ, p, adj)
+    graph = f(p, AdjointNodeSource(x, isexp), θ)
+    drpass(isexp, egrad, graph, y, adj)
     return y
 end
 
@@ -119,7 +138,7 @@ function sgradient!(y, f, x, θ, adj)
 end
 
 function sgradient!(y, f, p, x, θ, comp, o1, adj)
-    graph = f(p, AdjointNodeSource(x), θ)
+    graph = f(p, AdjointNodeSource(x, isexp), θ)
     grpass(graph, comp, y, o1, 0, adj)
     return y
 end

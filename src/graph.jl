@@ -53,7 +53,6 @@ struct Var{I} <: AbstractNode
     i::I
 end
 
-
 struct ParameterSource <: AbstractNode end
 struct ParameterNode{I} <: AbstractNode
     i::I
@@ -197,6 +196,11 @@ struct AdjointNodeVar{I,T} <: AbstractAdjointNode
     x::T
 end
 
+struct AdjointNodeExpr{I,T} <: AbstractAdjointNode
+    i::I
+    x::T
+end
+
 """
     AdjointNodeSource{VT}
 
@@ -205,8 +209,9 @@ A source of `AdjointNode`. `adjoint_node_source[i]` returns an `AdjointNodeVar` 
 # Fields:
 - `inner::VT`: variable vector
 """
-struct AdjointNodeSource{VT}
+struct AdjointNodeSource{VT,VTI}
     inner::VT
+    isexp::VTI
 end
 
 @inline AdjointNode1(f::F, x::T, y, inner::I) where {F,T,I} =
@@ -217,7 +222,7 @@ end
 @inline Base.getindex(x::I, i) where {I<:AdjointNodeSource{Nothing}} =
     AdjointNodeVar(i, NaN)
 @inline Base.getindex(x::I, i) where {I<:AdjointNodeSource} =
-    @inbounds AdjointNodeVar(i, x.inner[i])
+    @inbounds x.isexp[i] == 0 ? AdjointNodeVar(i, x.inner[i]) : AdjointNodeExpr(i, x.inner[i])
 
 
 """
@@ -277,16 +282,23 @@ struct SecondAdjointNodeVar{I,T} <: AbstractSecondAdjointNode
     x::T
 end
 
+struct SecondAdjointNodeExpr{I,T} <: AbstractSecondAdjointNode
+    i::I
+    x::T
+end
+
 """
-    SecondAdjointNodeSource{VT}
+    SecondAdjointNodeSource{VT,VTI}
 
 A source of `AdjointNode`. `adjoint_node_source[i]` returns an `AdjointNodeVar` at index `i`.
 
 # Fields:
 - `inner::VT`: variable vector
+- 'isexp::VTI': expression vector
 """
-struct SecondAdjointNodeSource{VT}
+struct SecondAdjointNodeSource{VT,VTI}
     inner::VT
+    isexp::VTI
 end
 
 @inline SecondAdjointNode1(f::F, x::T, y, h, inner::I) where {F,T,I} =
@@ -307,7 +319,7 @@ end
 @inline Base.getindex(x::I, i) where {I<:SecondAdjointNodeSource{Nothing}} =
     SecondAdjointNodeVar(i, NaN)
 @inline Base.getindex(x::I, i) where {I<:SecondAdjointNodeSource} =
-    @inbounds SecondAdjointNodeVar(i, x.inner[i])
+    @inbounds x.isexp[i] == 0 ? SecondAdjointNodeVar(i, x.inner[i]) : SecondAdjointNodeExpr(i, x.inner[i])
 
 
 @inline (v::Null{Nothing})(i, x::V, θ) where {T,V<:AbstractVector{T}} = zero(T)
