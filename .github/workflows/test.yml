@@ -16,6 +16,9 @@ jobs:
         with:
           version: ${{ matrix.julia-version }}
       - uses: julia-actions/julia-buildpkg@latest
+      - name: Add OpenCL.jl to test environment
+        run: |
+          julia --project=test -e 'using Pkg; Pkg.add("OpenCL", "pocl_jll")'
       - uses: julia-actions/julia-runtest@latest
         env:
           EXAMODELS_TEST_POCL: 1
@@ -27,9 +30,8 @@ jobs:
         julia-arch: [x64]
         os: [ubuntu-latest]
         backend: ['cuda', 'amdgpu', 'oneapi']
-    runs-on: ['${{ matrix.backend }}']
+    runs-on: ['self-hosted', '${{ matrix.backend }}']
     env:
-      EXAMODELS_TEST_POCL: 1
       JULIA_NUM_THREADS: 4
       # Conditional environment variables based on backend
       EXAMODELS_TEST_CUDA: ${{ matrix.backend == 'cuda' && '1' || '' }}
