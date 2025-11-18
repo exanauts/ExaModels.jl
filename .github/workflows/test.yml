@@ -37,15 +37,9 @@ jobs:
       EXAMODELS_TEST_CUDA: ${{ matrix.backend == 'cuda' && '1' || '' }}
       EXAMODELS_TEST_AMDGPU: ${{ matrix.backend == 'amdgpu' && '1' || '' }}
       EXAMODELS_TEST_ONEAPI: ${{ matrix.backend == 'oneapi' && '1' || '' }}
-      # AMDGPU specific variables
-      JULIA_AMDGPU_CORE_MUST_LOAD: ${{ matrix.backend == 'amdgpu' && '1' || '' }}
-      JULIA_AMDGPU_HIP_MUST_LOAD: ${{ matrix.backend == 'amdgpu' && '1' || '' }}
-      JULIA_AMDGPU_DISABLE_ARTIFACTS: ${{ matrix.backend == 'amdgpu' && '1' || '' }}
       # oneAPI specific variables
       OverrideDefaultFP64Settings: ${{ matrix.backend == 'oneapi' && '1' || '' }}
       IGC_EnableDPEmulation: ${{ matrix.backend == 'oneapi' && '1' || '' }}
-      # CUDA specific Julia depot path
-      JULIA_DEPOT_PATH: ${{ matrix.backend == 'cuda' && '/scratch/github-actions/julia_depot_exapf' || '' }}
     steps:
     - name: Checkout code
       uses: actions/checkout@v2
