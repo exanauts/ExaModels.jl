@@ -18,7 +18,7 @@ jobs:
       - uses: julia-actions/julia-buildpkg@latest
       - name: Add OpenCL.jl to test environment
         run: |
-          julia --project=test -e 'using Pkg; Pkg.add("OpenCL", "pocl_jll")'
+          julia --project=test -e 'using Pkg; Pkg.add(["OpenCL", "pocl_jll"])'
       - uses: julia-actions/julia-runtest@latest
         env:
           EXAMODELS_TEST_POCL: 1
