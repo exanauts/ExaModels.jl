@@ -1,4 +1,4 @@
-const BACKENDS = Any[nothing, CPU()]
+const BACKENDS = Any[nothing, CPU(), POCLBackend()]
 
 if haskey(ENV, "EXAMODELS_TEST_CUDA")
     using CUDA
