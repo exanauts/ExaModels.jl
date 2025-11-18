@@ -1,3 +1,5 @@
+using KernelAbstractions
+
 const BACKENDS = Any[nothing, CPU()]
 
 is_package_installed(name::String) = !isnothing(Base.find_package(name))

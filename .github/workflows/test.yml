@@ -32,11 +32,6 @@ jobs:
         backend: ['cuda', 'amdgpu', 'oneapi']
     runs-on: ['self-hosted', '${{ matrix.backend }}']
     env:
-      JULIA_NUM_THREADS: 4
-      # Conditional environment variables based on backend
-      EXAMODELS_TEST_CUDA: ${{ matrix.backend == 'cuda' && '1' || '' }}
-      EXAMODELS_TEST_AMDGPU: ${{ matrix.backend == 'amdgpu' && '1' || '' }}
-      EXAMODELS_TEST_ONEAPI: ${{ matrix.backend == 'oneapi' && '1' || '' }}
       # oneAPI specific variables
       OverrideDefaultFP64Settings: ${{ matrix.backend == 'oneapi' && '1' || '' }}
       IGC_EnableDPEmulation: ${{ matrix.backend == 'oneapi' && '1' || '' }}
