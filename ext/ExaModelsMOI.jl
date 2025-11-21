@@ -700,6 +700,9 @@ function MOI.supports_constraint(
 )
     return true
 end
+function MOI.supports(::Optimizer, ::MOI.ObjectiveSense)
+    return true
+end
 function MOI.supports(::Optimizer, ::MOI.ObjectiveFunction{<:SUPPORTED_FUNC_TYPE_WITH_VAR})
     return true
 end
