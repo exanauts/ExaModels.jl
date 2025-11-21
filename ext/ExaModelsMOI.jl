@@ -314,9 +314,7 @@ function exafy_con(
         func = MOI.get(moim, MOI.ConstraintFunction(), ci)
         set = MOI.get(moim, MOI.ConstraintSet(), ci)
         con_to_idx[ci] = offset + i
-        start = if MOI.supports(
-            moim, MOI.ConstraintPrimalStart(), typeof(ci)
-        )
+        start = if MOI.supports(moim, MOI.ConstraintPrimalStart(), typeof(ci))
             MOI.get(moim, MOI.ConstraintPrimalStart(), ci)
         else
             nothing
@@ -457,10 +455,12 @@ function _exafy(i::R, var_to_idx, p) where {R<:Real}
 end
 
 function _exafy(e::MOI.ScalarNonlinearFunction, var_to_idx, p = ())
-    return op(e.head)((begin
-        c, p = _exafy(e, var_to_idx, p)
-        c
-    end for e in e.args)...), p
+    return op(e.head)((
+        begin
+            c, p = _exafy(e, var_to_idx, p)
+            c
+        end for e in e.args
+    )...), p
 end
 
 function _exafy(e::MOI.ScalarAffineFunction{T}, var_to_idx, p = ()) where {T}
