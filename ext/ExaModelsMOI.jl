@@ -195,7 +195,19 @@ function copy_constraints!(c, moim, var_to_idx, T)
 
     con_types = MOI.get(moim, MOI.ListOfConstraintTypesPresent())
     for (F, S) in con_types
-        F <: MOI.VariableIndex && continue
+        if F <: MOI.VariableIndex
+            cis = MOI.get(moim, MOI.ListOfConstraintIndices{F,S}())
+            for ci in cis
+                vi = MOI.get(moim, MOI.ConstraintFunction(), ci)
+                vartype, var_idx = var_to_idx[vi]
+                if vartype === :variable
+                    con_to_idx[ci] = var_idx
+                else
+                    # error("Bound constraints on parameters are not supported")
+                end
+            end
+            continue
+        end
         cis = MOI.get(moim, MOI.ListOfConstraintIndices{F,S}())
         bin, offset =
             exafy_con(moim, cis, bin, offset, lcon, ucon, y0, var_to_idx, con_to_idx)
@@ -682,6 +694,8 @@ mutable struct Optimizer{B,S} <: MOI.AbstractOptimizer
     result::Any
     solve_time::Float64
     options::Dict{Symbol,Any}
+    var_to_idx::Dict{MOI.VariableIndex,NamedTuple{(:type, :idx),Tuple{Symbol,Int}}}
+    con_to_idx::Dict{MOI.ConstraintIndex,Int}
 end
 
 MOI.is_empty(model::Optimizer) = isnothing(model.model)
@@ -711,16 +725,29 @@ function MOI.supports(::Optimizer, ::MOI.VariablePrimalStart, ::Type{MOI.Variabl
 end
 
 function ExaModels.Optimizer(solver, backend = nothing; kwargs...)
-    return Optimizer(solver, backend, nothing, nothing, 0.0, Dict{Symbol,Any}(kwargs...))
+    return Optimizer(
+        solver,
+        backend,
+        nothing,
+        nothing,
+        0.0,
+        Dict{Symbol,Any}(kwargs...),
+        Dict{MOI.VariableIndex,NamedTuple{(:type, :idx),Tuple{Symbol,Int}}}(),
+        Dict{MOI.ConstraintIndex,Int}(),
+    )
 end
 
 function MOI.empty!(model::ExaModelsMOI.Optimizer)
     model.model = nothing
+    empty!(model.var_to_idx)
+    empty!(model.con_to_idx)
 end
 
 function MOI.copy_to(dest::Optimizer, src::MOI.ModelLike)
     core, maps = to_exacore(src; backend = dest.backend)
     dest.model = ExaModels.ExaModel(core; prod = true)
+    dest.var_to_idx = maps[1]
+    dest.con_to_idx = maps[2]
     return _make_index_map(src, maps)
 end
 
@@ -772,7 +799,8 @@ function MOI.get(
 )
     MOI.check_result_index_bounds(model, attr)
     # MOI.throw_if_not_valid(model, ci)
-    rc = model.result.multipliers_L[ci.value] - model.result.multipliers_U[ci.value]
+    var_idx = model.con_to_idx[ci]
+    rc = model.result.multipliers_L[var_idx] - model.result.multipliers_U[var_idx]
     return min(0.0, rc)
 end
 
@@ -783,7 +811,8 @@ function MOI.get(
 )
     MOI.check_result_index_bounds(model, attr)
     # MOI.throw_if_not_valid(model, ci)
-    rc = model.result.multipliers_L[ci.value] - model.result.multipliers_U[ci.value]
+    var_idx = model.con_to_idx[ci]
+    rc = model.result.multipliers_L[var_idx] - model.result.multipliers_U[var_idx]
     return max(0.0, rc)
 end
 
@@ -794,7 +823,8 @@ function MOI.get(
 )
     MOI.check_result_index_bounds(model, attr)
     # MOI.throw_if_not_valid(model, ci)
-    rc = model.result.multipliers_L[ci.value] - model.result.multipliers_U[ci.value]
+    var_idx = model.con_to_idx[ci]
+    rc = model.result.multipliers_L[var_idx] - model.result.multipliers_U[var_idx]
     return rc
 end
 

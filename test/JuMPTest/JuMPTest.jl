@@ -293,6 +293,11 @@ function runtests()
                     optimize!(jm)
                     sol = value.(all_variables(jm))
 
+                    set_optimizer(jm, () -> ExaModels.Optimizer(ipopt))
+                    optimize!(jm)
+                    sol2 = value.(all_variables(jm))
+                    @test sol ≈ sol2 atol = 1e-6
+
                     for backend in BACKENDS
                         @testset "$backend" begin
                             m = WrapperNLPModel(ExaModel(jm; backend = backend))
