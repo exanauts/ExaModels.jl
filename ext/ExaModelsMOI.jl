@@ -723,12 +723,11 @@ function MOI.supports(::Optimizer, ::MOI.VariablePrimalStart, ::Type{MOI.Variabl
 end
 
 function ExaModels.Optimizer(solver, backend = nothing; kwargs...)
-    return Optimizer(solver, backend, nothing, nothing, 0.0, Dict{Symbol, Any}(kwargs...))
+    return Optimizer(solver, backend, nothing, nothing, 0.0, Dict{Symbol,Any}(kwargs...))
 end
 
 function MOI.empty!(model::ExaModelsMOI.Optimizer)
     model.model = nothing
-    return
 end
 
 function MOI.copy_to(dest::Optimizer, src::MOI.ModelLike)
