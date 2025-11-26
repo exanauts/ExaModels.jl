@@ -295,6 +295,7 @@ function runtests()
                     dsol = dual.(all_constraints(jm, include_variable_in_set_constraints = true))
 
                     set_optimizer(jm, () -> ExaModels.Optimizer(ipopt))
+                    set_optimizer_attribute(jm, "print_level", 0)
                     optimize!(jm)
                     sol2 = value.(all_variables(jm))
                     dsol2 = dual.(all_constraints(jm, include_variable_in_set_constraints = true))
