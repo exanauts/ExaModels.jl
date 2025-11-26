@@ -740,7 +740,8 @@ end
 function MOI.empty!(model::ExaModelsMOI.Optimizer)
     model.model = nothing
     empty!(model.var_to_idx)
-    return empty!(model.con_to_idx)
+    empty!(model.con_to_idx)
+    return
 end
 
 function MOI.copy_to(dest::Optimizer, src::MOI.ModelLike)
