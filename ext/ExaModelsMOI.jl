@@ -800,8 +800,7 @@ function MOI.get(
 )
     MOI.check_result_index_bounds(model, attr)
     # MOI.throw_if_not_valid(model, ci)
-    var_idx = model.con_to_idx[ci]
-    rc = model.result.multipliers_L[var_idx] - model.result.multipliers_U[var_idx]
+    rc = model.result.multipliers_L[ci.value] - model.result.multipliers_U[ci.value]
     return min(0.0, rc)
 end
 
@@ -812,8 +811,7 @@ function MOI.get(
 )
     MOI.check_result_index_bounds(model, attr)
     # MOI.throw_if_not_valid(model, ci)
-    var_idx = model.con_to_idx[ci]
-    rc = model.result.multipliers_L[var_idx] - model.result.multipliers_U[var_idx]
+    rc = model.result.multipliers_L[ci.value] - model.result.multipliers_U[ci.value]
     return max(0.0, rc)
 end
 
@@ -824,8 +822,7 @@ function MOI.get(
 )
     MOI.check_result_index_bounds(model, attr)
     # MOI.throw_if_not_valid(model, ci)
-    var_idx = model.con_to_idx[ci]
-    rc = model.result.multipliers_L[var_idx] - model.result.multipliers_U[var_idx]
+    rc = model.result.multipliers_L[ci.value] - model.result.multipliers_U[ci.value]
     return rc
 end
 
