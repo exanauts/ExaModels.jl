@@ -196,7 +196,7 @@ function copy_constraints!(c, moim, var_to_idx, T)
     con_types = MOI.get(moim, MOI.ListOfConstraintTypesPresent())
     for (F, S) in con_types
         if F <: MOI.VariableIndex
-            cis = MOI.get(moim, MOI.ListOfConstraintIndices{F,S}())
+            cis = MOI.get(moim, MOI.ListOfConstraintIndices{F, S}())
             for ci in cis
                 vi = MOI.get(moim, MOI.ConstraintFunction(), ci)
                 vartype, var_idx = var_to_idx[vi]
@@ -694,8 +694,8 @@ mutable struct Optimizer{B,S} <: MOI.AbstractOptimizer
     result::Any
     solve_time::Float64
     options::Dict{Symbol,Any}
-    var_to_idx::Dict{MOI.VariableIndex,NamedTuple{(:type, :idx),Tuple{Symbol,Int}}}
-    con_to_idx::Dict{MOI.ConstraintIndex,Int}
+    var_to_idx::Dict{MOI.VariableIndex, NamedTuple{(:type, :idx), Tuple{Symbol, Int}}}
+    con_to_idx::Dict{MOI.ConstraintIndex, Int}
 end
 
 MOI.is_empty(model::Optimizer) = isnothing(model.model)
@@ -731,16 +731,16 @@ function ExaModels.Optimizer(solver, backend = nothing; kwargs...)
         nothing,
         nothing,
         0.0,
-        Dict{Symbol,Any}(kwargs...),
-        Dict{MOI.VariableIndex,NamedTuple{(:type, :idx),Tuple{Symbol,Int}}}(),
-        Dict{MOI.ConstraintIndex,Int}(),
+        Dict{Symbol, Any}(kwargs...),
+        Dict{MOI.VariableIndex, NamedTuple{(:type, :idx), Tuple{Symbol, Int}}}(),
+        Dict{MOI.ConstraintIndex, Int}(),
     )
 end
 
 function MOI.empty!(model::ExaModelsMOI.Optimizer)
     model.model = nothing
     empty!(model.var_to_idx)
-    empty!(model.con_to_idx)
+    return empty!(model.con_to_idx)
 end
 
 function MOI.copy_to(dest::Optimizer, src::MOI.ModelLike)
