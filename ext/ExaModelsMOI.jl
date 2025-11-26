@@ -694,8 +694,6 @@ mutable struct Optimizer{B,S} <: MOI.AbstractOptimizer
     result::Any
     solve_time::Float64
     options::Dict{Symbol,Any}
-    var_to_idx::Dict{MOI.VariableIndex, NamedTuple{(:type, :idx), Tuple{Symbol, Int}}}
-    con_to_idx::Dict{MOI.ConstraintIndex, Int}
 end
 
 MOI.is_empty(model::Optimizer) = isnothing(model.model)
@@ -732,23 +730,17 @@ function ExaModels.Optimizer(solver, backend = nothing; kwargs...)
         nothing,
         0.0,
         Dict{Symbol, Any}(kwargs...),
-        Dict{MOI.VariableIndex, NamedTuple{(:type, :idx), Tuple{Symbol, Int}}}(),
-        Dict{MOI.ConstraintIndex, Int}(),
     )
 end
 
 function MOI.empty!(model::ExaModelsMOI.Optimizer)
     model.model = nothing
-    empty!(model.var_to_idx)
-    empty!(model.con_to_idx)
     return
 end
 
 function MOI.copy_to(dest::Optimizer, src::MOI.ModelLike)
     core, maps = to_exacore(src; backend = dest.backend)
     dest.model = ExaModels.ExaModel(core; prod = true)
-    dest.var_to_idx = maps[1]
-    dest.con_to_idx = maps[2]
     return _make_index_map(src, maps)
 end
 
