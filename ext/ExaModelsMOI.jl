@@ -77,7 +77,8 @@ function ExaModels.ExaModel(
     backend = nothing,
     prod = false,
     T = Float64,
-)
+    )
+
     c, _ = to_exacore(moim; backend = backend, T = T)
     return ExaModels.ExaModel(c; prod = prod)
 end
@@ -721,6 +722,7 @@ end
 function MOI.copy_to(dest::Optimizer, src::MOI.ModelLike)
     core, maps = to_exacore(src; backend = dest.backend)
     dest.model = ExaModels.ExaModel(core; prod = true)
+
     return _make_index_map(src, maps)
 end
 
@@ -851,6 +853,10 @@ function _make_constraints_map(
         map[c] = typeof(c)(con_to_idx[c])
     end
     return
+end
+
+function MOI.set(model::Optimizer, ::MOI.NLPBlock, nlp_data::MOI.NLPBlockData)
+    error("The legacy nonlinear model interface is not supported. Please use the new MOI-based interface.")
 end
 
 end # module
