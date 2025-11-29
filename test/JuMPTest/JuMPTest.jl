@@ -23,6 +23,19 @@ function jump_luksan_vlcek_model(N)
 
     return jm
 end
+
+function nlp_legacy_runtests()
+    jm = JuMP.Model()
+
+    JuMP.@variable(jm, x[1:10])
+    JuMP.@NLobjective(jm, Min, sum(x[i] for i=1:10))
+
+    @test_throws ErrorException ExaModel(jm)
+
+    jm = JuMP.Model(() -> ExaModels.Optimizer(NLPModelsIpopt.ipopt))
+    @test_throws ErrorException optimize!(jm)
+end
+    
 function fixed_variable_e2etest()
     N=5
     jm = JuMP.Model()
@@ -317,6 +330,9 @@ function runtests()
             generic_e2etest()
             fixed_variable_e2etest()
             no_constraints_e2etest()
+        end
+        @testset "NLP legacy test" begin
+            nlp_legacy_runtests()
         end
     end
 end
