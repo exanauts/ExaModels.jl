@@ -195,20 +195,17 @@ function copy_constraints!(c, moim, var_to_idx, T)
 
     con_types = MOI.get(moim, MOI.ListOfConstraintTypesPresent())
     for (F, S) in con_types
+        cis = MOI.get(moim, MOI.ListOfConstraintIndices{F,S}())
         if F <: MOI.VariableIndex
-            cis = MOI.get(moim, MOI.ListOfConstraintIndices{F, S}())
             for ci in cis
                 vi = MOI.get(moim, MOI.ConstraintFunction(), ci)
                 vartype, var_idx = var_to_idx[vi]
                 if vartype === :variable
                     con_to_idx[ci] = var_idx
-                else
-                    # error("Bound constraints on parameters are not supported")
                 end
             end
             continue
         end
-        cis = MOI.get(moim, MOI.ListOfConstraintIndices{F,S}())
         bin, offset =
             exafy_con(moim, cis, bin, offset, lcon, ucon, y0, var_to_idx, con_to_idx)
     end
