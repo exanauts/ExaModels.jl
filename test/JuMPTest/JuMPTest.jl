@@ -307,7 +307,6 @@ function runtests()
                             m = WrapperNLPModel(ExaModel(jm; backend = backend))
                             result = ipopt(m; print_level = 0)
 
-                            # NOTE: assumes IndexMap is identity!
                             @test sol ≈ result.solution atol = 1e-6
                         end
                     end
