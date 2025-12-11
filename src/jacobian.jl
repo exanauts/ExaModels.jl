@@ -24,14 +24,6 @@ end
     @simd for i in eachindex(exp.itr)
         y1_v = isnothing(ey1) ? nothing : (ey1[i+o:i+o], v)
         y2_v = isnothing(ey2) ? nothing : (ey2[:,i+o], v)
-        @info ("i", i)
-        @info ("comp1", exp.f.comp1,)
-        @info ("comp2", exp.f.comp2,)
-        @info ("o0", exp.f.o0,)
-        @info ("o1", exp.f.o1,)
-        @info ("o2", exp.f.o2,)
-        @info ("o1step", exp.f.o1step,)
-        @info ("o2step", exp.f.o2step)
         @inbounds sjacobian!(
             isexp,
             ey1,
@@ -90,10 +82,12 @@ end
     cnt = jrpass(d.inner2, isexp, ey1, ey2, comp, i, y1, y2, o1, cnt, adj * d.y2)
     return cnt
 end
+# jac_coord
 @inline function jrpass(d::D, isexp, ey1, ey2, comp, i, y1, y2, o1, cnt, adj) where {D<:AdjointNodeVar}
     @inbounds y1[o1+comp(cnt+=1)] += adj
     return cnt
 end
+# jprod_nln
 @inline function jrpass(
     d::D,
     isexp,
@@ -102,16 +96,16 @@ end
     comp,
     i,
     y1::Tuple{V1,V2},
-    y2,
+    y2::Nothing,
     o1,
     cnt,
     adj,
 ) where {D<:AdjointNodeVar,V1<:AbstractVector,V2<:AbstractVector}
     (y, v) = y1
     @inbounds y[i] += adj * v[d.i]
-    @info ("ijrpass", i, y[i])
     return 0
 end
+# jtprod_nln
 @inline function jrpass(
     d::D,
     isexp,
@@ -119,7 +113,7 @@ end
     ey2,
     comp,
     i,
-    y1,
+    y1::Nothing,
     y2::Tuple{V1,V2},
     o1,
     cnt,
@@ -129,6 +123,7 @@ end
     @inbounds y[d.i] += adj * v[i]
     return 0
 end
+# jac_structure
 @inline function jrpass(
     d::D,
     isexp,
@@ -164,6 +159,7 @@ end
     @inbounds y1[ind] = ((i, d.i), ind)
     return cnt
 end
+# jprod_nln expr
 @inline function jrpass(
     d::D,
     isexp,
@@ -178,10 +174,10 @@ end
     adj,
 ) where {D<:AdjointNodeExpr,V1<:AbstractVector,V2<:AbstractVector}
     (y, v) = y1
-    @inbounds y[i] += ey1[isexp[d.i]]
-    @info ("e", d.i, y)
+    @inbounds y[i] .+= ey1[isexp[d.i]]
     return 0
 end
+# jtprod_nln expr
 @inline function jrpass(
     d::D,
     isexp,
@@ -199,6 +195,7 @@ end
     @inbounds y .+= (adj * v[i]) .* ey2[:, isexp[d.i]]
     return 0
 end
+# jac_structure expr
 @inline function jrpass(
     d::D,
     isexp,
@@ -212,29 +209,14 @@ end
     cnt,
     adj,
 ) where {D<:AdjointNodeExpr,I<:Integer,V<:AbstractVector{I}}
-    ind = o1 + comp(cnt += 1)
-    @inbounds y1[ind] = i
-    @inbounds y2[ind] = d.i
+    expr_size = ey1[isexp[d.i]]
+    @inbounds y2[] = ey2
+    for i in 1:expr_size
+        ind = o1 + comp(cnt += 1)
+        @inbounds y1[ind] = i
+    end
     return cnt
 end
-@inline function jrpass(
-    d::D,
-    isexp,
-    ey1,
-    ey2,
-    comp,
-    i,
-    y1::V,
-    y2,
-    o1,
-    cnt,
-    adj,
-) where {D<:AdjointNodeExpr,I<:Tuple{Tuple{Int,Int},Int},V<:AbstractVector{I}}
-    ind = o1 + comp(cnt += 1)
-    @inbounds y1[ind] = ((i, d.i), ind)
-    return cnt
-end
-
 
 """
     sjacobian!(y1, y2, f, x, adj)
@@ -251,14 +233,6 @@ Performs sparse jacobian evalution
 function sjacobian!(isexp, ey1, ey2, y1, y2, f, x, θ, adj)
     @info "sjacobian!"
     @simd for i in eachindex(f.itr)
-        @info (i, offset0(f, i))
-        @info ("comp1", f.f.comp1,)
-        @info ("comp2", f.f.comp2,)
-        @info ("o0", f.f.o0,)
-        @info ("o1", f.f.o1,)
-        @info ("o2", f.f.o2,)
-        @info ("o1step", f.f.o1step,)
-        @info ("o2step", f.f.o2step)
         @inbounds sjacobian!(
             isexp,
             ey1,

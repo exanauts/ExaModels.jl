@@ -70,6 +70,7 @@ function _simdfunction(f, o0, o1, o2)
     a1 = unique(y1)
     o1step = length(a1)
     c1 = Compressor(Tuple(findfirst(isequal(i), a1) for i in y1))
+    @info (typeof(y1), typeof(a1), y1, a1, c1)
 
     a2 = unique(y2)
     o2step = length(a2)

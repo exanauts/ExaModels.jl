@@ -779,14 +779,16 @@ function _expression(c, f, pars, ns)
 end
 
 function jac_structure!(m::ExaModel, rows::AbstractVector, cols::AbstractVector)
-    _jac_structure!(m.cons, rows, cols)
+    @info typeof(rows)
+    @info typeof(cols)
+    _jac_structure!(m.isexp, m.cons, rows, cols)
     return rows, cols
 end
 
-_jac_structure!(cons::ConstraintNull, rows, cols) = nothing
-function _jac_structure!(cons, rows, cols)
+_jac_structure!(isexp, cons::ConstraintNull, rows, cols) = nothing
+function _jac_structure!(isexp, cons, rows, cols)
     _jac_structure!(cons.inner, rows, cols)
-    sjacobian!(rows, cols, cons, nothing, nothing, NaN)
+    sjacobian!(isexp, rows, cols, cons, nothing, nothing, NaN)
 end
 
 function hess_structure!(m::ExaModel, rows::AbstractVector, cols::AbstractVector)
@@ -852,8 +854,6 @@ end
 function _grad!(isexp, egrad, objs, x, θ, f)
     _grad!(isexp, egrad, objs.inner, x, θ, f)
     gradient!(isexp, egrad, f, objs, x, θ, one(eltype(f)))
-    @info "_grad!"
-    @info f
 end
 _grad!(isexp, egrad, objs::ObjectiveNull, x, θ, f) = nothing
 
@@ -871,7 +871,6 @@ function _jac_coord!(cons, x, θ, jac)
 end
 
 function jprod_nln!(m::ExaModel, x::AbstractVector, v::AbstractVector, Jv::AbstractVector)
-    @info "jprod nln"
     expr!(m, x, m.θ)
     ejac!(m, m.eJv, nothing, x, v)
     fill!(Jv, zero(eltype(Jv)))
@@ -888,14 +887,8 @@ end
 function jtprod_nln!(m::ExaModel, x::AbstractVector, v::AbstractVector, Jtv::AbstractVector)
     expr!(m, x, m.θ)
     ejac!(m, nothing, m.eJtv, x, ConstVector(1, length(v)))
-    @info (m.meta.nnzj, m.meta.nvar, m.nexp, m.meta.ncon)
-    @info "FINAL EJAC"
-    @info m.eJv
-    @info Base.size(m.eJtv)
-    @info Base.size(Jtv)
     fill!(Jtv, zero(eltype(Jtv)))
     _jtprod_nln!(m.cons, m.isexp, nothing, m.eJtv, x, m.θ, v, Jtv)
-    @info Jtv
     return Jtv
 end
 
