@@ -292,6 +292,15 @@ function runtests()
                     set_optimizer_attribute(jm, "print_level", 0)
                     optimize!(jm)
                     sol = value.(all_variables(jm))
+                    dsol = dual.(all_constraints(jm, include_variable_in_set_constraints = true))
+
+                    set_optimizer(jm, () -> ExaModels.Optimizer(ipopt))
+                    set_optimizer_attribute(jm, "print_level", 0)
+                    optimize!(jm)
+                    sol2 = value.(all_variables(jm))
+                    dsol2 = dual.(all_constraints(jm, include_variable_in_set_constraints = true))
+                    @test sol ≈ sol2 atol = 1.0e-6
+                    @test dsol ≈ dsol2 atol = 1.0e-6
 
                     for backend in BACKENDS
                         @testset "$backend" begin
