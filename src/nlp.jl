@@ -22,6 +22,69 @@ Variable
 """,
 )
 
+"""
+    Subexpr
+
+A subexpression that has been lifted to auxiliary variables with defining equality constraints.
+Can be indexed like a Variable to get `Var` nodes for use in objectives and constraints.
+"""
+struct Subexpr{S, O, C} <: AbstractVariable
+    size::S
+    length::O
+    offset::O
+    constraint::C
+end
+Base.show(io::IO, s::Subexpr) = print(
+    io,
+    """
+    Subexpression (lifted)
+
+      s ∈ R^{$(join(size(s.size), " × "))}
+    """,
+)
+
+"""
+    ReducedSubexpr
+
+A reduced-form subexpression that substitutes the expression directly when indexed.
+No auxiliary variables or constraints are created - the expression is inlined.
+"""
+struct ReducedSubexpr{S, F, I}
+    size::S
+    length::Int
+    f::F           # The generator function
+    iter::I        # The collected iterator (for indexing)
+end
+Base.show(io::IO, s::ReducedSubexpr) = print(
+    io,
+    """
+    Subexpression (reduced)
+
+      s ∈ R^{$(join(size(s.size), " × "))}
+    """,
+)
+
+"""
+    ParameterSubexpr
+
+A parameter-only subexpression whose values are computed once when parameters are set,
+not at every function evaluation. Use this for expressions that depend only on parameters
+(θ), not on variables (x). Values are automatically recomputed when `set_parameter!` is called.
+"""
+struct ParameterSubexpr{S, O}
+    size::S
+    length::O
+    offset::O  # Index into ExaCore.param_subexpr_values
+end
+Base.show(io::IO, s::ParameterSubexpr) = print(
+    io,
+    """
+    Subexpression (parameter-only)
+
+      s ∈ R^{$(join(size(s.size), " × "))}
+    """,
+)
+
 struct Parameter{S,O} <: AbstractParameter
     size::S
     length::O
@@ -153,6 +216,10 @@ Base.@kwdef mutable struct ExaCore{T,VT<:AbstractVector{T},B}
     lcon::VT = similar(x0)
     ucon::VT = similar(x0)
     minimize::Bool = true
+    # Parameter subexpression support
+    nparam_subexpr::Int = 0
+    param_subexpr_values::VT = similar(x0, 0)
+    param_subexpr_fns::Vector{Any} = Any[]
 end
 
 # Deprecated as of v0.7
@@ -232,6 +299,8 @@ An ExaModel{Float64, Vector{Float64}, ...}
             nnzh: ( 81.82% sparsity)   10              linear: ⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅ 0
                                                     nonlinear: ⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅ 0
                                                          nnzj: (------% sparsity)
+                                                     lin_nnzj: (------% sparsity)
+                                                     nln_nnzj: (------% sparsity)
 
 julia> using NLPModelsIpopt
 
@@ -271,6 +340,66 @@ end
     @assert(length(is) == length(v.size), "Variable index dimension error")
     _bound_check(v.size, is)
     Var(v.offset + idxx(is .- (_start.(v.size) .- 1), _length.(v.size)))
+end
+
+# Subexpr indexing - delegates to same logic as Variable
+@inline function Base.getindex(s::Subexpr, i)
+    _bound_check(s.size, i)
+    return Var(i + (s.offset - _start(s.size[1]) + 1))
+end
+@inline function Base.getindex(s::Subexpr, is...)
+    @assert(length(is) == length(s.size), "Subexpression index dimension error")
+    _bound_check(s.size, is)
+    return Var(s.offset + idxx(is .- (_start.(s.size) .- 1), _length.(s.size)))
+end
+
+# ReducedSubexpr indexing - evaluates the expression directly
+# For concrete indices, look up the iterator element and apply f
+# For symbolic indices (during expression building), create symbolic iterator elements
+@inline function Base.getindex(s::ReducedSubexpr, i::I) where {I <: Integer}
+    _bound_check(s.size, i)
+    idx = i - _start(s.size[1]) + 1
+    return s.f(s.iter[idx])
+end
+@inline function Base.getindex(s::ReducedSubexpr, i)
+    # Symbolic index case - the symbolic index IS the iterator element
+    # No adjustment needed; the index is used directly in expression building
+    return s.f(i)
+end
+@inline function Base.getindex(s::ReducedSubexpr, is::Vararg{I, N}) where {I <: Integer, N}
+    @assert(length(is) == length(s.size), "ReducedSubexpr index dimension error")
+    _bound_check(s.size, is)
+    idx = idxx(is .- (_start.(s.size) .- 1), _length.(s.size))
+    return s.f(s.iter[idx])
+end
+@inline function Base.getindex(s::ReducedSubexpr, is...)
+    # Symbolic indices case - the symbolic indices ARE the iterator elements
+    # No adjustment needed; the indices are used directly in expression building
+    @assert(length(is) == length(s.size), "ReducedSubexpr index dimension error")
+    return s.f(is)
+end
+
+# ParameterSubexpr indexing - returns ParameterNode pointing to cached values in θ
+@inline function Base.getindex(s::ParameterSubexpr, i::I) where {I <: Integer}
+    _bound_check(s.size, i)
+    idx = i - _start(s.size[1]) + 1
+    return ParameterNode(s.offset + idx)
+end
+@inline function Base.getindex(s::ParameterSubexpr, i)
+    # Symbolic index case - compute offset symbolically
+    return ParameterNode(s.offset + (i - _start(s.size[1]) + 1))
+end
+@inline function Base.getindex(s::ParameterSubexpr, is::Vararg{I, N}) where {I <: Integer, N}
+    @assert(length(is) == length(s.size), "ParameterSubexpr index dimension error")
+    _bound_check(s.size, is)
+    idx = idxx(is .- (_start.(s.size) .- 1), _length.(s.size))
+    return ParameterNode(s.offset + idx)
+end
+@inline function Base.getindex(s::ParameterSubexpr, is...)
+    # Symbolic indices case - compute offset symbolically
+    @assert(length(is) == length(s.size), "ParameterSubexpr index dimension error")
+    idx = idxx(is .- (_start.(s.size) .- 1), _length.(s.size))
+    return ParameterNode(s.offset + idx)
 end
 
 @inline function Base.getindex(p::P, i) where {P<:Parameter}
@@ -452,6 +581,28 @@ function set_parameter!(c::ExaCore, param::Parameter, values::AbstractArray)
 
     copyto!(@view(c.θ[start_idx:end_idx]), values)
 
+    # Re-evaluate parameter subexpressions that depend on θ
+    _recompute_param_subexprs!(c)
+
+    return nothing
+end
+
+"""
+    _recompute_param_subexprs!(c::ExaCore)
+
+Re-evaluates all parameter-only subexpressions and updates their cached values in θ.
+Called automatically by `set_parameter!`.
+"""
+function _recompute_param_subexprs!(c::ExaCore)
+    for ps in c.param_subexpr_fns
+        # Re-evaluate the subexpression with current θ values
+        # Note: θ contains both user parameters and param subexpr values
+        # The eval function only reads user parameters (earlier in θ)
+        new_values = ps.fn(c.θ)
+        start_idx = ps.offset + 1
+        end_idx = ps.offset + ps.length
+        copyto!(@view(c.θ[start_idx:end_idx]), new_values)
+    end
     return nothing
 end
 
@@ -662,6 +813,162 @@ function _constraint!(c, f, pars)
     c.nnzh += nitr * f.o2step
 
     c.con = ConstraintAug(c.con, f, convert_array(pars, c.backend), oa)
+end
+
+# Helper to infer dimensions from iterator
+_infer_subexpr_dims(itr::AbstractRange) = (itr,)
+_infer_subexpr_dims(itr::AbstractArray) = (length(itr),)
+_infer_subexpr_dims(itr::Base.Iterators.ProductIterator) = itr.iterators
+_infer_subexpr_dims(itr) = (length(collect(itr)),)  # fallback
+
+"""
+    subexpr(core, generator; reduced=false, parameter_only=false)
+
+Creates a subexpression that can be reused in objectives and constraints.
+
+Three forms are available:
+
+- **Lifted** (default, `reduced=false`): Creates auxiliary variables with defining equality
+  constraints. This generates derivative code once and uses simple variable references thereafter.
+  Adds variables and constraints to the problem.
+
+- **Reduced** (`reduced=true`): Stores the expression for direct substitution when indexed.
+  No auxiliary variables or constraints are created. The expression is inlined wherever used.
+
+- **Parameter-only** (`parameter_only=true`): For expressions that depend only on parameters (θ),
+  not variables (x). Values are computed once when parameters are set, not at every function
+  evaluation. Automatically recomputed when `set_parameter!` is called.
+
+Both lifted and reduced forms support SIMD-vectorized evaluation and can be nested.
+
+## Example
+```jldoctest
+julia> using ExaModels
+
+julia> c = ExaCore();
+
+julia> x = variable(c, 10);
+
+julia> s = subexpr(c, x[i]^2 for i in 1:10)
+Subexpression (lifted)
+
+  s ∈ R^{10}
+
+julia> objective(c, s[i] + s[i+1] for i in 1:9);
+```
+
+## Reduced form (experimental)
+
+!!! warning
+    The reduced form (`reduced=true`) is experimental and may have issues with complex
+    nested expressions. Use the default lifted form for production code.
+
+```julia
+c = ExaCore()
+x = variable(c, 10)
+
+# Reduced form - no extra variables/constraints
+s = subexpr(c, x[i]^2 for i in 1:10; reduced=true)
+
+# s[i] substitutes x[i]^2 directly into the expression
+objective(c, s[i] + s[i+1] for i in 1:9)
+```
+
+## Parameter-only form
+
+For expressions involving only parameters, use `parameter_only=true` to evaluate them
+once when parameters change, rather than at every optimization iteration:
+
+```julia
+c = ExaCore()
+θ = parameter(c, ones(10))
+x = variable(c, 10)
+
+# Parameter-only subexpression - computed once per parameter update
+weights = subexpr(c, θ[i]^2 + θ[i+1] for i in 1:9; parameter_only=true)
+
+# Use in objective - weights[i] returns cached value, not re-computed
+objective(c, weights[i] * x[i]^2 for i in 1:9)
+```
+
+## Multi-dimensional example
+```julia
+c = ExaCore()
+x = variable(c, 0:T, 0:N)
+
+# Automatically infers 2D structure from Cartesian product
+dx = subexpr(c, x[t, i] - x[t-1, i] for t in 1:T, i in 1:N)
+
+# Now dx[t, i] can be used in constraints
+constraint(c, dx[t, i] - something for t in 1:T, i in 1:N)
+```
+"""
+function subexpr(c::C, gen::Base.Generator; reduced::Bool = false, parameter_only::Bool = false) where {T, C <: ExaCore{T}}
+    # Infer dimensions before adapting (which may collect the iterator)
+    ns = _infer_subexpr_dims(gen.iter)
+
+    gen = _adapt_gen(gen)
+    n = length(gen.iter)
+
+    if parameter_only
+        # Parameter-only form: evaluate once, cache values in θ, re-evaluate on parameter update
+        # Store values at the end of θ (after user parameters)
+        o = c.npar  # Offset into θ
+        c.npar += n
+        c.nparam_subexpr += n
+
+        # Store the evaluation function for re-computation on parameter updates
+        # This evaluation happens on CPU to avoid GPU scalar indexing issues,
+        # but the results are stored in θ which may be on GPU.
+        # This is acceptable since parameter updates are infrequent (not in optimization hot path).
+        iter_collected = collect(gen.iter)
+        eval_fn = function(θ_vec)
+            # Convert to CPU for expression evaluation (handles GPU arrays)
+            θ_cpu = θ_vec isa Array ? θ_vec : Array(θ_vec)
+            dummy_x = T[]
+            return T[gen.f(p)(Identity(), dummy_x, θ_cpu) for p in iter_collected]
+        end
+        push!(c.param_subexpr_fns, (offset = o, length = n, fn = eval_fn))
+
+        # Evaluate immediately with current parameter values and append to θ
+        # eval_fn returns CPU array, append! handles GPU conversion
+        values = eval_fn(c.θ)
+        c.θ = append!(c.backend, c.θ, values, n)
+
+        return ParameterSubexpr(ns, n, o)
+    end
+
+    if reduced
+        # Reduced form: store the function and iterator for direct substitution
+        return ReducedSubexpr(ns, n, gen.f, collect(gen.iter))
+    end
+
+    # Lifted form: create auxiliary variables and defining constraints
+    # Compute start values from expression evaluated at variable start values
+    # Uses CPU evaluation to handle GPU arrays (same approach as parameter_only)
+    iter_collected = collect(gen.iter)
+    x0_cpu = c.x0 isa Array ? c.x0 : Array(c.x0)
+    θ_cpu = c.θ isa Array ? c.θ : Array(c.θ)
+    start_values = T[gen.f(p)(Identity(), x0_cpu, θ_cpu) for p in iter_collected]
+
+    # Create auxiliary variables for subexpression values with computed start values
+    v = variable(c, ns...; start = start_values)
+
+    # Create defining constraints: v[k] - expr(itr[k]) = 0 for k = 1:n
+    # We pair each element with its linear index for proper variable indexing
+    paired_iter = collect(enumerate(iter_collected))
+    orig_f = gen.f
+    def_f = function (kp)
+        k = kp[1]
+        p = kp[2]
+        # Use direct Var construction with linear index for robustness
+        return Var(v.offset + k) - orig_f(p)
+    end
+    def_gen = Base.Generator(def_f, paired_iter)
+
+    con = constraint(c, def_gen; lcon = zero(T), ucon = zero(T))
+
+    return Subexpr(ns, n, v.offset, con)
 end
 
 

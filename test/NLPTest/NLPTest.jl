@@ -38,6 +38,7 @@ include("luksan.jl")
 include("power.jl")
 include("luksan_struct.jl")
 include("parameter_test.jl")
+include("subexpr_test.jl")
 
 function test_nlp(m1, m2; full = false)
     @testset "NLP meta tests" begin
@@ -185,6 +186,10 @@ function runtests()
 
                 @testset "Parameter Test" begin
                     test_parametric_vs_nonparametric(backend)
+                end
+
+                @testset "Subexpr Test" begin
+                    test_subexpr(backend)
                 end
             end
         end
