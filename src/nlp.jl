@@ -515,7 +515,7 @@ end
 Adds constraints specified by a `generator` to `core`, and returns an `Constraint` object.
 
 ## Keyword Arguments
-- `start`: The initial guess of the solution. Can either be `Number`, `AbstractArray`, or `Generator`.
+- `start`: The initial guess of the dual solution. Can either be `Number`, `AbstractArray`, or `Generator`.
 - `lcon` : The constraint lower bound. Can either be `Number`, `AbstractArray`, or `Generator`.
 - `ucon` : The constraint upper bound. Can either be `Number`, `AbstractArray`, or `Generator`.
 
