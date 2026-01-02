@@ -191,8 +191,6 @@ function NLPModels.hess_coord!(
     return hess
 end
 
-function _slice_first_n!(
-
 function buffered_copyto!(a, b, c)
     copyto!(b, c)
     copyto!(a, b)
