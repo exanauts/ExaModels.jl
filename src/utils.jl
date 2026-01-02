@@ -186,10 +186,12 @@ function NLPModels.hess_coord!(
         m.hess_buffer;
         obj_weight = obj_weight,
     )
-    copyto!(@view(hess[1:length(hess)]), m.hess_buffer)
+    copyto!(hess, m.hess_buffer)
     # copyto!(unsafe_wrap(Array, pointer(hess), length(hess)), m.hess_buffer)
     return hess
 end
+
+function _slice_first_n!(
 
 function buffered_copyto!(a, b, c)
     copyto!(b, c)
