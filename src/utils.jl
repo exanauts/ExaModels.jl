@@ -29,6 +29,7 @@ struct WrapperNLPModel{
     jac_J_buffer::VI
 
     hess_buffer::VT2
+    hess_buffer2::VT
     hess_I_buffer::VI
     hess_J_buffer::VI
 
@@ -83,6 +84,7 @@ function WrapperNLPModel(VT, m)
     jac_I_buffer = similar(m.meta.x0, Int, nnzj)
     jac_J_buffer = similar(m.meta.x0, Int, nnzj)
     hess_buffer = similar(m.meta.x0, nnzh)
+    hess_buffer2 = VT(undef, nnzh)
     hess_I_buffer = similar(m.meta.x0, Int, nnzh)
     hess_J_buffer = similar(m.meta.x0, Int, nnzh)
 
@@ -100,6 +102,7 @@ function WrapperNLPModel(VT, m)
         jac_I_buffer,
         jac_J_buffer,
         hess_buffer,
+        hess_buffer2,
         hess_I_buffer,
         hess_J_buffer,
         NLPModels.NLPModelMeta(
@@ -186,8 +189,9 @@ function NLPModels.hess_coord!(
         m.hess_buffer;
         obj_weight = obj_weight,
     )
-    copyto!(hess, m.hess_buffer)
-    # copyto!(unsafe_wrap(Array, pointer(hess), length(hess)), m.hess_buffer)
+    copyto!(m.hess_buffer2, m.hess_buffer)
+    copyto!(hess, m.hess_buffer2)
+
     return hess
 end
 
