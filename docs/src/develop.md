@@ -1,6 +1,6 @@
 # Developing Extensions
 
-ExaModels.jl's API only uses simple julia funcitons, and thus, implementing the extensions is straightforward. Below, we suggest a good practice for implementing an extension package.
+ExaModels.jl's API only uses simple julia functions, and thus, implementing the extensions is straightforward. Below, we suggest a good practice for implementing an extension package.
 
 Let's say that we want to implement an extension package for the example problem in [Getting Started](@ref guide). An extension package may look like:
 ```

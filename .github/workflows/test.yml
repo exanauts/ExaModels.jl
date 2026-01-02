@@ -7,7 +7,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        julia-version: ['1']
+        julia-version: ['lts', '1']
         julia-arch: [x64]
         os: [ubuntu-latest,macos-latest,windows-latest]
     steps:
@@ -16,17 +16,25 @@ jobs:
         with:
           version: ${{ matrix.julia-version }}
       - uses: julia-actions/julia-buildpkg@latest
+      - name: Add OpenCL.jl to test environment
+        run: |
+          julia --project=test -e 'using Pkg; Pkg.add(["OpenCL", "pocl_jll"])'
       - uses: julia-actions/julia-runtest@latest
         env:
           EXAMODELS_TEST_POCL: 1
 
-  nvidia:
-    runs-on:
-      labels: cuda
+  gpu:
     strategy:
       matrix:
-        julia-version: ['1']
+        julia-version: ['lts', '1']
         julia-arch: [x64]
+        os: [ubuntu-latest]
+        backend: ['cuda', 'amdgpu']
+    runs-on: ['self-hosted', 'gpu', '${{ matrix.backend }}']
+    env:
+      # oneAPI specific variables
+      OverrideDefaultFP64Settings: ${{ matrix.backend == 'oneapi' && '1' || '' }}
+      IGC_EnableDPEmulation: ${{ matrix.backend == 'oneapi' && '1' || '' }}
     steps:
     - name: Checkout code
       uses: actions/checkout@v2
@@ -34,71 +42,25 @@ jobs:
       uses: julia-actions/setup-julia@latest
       with:
         version: ${{ matrix.julia-version }}
-    - name: Run tests
-      env:
-        EXAMODELS_TEST_CUDA: 1
-        EXAMODELS_TEST_POCL: 1
+    - name: Setup tests
       run: |
         julia --color=yes --project=./test -e '
           using Pkg
           Pkg.Registry.update()
           Pkg.develop(path=".")
-          Pkg.instantiate()
-          include("test/runtests.jl")'
-  amd:
-    runs-on: 
-      labels: amdgpu
-    strategy:
-      matrix:
-        julia-version: ['1']
-        julia-arch: [x64]
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v2
-    - name: Setup Julia
-      uses: julia-actions/setup-julia@latest
-      with:
-        version: ${{ matrix.julia-version }}
-    - name: Run tests
-      env:
-        EXAMODELS_TEST_AMDGPU: 1
-        EXAMODELS_TEST_POCL: 1
-        JULIA_NUM_THREADS: 4
-        JULIA_AMDGPU_CORE_MUST_LOAD: "1"
-        JULIA_AMDGPU_HIP_MUST_LOAD: "1"
-        JULIA_AMDGPU_DISABLE_ARTIFACTS: "1"
+          Pkg.instantiate()'
+    - name: Add AMDGPU.jl to test environment
+      if: matrix.backend == 'amdgpu'
       run: |
-        julia --color=yes --project=./test -e '
-          using Pkg
-          Pkg.Registry.update()
-          Pkg.develop(path=".")
-          Pkg.instantiate()
-          include("test/runtests.jl")'
-
-  intel:
-    runs-on: 
-      labels: oneapi
-    strategy:
-      matrix:
-        julia-version: ['1']
-        julia-arch: [x64]
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v2
-    - name: Setup Julia
-      uses: julia-actions/setup-julia@latest
-      with:
-        version: ${{ matrix.julia-version }}
-    - name: Run tests
-      env:
-        EXAMODELS_TEST_ONEAPI: 1
-        EXAMODELS_TEST_POCL: 1
-        OverrideDefaultFP64Settings: 1
-        IGC_EnableDPEmulation: 1
+        julia --project=test -e 'using Pkg; Pkg.add("AMDGPU")'
+    - name: Add CUDA.jl to test environment
+      if: matrix.backend == 'cuda'
       run: |
-        julia --color=yes --project=./test -e '
-          using Pkg
-          Pkg.Registry.update()
-          Pkg.develop(path=".")
-          Pkg.instantiate()
-          include("test/runtests.jl")'
+        julia --project=test -e 'using Pkg; Pkg.add("CUDA")'
+    - name: Add oneAPI.jl to test environment
+      if: matrix.backend == 'oneapi'
+      run: |
+        julia --project=test -e 'using Pkg; Pkg.add("oneAPI")'
+    - name: Run tests
+      run: |
+        julia --color=yes --project=./test -e 'include("test/runtests.jl")'

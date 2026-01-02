@@ -77,7 +77,8 @@ function ExaModels.ExaModel(
     backend = nothing,
     prod = false,
     T = Float64,
-)
+    )
+
     c, _ = to_exacore(moim; backend = backend, T = T)
     return ExaModels.ExaModel(c; prod = prod)
 end
@@ -115,10 +116,16 @@ end
 
 function fill_variable_start!(moim, x0, param_vis)
     var_to_idx = Dict{MOI.VariableIndex,Int}()
-    for (i, vi) in enumerate(MOI.get(moim, MOI.ListOfVariableIndices()))
+    i = 0
+    for vi in MOI.get(moim, MOI.ListOfVariableIndices())
         vi ∈ param_vis && continue
+        i += 1
         var_to_idx[vi] = i
-        start = MOI.get(moim, MOI.VariablePrimalStart(), vi)
+        start = if MOI.supports(moim, MOI.VariablePrimalStart(), typeof(vi))
+            MOI.get(moim, MOI.VariablePrimalStart(), vi)
+        else
+            nothing
+        end
         isnothing(start) && continue
         x0[i] = start
     end
@@ -189,8 +196,17 @@ function copy_constraints!(c, moim, var_to_idx, T)
 
     con_types = MOI.get(moim, MOI.ListOfConstraintTypesPresent())
     for (F, S) in con_types
-        F <: MOI.VariableIndex && continue
         cis = MOI.get(moim, MOI.ListOfConstraintIndices{F,S}())
+        if F <: MOI.VariableIndex
+            for ci in cis
+                vi = MOI.get(moim, MOI.ConstraintFunction(), ci)
+                vartype, var_idx = var_to_idx[vi]
+                if vartype === :variable
+                    con_to_idx[ci] = var_idx
+                end
+            end
+            continue
+        end
         bin, offset =
             exafy_con(moim, cis, bin, offset, lcon, ucon, y0, var_to_idx, con_to_idx)
     end
@@ -307,8 +323,14 @@ function exafy_con(
     for (i, ci) in enumerate(cons)
         func = MOI.get(moim, MOI.ConstraintFunction(), ci)
         set = MOI.get(moim, MOI.ConstraintSet(), ci)
-        start = MOI.get(moim, MOI.ConstraintPrimalStart(), ci)
         con_to_idx[ci] = offset + i
+        start = if MOI.supports(
+            moim, MOI.ConstraintPrimalStart(), typeof(ci)
+        )
+            MOI.get(moim, MOI.ConstraintPrimalStart(), ci)
+        else
+            nothing
+        end
         _exafy_con_update_start(ci, start, y0, con_to_idx)
         _exafy_con_update_vector(ci, set, lcon, ucon, con_to_idx)
         bin = _exafy_con(ci, func, bin, var_to_idx, con_to_idx)
@@ -688,6 +710,9 @@ function MOI.supports_constraint(
 )
     return true
 end
+function MOI.supports(::Optimizer, ::MOI.ObjectiveSense)
+    return true
+end
 function MOI.supports(::Optimizer, ::MOI.ObjectiveFunction{<:SUPPORTED_FUNC_TYPE_WITH_VAR})
     return true
 end
@@ -706,6 +731,7 @@ end
 function MOI.copy_to(dest::Optimizer, src::MOI.ModelLike)
     core, maps = to_exacore(src; backend = dest.backend)
     dest.model = ExaModels.ExaModel(core; prod = true)
+
     return _make_index_map(src, maps)
 end
 
@@ -836,6 +862,10 @@ function _make_constraints_map(
         map[c] = typeof(c)(con_to_idx[c])
     end
     return
+end
+
+function MOI.set(model::Optimizer, ::MOI.NLPBlock, nlp_data::MOI.NLPBlockData)
+    error("The legacy nonlinear model interface is not supported. Please use the new MOI-based interface.")
 end
 
 end # module
