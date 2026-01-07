@@ -160,13 +160,29 @@ An ExaCore
   number of constraint patterns: ... 0
 ```
 """
-Base.@kwdef mutable struct ExaCore{T,VT<:AbstractVector{T},VTI<:AbstractVector{UInt},B}
+Base.@kwdef mutable struct ExaCore{
+    T,
+    VT<:AbstractVector{T},
+    VI<:AbstractVector{UInt},
+    B,
+    MI<:AbstractVector{AbstractVector{Any}},
+    VII<:AbstractVector{Tuple{UInt,UInt}}
+}
     backend::B = nothing
     obj::AbstractObjective = ObjectiveNull()
     con::AbstractConstraint = ConstraintNull()
     exp::AbstractExpression = ExpressionNull()
+    # corresponds to y1 and y2 in _simdfunction()
+    full_exp_refs1::MI = AbstractVector{Any}[]
+    full_exp_refs2::MI = AbstractVector{Any}[]
+    e1_starts::VII = convert_array(Tuple{UInt,UInt}[], backend)
+    e2_starts::VII = convert_array(Tuple{UInt,UInt}[], backend)
+    e1_cnts::VI = convert_array(UInt[], backend)
+    e2_cnts::VI = convert_array(UInt[], backend)
+    e1_len::Int = 0
+    e2_len::Int = 0
     varis::Vector{UInt} = UInt[]
-    isexp::VTI = convert_array(zeros(UInt, 0), backend)
+    isexp::VI = convert_array(UInt[], backend)
     nvar::Int = 0
     npar::Int = 0
     nexp::Int = 0
@@ -219,17 +235,22 @@ An ExaCore
 """,
 )
 
-
-struct ExaModel{T,VT,VTI,E,O,C,EX,A} <: NLPModels.AbstractNLPModel{T,VT}
+struct ExaModel{T,VT,VI,E,O,C,EX,VII} <: NLPModels.AbstractNLPModel{T,VT}
     objs::O
     cons::C
     exps::EX
     varis::Vector{UInt}
-    isexp::VTI
+    isexp::VI
     nexp::Int
-    egrad::A
-    eJv::VT
-    eJtv::A
+    e1_starts::VII
+    e2_starts::VII
+    # index referenced by e1_starts is length
+    # next length elements are how much to increment cnt by
+    # sum of all cnts in a range = full cnt of expr - 1
+    e1_cnts::VI
+    e2_cnts::VI
+    e1::VT
+    e2::VT
     θ::VT
     meta::NLPModels.NLPModelMeta{T,VT}
     counters::NLPModels.Counters
@@ -288,9 +309,12 @@ function ExaModel(c::C; prod = nothing) where {C<:ExaCore}
         c.varis,
         c.isexp,
         c.nexp,
-        convert_array(zeros(c.nvar, c.nexp), c.backend),
-        convert_array(zeros(c.nexp), c.backend),
-        convert_array(zeros(c.nvar, c.nexp), c.backend),
+        c.e1_starts,
+        c.e2_starts,
+        c.e1_cnts,
+        c.e2_cnts,
+        convert_array(zeros(c.e1_len), c.backend),
+        convert_array(zeros(c.e2_len), c.backend),
         c.θ,
         NLPModels.NLPModelMeta(
             c.nvar,
@@ -438,7 +462,9 @@ function variable(
     len = total(ns)
     c.nvar += len
     c.varis = vcat(c.varis, (o+1):c.nvar)
-    append!(c.backend, c.isexp, (0 for _ in 1:len), len)
+    append!(c.backend, c.isexp, 0, len)
+    append!(c.backend, c.e1_starts, [(0, 0) for _ in 1:len], len)
+    append!(c.backend, c.e2_starts, [(0, 0) for _ in 1:len], len)
     c.x0 = append!(c.backend, c.x0, start, total(ns))
     c.lvar = append!(c.backend, c.lvar, lvar, total(ns))
     c.uvar = append!(c.backend, c.uvar, uvar, total(ns))
@@ -538,7 +564,7 @@ Objective
 """
 function objective(c::C, gen) where {C<:ExaCore}
     gen = _adapt_gen(gen)
-    f = SIMDFunction(gen, c.nobj, c.nnzg, c.nnzh)
+    f = SIMDFunction(gen, c.full_exp_refs1, c.full_exp_refs2, c.exp, c.isexp, c.nobj, c.nnzg, c.nnzh)
     pars = gen.iter
 
     _objective(c, f, pars)
@@ -550,7 +576,7 @@ end
 Adds objective terms specified by a `expr` and `pars` to `core`, and returns an `Objective` object.
 """
 function objective(c::C, expr::N, pars = 1:1) where {C<:ExaCore,N<:AbstractNode}
-    f = _simdfunction(expr, c.nobj, c.nnzg, c.nnzh)
+    f = _simdfunction(expr, c.full_exp_refs1, c.full_exp_refs2, c.exp, c.isexp, c.nobj, c.nnzg, c.nnzh)
 
     _objective(c, f, pars)
 end
@@ -600,7 +626,7 @@ function constraint(
 ) where {T,C<:ExaCore{T}}
 
     gen = _adapt_gen(gen)
-    f = SIMDFunction(gen, c.ncon, c.nnzj, c.nnzh)
+    f = SIMDFunction(gen, c.full_exp_refs1, c.full_exp_refs2, c.exp, c.isexp, c.ncon, c.nnzj, c.nnzh)
     pars = gen.iter
 
     _constraint(c, f, pars, start, lcon, ucon)
@@ -620,7 +646,7 @@ function constraint(
     ucon = zero(T),
 ) where {T,C<:ExaCore{T},N<:AbstractNode}
 
-    f = _simdfunction(expr, c.ncon, c.nnzj, c.nnzh)
+    f = _simdfunction(expr, c.full_exp_refs1, c.full_exp_refs2, c.exp, c.isexp, c.ncon, c.nnzj, c.nnzh)
 
     _constraint(c, f, pars, start, lcon, ucon)
 end
@@ -638,7 +664,7 @@ function constraint(
     ucon = zero(T),
 ) where {T,C<:ExaCore{T}}
 
-    f = _simdfunction(Null(), c.ncon, c.nnzj, c.nnzh)
+    f = _simdfunction(Null(), c.full_exp_refs1, c.full_exp_refs2, c.exp, c.isexp, c.ncon, c.nnzj, c.nnzh)
 
     _constraint(c, f, 1:n, start, lcon, ucon)
 end
@@ -690,7 +716,7 @@ Constraint Augmentation
 function constraint!(c::C, c1, gen::Base.Generator) where {C<:ExaCore}
 
     gen = _adapt_gen(gen)
-    f = SIMDFunction(gen, offset0(c1, 0), c.nnzj, c.nnzh)
+    f = SIMDFunction(gen, c.full_exp_refs1, c.full_exp_refs2, c.exp, c.isexp, offset0(c1, 0), c.nnzj, c.nnzh)
     pars = gen.iter
 
     _constraint!(c, f, pars)
@@ -702,7 +728,7 @@ end
 Expands the existing constraint `c1` in `c` by adding addtional constraints terms specified by `expr` and `pars`.
 """
 function constraint!(c::C, c1, expr, pars) where {C<:ExaCore}
-    f = _simdfunction(expr, offset0(c1, 0), c.nnzj, c.nnzh)
+    f = _simdfunction(expr, c.full_exp_refs1, c.full_exp_refs2, c.exp, c.isexp, offset0(c1, 0), c.nnzj, c.nnzh)
 
     _constraint!(c, f, pars)
 end
@@ -742,53 +768,99 @@ Expression
 """
 function expression(
     c::C,
+    ns::S,
     gen::Base.Generator,
-    ns...,
-) where {T,C<:ExaCore{T}}
-
+) where {T,C<:ExaCore{T},S}
     gen = _adapt_gen(gen)
-    f = SIMDFunction(gen, c.nvar, c.nnzj, c.nnzh)
+    f = simd_expr(c, gen)
     pars = gen.iter
-
-    _expression(c, f, pars, ns)
-end
-
-function _expression(c, f, pars, ns)
     nitr = length(pars)
-    len = total(ns)
     o = c.nvar
-    c.nvar += len
-    append!(c.backend, c.isexp, (1+c.nexp):(len+c.nexp), len)
-    c.nexp += len
+    c.nvar += nitr
+    append!(c.backend, c.isexp, (1+c.nexp):(nitr+c.nexp), nitr)
+    c.nexp += nitr
     c.nconaug += nitr
-    c.nnzj += nitr * f.o1step
-    c.nnzh += nitr * f.o2step
-    start = convert_array(zeros(len), c.backend)
-    lvar = convert_array(zeros(len), c.backend)
-    uvar = convert_array(zeros(len), c.backend)
+    start = convert_array(zeros(nitr), c.backend)
+    lvar = convert_array(zeros(nitr), c.backend)
+    uvar = convert_array(zeros(nitr), c.backend)
     # TODO: this fails if lvar / uvar infinite and f is trig (for example)
     #@simd for i in 1:nitr
     #    start[i] = f.f(pars[i], c.x0, c.θ)
     #    lvar[i] = f.f(pars[i], c.lvar, c.θ)
     #    uvar[i] = f.f(pars[i], c.uvar, c.θ)
     #end
-    c.x0 = append!(c.backend, c.x0, start, len)
-    c.lvar = append!(c.backend, c.lvar, lvar, len)
-    c.uvar = append!(c.backend, c.uvar, uvar, len)
+    c.x0 = append!(c.backend, c.x0, start, nitr)
+    c.lvar = append!(c.backend, c.lvar, lvar, nitr)
+    c.uvar = append!(c.backend, c.uvar, uvar, nitr)
     c.exp = Expression(c.exp, f, convert_array(pars, c.backend), o, ns)
+    c.exp
 end
 
+function simd_expr(c::ExaCore, gen, )
+    f = gen.f(ParSource())
+    nitr = length(gen.iter)
+
+    y1_raw = []
+    d = f(Identity(), AdjointNodeSource(nothing, nothing), nothing)
+    ExaModels.grpass(d, nothing, y1_raw, nothing, 0, NaN)
+    y1 = get_full_exp_refs(c.full_exp_refs1, c.exp, c.isexp, y1_raw)
+    push!(c.full_exp_refs1, y1)
+
+    y2_raw = []
+    t = f(Identity(), SecondAdjointNodeSource(nothing, nothing), nothing)
+    ExaModels.hrpass(t, nothing, y2_raw, nothing, nothing, 0, NaN, NaN)
+    y2 = get_full_exp_refs(c.full_exp_refs2, c.exp, c.isexp, y2_raw)
+    push!(c.full_exp_refs2, y2)
+
+    a1 = unique(y1)
+    o1step = length(a1)
+    e1_cnts = compress_ref_cnts(y1, a1)
+    c1 = Compressor(Tuple(findfirst(isequal(di), a1) for di in y1))
+    append!(c.backend, c.e1_starts, [
+        (length(c.e1_cnts) + 1, (i-1) * o1step + c.e1_len + 1) for i in 1:nitr
+    ], nitr)
+    o1 = c.e1_len
+    c.e1_len += nitr * o1step
+    push!(c.e1_cnts, o1step)
+    append!(c.backend, c.e1_cnts, e1_cnts, o1step)
+
+    a2 = unique(y2)
+    e2_cnts = compress_ref_cnts(y2, a2)
+    o2step = length(a2)
+    c2 = Compressor(Tuple(findfirst(isequal(di), a2) for di in y2))
+    append!(c.backend, c.e2_starts, [
+        (length(c.e2_cnts) + 1, (i-1) * o2step + c.e2_len + 1) for i in 1:nitr
+    ], nitr)
+    o2 = c.e2_len
+    c.e2_len += nitr * o2step
+    push!(c.e2_cnts, o2step)
+    append!(c.backend, c.e2_cnts, e2_cnts, length(e2_cnts))
+
+    SIMDFunction(f, c1, c2, c.nvar, o1, o2, o1step, o2step)
+end
+
+expr!(m, x, θ) = _expr!(m.exps, m, x, θ)
+function _expr!(expr, m, x, θ)
+    _expr!(expr.inner, m, x, θ)
+    @simd for i in eachindex(expr.itr)
+        x[offset0(expr, i)] = expr.f(expr.itr[i], x, θ)
+    end
+end
+_expr!(expr::ExpressionNull, m, x, θ) = nothing
+
 function jac_structure!(m::ExaModel, rows::AbstractVector, cols::AbstractVector)
-    @info typeof(rows)
-    @info typeof(cols)
-    _jac_structure!(m.isexp, m.cons, rows, cols)
+    e1_uint = reinterpret(UInt, m.e1)
+    fill!(e1_uint, zero(UInt))
+    _jac_structure!(m.exps, m, e1_uint, nothing, e1_uint)
+    _jac_structure!(m.cons, m, e1_uint, rows, cols)
     return rows, cols
 end
 
-_jac_structure!(isexp, cons::ConstraintNull, rows, cols) = nothing
-function _jac_structure!(isexp, cons, rows, cols)
-    _jac_structure!(cons.inner, rows, cols)
-    sjacobian!(isexp, rows, cols, cons, nothing, nothing, NaN)
+_jac_structure!(cons::ExpressionNull, m, e1_uint, rows, cols) = nothing
+_jac_structure!(cons::ConstraintNull, m, e1_uint, rows, cols) = nothing
+function _jac_structure!(f, m, e1_uint, rows, cols)
+    _jac_structure!(f.inner, m, e1_uint, rows, cols)
+    sjacobian!(e1_uint, m.e1_starts, m.e1_cnts, m.isexp, rows, cols, f, nothing, nothing, NaN)
 end
 
 function hess_structure!(m::ExaModel, rows::AbstractVector, cols::AbstractVector)
@@ -808,15 +880,6 @@ function _con_hess_structure!(cons, rows, cols)
     _con_hess_structure!(cons.inner, rows, cols)
     shessian!(rows, cols, cons, nothing, nothing, NaN, NaN)
 end
-
-expr!(m, x, θ) = _expr!(m.exps, m, x, θ)
-function _expr!(expr, m, x, θ)
-    _expr!(expr.inner, m, x, θ)
-    @simd for i in eachindex(expr.itr)
-        x[offset0(expr, i)] = expr.f(expr.itr[i], x, θ)
-    end
-end
-_expr!(expr::ExpressionNull, m, x, θ) = nothing
 
 function obj(m::ExaModel, x::AbstractVector)
     expr!(m, x, m.θ)
@@ -845,7 +908,6 @@ _cons_nln!(cons::ConstraintNull, x, θ, g) = nothing
 
 function grad!(m::ExaModel, x::AbstractVector, f::AbstractVector)
     expr!(m, x, m.θ)
-    egrad!(m, x)
     fill!(f, zero(eltype(f)))
     _grad!(m.isexp, m.egrad, m.objs, x, m.θ, f)
     return f
@@ -860,19 +922,20 @@ _grad!(isexp, egrad, objs::ObjectiveNull, x, θ, f) = nothing
 function jac_coord!(m::ExaModel, x::AbstractVector, jac::AbstractVector)
     expr!(m, x, m.θ)
     fill!(jac, zero(eltype(jac)))
-    _jac_coord!(m.cons, x, m.θ, jac)
+    _jac_coord!(m.exps, x, m, m.e1)
+    _jac_coord!(m.cons, x, m, jac)
     return jac
 end
 
-_jac_coord!(cons::ConstraintNull, x, θ, jac) = nothing
-function _jac_coord!(cons, x, θ, jac)
-    _jac_coord!(cons.inner, x, θ, jac)
-    sjacobian!(jac, nothing, cons, x, θ, one(eltype(jac)))
+_jac_coord!(f::ConstraintNull, x, m, jac) = nothing
+_jac_coord!(f::ExpressionNull, x, m, jac) = nothing
+function _jac_coord!(f, x, m, jac)
+    _jac_coord!(f.inner, x, m, jac)
+    sjacobian!(m.e1, m.e1_starts, m.e1_cnts, m.isexp, jac, nothing, f, x, m.θ, one(eltype(jac)))
 end
 
 function jprod_nln!(m::ExaModel, x::AbstractVector, v::AbstractVector, Jv::AbstractVector)
     expr!(m, x, m.θ)
-    ejac!(m, m.eJv, nothing, x, v)
     fill!(Jv, zero(eltype(Jv)))
     _jprod_nln!(m.cons, m.isexp, m.eJv, nothing, x, m.θ, v, Jv)
     return Jv
@@ -886,7 +949,6 @@ end
 
 function jtprod_nln!(m::ExaModel, x::AbstractVector, v::AbstractVector, Jtv::AbstractVector)
     expr!(m, x, m.θ)
-    ejac!(m, nothing, m.eJtv, x, ConstVector(1, length(v)))
     fill!(Jtv, zero(eltype(Jtv)))
     _jtprod_nln!(m.cons, m.isexp, nothing, m.eJtv, x, m.θ, v, Jtv)
     return Jtv
@@ -904,7 +966,6 @@ function hess_coord!(
     hess::AbstractVector;
     obj_weight = one(eltype(x)),
 )
-    expr!(m, x, m.θ)
     fill!(hess, zero(eltype(hess)))
     _obj_hess_coord!(m.objs, x, m.θ, hess, obj_weight)
     return hess
@@ -917,7 +978,6 @@ function hess_coord!(
     hess::AbstractVector;
     obj_weight = one(eltype(x)),
 )
-    expr!(m, x, m.θ)
     fill!(hess, zero(eltype(hess)))
     _obj_hess_coord!(m.objs, x, m.θ, hess, obj_weight)
     _con_hess_coord!(m.cons, x, m.θ, y, hess, obj_weight)
@@ -943,7 +1003,6 @@ function hprod!(
     Hv::AbstractVector;
     obj_weight = one(eltype(x)),
 )
-    expr!(m, x, m.θ)
     fill!(Hv, zero(eltype(Hv)))
     _obj_hprod!(m.objs, x, m.θ, v, Hv, obj_weight)
     return Hv
@@ -957,7 +1016,6 @@ function hprod!(
     Hv::AbstractVector;
     obj_weight = one(eltype(x)),
 )
-    expr!(m, x, m.θ)
     fill!(Hv, zero(eltype(Hv)))
     _obj_hprod!(m.objs, x, m.θ, v, Hv, obj_weight)
     _con_hprod!(m.cons, x, m.θ, y, v, Hv, obj_weight)

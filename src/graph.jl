@@ -120,7 +120,6 @@ end
 @inline Base.getindex(v::ParIndexed{I, n}, i) where {I, n} = ParIndexed(v, i)
 @inline Base.indexed_iterate(v::ParIndexed{I, n}, idx, start = 1) where {I, n} = (ParIndexed(v, idx), idx + 1)
 
-
 @inline Base.getindex(n::VarSource, i) = Var(i)
 @inline Base.getindex(::ParameterSource, i) = ParameterNode(i)
 
@@ -209,9 +208,9 @@ A source of `AdjointNode`. `adjoint_node_source[i]` returns an `AdjointNodeVar` 
 # Fields:
 - `inner::VT`: variable vector
 """
-struct AdjointNodeSource{VT,VTI}
+struct AdjointNodeSource{VT,VI}
     inner::VT
-    isexp::VTI
+    isexp::VI
 end
 
 @inline AdjointNode1(f::F, x::T, y, inner::I) where {F,T,I} =
@@ -219,8 +218,10 @@ end
 @inline AdjointNode2(f::F, x::T, y1, y2, inner1::I1, inner2::I2) where {F,T,I1,I2} =
     AdjointNode2{F,T,I1,I2}(x, y1, y2, inner1, inner2)
 
-@inline Base.getindex(x::I, i) where {I<:AdjointNodeSource{Nothing}} =
+@inline Base.getindex(x::I, i) where {I<:AdjointNodeSource{Nothing,Nothing}} =
     AdjointNodeVar(i, NaN)
+@inline Base.getindex(x::I, i) where {I<:AdjointNodeSource{Nothing}} =
+    @inbounds x.isexp[i] == 0 ? AdjointNodeVar(i, NaN) : AdjointNodeExpr(i, NaN)
 @inline Base.getindex(x::I, i) where {I<:AdjointNodeSource} =
     @inbounds x.isexp[i] == 0 ? AdjointNodeVar(i, x.inner[i]) : AdjointNodeExpr(i, x.inner[i])
 
@@ -296,9 +297,9 @@ A source of `AdjointNode`. `adjoint_node_source[i]` returns an `AdjointNodeVar` 
 - `inner::VT`: variable vector
 - 'isexp::VTI': expression vector
 """
-struct SecondAdjointNodeSource{VT,VTI}
+struct SecondAdjointNodeSource{VT,VI}
     inner::VT
-    isexp::VTI
+    isexp::VI
 end
 
 @inline SecondAdjointNode1(f::F, x::T, y, h, inner::I) where {F,T,I} =
@@ -316,11 +317,12 @@ end
 ) where {F,T,I1,I2} =
     SecondAdjointNode2{F,T,I1,I2}(x, y1, y2, h11, h12, h22, inner1, inner2)
 
-@inline Base.getindex(x::I, i) where {I<:SecondAdjointNodeSource{Nothing}} =
+@inline Base.getindex(x::I, i) where {I<:SecondAdjointNodeSource{Nothing,Nothing}} =
     SecondAdjointNodeVar(i, NaN)
+@inline Base.getindex(x::I, i) where {I<:SecondAdjointNodeSource{Nothing}} =
+    @inbounds x.isexp[i] == 0 ? SecondAdjointNodeVar(i, NaN) : SecondAdjointNodeExpr(i, NaN)
 @inline Base.getindex(x::I, i) where {I<:SecondAdjointNodeSource} =
     @inbounds x.isexp[i] == 0 ? SecondAdjointNodeVar(i, x.inner[i]) : SecondAdjointNodeExpr(i, x.inner[i])
-
 
 @inline (v::Null{Nothing})(i, x::V, θ) where {T,V<:AbstractVector{T}} = zero(T)
 @inline (v::Null{N})(i, x::V, θ) where {N,T,V<:AbstractVector{T}} = T(v.value)
