@@ -225,7 +225,6 @@ end
 @inline Base.getindex(x::I, i) where {I<:AdjointNodeSource} =
     @inbounds x.isexp[i] == 0 ? AdjointNodeVar(i, x.inner[i]) : AdjointNodeExpr(i, x.inner[i])
 
-
 """
     SecondAdjointNode1{F, T, I}
 
@@ -251,7 +250,7 @@ A node with one child for second-order forward pass tree
 # Fields:
 - `x::T`: function value
 - `y1::T`: first-order sensitivity w.r.t. first argument
-- `y2::T`: first-order sensitivity w.r.t. first argument
+- `y2::T`: first-order sensitivity w.r.t. second argument
 - `h11::T`: second-order sensitivity w.r.t. first argument
 - `h12::T`: second-order sensitivity w.r.t. first and second argument
 - `h22::T`: second-order sensitivity w.r.t. second argument

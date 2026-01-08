@@ -50,7 +50,7 @@ end
     o2,
     cnt,
     adj,
-) where {T1<:SecondAdjointNodeVar,T2<:SecondAdjointNode1}
+) where {T1<:Union{SecondAdjointNodeVar,SecondAdjointNodeExpr},T2<:SecondAdjointNode1}
     cnt = hdrpass(t1, t2.inner, comp, y1, y2, o2, cnt, adj * t2.y)
     cnt
 end
@@ -67,7 +67,19 @@ function hdrpass(
     cnt = hdrpass(t1, t2.inner, comp, y1, y2, o2, cnt, adj * t2.y)
     cnt
 end
-
+function hdrpass(
+    t1::SecondAdjointNodeExpr,
+    t2::SecondAdjointNode1,
+    comp::Nothing,
+    y1,
+    y2,
+    o2,
+    cnt,
+    adj,
+)  # despecialized
+    cnt = hdrpass(t1, t2.inner, comp, y1, y2, o2, cnt, adj * t2.y)
+    cnt
+end
 
 @inline function hdrpass(
     t1::T1,
@@ -78,13 +90,26 @@ end
     o2,
     cnt,
     adj,
-) where {T1<:SecondAdjointNode1,T2<:SecondAdjointNodeVar}
+) where {T1<:SecondAdjointNode1,T2<:Union{SecondAdjointNodeVar,SecondAdjointNodeExpr}}
     cnt = hdrpass(t1.inner, t2, comp, y1, y2, o2, cnt, adj * t1.y)
     cnt
 end
 function hdrpass(
     t1::SecondAdjointNode1,
     t2::SecondAdjointNodeVar,
+    comp::Nothing,
+    y1,
+    y2,
+    o2,
+    cnt,
+    adj,
+)  # despecialized
+    cnt = hdrpass(t1.inner, t2, comp, y1, y2, o2, cnt, adj * t1.y)
+    cnt
+end
+function hdrpass(
+    t1::SecondAdjointNode1,
+    t2::SecondAdjointNodeExpr,
     comp::Nothing,
     y1,
     y2,
@@ -198,13 +223,27 @@ end
     o2,
     cnt,
     adj,
-) where {T1<:SecondAdjointNodeVar,T2<:SecondAdjointNode2}
+) where {T1<:Union{SecondAdjointNodeVar,SecondAdjointNodeExpr},T2<:SecondAdjointNode2}
     cnt = hdrpass(t1, t2.inner1, comp, y1, y2, o2, cnt, adj * t2.y1)
     cnt = hdrpass(t1, t2.inner2, comp, y1, y2, o2, cnt, adj * t2.y2)
     cnt
 end
 function hdrpass(
     t1::SecondAdjointNodeVar,
+    t2::SecondAdjointNode2,
+    comp::Nothing,
+    y1,
+    y2,
+    o2,
+    cnt,
+    adj,
+) # despecialized
+    cnt = hdrpass(t1, t2.inner1, comp, y1, y2, o2, cnt, adj * t2.y1)
+    cnt = hdrpass(t1, t2.inner2, comp, y1, y2, o2, cnt, adj * t2.y2)
+    cnt
+end
+function hdrpass(
+    t1::SecondAdjointNodeExpr,
     t2::SecondAdjointNode2,
     comp::Nothing,
     y1,
@@ -227,7 +266,7 @@ end
     o2,
     cnt,
     adj,
-) where {T1<:SecondAdjointNode2,T2<:SecondAdjointNodeVar}
+) where {T1<:SecondAdjointNode2,T2<:Union{SecondAdjointNodeVar,SecondAdjointNodeExpr}}
     cnt = hdrpass(t1.inner1, t2, comp, y1, y2, o2, cnt, adj * t1.y1)
     cnt = hdrpass(t1.inner2, t2, comp, y1, y2, o2, cnt, adj * t1.y2)
     cnt
@@ -246,8 +285,22 @@ function hdrpass(
     cnt = hdrpass(t1.inner2, t2, comp, y1, y2, o2, cnt, adj * t1.y2)
     cnt
 end
+function hdrpass(
+    t1::SecondAdjointNode2,
+    t2::SecondAdjointNodeExpr,
+    comp::Nothing,
+    y1,
+    y2,
+    o2,
+    cnt,
+    adj,
+) # despecialized
+    cnt = hdrpass(t1.inner1, t2, comp, y1, y2, o2, cnt, adj * t1.y1)
+    cnt = hdrpass(t1.inner2, t2, comp, y1, y2, o2, cnt, adj * t1.y2)
+    cnt
+end
 
-
+# hess_coord!
 @inline function hdrpass(
     t1::T1,
     t2::T2,
@@ -265,6 +318,44 @@ end
         y1[o2+comp(cnt+=1)] += adj
     end
     cnt
+end
+@inline function hdrpass(
+    t1::T1,
+    t2::T2,
+    comp,
+    y1,
+    y2,
+    o2,
+    cnt,
+    adj,
+) where {T1<:SecondAdjointNodeExpr,T2<:SecondAdjointNodeVar}
+    (cnt_start, e_start) = e_starts[t1.i]
+    len = e_cnts[cnt_start]
+    cnt += 1
+    for i in 1:len
+        @inbounds y1[o2 + comp(cnt)] += e[e_start + i - 1] * adj
+        cnt += e_cnts[cnt_start + i]
+    end
+    return cnt
+end
+@inline function hdrpass(
+    t1::T1,
+    t2::T2,
+    comp,
+    y1,
+    y2,
+    o2,
+    cnt,
+    adj,
+) where {T1<:SecondAdjointNodeVar,T2<:SecondAdjointNodeExpr}
+    (cnt_start, e_start) = e_starts[t2.i]
+    len = e_cnts[cnt_start]
+    cnt += 1
+    for i in 1:len
+        @inbounds y1[o2 + comp(cnt)] = e[e_start + i - 1]
+        cnt += e_cnts[cnt_start + i]
+    end
+    return cnt
 end
 
 
@@ -355,7 +446,6 @@ end
 end
 
 @inline hrpass0(args...) = hrpass(args...)
-
 
 @inline function hrpass0(
     t::D,
@@ -526,6 +616,7 @@ end
     @inbounds y[t.i] += adj2 * v[t.i]
     return (cnt += 1)
 end
+# hess_coord!
 @inline function hrpass(
     t::T,
     comp,
@@ -539,6 +630,7 @@ end
     @inbounds y1[o2+comp(cnt+=1)] += adj2
     cnt
 end
+# hess_structure!
 @inline function hrpass(
     t::T,
     comp,
@@ -568,6 +660,7 @@ end
     @inbounds y1[ind] = ((t.i, t.i), ind)
     cnt
 end
+# hess_structure!
 @inline function hdrpass(
     t1::T1,
     t2::T2,

@@ -906,18 +906,20 @@ function _cons_nln!(cons, x, θ, g)
 end
 _cons_nln!(cons::ConstraintNull, x, θ, g) = nothing
 
-function grad!(m::ExaModel, x::AbstractVector, f::AbstractVector)
+function grad!(m::ExaModel, x::AbstractVector, out::AbstractVector)
     expr!(m, x, m.θ)
-    fill!(f, zero(eltype(f)))
-    _grad!(m.isexp, m.egrad, m.objs, x, m.θ, f)
+    fill!(out, zero(eltype(out)))
+    _grad!(m.exps, m, x, out)
+    _grad!(m.objs, m, x, out)
     return f
 end
 
-function _grad!(isexp, egrad, objs, x, θ, f)
-    _grad!(isexp, egrad, objs.inner, x, θ, f)
-    gradient!(isexp, egrad, f, objs, x, θ, one(eltype(f)))
+_grad!(f::ObjectiveNull, m, x, out) = nothing
+_grad!(f::ExpressionNull, m, x, out) = nothing
+function _grad!(f, m, x, out)
+    _grad!(f.inner, m, x, out)
+    gradient!(m.isexp, m.e1, m.e1_starts, m.e1_cntsegrad, f, objs, x, θ, one(eltype(out)))
 end
-_grad!(isexp, egrad, objs::ObjectiveNull, x, θ, f) = nothing
 
 function jac_coord!(m::ExaModel, x::AbstractVector, jac::AbstractVector)
     expr!(m, x, m.θ)
@@ -967,7 +969,9 @@ function hess_coord!(
     obj_weight = one(eltype(x)),
 )
     fill!(hess, zero(eltype(hess)))
-    _obj_hess_coord!(m.objs, x, m.θ, hess, obj_weight)
+    expr!(m, x, m.θ)
+    _hess_coord!(m.exps, x, m.θ, nothing, hess, one(eltype(hess)))
+    _hess_coord!(m.objs, x, m.θ, nothing, hess, obj_weight)
     return hess
 end
 
@@ -979,21 +983,20 @@ function hess_coord!(
     obj_weight = one(eltype(x)),
 )
     fill!(hess, zero(eltype(hess)))
-    _obj_hess_coord!(m.objs, x, m.θ, hess, obj_weight)
-    _con_hess_coord!(m.cons, x, m.θ, y, hess, obj_weight)
+    expr!(m, x, m.θ)
+    _hess_coord!(m.exps, x, m.θ, one(eltype(hess)), m.e2)
+    _hess_coord!(m.objs, x, m.θ, obj_weight, hess)
+    _hess_coord!(m.cons, x, m.θ, y, hess)
     return hess
 end
 
-_obj_hess_coord!(objs::ObjectiveNull, x, θ, hess, obj_weight) = nothing
-function _obj_hess_coord!(objs, x, θ, hess, obj_weight)
-    _obj_hess_coord!(objs.inner, x, θ, hess, obj_weight)
-    shessian!(hess, nothing, objs, x, θ, obj_weight, zero(eltype(hess)))
-end
+_hess_coord!(cons::ConstraintNull, x, θ, y, hess) = nothing
+_hess_coord!(objs::ObjectiveNull, x, θ, y, hess) = nothing
+_hess_coord!(objs::ExpressionNull, x, θ, y, hess) = nothing
 
-_con_hess_coord!(cons::ConstraintNull, x, θ, y, hess, obj_weight) = nothing
-function _con_hess_coord!(cons, x, θ, y, hess, obj_weight)
-    _con_hess_coord!(cons.inner, x, θ, y, hess, obj_weight)
-    shessian!(hess, nothing, cons, x, θ, y, zero(eltype(hess)))
+function _hess_coord!(f, x, θ, y, hess)
+    _hess_coord!(f.inner, x, θ, y, hess)
+    shessian!(hess, nothing, f, x, θ, y, zero(eltype(hess)))
 end
 
 function hprod!(
