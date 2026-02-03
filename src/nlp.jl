@@ -154,7 +154,7 @@ Constraint Augmentation
 )
 
 """
-ExaCore([array_eltype::Type; backend = backend, minimize = true])
+    ExaCore([array_eltype::Type; backend = backend, minimize = true])
 
 Returns an intermediate data object `ExaCore`, which later can be used for creating `ExaModel`
 
