@@ -1,5 +1,5 @@
-# # [Two-Stage Stochastic Optimization](@id twostage)
-# ExaModels supports two-stage stochastic optimization problems through the `TwoStageExaModel` type. This feature enables efficient modeling of optimization problems under uncertainty, where decisions are made in two stages:
+# # [Two-Stage Optimization](@id two_stage)
+# ExaModels supports two-stage optimization problems through the `TwoStageExaModel`. This feature enables efficient modeling of optimization problems where decisions are made in two stages:
 #
 # - **Design (first-stage) variables**: Decisions made before uncertainty is revealed, shared across all scenarios
 # - **Recourse (second-stage) variables**: Scenario-specific decisions made after uncertainty is revealed
@@ -8,7 +8,7 @@
 # The key advantage of `TwoStageExaModel` is that all scenarios share one compiled expression pattern, achieving true SIMD parallelism on GPUs while maintaining the block-structured nature of the problem.
 
 # ## Problem Formulation
-# A typical two-stage stochastic program has the form:
+# A typical two-stage program has the form:
 # ```math
 # \begin{aligned}
 # \min_{d, \{v_i\}} \quad & f(d) + \sum_{i=1}^{S} w_i \cdot g_i(d, v_i; \theta_i) \\
@@ -74,12 +74,12 @@ end
 # - Design variables are at the end
 #
 # Use the helper functions to get index ranges:
-println("Recourse var indices for scenario 1: ", recourse_var_indices(model, 1))
-println("Recourse var indices for scenario 2: ", recourse_var_indices(model, 2))
-println("Recourse var indices for scenario 3: ", recourse_var_indices(model, 3))
-println("Design var indices: ", design_var_indices(model))
-println("Total variables: ", total_vars(model))
-println("Total constraints: ", total_cons(model))
+println("Recourse var indices for scenario 1: ", ExaModels.recourse_var_indices(model, 1))
+println("Recourse var indices for scenario 2: ", ExaModels.recourse_var_indices(model, 2))
+println("Recourse var indices for scenario 3: ", ExaModels.recourse_var_indices(model, 3))
+println("Design var indices: ", ExaModels.design_var_indices(model))
+println("Total variables: ", ExaModels.total_vars(model))
+println("Total constraints: ", ExaModels.total_cons(model))
 
 # ## Solving and Extracting Solutions
 # Solve the model using Ipopt:
@@ -89,11 +89,11 @@ println("Optimal objective: ", round(result.objective, digits = 4))
 
 # Extract solutions using index ranges:
 x_sol = result.solution
-d_sol = x_sol[design_var_indices(model)]
+d_sol = x_sol[ExaModels.design_var_indices(model)]
 println("\nDesign variable d* = ", round(d_sol[1], digits = 4))
 
 for i in 1:ns
-    v_sol = x_sol[recourse_var_indices(model, i)]
+    v_sol = x_sol[ExaModels.recourse_var_indices(model, i)]
     println("Recourse variable v$(i)* = ", round(v_sol[1], digits = 4))
 end
 
@@ -107,18 +107,18 @@ end
 # - Online optimization with changing uncertainty
 
 # Update parameters for a single scenario:
-set_scenario_parameters!(model, 1, [10.0])  ## Change θ₁ from 2.0 to 10.0
+ExaModels.set_scenario_parameters!(model, 1, [10.0])  ## Change θ₁ from 2.0 to 10.0
 
 # Or update all scenarios at once:
 new_θ_sets = [[10.0], [12.0], [14.0]]
-set_all_scenario_parameters!(model, new_θ_sets)
+ExaModels.set_all_scenario_parameters!(model, new_θ_sets)
 
 # Re-solve with new parameters:
 result2 = ipopt(model.model; print_level = 0)
 println("\nAfter parameter update:")
 println("New optimal objective: ", round(result2.objective, digits = 4))
 x_sol2 = result2.solution
-d_sol2 = x_sol2[design_var_indices(model)]
+d_sol2 = x_sol2[ExaModels.design_var_indices(model)]
 println("New design variable d* = ", round(d_sol2[1], digits = 4))
 
 # ## Variable Bounds and Initial Values
@@ -164,7 +164,7 @@ println("Optimal objective: ", round(result3.objective, digits = 4))
 
 # ## Accessing the Underlying Model
 # For advanced use cases, you can access the underlying `ExaModel`:
-inner_model = get_model(model)
+inner_model = ExaModels.get_model(model)
 println("\nUnderlying model type: ", typeof(inner_model))
 
 # This allows you to use any NLPModels-compatible solver or perform custom operations on the model.
