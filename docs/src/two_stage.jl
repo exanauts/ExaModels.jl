@@ -164,7 +164,7 @@ println("Optimal objective: ", round(result3.objective, digits = 4))
 
 # ## Accessing the Underlying Model
 # For advanced use cases, you can access the underlying `ExaModel`:
-inner_model = ExaModel.get_model(model)
+inner_model = ExaModels.get_model(model)
 println("\nUnderlying model type: ", typeof(inner_model))
 
 # This allows you to use any NLPModels-compatible solver or perform custom operations on the model.
