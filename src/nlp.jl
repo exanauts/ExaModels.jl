@@ -218,7 +218,7 @@ julia> x = variable(c, 1:10);              # create variables
 
 julia> objective(c, x[i]^2 for i in 1:10); # set objective function
 
-julia> m = ExaModel(c)                     # creat an ExaModel object
+julia> m = ExaModel(c)                     # create an ExaModel object
 An ExaModel{Float64, Vector{Float64}, ...}
 
   Problem name: Generic
