@@ -23,6 +23,14 @@ const PARAMETER_INDEX_THRESHOLD = Int64(4_611_686_018_427_387_904) # div(typemax
 """
 abstract type AbstractBin end
 
+"""
+    struct Bin{E,P,I} <: AbstractBin
+
+This linked list with `inner` represents a sum of expressions `∑_{i in data} head(i)`
+It is a linked list and not a `Vector` as each `head` may have a different type.
+We append new ones at the beginning because `Bin` is non-mutable and
+its fields are concretely typed.
+"""
 struct Bin{E,P,I} <: AbstractBin
     head::E
     data::P
