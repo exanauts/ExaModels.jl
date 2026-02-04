@@ -1,5 +1,5 @@
-# # [Two-Stage Stochastic Optimization](@id twostage)
-# ExaModels supports two-stage stochastic optimization problems through the `TwoStageExaModel` type. This feature enables efficient modeling of optimization problems under uncertainty, where decisions are made in two stages:
+# # [Two-Stage Optimization](@id two_stage)
+# ExaModels supports two-stage optimization problems through the `TwoStageExaModel`. This feature enables efficient modeling of optimization problems where decisions are made in two stages:
 #
 # - **Design (first-stage) variables**: Decisions made before uncertainty is revealed, shared across all scenarios
 # - **Recourse (second-stage) variables**: Scenario-specific decisions made after uncertainty is revealed
@@ -8,7 +8,7 @@
 # The key advantage of `TwoStageExaModel` is that all scenarios share one compiled expression pattern, achieving true SIMD parallelism on GPUs while maintaining the block-structured nature of the problem.
 
 # ## Problem Formulation
-# A typical two-stage stochastic program has the form:
+# A typical two-stage program has the form:
 # ```math
 # \begin{aligned}
 # \min_{d, \{v_i\}} \quad & f(d) + \sum_{i=1}^{S} w_i \cdot g_i(d, v_i; \theta_i) \\
@@ -164,7 +164,7 @@ println("Optimal objective: ", round(result3.objective, digits = 4))
 
 # ## Accessing the Underlying Model
 # For advanced use cases, you can access the underlying `ExaModel`:
-inner_model = get_model(model)
+inner_model = ExaModel.get_model(model)
 println("\nUnderlying model type: ", typeof(inner_model))
 
 # This allows you to use any NLPModels-compatible solver or perform custom operations on the model.
