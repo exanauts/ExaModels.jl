@@ -986,7 +986,7 @@ _grad!(f::ObjectiveNull, m, x, out) = nothing
 _grad!(f::ExpressionNull, m, x, out) = nothing
 function _grad!(f, m, x, out)
     _grad!(f.inner, m, x, out)
-    return gradient!(m.isexp, m.e1, m.e1_starts, m.e1_cntsegrad, f, objs, x, θ, one(eltype(out)))
+    return gradient!(m.isexp, m.e1, m.e1_starts, m.e1_cnts, f, objs, x, θ, one(eltype(out)))
 end
 
 function jac_coord!(m::ExaModel, x::AbstractVector, jac::AbstractVector)
