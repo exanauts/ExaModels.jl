@@ -1,7 +1,7 @@
 module ADTest
 
 using ExaModels
-using Test, ForwardDiff, SpecialFunctions, NLPModels
+using Test, ForwardDiff, SpecialFunctions
 
 include("expression.jl")
 
@@ -30,14 +30,14 @@ const FUNCTIONS = [
     ("basic-functions-cot", x -> cot(x[1])),
     ("basic-functions-atan", x -> atan(x[1])),
     ("basic-functions-acot", x -> acot(x[1])),
-    # ("basic-functions-sind", x-> sind(x[1])), # cannot extend function
-    # ("basic-functions-cosd", x-> cosd(x[1])), # cannot extend function
-    # ("basic-functions-tand", x-> tand(x[1])), # cannot extend function
+    # ("basic-functions-sind", x-> sind(x[1])), # cannot extend function 
+    # ("basic-functions-cosd", x-> cosd(x[1])), # cannot extend function 
+    # ("basic-functions-tand", x-> tand(x[1])), # cannot extend function 
     ("basic-functions-cscd", x -> cscd(x[1])),
     ("basic-functions-secd", x -> secd(x[1])),
     ("basic-functions-cotd", x -> cotd(x[1])),
-    # ("basic-functions-atand", x-> atand(x[1])), # cannot extend function
-    # ("basic-functions-acotd", x-> acotd(x[1])), # cannot extend function
+    # ("basic-functions-atand", x-> atand(x[1])), # cannot extend function 
+    # ("basic-functions-acotd", x-> acotd(x[1])), # cannot extend function 
     ("basic-functions-sinh", x -> sinh(x[1])),
     ("basic-functions-asinh", x -> asinh(x[1])),
     ("basic-functions-cosh", x -> cosh(x[1])),
@@ -53,11 +53,11 @@ const FUNCTIONS = [
     ("basic-functions-:*", x -> *(x[1], x[2])),
     ("basic-functions-:^", x -> ^(x[1], x[2])),
     ("basic-functions-:/", x -> /(x[1], x[2])),
-    # ("basic-functions-:<=", x-> <=(x[1], x[2])), # not implemented
-    # ("basic-functions-:>=", x-> >=(x[1], x[2])), # not implemented
-    # ("basic-functions-:(==),", x-> (==)(x[1], x[2])), # not implemented
-    # ("basic-functions-:<", x-> <(x[1], x[2])), # not implemented
-    # ("basic-functions-:>", x-> >(x[1], x[2])), # not implemented
+    # ("basic-functions-:<=", x-> <=(x[1], x[2])), # not implemented 
+    # ("basic-functions-:>=", x-> >=(x[1], x[2])), # not implemented 
+    # ("basic-functions-:(==),", x-> (==)(x[1], x[2])), # not implemented 
+    # ("basic-functions-:<", x-> <(x[1], x[2])), # not implemented 
+    # ("basic-functions-:>", x-> >(x[1], x[2])), # not implemented 
     ("special-functions-erfi", x -> erfi(x[1])),
     ("special-functions-erfcinv", x -> erfcinv(x[1])),
     ("special-functions-erfcx", x -> erfcx(x[1])),
@@ -149,7 +149,7 @@ function sgradient(f, x)
 
     n = length(a1)
     buffer = fill!(similar(x, n), zero(T))
-    buffer_I = similar(x, Tuple{Int, Int}, n)
+    buffer_I = similar(x, Tuple{Int,Int}, n)
 
     ExaModels.sgradient!(buffer_I, ff, nothing, nothing, nothing, comp, 0, NaN)
     ExaModels.sgradient!(buffer, ff, nothing, x, nothing, comp, 0, one(T))
@@ -173,7 +173,7 @@ function sgradient_with_params(f, x, θ)
 
     n = length(a1)
     buffer = fill!(similar(x, n), zero(T))
-    buffer_I = similar(x, Tuple{Int, Int}, n)
+    buffer_I = similar(x, Tuple{Int,Int}, n)
 
     ExaModels.sgradient!(buffer_I, ff, nothing, nothing, θ, comp, 0, NaN)
     ExaModels.sgradient!(buffer, ff, nothing, x, θ, comp, 0, one(T))
@@ -308,17 +308,16 @@ function shessian_with_params(f, x, θ)
 end
 
 function runtests()
-    return @testset "AD test" begin
-        test_expression()
+    @testset "AD test" begin
         for (name, f) in FUNCTIONS
             x0 = rand(10)
             @testset "$name" begin
                 g = ForwardDiff.gradient(f, x0)
                 h = ForwardDiff.hessian(f, x0)
-                @test gradient(f, x0) ≈ g atol = 1.0e-6
-                @test sgradient(f, x0) ≈ g atol = 1.0e-6
-                @test sjacobian(f, x0) ≈ g atol = 1.0e-6
-                @test shessian(f, x0) ≈ h atol = 1.0e-6
+                @test gradient(f, x0) ≈ g atol = 1e-6
+                @test sgradient(f, x0) ≈ g atol = 1e-6
+                @test sjacobian(f, x0) ≈ g atol = 1e-6
+                @test shessian(f, x0) ≈ h atol = 1e-6
             end
         end
         @testset "Parameter tests" begin
@@ -329,10 +328,10 @@ function runtests()
                     f_fixed_θ = x -> f(x, θ0)
                     g = ForwardDiff.gradient(f_fixed_θ, x0)
                     h = ForwardDiff.hessian(f_fixed_θ, x0)
-                    @test gradient_with_params(f, x0, θ0) ≈ g atol = 1.0e-6
-                    @test sgradient_with_params(f, x0, θ0) ≈ g atol = 1.0e-6
-                    @test sjacobian_with_params(f, x0, θ0) ≈ g atol = 1.0e-6
-                    @test shessian_with_params(f, x0, θ0) ≈ h atol = 1.0e-6
+                    @test gradient_with_params(f, x0, θ0) ≈ g atol = 1e-6
+                    @test sgradient_with_params(f, x0, θ0) ≈ g atol = 1e-6
+                    @test sjacobian_with_params(f, x0, θ0) ≈ g atol = 1e-6
+                    @test shessian_with_params(f, x0, θ0) ≈ h atol = 1e-6
                 end
             end
         end

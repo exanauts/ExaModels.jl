@@ -806,36 +806,8 @@ function subexpr(
     end
     subexpr(c, (nsi for nsi in ns), gen)
 end
+subexpr(c::C, gen::G) where {T, C <: ExaCore{T}, G<:Base.Generator} = subexpr(c, (length(gen.iter),), gen)
 
-function subexpr(
-        c::C,
-        ns::S,
-        gen::Base.Generator,
-    ) where {T, C <: ExaCore{T}, S}
-    gen = _adapt_gen(gen)
-    f = simd_expr(c, gen)
-    pars = gen.iter
-    nitr = length(pars)
-    o = c.nvar
-    c.nvar += nitr
-    append!(c.backend, c.isexp, (1 + c.nexp):(nitr + c.nexp), nitr)
-    c.nexp += nitr
-    c.nconaug += nitr
-    start = convert_array(zeros(nitr), c.backend)
-    lvar = convert_array(zeros(nitr), c.backend)
-    uvar = convert_array(zeros(nitr), c.backend)
-    # TODO: this fails if lvar / uvar infinite and f is trig (for example)
-    #@simd for i in 1:nitr
-    #    start[i] = f.f(pars[i], c.x0, c.θ)
-    #    lvar[i] = f.f(pars[i], c.lvar, c.θ)
-    #    uvar[i] = f.f(pars[i], c.uvar, c.θ)
-    #end
-    c.x0 = append!(c.backend, c.x0, start, nitr)
-    c.lvar = append!(c.backend, c.lvar, lvar, nitr)
-    c.uvar = append!(c.backend, c.uvar, uvar, nitr)
-    c.exp = Expression(c.exp, f, convert_array(pars, c.backend), o, ns)
-    return c.exp
-end
 function subexpr(
         c::C,
         ns::S,
