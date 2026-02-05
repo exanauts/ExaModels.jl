@@ -36,6 +36,7 @@ include("jacobian.jl")
 include("hessian.jl")
 include("nlp.jl")
 include("utils.jl")
+include("two_stage.jl")
 
 export ExaModel,
     ExaCore,
@@ -56,6 +57,7 @@ export ExaModel,
     multipliers_L,
     multipliers_U,
     @register_univariate,
-    @register_bivariate
+    @register_bivariate,
+    TwoStageExaModel
 
 end # module ExaModels
