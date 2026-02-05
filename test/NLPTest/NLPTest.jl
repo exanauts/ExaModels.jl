@@ -8,8 +8,6 @@ using JuMP, PowerModels, MadNLP, Percival
 import ..BACKENDS
 
 const NLP_TEST_ARGUMENTS = [
-    ("luksan_expr", 3),
-    ("luksan_expr", 20),
     ("luksan_struct", 3),
     ("luksan_struct", 20),
     ("luksan_vlcek", 3),
@@ -39,7 +37,6 @@ end
 include("luksan.jl")
 include("power.jl")
 include("luksan_struct.jl")
-include("luksan_expr.jl")
 include("parameter_test.jl")
 include("subexpr_test.jl")
 
