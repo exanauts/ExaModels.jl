@@ -12,18 +12,18 @@ const SUPPORTED_FUNC_TYPE{T} = Union{
     MOI.ScalarQuadraticFunction{T},
     MOI.ScalarNonlinearFunction,
 }
-const SUPPORTED_FUNC_TYPE_WITH_VAR{T} = Union{SUPPORTED_FUNC_TYPE{T},MOI.VariableIndex}
+const SUPPORTED_FUNC_TYPE_WITH_VAR{T} = Union{SUPPORTED_FUNC_TYPE{T}, MOI.VariableIndex}
 const SUPPORTED_FUNC_SET_TYPE{T} =
-    Union{MOI.GreaterThan{T},MOI.LessThan{T},MOI.EqualTo{T},MOI.Interval{T}}
+    Union{MOI.GreaterThan{T}, MOI.LessThan{T}, MOI.EqualTo{T}, MOI.Interval{T}}
 const SUPPORTED_VAR_SET_TYPE{T} =
-    Union{MOI.GreaterThan{T},MOI.LessThan{T},MOI.EqualTo{T},MOI.Parameter{T}}
+    Union{MOI.GreaterThan{T}, MOI.LessThan{T}, MOI.EqualTo{T}, MOI.Parameter{T}}
 const PARAMETER_INDEX_THRESHOLD = Int64(4_611_686_018_427_387_904) # div(typemax(Int64),2)+1
 """
     Abstract data structure for storing expression tree and data arrays
 """
 abstract type AbstractBin end
 
-struct Bin{E,P,I} <: AbstractBin
+struct Bin{E, P, I} <: AbstractBin
     head::E
     data::P
     inner::I
@@ -38,7 +38,7 @@ function update_bin!(bin, e, p)
         return Bin(e, [p], bin)
     end
 end
-function _update_bin!(bin::Bin{E,P,I}, e, p) where {E,P,I}
+function _update_bin!(bin::Bin{E, P, I}, e, p) where {E, P, I}
     if e == bin.head && p isa eltype(bin.data)
         push!(bin.data, p)
         return true
@@ -73,11 +73,11 @@ function check_supported(T, moim)
 end
 
 function ExaModels.ExaModel(
-    moim::MOI.ModelLike;
-    backend = nothing,
-    prod = false,
-    T = Float64,
-)
+        moim::MOI.ModelLike;
+        backend = nothing,
+        prod = false,
+        T = Float64,
+    )
     c, _ = to_exacore(moim; backend = backend, T = T)
     return ExaModels.ExaModel(c; prod = prod)
 end
@@ -96,25 +96,26 @@ end
 
 function fill_variable_bounds!(moim, lvar, uvar, var_to_idx, T)
     for ci in
-        MOI.get(moim, MOI.ListOfConstraintIndices{MOI.VariableIndex,MOI.GreaterThan{T}}())
+        MOI.get(moim, MOI.ListOfConstraintIndices{MOI.VariableIndex, MOI.GreaterThan{T}}())
         vi = MOI.get(moim, MOI.ConstraintFunction(), ci)
         lvar[var_to_idx[vi]] = MOI.get(moim, MOI.ConstraintSet(), ci).lower
     end
     for ci in
-        MOI.get(moim, MOI.ListOfConstraintIndices{MOI.VariableIndex,MOI.LessThan{T}}())
+        MOI.get(moim, MOI.ListOfConstraintIndices{MOI.VariableIndex, MOI.LessThan{T}}())
         vi = MOI.get(moim, MOI.ConstraintFunction(), ci)
         uvar[var_to_idx[vi]] = MOI.get(moim, MOI.ConstraintSet(), ci).upper
     end
-    for ci in MOI.get(moim, MOI.ListOfConstraintIndices{MOI.VariableIndex,MOI.EqualTo{T}}())
+    for ci in MOI.get(moim, MOI.ListOfConstraintIndices{MOI.VariableIndex, MOI.EqualTo{T}}())
         vi = MOI.get(moim, MOI.ConstraintFunction(), ci)
         fixed_val = MOI.get(moim, MOI.ConstraintSet(), ci).value
         lvar[var_to_idx[vi]] = fixed_val
         uvar[var_to_idx[vi]] = fixed_val
     end
+    return
 end
 
 function fill_variable_start!(moim, x0, param_vis)
-    var_to_idx = Dict{MOI.VariableIndex,Int}()
+    var_to_idx = Dict{MOI.VariableIndex, Int}()
     i = 0
     for vi in MOI.get(moim, MOI.ListOfVariableIndices())
         vi ∈ param_vis && continue
@@ -132,8 +133,8 @@ function fill_variable_start!(moim, x0, param_vis)
 end
 
 function _get_parameters(moim::MOI.ModelLike, T)
-    cis = MOI.get(moim, MOI.ListOfConstraintIndices{MOI.VariableIndex,MOI.Parameter{T}}())
-    parameters = Vector{Tuple{MOI.VariableIndex,MOI.Parameter{T}}}()
+    cis = MOI.get(moim, MOI.ListOfConstraintIndices{MOI.VariableIndex, MOI.Parameter{T}}())
+    parameters = Vector{Tuple{MOI.VariableIndex, MOI.Parameter{T}}}()
     for ci in cis
         vi = MOI.get(moim, MOI.ConstraintFunction(), ci)
         set = MOI.get(moim, MOI.ConstraintSet(), ci)
@@ -182,7 +183,7 @@ function copy_objective!(c, moim, var_to_idx)
     bin = BinNull()
     bin = exafy_obj(MOI.get(moim, MOI.ObjectiveFunction{obj_type}()), bin, var_to_idx)
 
-    build_objective!(c, bin)
+    return build_objective!(c, bin)
 end
 
 function copy_constraints!(c, moim, var_to_idx, T)
@@ -191,12 +192,12 @@ function copy_constraints!(c, moim, var_to_idx, T)
     lcon = zeros(T, 0)
     ucon = zeros(T, 0)
     y0 = zeros(T, 0)
-    con_to_idx = Dict{MOI.ConstraintIndex,Int}()
+    con_to_idx = Dict{MOI.ConstraintIndex, Int}()
 
     con_types = MOI.get(moim, MOI.ListOfConstraintTypesPresent())
     for (F, S) in con_types
         F <: MOI.VariableIndex && continue
-        cis = MOI.get(moim, MOI.ListOfConstraintIndices{F,S}())
+        cis = MOI.get(moim, MOI.ListOfConstraintIndices{F, S}())
         bin, offset =
             exafy_con(moim, cis, bin, offset, lcon, ucon, y0, var_to_idx, con_to_idx)
     end
@@ -207,13 +208,13 @@ function copy_constraints!(c, moim, var_to_idx, T)
 end
 
 function _exafy_con(
-    i,
-    c::C,
-    bin,
-    var_to_idx,
-    con_to_idx;
-    pos = true,
-) where {C<:MOI.ScalarAffineFunction}
+        i,
+        c::C,
+        bin,
+        var_to_idx,
+        con_to_idx;
+        pos = true,
+    ) where {C <: MOI.ScalarAffineFunction}
     for mm in c.terms
         e, p = _exafy(mm, var_to_idx)
         e = pos ? e : -e
@@ -227,13 +228,13 @@ function _exafy_con(
     return bin
 end
 function _exafy_con(
-    i,
-    c::C,
-    bin,
-    var_to_idx,
-    con_to_idx;
-    pos = true,
-) where {C<:MOI.ScalarQuadraticFunction}
+        i,
+        c::C,
+        bin,
+        var_to_idx,
+        con_to_idx;
+        pos = true,
+    ) where {C <: MOI.ScalarQuadraticFunction}
     for mm in c.affine_terms
         e, p = _exafy(mm, var_to_idx)
         e = pos ? e : -e
@@ -256,13 +257,13 @@ function _exafy_con(
     return bin
 end
 function _exafy_con(
-    i,
-    c::C,
-    bin,
-    var_to_idx,
-    con_to_idx;
-    pos = true,
-) where {C<:MOI.ScalarNonlinearFunction}
+        i,
+        c::C,
+        bin,
+        var_to_idx,
+        con_to_idx;
+        pos = true,
+    ) where {C <: MOI.ScalarNonlinearFunction}
     if c.head == :+
         for mm in c.args
             bin = _exafy_con(i, mm, bin, var_to_idx, con_to_idx)
@@ -281,7 +282,7 @@ function _exafy_con(
     end
     return bin
 end
-function _exafy_con(i, c::C, bin, var_to_idx, con_to_idx; pos = true) where {C<:Real}
+function _exafy_con(i, c::C, bin, var_to_idx, con_to_idx; pos = true) where {C <: Real}
     e =
         pos ? ExaModels.ParIndexed(ExaModels.ParSource(), 1) :
         -ExaModels.ParIndexed(ExaModels.ParSource(), 1)
@@ -295,16 +296,16 @@ function _exafy_con(i, c::C, bin, var_to_idx, con_to_idx; pos = true) where {C<:
 end
 
 function exafy_con(
-    moim,
-    cons::V,
-    bin,
-    offset,
-    lcon,
-    ucon,
-    y0,
-    var_to_idx,
-    con_to_idx,
-) where {V<:Vector{<:MOI.ConstraintIndex}}
+        moim,
+        cons::V,
+        bin,
+        offset,
+        lcon,
+        ucon,
+        y0,
+        var_to_idx,
+        con_to_idx,
+    ) where {V <: Vector{<:MOI.ConstraintIndex}}
     l = length(cons)
 
     resize!(lcon, offset + l)
@@ -315,8 +316,8 @@ function exafy_con(
         set = MOI.get(moim, MOI.ConstraintSet(), ci)
         con_to_idx[ci] = offset + i
         start = if MOI.supports(
-            moim, MOI.ConstraintPrimalStart(), typeof(ci)
-        )
+                moim, MOI.ConstraintPrimalStart(), typeof(ci)
+            )
             MOI.get(moim, MOI.ConstraintPrimalStart(), ci)
         else
             nothing
@@ -329,50 +330,50 @@ function exafy_con(
 end
 
 function _exafy_con_update_start(i, start, y0, con_to_idx)
-    y0[con_to_idx[i]] = start
+    return y0[con_to_idx[i]] = start
 end
 
 function _exafy_con_update_start(i, ::Nothing, y0, con_to_idx)
-    y0[con_to_idx[i]] = zero(eltype(y0))
+    return y0[con_to_idx[i]] = zero(eltype(y0))
 end
 
 function _exafy_con_update_vector(i, e::MOI.Interval{T}, lcon, ucon, con_to_idx) where {T}
     lcon[con_to_idx[i]] = e.lower
-    ucon[con_to_idx[i]] = e.upper
+    return ucon[con_to_idx[i]] = e.upper
 end
 
 function _exafy_con_update_vector(i, e::MOI.LessThan{T}, lcon, ucon, con_to_idx) where {T}
     lcon[con_to_idx[i]] = -Inf
-    ucon[con_to_idx[i]] = e.upper
+    return ucon[con_to_idx[i]] = e.upper
 end
 
 function _exafy_con_update_vector(
-    i,
-    e::MOI.GreaterThan{T},
-    lcon,
-    ucon,
-    con_to_idx,
-) where {T}
+        i,
+        e::MOI.GreaterThan{T},
+        lcon,
+        ucon,
+        con_to_idx,
+    ) where {T}
     ucon[con_to_idx[i]] = Inf
-    lcon[con_to_idx[i]] = e.lower
+    return lcon[con_to_idx[i]] = e.lower
 end
 
 function _exafy_con_update_vector(i, e::MOI.EqualTo{T}, lcon, ucon, con_to_idx) where {T}
     lcon[con_to_idx[i]] = e.value
-    ucon[con_to_idx[i]] = e.value
+    return ucon[con_to_idx[i]] = e.value
 end
 
 
 function build_constraint!(c, cons, bin)
     build_constraint!(c, cons, bin.inner)
-    ExaModels.constraint!(c, cons, bin.head, bin.data)
+    return ExaModels.constraint!(c, cons, bin.head, bin.data)
 end
 
 function build_constraint!(c, cons, ::BinNull) end
 
 function build_objective!(c, bin)
     build_objective!(c, bin.inner)
-    ExaModels.objective(c, bin.head, bin.data)
+    return ExaModels.objective(c, bin.head, bin.data)
 end
 
 function build_objective!(c, ::BinNull) end
@@ -452,24 +453,30 @@ function _exafy(v::MOI.VariableIndex, var_to_idx, p = ())
     end
 end
 
-function _exafy(i::R, var_to_idx, p) where {R<:Real}
+function _exafy(i::R, var_to_idx, p) where {R <: Real}
     return ExaModels.ParIndexed(ExaModels.ParSource(), length(p) + 1), (p..., i)
 end
 
 function _exafy(e::MOI.ScalarNonlinearFunction, var_to_idx, p = ())
-    return op(e.head)((begin
-        c, p = _exafy(e, var_to_idx, p)
-        c
-    end for e in e.args)...), p
+    return op(e.head)(
+            (
+                begin
+                    c, p = _exafy(e, var_to_idx, p)
+                    c
+                end for e in e.args
+            )...
+        ), p
 end
 
 function _exafy(e::MOI.ScalarAffineFunction{T}, var_to_idx, p = ()) where {T}
     ec = if !isempty(e.terms)
-        sum(begin
-            c1, p = _exafy(term, var_to_idx, p)
-            c1
-        end for term in e.terms) +
-        ExaModels.ParIndexed(ExaModels.ParSource(), length(p) + 1)
+        sum(
+            begin
+                    c1, p = _exafy(term, var_to_idx, p)
+                    c1
+                end for term in e.terms
+        ) +
+            ExaModels.ParIndexed(ExaModels.ParSource(), length(p) + 1)
     else
         ExaModels.ParIndexed(ExaModels.ParSource(), length(p) + 1)
     end
@@ -480,7 +487,7 @@ end
 function _exafy(e::MOI.ScalarAffineTerm{T}, var_to_idx, p = ()) where {T}
     c1, p = _exafy(e.variable, var_to_idx, p)
     return *(c1, ExaModels.ParIndexed(ExaModels.ParSource(), length(p) + 1)),
-    (p..., e.coefficient)
+        (p..., e.coefficient)
 end
 
 function _exafy(e::MOI.ScalarQuadraticFunction{T}, var_to_idx, p = ()) where {T}
@@ -488,17 +495,21 @@ function _exafy(e::MOI.ScalarQuadraticFunction{T}, var_to_idx, p = ()) where {T}
     p = (p..., e.constant)
 
     if !isempty(e.affine_terms)
-        t += sum(begin
-            c1, p = _exafy(term, var_to_idx, p)
-            c1
-        end for term in e.affine_terms)
+        t += sum(
+            begin
+                    c1, p = _exafy(term, var_to_idx, p)
+                    c1
+                end for term in e.affine_terms
+        )
     end
 
     if !isempty(e.quadratic_terms)
-        t += sum(begin
-            c1, p = _exafy(term, var_to_idx, p)
-            c1
-        end for term in e.quadratic_terms)
+        t += sum(
+            begin
+                    c1, p = _exafy(term, var_to_idx, p)
+                    c1
+                end for term in e.quadratic_terms
+        )
     end
 
     return t, p
@@ -509,12 +520,12 @@ function _exafy(e::MOI.ScalarQuadraticTerm{T}, var_to_idx, p = ()) where {T}
     if e.variable_1 == e.variable_2
         v, p = _exafy(e.variable_1, var_to_idx, p)
         return ExaModels.ParIndexed(ExaModels.ParSource(), length(p) + 1) * abs2(v),
-        (p..., e.coefficient / 2) # it seems that MOI assumes this by default
+            (p..., e.coefficient / 2) # it seems that MOI assumes this by default
     else
         v1, p = _exafy(e.variable_1, var_to_idx, p)
         v2, p = _exafy(e.variable_2, var_to_idx, p)
         return ExaModels.ParIndexed(ExaModels.ParSource(), length(p) + 1) * v1 * v2,
-        (p..., e.coefficient)
+            (p..., e.coefficient)
     end
 end
 
@@ -675,29 +686,29 @@ end
 # struct EmptyOptimizer{B}
 #     backend::B
 # end
-mutable struct Optimizer{B,S} <: MOI.AbstractOptimizer
+mutable struct Optimizer{B, S} <: MOI.AbstractOptimizer
     solver::S
     backend::B
-    model::Union{Nothing,ExaModels.ExaModel}
+    model::Union{Nothing, ExaModels.ExaModel}
     result::Any
     solve_time::Float64
-    options::Dict{Symbol,Any}
+    options::Dict{Symbol, Any}
 end
 
 MOI.is_empty(model::Optimizer) = isnothing(model.model)
 
 function MOI.supports_constraint(
-    ::Optimizer,
-    ::Type{<:SUPPORTED_FUNC_TYPE},
-    ::Type{<:SUPPORTED_FUNC_SET_TYPE},
-)
+        ::Optimizer,
+        ::Type{<:SUPPORTED_FUNC_TYPE},
+        ::Type{<:SUPPORTED_FUNC_SET_TYPE},
+    )
     return true
 end
 function MOI.supports_constraint(
-    ::Optimizer,
-    ::Type{MOI.VariableIndex},
-    ::Type{<:SUPPORTED_VAR_SET_TYPE},
-)
+        ::Optimizer,
+        ::Type{MOI.VariableIndex},
+        ::Type{<:SUPPORTED_VAR_SET_TYPE},
+    )
     return true
 end
 function MOI.supports(::Optimizer, ::MOI.ObjectiveFunction{<:SUPPORTED_FUNC_TYPE_WITH_VAR})
@@ -708,11 +719,11 @@ function MOI.supports(::Optimizer, ::MOI.VariablePrimalStart, ::Type{MOI.Variabl
 end
 
 function ExaModels.Optimizer(solver, backend = nothing; kwargs...)
-    return Optimizer(solver, backend, nothing, nothing, 0.0, Dict{Symbol,Any}(kwargs...))
+    return Optimizer(solver, backend, nothing, nothing, 0.0, Dict{Symbol, Any}(kwargs...))
 end
 
 function MOI.empty!(model::ExaModelsMOI.Optimizer)
-    model.model = nothing
+    return model.model = nothing
 end
 
 function MOI.copy_to(dest::Optimizer, src::MOI.ModelLike)
@@ -739,23 +750,23 @@ end
 
 MOI.get(optimizer::Optimizer, ::MOI.TerminationStatus) =
     ExaModels.termination_status_translator(optimizer.solver, optimizer.result.status)
-MOI.get(model::Optimizer, attr::Union{MOI.PrimalStatus,MOI.DualStatus}) =
+MOI.get(model::Optimizer, attr::Union{MOI.PrimalStatus, MOI.DualStatus}) =
     ExaModels.result_status_translator(model.solver, model.result.status)
 
 function MOI.get(model::Optimizer, attr::MOI.VariablePrimal, vi::MOI.VariableIndex)
     MOI.check_result_index_bounds(model, attr)
     if vi.value > PARAMETER_INDEX_THRESHOLD
-        return model.model.θ[vi.value-PARAMETER_INDEX_THRESHOLD]
+        return model.model.θ[vi.value - PARAMETER_INDEX_THRESHOLD]
     else
         return model.result.solution[vi.value]
     end
 end
 
 function MOI.get(
-    model::Optimizer,
-    attr::MOI.ConstraintDual,
-    ci::MOI.ConstraintIndex{<:SUPPORTED_FUNC_TYPE,<:SUPPORTED_FUNC_SET_TYPE},
-)
+        model::Optimizer,
+        attr::MOI.ConstraintDual,
+        ci::MOI.ConstraintIndex{<:SUPPORTED_FUNC_TYPE, <:SUPPORTED_FUNC_SET_TYPE},
+    )
     MOI.check_result_index_bounds(model, attr)
     # MOI.throw_if_not_valid(model, ci)
     s = -1.0
@@ -763,10 +774,10 @@ function MOI.get(
 end
 
 function MOI.get(
-    model::Optimizer,
-    attr::MOI.ConstraintDual,
-    ci::MOI.ConstraintIndex{MOI.VariableIndex,MOI.LessThan{Float64}},
-)
+        model::Optimizer,
+        attr::MOI.ConstraintDual,
+        ci::MOI.ConstraintIndex{MOI.VariableIndex, MOI.LessThan{Float64}},
+    )
     MOI.check_result_index_bounds(model, attr)
     # MOI.throw_if_not_valid(model, ci)
     rc = model.result.multipliers_L[ci.value] - model.result.multipliers_U[ci.value]
@@ -774,10 +785,10 @@ function MOI.get(
 end
 
 function MOI.get(
-    model::Optimizer,
-    attr::MOI.ConstraintDual,
-    ci::MOI.ConstraintIndex{MOI.VariableIndex,MOI.GreaterThan{Float64}},
-)
+        model::Optimizer,
+        attr::MOI.ConstraintDual,
+        ci::MOI.ConstraintIndex{MOI.VariableIndex, MOI.GreaterThan{Float64}},
+    )
     MOI.check_result_index_bounds(model, attr)
     # MOI.throw_if_not_valid(model, ci)
     rc = model.result.multipliers_L[ci.value] - model.result.multipliers_U[ci.value]
@@ -785,10 +796,10 @@ function MOI.get(
 end
 
 function MOI.get(
-    model::Optimizer,
-    attr::MOI.ConstraintDual,
-    ci::MOI.ConstraintIndex{MOI.VariableIndex,MOI.EqualTo{Float64}},
-)
+        model::Optimizer,
+        attr::MOI.ConstraintDual,
+        ci::MOI.ConstraintIndex{MOI.VariableIndex, MOI.EqualTo{Float64}},
+    )
     MOI.check_result_index_bounds(model, attr)
     # MOI.throw_if_not_valid(model, ci)
     rc = model.result.multipliers_L[ci.value] - model.result.multipliers_U[ci.value]
@@ -840,11 +851,11 @@ function _make_index_map(model::MOI.ModelLike, var_to_idx, con_to_idx)
     return map
 end
 function _make_constraints_map(
-    model,
-    map::MOI.Utilities.DoubleDicts.IndexDoubleDictInner{F,S},
-    con_to_idx,
-) where {F,S}
-    for c in MOI.get(model, MOI.ListOfConstraintIndices{F,S}())
+        model,
+        map::MOI.Utilities.DoubleDicts.IndexDoubleDictInner{F, S},
+        con_to_idx,
+    ) where {F, S}
+    for c in MOI.get(model, MOI.ListOfConstraintIndices{F, S}())
         map[c] = typeof(c)(con_to_idx[c])
     end
     return

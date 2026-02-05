@@ -10,7 +10,7 @@ struct ObjectiveNull <: AbstractObjective end
 struct ExpressionNull <: AbstractExpression end
 struct ConstraintNull <: AbstractConstraint end
 
-struct Variable{S,O} <: AbstractVariable
+struct Variable{S, O} <: AbstractVariable
     size::S
     length::O
     offset::O
@@ -18,13 +18,13 @@ end
 Base.show(io::IO, v::Variable) = print(
     io,
     """
-Variable
+    Variable
 
-  x ∈ R^{$(join(size(v.size)," × "))}
-""",
+      x ∈ R^{$(join(size(v.size), " × "))}
+    """,
 )
 
-struct Parameter{S,O} <: AbstractParameter
+struct Parameter{S, O} <: AbstractParameter
     size::S
     length::O
     offset::O
@@ -32,12 +32,12 @@ end
 Base.show(io::IO, v::Parameter) = print(
     io,
     """
-Parameter
+    Parameter
 
-  θ ∈ R^{$(join(size(v.size)," × "))}
-""",
+      θ ∈ R^{$(join(size(v.size), " × "))}
+    """,
 )
-struct Objective{R,F,I} <: AbstractObjective
+struct Objective{R, F, I} <: AbstractObjective
     inner::R
     f::F
     itr::I
@@ -45,16 +45,16 @@ end
 Base.show(io::IO, v::Objective) = print(
     io,
     """
-Objective
+    Objective
 
-  min (...) + ∑_{p ∈ P} f(x,θ,p)
+      min (...) + ∑_{p ∈ P} f(x,θ,p)
 
-  where |P| = $(length(v.itr))
-""",
+      where |P| = $(length(v.itr))
+    """,
 )
 
 
-struct Expression{R,F,I,O,S} <: AbstractExpression
+struct Expression{R, F, I, O, S} <: AbstractExpression
     inner::R
     f::F
     itr::I
@@ -64,17 +64,17 @@ end
 Base.show(io::IO, v::Expression) = print(
     io,
     """
-Expression
+    Expression
 
-  s.t. (...)
-       g♭ ≤ [g(x,θ,p)]_{p ∈ P} ≤ g♯
+      s.t. (...)
+           g♭ ≤ [g(x,θ,p)]_{p ∈ P} ≤ g♯
 
-  where |P| = $(length(v.itr))
-""",
+      where |P| = $(length(v.itr))
+    """,
 )
 
 
-struct Constraint{R,F,I,O} <: AbstractConstraint
+struct Constraint{R, F, I, O} <: AbstractConstraint
     inner::R
     f::F
     itr::I
@@ -83,23 +83,23 @@ end
 Base.show(io::IO, v::Constraint) = print(
     io,
     """
-Constraint
+    Constraint
 
-  s.t. (...)
-       g♭ ≤ [g(x,θ,p)]_{p ∈ P} ≤ g♯
+      s.t. (...)
+           g♭ ≤ [g(x,θ,p)]_{p ∈ P} ≤ g♯
 
-  where |P| = $(length(v.itr))
-""",
+      where |P| = $(length(v.itr))
+    """,
 )
 
-struct ExpressionAug{R,F,I} <: AbstractConstraint
+struct ExpressionAug{R, F, I} <: AbstractConstraint
     inner::R
     f::F
     itr::I
     oa::Int
 end
 
-struct ConstraintAug{R,F,I} <: AbstractConstraint
+struct ConstraintAug{R, F, I} <: AbstractConstraint
     inner::R
     f::F
     itr::I
@@ -109,13 +109,13 @@ end
 Base.show(io::IO, v::ConstraintAug) = print(
     io,
     """
-Constraint Augmentation
+    Constraint Augmentation
 
-  s.t. (...)
-       g♭ ≤ (...) + ∑_{p ∈ P} h(x,θ,p) ≤ g♯
+      s.t. (...)
+           g♭ ≤ (...) + ∑_{p ∈ P} h(x,θ,p) ≤ g♯
 
-  where |P| = $(length(v.itr))
-""",
+      where |P| = $(length(v.itr))
+    """,
 )
 
 """
@@ -161,13 +161,13 @@ An ExaCore
 ```
 """
 Base.@kwdef mutable struct ExaCore{
-    T,
-    VT<:AbstractVector{T},
-    VI<:AbstractVector{UInt},
-    B,
-    MI<:AbstractVector{AbstractVector{Any}},
-    VII<:AbstractVector{Tuple{UInt,UInt}}
-}
+        T,
+        VT <: AbstractVector{T},
+        VI <: AbstractVector{UInt},
+        B,
+        MI <: AbstractVector{AbstractVector{Any}},
+        VII <: AbstractVector{Tuple{UInt, UInt}},
+    }
     backend::B = nothing
     obj::AbstractObjective = ObjectiveNull()
     con::AbstractConstraint = ConstraintNull()
@@ -175,8 +175,8 @@ Base.@kwdef mutable struct ExaCore{
     # corresponds to y1 and y2 in _simdfunction()
     full_exp_refs1::MI = AbstractVector{Any}[]
     full_exp_refs2::MI = AbstractVector{Any}[]
-    e1_starts::VII = convert_array(Tuple{UInt,UInt}[], backend)
-    e2_starts::VII = convert_array(Tuple{UInt,UInt}[], backend)
+    e1_starts::VII = convert_array(Tuple{UInt, UInt}[], backend)
+    e2_starts::VII = convert_array(Tuple{UInt, UInt}[], backend)
     e1_cnts::VI = convert_array(UInt[], backend)
     e2_cnts::VI = convert_array(UInt[], backend)
     e1_len::Int = 0
@@ -204,38 +204,38 @@ Base.@kwdef mutable struct ExaCore{
 end
 
 # Deprecated as of v0.7
-function ExaCore(::Type{T}, backend) where {T<:AbstractFloat}
+function ExaCore(::Type{T}, backend) where {T <: AbstractFloat}
     @warn "ExaCore(T, backend) is deprecated. Use ExaCore(T; backend = backend) instead"
-    return ExaCore(T; backend=backend)
+    return ExaCore(T; backend = backend)
 end
 function ExaCore(backend)
     @warn "ExaCore(backend) is deprecated. Use ExaCore(T; backend = backend) instead"
-    return ExaCore(; backend=backend)
+    return ExaCore(; backend = backend)
 end
 
-ExaCore(::Type{T}; backend=nothing, kwargs...) where {T<:AbstractFloat} =
-    ExaCore(x0=convert_array(zeros(T, 0), backend); backend=backend, kwargs...)
+ExaCore(::Type{T}; backend = nothing, kwargs...) where {T <: AbstractFloat} =
+    ExaCore(x0 = convert_array(zeros(T, 0), backend); backend = backend, kwargs...)
 
 depth(a) = depth(a.inner) + 1
 depth(a::ObjectiveNull) = 0
 depth(a::ConstraintNull) = 0
 depth(a::ExpressionNull) = 0
 
-Base.show(io::IO, c::ExaCore{T,VT,B}) where {T,VT,B} = print(
+Base.show(io::IO, c::ExaCore{T, VT, B}) where {T, VT, B} = print(
     io,
     """
-An ExaCore
+    An ExaCore
 
-  Float type: ...................... $T
-  Array type: ...................... $VT
-  Backend: ......................... $B
+      Float type: ...................... $T
+      Array type: ...................... $VT
+      Backend: ......................... $B
 
-  number of objective patterns: .... $(depth(c.obj))
-  number of constraint patterns: ... $(depth(c.con))
-""",
+      number of objective patterns: .... $(depth(c.obj))
+      number of constraint patterns: ... $(depth(c.con))
+    """,
 )
 
-struct ExaModel{T,VT,VI,E,O,C,EX,VII} <: NLPModels.AbstractNLPModel{T,VT}
+struct ExaModel{T, VT, VI, E, O, C, EX, VII} <: NLPModels.AbstractNLPModel{T, VT}
     objs::O
     cons::C
     exps::EX
@@ -252,14 +252,14 @@ struct ExaModel{T,VT,VI,E,O,C,EX,VII} <: NLPModels.AbstractNLPModel{T,VT}
     e1::VT
     e2::VT
     θ::VT
-    meta::NLPModels.NLPModelMeta{T,VT}
+    meta::NLPModels.NLPModelMeta{T, VT}
     counters::NLPModels.Counters
     ext::E
 end
 
-function Base.show(io::IO, c::ExaModel{T,VT}) where {T,VT}
+function Base.show(io::IO, c::ExaModel{T, VT}) where {T, VT}
     println(io, "An ExaModel{$T, $VT, ...}\n")
-    Base.show(io, c.meta)
+    return Base.show(io, c.meta)
 end
 
 """
@@ -301,7 +301,7 @@ julia> result = ipopt(m; print_level=0)    # solve the problem
 
 ```
 """
-function ExaModel(c::C; prod=nothing) where {C<:ExaCore}
+function ExaModel(c::C; prod = nothing) where {C <: ExaCore}
     return ExaModel(
         c.obj,
         c.con,
@@ -318,68 +318,68 @@ function ExaModel(c::C; prod=nothing) where {C<:ExaCore}
         c.θ,
         NLPModels.NLPModelMeta(
             c.nvar,
-            ncon=c.ncon,
-            nnzj=c.nnzj,
-            nnzh=c.nnzh,
-            x0=c.x0,
-            lvar=c.lvar,
-            uvar=c.uvar,
-            y0=c.y0,
-            lcon=c.lcon,
-            ucon=c.ucon,
-            minimize=c.minimize,
+            ncon = c.ncon,
+            nnzj = c.nnzj,
+            nnzh = c.nnzh,
+            x0 = c.x0,
+            lvar = c.lvar,
+            uvar = c.uvar,
+            y0 = c.y0,
+            lcon = c.lcon,
+            ucon = c.ucon,
+            minimize = c.minimize,
         ),
         NLPModels.Counters(),
         nothing,
     )
 end
 
-@inline function Base.getindex(v::V, i) where {V<:Variable}
+@inline function Base.getindex(v::V, i) where {V <: Variable}
     _bound_check(v.size, i)
-    Var(i + (v.offset - _start(v.size[1]) + 1))
+    return Var(i + (v.offset - _start(v.size[1]) + 1))
 end
-@inline function Base.getindex(v::V, is...) where {V<:Variable}
+@inline function Base.getindex(v::V, is...) where {V <: Variable}
     @assert(length(is) == length(v.size), "Variable index dimension error")
     _bound_check(v.size, is)
-    Var(v.offset + idxx(is .- (_start.(v.size) .- 1), _length.(v.size)))
+    return Var(v.offset + idxx(is .- (_start.(v.size) .- 1), _length.(v.size)))
 end
 
-@inline function Base.getindex(e::E, i) where {E<:Expression}
+@inline function Base.getindex(e::E, i) where {E <: Expression}
     _bound_check(e.size, i)
-    Var(i + (e.offset - _start(e.size[1]) + 1))
+    return Var(i + (e.offset - _start(e.size[1]) + 1))
 end
-@inline function Base.getindex(e::E, is...) where {E<:Expression}
+@inline function Base.getindex(e::E, is...) where {E <: Expression}
     @assert(length(is) == length(e.size), "Expression index dimension error. Got $(length(is)) dimensions, expected $(length(e.size)).")
     _bound_check(e.size, is)
-    Var(e.offset + idxx(is .- (_start.(e.size) .- 1), _length.(e.size)))
+    return Var(e.offset + idxx(is .- (_start.(e.size) .- 1), _length.(e.size)))
 end
 
-@inline function Base.getindex(p::P, i) where {P<:Parameter}
+@inline function Base.getindex(p::P, i) where {P <: Parameter}
     _bound_check(p.size, i)
-    ParameterNode(i + (p.offset - _start(p.size[1]) + 1))
+    return ParameterNode(i + (p.offset - _start(p.size[1]) + 1))
 end
-@inline function Base.getindex(p::P, is...) where {P<:Parameter}
+@inline function Base.getindex(p::P, is...) where {P <: Parameter}
     @assert(length(is) == length(p.size), "Parameter index dimension error")
     _bound_check(p.size, is)
-    ParameterNode(p.offset + idxx(is .- (_start.(p.size) .- 1), _length.(p.size)))
+    return ParameterNode(p.offset + idxx(is .- (_start.(p.size) .- 1), _length.(p.size)))
 end
 
 
-function _bound_check(sizes, i::I) where {I<:Integer}
-    __bound_check(sizes[1], i)
+function _bound_check(sizes, i::I) where {I <: Integer}
+    return __bound_check(sizes[1], i)
 end
-function _bound_check(sizes, is::NTuple{N,I}) where {I<:Integer,N}
+function _bound_check(sizes, is::NTuple{N, I}) where {I <: Integer, N}
     __bound_check(sizes[1], is[1])
-    _bound_check(sizes[2:end], is[2:end])
+    return _bound_check(sizes[2:end], is[2:end])
 end
 _bound_check(sizes, is) = nothing
 _bound_check(sizes, is::Tuple{}) = nothing
 
-function __bound_check(a::I, b::I) where {I<:Integer}
-    @assert(1 <= b <= a, "Variable index bound error")
+function __bound_check(a::I, b::I) where {I <: Integer}
+    return @assert(1 <= b <= a, "Variable index bound error")
 end
-function __bound_check(a::UnitRange{Int}, b::I) where {I<:Integer}
-    @assert(b in a, "Variable index bound error")
+function __bound_check(a::UnitRange{Int}, b::I) where {I <: Integer}
+    return @assert(b in a, "Variable index bound error")
 end
 
 function append!(backend, a, b::Base.Generator, lb)
@@ -387,7 +387,7 @@ function append!(backend, a, b::Base.Generator, lb)
 
     la = length(a)
     resize!(a, la + lb)
-    map!(b.f, view(a, (la+1):(la+lb)), convert_array(b.iter, backend))
+    map!(b.f, view(a, (la + 1):(la + lb)), convert_array(b.iter, backend))
     return a
 end
 
@@ -395,7 +395,7 @@ function append!(backend, a, b::Base.Generator{UnitRange{I}}, lb) where {I}
 
     la = length(a)
     resize!(a, la + lb)
-    map!(b.f, view(a, (la+1):(la+lb)), b.iter)
+    map!(b.f, view(a, (la + 1):(la + lb)), b.iter)
     return a
 end
 
@@ -403,7 +403,7 @@ function append!(backend, a, b::AbstractArray, lb)
 
     la = length(a)
     resize!(a, la + lb)
-    map!(identity, view(a, (la+1):(la+lb)), convert_array(b, backend))
+    map!(identity, view(a, (la + 1):(la + lb)), convert_array(b, backend))
     return a
 end
 
@@ -411,7 +411,7 @@ function append!(backend, a, b::Number, lb)
 
     la = length(a)
     resize!(a, la + lb)
-    fill!(view(a, (la+1):(la+lb)), b)
+    fill!(view(a, (la + 1):(la + lb)), b)
     return a
 end
 
@@ -452,16 +452,16 @@ Variable
 ```
 """
 function variable(
-    c::C,
-    ns...;
-    start=zero(T),
-    lvar=T(-Inf),
-    uvar=T(Inf),
-) where {T,C<:ExaCore{T}}
+        c::C,
+        ns...;
+        start = zero(T),
+        lvar = T(-Inf),
+        uvar = T(Inf),
+    ) where {T, C <: ExaCore{T}}
     o = c.nvar
     len = total(ns)
     c.nvar += len
-    c.varis = vcat(c.varis, (o+1):c.nvar)
+    c.varis = vcat(c.varis, (o + 1):c.nvar)
     append!(c.backend, c.isexp, 0, len)
     append!(c.backend, c.e1_starts, [(0, 0) for _ in 1:len], len)
     append!(c.backend, c.e2_starts, [(0, 0) for _ in 1:len], len)
@@ -489,7 +489,7 @@ Parameter
   θ ∈ R^{10}
 ```
 """
-function parameter(c::C, start::AbstractArray;) where {T,C<:ExaCore{T}}
+function parameter(c::C, start::AbstractArray) where {T, C <: ExaCore{T}}
 
     ns = Base.size(start)
     o = c.npar
@@ -536,7 +536,7 @@ function set_parameter!(c::ExaCore, param::Parameter, values::AbstractArray)
     return nothing
 end
 
-function variable(c::C; kwargs...) where {T,C<:ExaCore{T}}
+function variable(c::C; kwargs...) where {T, C <: ExaCore{T}}
 
     return variable(c, 1; kwargs...)[1]
 end
@@ -562,12 +562,12 @@ Objective
   where |P| = 10
 ```
 """
-function objective(c::C, gen) where {C<:ExaCore}
+function objective(c::C, gen) where {C <: ExaCore}
     gen = _adapt_gen(gen)
     f = SIMDFunction(gen, c.full_exp_refs1, c.full_exp_refs2, c.exp, c.isexp, c.nobj, c.nnzg, c.nnzh)
     pars = gen.iter
 
-    _objective(c, f, pars)
+    return _objective(c, f, pars)
 end
 
 """
@@ -575,10 +575,10 @@ end
 
 Adds objective terms specified by a `expr` and `pars` to `core`, and returns an `Objective` object.
 """
-function objective(c::C, expr::N, pars=1:1) where {C<:ExaCore,N<:AbstractNode}
+function objective(c::C, expr::N, pars = 1:1) where {C <: ExaCore, N <: AbstractNode}
     f = _simdfunction(expr, c.full_exp_refs1, c.full_exp_refs2, c.exp, c.isexp, c.nobj, c.nnzg, c.nnzh)
 
-    _objective(c, f, pars)
+    return _objective(c, f, pars)
 end
 
 function _objective(c, f, pars)
@@ -587,7 +587,7 @@ function _objective(c, f, pars)
     c.nnzg += nitr * f.o1step
     c.nnzh += nitr * f.o2step
 
-    c.obj = Objective(c.obj, f, convert_array(pars, c.backend))
+    return c.obj = Objective(c.obj, f, convert_array(pars, c.backend))
 end
 
 """
@@ -618,18 +618,18 @@ Constraint
 ```
 """
 function constraint(
-    c::C,
-    gen::Base.Generator;
-    start=zero(T),
-    lcon=zero(T),
-    ucon=zero(T),
-) where {T,C<:ExaCore{T}}
+        c::C,
+        gen::Base.Generator;
+        start = zero(T),
+        lcon = zero(T),
+        ucon = zero(T),
+    ) where {T, C <: ExaCore{T}}
 
     gen = _adapt_gen(gen)
     f = SIMDFunction(gen, c.full_exp_refs1, c.full_exp_refs2, c.exp, c.isexp, c.ncon, c.nnzj, c.nnzh)
     pars = gen.iter
 
-    _constraint(c, f, pars, start, lcon, ucon)
+    return _constraint(c, f, pars, start, lcon, ucon)
 end
 
 """
@@ -638,17 +638,17 @@ end
 Adds constraints specified by a `expr` and `pars` to `core`, and returns an `Constraint` object.
 """
 function constraint(
-    c::C,
-    expr::N,
-    pars=1:1;
-    start=zero(T),
-    lcon=zero(T),
-    ucon=zero(T),
-) where {T,C<:ExaCore{T},N<:AbstractNode}
+        c::C,
+        expr::N,
+        pars = 1:1;
+        start = zero(T),
+        lcon = zero(T),
+        ucon = zero(T),
+    ) where {T, C <: ExaCore{T}, N <: AbstractNode}
 
     f = _simdfunction(expr, c.full_exp_refs1, c.full_exp_refs2, c.exp, c.isexp, c.ncon, c.nnzj, c.nnzh)
 
-    _constraint(c, f, pars, start, lcon, ucon)
+    return _constraint(c, f, pars, start, lcon, ucon)
 end
 
 """
@@ -657,16 +657,16 @@ end
 Adds empty constraints of dimension n, so that later the terms can be added with `constraint!`.
 """
 function constraint(
-    c::C,
-    n;
-    start=zero(T),
-    lcon=zero(T),
-    ucon=zero(T),
-) where {T,C<:ExaCore{T}}
+        c::C,
+        n;
+        start = zero(T),
+        lcon = zero(T),
+        ucon = zero(T),
+    ) where {T, C <: ExaCore{T}}
 
     f = _simdfunction(Null(), c.full_exp_refs1, c.full_exp_refs2, c.exp, c.isexp, c.ncon, c.nnzj, c.nnzh)
 
-    _constraint(c, f, 1:n, start, lcon, ucon)
+    return _constraint(c, f, 1:n, start, lcon, ucon)
 end
 
 
@@ -681,7 +681,7 @@ function _constraint(c, f, pars, start, lcon, ucon)
     c.lcon = append!(c.backend, c.lcon, lcon, nitr)
     c.ucon = append!(c.backend, c.ucon, ucon, nitr)
 
-    c.con = Constraint(c.con, f, convert_array(pars, c.backend), o)
+    return c.con = Constraint(c.con, f, convert_array(pars, c.backend), o)
 end
 
 """
@@ -713,13 +713,13 @@ Constraint Augmentation
   where |P| = 3
 ```
 """
-function constraint!(c::C, c1, gen::Base.Generator) where {C<:ExaCore}
+function constraint!(c::C, c1, gen::Base.Generator) where {C <: ExaCore}
 
     gen = _adapt_gen(gen)
     f = SIMDFunction(gen, c.full_exp_refs1, c.full_exp_refs2, c.exp, c.isexp, offset0(c1, 0), c.nnzj, c.nnzh)
     pars = gen.iter
 
-    _constraint!(c, f, pars)
+    return _constraint!(c, f, pars)
 end
 
 """
@@ -727,10 +727,10 @@ end
 
 Expands the existing constraint `c1` in `c` by adding addtional constraints terms specified by `expr` and `pars`.
 """
-function constraint!(c::C, c1, expr, pars) where {C<:ExaCore}
+function constraint!(c::C, c1, expr, pars) where {C <: ExaCore}
     f = _simdfunction(expr, c.full_exp_refs1, c.full_exp_refs2, c.exp, c.isexp, offset0(c1, 0), c.nnzj, c.nnzh)
 
-    _constraint!(c, f, pars)
+    return _constraint!(c, f, pars)
 end
 
 function _constraint!(c, f, pars)
@@ -742,7 +742,7 @@ function _constraint!(c, f, pars)
     c.nnzj += nitr * f.o1step
     c.nnzh += nitr * f.o2step
 
-    c.con = ConstraintAug(c.con, f, convert_array(pars, c.backend), oa)
+    return c.con = ConstraintAug(c.con, f, convert_array(pars, c.backend), oa)
 end
 
 
@@ -767,17 +767,17 @@ Expression
 ```
 """
 function expression(
-    c::C,
-    ns::S,
-    gen::Base.Generator,
-) where {T,C<:ExaCore{T},S}
+        c::C,
+        ns::S,
+        gen::Base.Generator,
+    ) where {T, C <: ExaCore{T}, S}
     gen = _adapt_gen(gen)
     f = simd_expr(c, gen)
     pars = gen.iter
     nitr = length(pars)
     o = c.nvar
     c.nvar += nitr
-    append!(c.backend, c.isexp, (1+c.nexp):(nitr+c.nexp), nitr)
+    append!(c.backend, c.isexp, (1 + c.nexp):(nitr + c.nexp), nitr)
     c.nexp += nitr
     c.nconaug += nitr
     start = convert_array(zeros(nitr), c.backend)
@@ -793,10 +793,10 @@ function expression(
     c.lvar = append!(c.backend, c.lvar, lvar, nitr)
     c.uvar = append!(c.backend, c.uvar, uvar, nitr)
     c.exp = Expression(c.exp, f, convert_array(pars, c.backend), o, ns)
-    c.exp
+    return c.exp
 end
 
-function simd_expr(c::ExaCore, gen,)
+function simd_expr(c::ExaCore, gen)
     f = gen.f(ParSource())
     nitr = length(gen.iter)
 
@@ -816,9 +816,11 @@ function simd_expr(c::ExaCore, gen,)
     o1step = length(a1)
     e1_cnts = compress_ref_cnts(y1, a1)
     c1 = Compressor(Tuple(findfirst(isequal(di), a1) for di in y1))
-    append!(c.backend, c.e1_starts, [
+    append!(
+        c.backend, c.e1_starts, [
             (length(c.e1_cnts) + 1, (i - 1) * o1step + c.e1_len + 1) for i in 1:nitr
-        ], nitr)
+        ], nitr
+    )
     o1 = c.e1_len
     c.e1_len += nitr * o1step
     push!(c.e1_cnts, o1step)
@@ -828,21 +830,23 @@ function simd_expr(c::ExaCore, gen,)
     e2_cnts = compress_ref_cnts(y2, a2)
     o2step = length(a2)
     c2 = Compressor(Tuple(findfirst(isequal(di), a2) for di in y2))
-    append!(c.backend, c.e2_starts, [
+    append!(
+        c.backend, c.e2_starts, [
             (length(c.e2_cnts) + 1, (i - 1) * o2step + c.e2_len + 1) for i in 1:nitr
-        ], nitr)
+        ], nitr
+    )
     o2 = c.e2_len
     c.e2_len += nitr * o2step
     push!(c.e2_cnts, o2step)
     append!(c.backend, c.e2_cnts, e2_cnts, length(e2_cnts))
 
-    SIMDFunction(f, c1, c2, c.nvar, o1, o2, o1step, o2step)
+    return SIMDFunction(f, c1, c2, c.nvar, o1, o2, o1step, o2step)
 end
 
 expr!(m, x, θ) = _expr!(m.exps, m, x, θ)
 function _expr!(expr, m, x, θ)
     _expr!(expr.inner, m, x, θ)
-    @simd for i in eachindex(expr.itr)
+    return @simd for i in eachindex(expr.itr)
         x[offset0(expr, i)] = expr.f(expr.itr[i], x, θ)
     end
 end
@@ -860,7 +864,7 @@ _jac_structure!(cons::ExpressionNull, m, e1_uint, rows, cols) = nothing
 _jac_structure!(cons::ConstraintNull, m, e1_uint, rows, cols) = nothing
 function _jac_structure!(f, m, e1_uint, rows, cols)
     _jac_structure!(f.inner, m, e1_uint, rows, cols)
-    sjacobian!(e1_uint, m.e1_starts, m.e1_cnts, m.isexp, rows, cols, f, nothing, nothing, NaN)
+    return sjacobian!(e1_uint, m.e1_starts, m.e1_cnts, m.isexp, rows, cols, f, nothing, nothing, NaN)
 end
 
 function hess_structure!(m::ExaModel, rows::AbstractVector, cols::AbstractVector)
@@ -883,22 +887,24 @@ function _exp_hess_structure!(exps, m, e2_uint)
     # For expression Hessian structure, we need to record the indices in e2_uint
     # similar to how jac_structure! records indices in e1_uint
     # This uses the same shessian! but with structure-mode output (Integer vectors)
-    shessian!(e2_uint, e2_uint, exps, nothing, nothing,
+    return shessian!(
+        e2_uint, e2_uint, exps, nothing, nothing,
         reinterpret(UInt, m.e1), m.e1_starts, m.e1_cnts,
         e2_uint, m.e2_starts, m.e2_cnts,
-        NaN, NaN, m.isexp)
+        NaN, NaN, m.isexp
+    )
 end
 
 _obj_hess_structure!(objs::ObjectiveNull, m, rows, cols, e1_uint, e2_uint) = nothing
 function _obj_hess_structure!(objs, m, rows, cols, e1_uint, e2_uint)
     _obj_hess_structure!(objs.inner, m, rows, cols, e1_uint, e2_uint)
-    shessian!(rows, cols, objs, nothing, nothing, e1_uint, m.e1_starts, m.e1_cnts, e2_uint, m.e2_starts, m.e2_cnts, NaN, NaN, m.isexp)
+    return shessian!(rows, cols, objs, nothing, nothing, e1_uint, m.e1_starts, m.e1_cnts, e2_uint, m.e2_starts, m.e2_cnts, NaN, NaN, m.isexp)
 end
 
 _con_hess_structure!(cons::ConstraintNull, m, rows, cols, e1_uint, e2_uint) = nothing
 function _con_hess_structure!(cons, m, rows, cols, e1_uint, e2_uint)
     _con_hess_structure!(cons.inner, m, rows, cols, e1_uint, e2_uint)
-    shessian!(rows, cols, cons, nothing, nothing, e1_uint, m.e1_starts, m.e1_cnts, e2_uint, m.e2_starts, m.e2_cnts, NaN, NaN, m.isexp)
+    return shessian!(rows, cols, cons, nothing, nothing, e1_uint, m.e1_starts, m.e1_cnts, e2_uint, m.e2_starts, m.e2_cnts, NaN, NaN, m.isexp)
 end
 
 function obj(m::ExaModel, x::AbstractVector)
@@ -920,7 +926,7 @@ end
 
 function _cons_nln!(cons, x, θ, g)
     _cons_nln!(cons.inner, x, θ, g)
-    @simd for i in eachindex(cons.itr)
+    return @simd for i in eachindex(cons.itr)
         g[offset0(cons, i)] += cons.f(cons.itr[i], x, θ)
     end
 end
@@ -938,7 +944,7 @@ _grad!(f::ObjectiveNull, m, x, out) = nothing
 _grad!(f::ExpressionNull, m, x, out) = nothing
 function _grad!(f, m, x, out)
     _grad!(f.inner, m, x, out)
-    gradient!(m.isexp, m.e1, m.e1_starts, m.e1_cntsegrad, f, objs, x, θ, one(eltype(out)))
+    return gradient!(m.isexp, m.e1, m.e1_starts, m.e1_cntsegrad, f, objs, x, θ, one(eltype(out)))
 end
 
 function jac_coord!(m::ExaModel, x::AbstractVector, jac::AbstractVector)
@@ -953,7 +959,7 @@ _jac_coord!(f::ConstraintNull, x, m, jac) = nothing
 _jac_coord!(f::ExpressionNull, x, m, jac) = nothing
 function _jac_coord!(f, x, m, jac)
     _jac_coord!(f.inner, x, m, jac)
-    sjacobian!(m.e1, m.e1_starts, m.e1_cnts, m.isexp, jac, nothing, f, x, m.θ, one(eltype(jac)))
+    return sjacobian!(m.e1, m.e1_starts, m.e1_cnts, m.isexp, jac, nothing, f, x, m.θ, one(eltype(jac)))
 end
 
 function jprod_nln!(m::ExaModel, x::AbstractVector, v::AbstractVector, Jv::AbstractVector)
@@ -966,7 +972,7 @@ end
 _jprod_nln!(cons::ConstraintNull, isexp, ey1, ey2, x, θ, v, Jv) = nothing
 function _jprod_nln!(cons, isexp, ey1, ey2, x, θ, v, Jv)
     _jprod_nln!(cons.inner, isexp, ey1, ey2, x, θ, v, Jv)
-    sjacobian!(isexp, ey1, ey2, (Jv, v), nothing, cons, x, θ, one(eltype(Jv)))
+    return sjacobian!(isexp, ey1, ey2, (Jv, v), nothing, cons, x, θ, one(eltype(Jv)))
 end
 
 function jtprod_nln!(m::ExaModel, x::AbstractVector, v::AbstractVector, Jtv::AbstractVector)
@@ -979,15 +985,15 @@ end
 _jtprod_nln!(cons::ConstraintNull, isexp, ey1, ey2, x, θ, v, Jtv) = nothing
 function _jtprod_nln!(cons, isexp, ey1, ey2, x, θ, v, Jtv)
     _jtprod_nln!(cons.inner, isexp, ey1, ey2, x, θ, v, Jtv)
-    sjacobian!(isexp, ey1, ey2, nothing, (Jtv, v), cons, x, θ, one(eltype(Jtv)))
+    return sjacobian!(isexp, ey1, ey2, nothing, (Jtv, v), cons, x, θ, one(eltype(Jtv)))
 end
 
 function hess_coord!(
-    m::ExaModel,
-    x::AbstractVector,
-    hess::AbstractVector;
-    obj_weight=one(eltype(x)),
-)
+        m::ExaModel,
+        x::AbstractVector,
+        hess::AbstractVector;
+        obj_weight = one(eltype(x)),
+    )
     fill!(hess, zero(eltype(hess)))
     fill!(m.e1, zero(eltype(m.e1)))
     fill!(m.e2, zero(eltype(m.e2)))
@@ -1002,12 +1008,12 @@ function hess_coord!(
 end
 
 function hess_coord!(
-    m::ExaModel,
-    x::AbstractVector,
-    y::AbstractVector,
-    hess::AbstractVector;
-    obj_weight=one(eltype(x)),
-)
+        m::ExaModel,
+        x::AbstractVector,
+        y::AbstractVector,
+        hess::AbstractVector;
+        obj_weight = one(eltype(x)),
+    )
     fill!(hess, zero(eltype(hess)))
     fill!(m.e1, zero(eltype(m.e1)))
     fill!(m.e2, zero(eltype(m.e2)))
@@ -1025,28 +1031,28 @@ end
 _exp_hess_coord!(exps::ExpressionNull, x, m) = nothing
 function _exp_hess_coord!(exps, x, m)
     _exp_hess_coord!(exps.inner, x, m)
-    shessian!(m.e2, nothing, exps, x, m.θ, m.e1, m.e1_starts, m.e1_cnts, m.e2, m.e2_starts, m.e2_cnts, one(eltype(m.e2)), zero(eltype(m.e2)), m.isexp)
+    return shessian!(m.e2, nothing, exps, x, m.θ, m.e1, m.e1_starts, m.e1_cnts, m.e2, m.e2_starts, m.e2_cnts, one(eltype(m.e2)), zero(eltype(m.e2)), m.isexp)
 end
 
 _obj_hess_coord!(objs::ObjectiveNull, x, m, hess, w) = nothing
 function _obj_hess_coord!(objs, x, m, hess, w)
     _obj_hess_coord!(objs.inner, x, m, hess, w)
-    shessian!(hess, nothing, objs, x, m.θ, m.e1, m.e1_starts, m.e1_cnts, m.e2, m.e2_starts, m.e2_cnts, w, zero(eltype(hess)), m.isexp)
+    return shessian!(hess, nothing, objs, x, m.θ, m.e1, m.e1_starts, m.e1_cnts, m.e2, m.e2_starts, m.e2_cnts, w, zero(eltype(hess)), m.isexp)
 end
 
 _con_hess_coord!(cons::ConstraintNull, x, m, y, hess) = nothing
 function _con_hess_coord!(cons, x, m, y, hess)
     _con_hess_coord!(cons.inner, x, m, y, hess)
-    shessian!(hess, nothing, cons, x, m.θ, m.e1, m.e1_starts, m.e1_cnts, m.e2, m.e2_starts, m.e2_cnts, y, zero(eltype(hess)), m.isexp)
+    return shessian!(hess, nothing, cons, x, m.θ, m.e1, m.e1_starts, m.e1_cnts, m.e2, m.e2_starts, m.e2_cnts, y, zero(eltype(hess)), m.isexp)
 end
 
 function hprod!(
-    m::ExaModel,
-    x::AbstractVector,
-    v::AbstractVector,
-    Hv::AbstractVector;
-    obj_weight=one(eltype(x)),
-)
+        m::ExaModel,
+        x::AbstractVector,
+        v::AbstractVector,
+        Hv::AbstractVector;
+        obj_weight = one(eltype(x)),
+    )
     fill!(Hv, zero(eltype(Hv)))
     fill!(m.e1, zero(eltype(m.e1)))
     fill!(m.e2, zero(eltype(m.e2)))
@@ -1058,13 +1064,13 @@ function hprod!(
 end
 
 function hprod!(
-    m::ExaModel,
-    x::AbstractVector,
-    y::AbstractVector,
-    v::AbstractVector,
-    Hv::AbstractVector;
-    obj_weight=one(eltype(x)),
-)
+        m::ExaModel,
+        x::AbstractVector,
+        y::AbstractVector,
+        v::AbstractVector,
+        Hv::AbstractVector;
+        obj_weight = one(eltype(x)),
+    )
     fill!(Hv, zero(eltype(Hv)))
     fill!(m.e1, zero(eltype(m.e1)))
     fill!(m.e2, zero(eltype(m.e2)))
@@ -1079,28 +1085,28 @@ end
 _obj_hprod!(objs::ObjectiveNull, x, m, v, Hv, obj_weight) = nothing
 function _obj_hprod!(objs, x, m, v, Hv, obj_weight)
     _obj_hprod!(objs.inner, x, m, v, Hv, obj_weight)
-    shessian!((Hv, v), nothing, objs, x, m.θ, m.e1, m.e1_starts, m.e1_cnts, m.e2, m.e2_starts, m.e2_cnts, obj_weight, zero(eltype(Hv)), m.isexp)
+    return shessian!((Hv, v), nothing, objs, x, m.θ, m.e1, m.e1_starts, m.e1_cnts, m.e2, m.e2_starts, m.e2_cnts, obj_weight, zero(eltype(Hv)), m.isexp)
 end
 
 _con_hprod!(cons::ConstraintNull, x, m, y, v, Hv) = nothing
 function _con_hprod!(cons, x, m, y, v, Hv)
     _con_hprod!(cons.inner, x, m, y, v, Hv)
-    shessian!((Hv, v), nothing, cons, x, m.θ, m.e1, m.e1_starts, m.e1_cnts, m.e2, m.e2_starts, m.e2_cnts, y, zero(eltype(Hv)), m.isexp)
+    return shessian!((Hv, v), nothing, cons, x, m.θ, m.e1, m.e1_starts, m.e1_cnts, m.e2, m.e2_starts, m.e2_cnts, y, zero(eltype(Hv)), m.isexp)
 end
 
 @inbounds @inline offset0(a, i) = offset0(a.f, i)
 @inbounds @inline offset1(a, i) = offset1(a.f, i)
 @inbounds @inline offset2(a, i) = offset2(a.f, i)
 @inbounds @inline offset0(f, itr, i) = offset0(f, i)
-@inbounds @inline offset0(f::F, i) where {F<:SIMDFunction} = f.o0 + i
-@inbounds @inline offset1(f::F, i) where {F<:SIMDFunction} = f.o1 + f.o1step * (i - 1)
-@inbounds @inline offset2(f::F, i) where {F<:SIMDFunction} = f.o2 + f.o2step * (i - 1)
-@inbounds @inline offset0(a::C, i) where {C<:ConstraintAug} = offset0(a.f, a.itr, i)
-@inbounds @inline offset0(f::F, itr, i) where {P<:Pair,F<:SIMDFunction{P}} =
+@inbounds @inline offset0(f::F, i) where {F <: SIMDFunction} = f.o0 + i
+@inbounds @inline offset1(f::F, i) where {F <: SIMDFunction} = f.o1 + f.o1step * (i - 1)
+@inbounds @inline offset2(f::F, i) where {F <: SIMDFunction} = f.o2 + f.o2step * (i - 1)
+@inbounds @inline offset0(a::C, i) where {C <: ConstraintAug} = offset0(a.f, a.itr, i)
+@inbounds @inline offset0(f::F, itr, i) where {P <: Pair, F <: SIMDFunction{P}} =
     f.o0 + f.f.first(itr[i], nothing, nothing)
-@inbounds @inline offset0(f::F, itr, i) where {I<:Integer,P<:Pair{I},F<:SIMDFunction{P}} =
+@inbounds @inline offset0(f::F, itr, i) where {I <: Integer, P <: Pair{I}, F <: SIMDFunction{P}} =
     f.o0 + f.f.first
-@inbounds @inline offset0(f::F, itr, i) where {T<:Tuple,P<:Pair{T},F<:SIMDFunction{P}} =
+@inbounds @inline offset0(f::F, itr, i) where {T <: Tuple, P <: Pair{T}, F <: SIMDFunction{P}} =
     f.o0 + idxx(coord(itr, i, f.f.first), Base.size(itr))
 
 @inline idx(itr, I) = @inbounds itr[I]
@@ -1108,9 +1114,9 @@ end
     _idx(I - 1, itr.iterators, Base.size(itr))
 @inline function _idx(n, (vec1, vec...), (si1, si...))
     d, r = divrem(n, si1)
-    return (vec1[r+1], _idx(d, vec, si)...)
+    return (vec1[r + 1], _idx(d, vec, si)...)
 end
-@inline _idx(n, (vec,), ::Tuple{Int}) = @inbounds vec[n+1]
+@inline _idx(n, (vec,), ::Tuple{Int}) = @inbounds vec[n + 1]
 
 @inline idxx(coord, si) = _idxx(coord, si, 1) + 1
 @inline _idxx(coord, si, a) = a * (coord[1] - 1) + _idxx(coord[2:end], si[2:end], a * si[1])
@@ -1151,7 +1157,7 @@ for (thing, val) in [(:solution, 1), (:multipliers_L, 0), (:multipliers_U, 2)]
             o = x.offset
             len = total(x.size)
             s = size(x.size)
-            return reshape(view(result.$thing, (o+1):(o+len)), s...)
+            return reshape(view(result.$thing, (o + 1):(o + len)), s...)
         end
     end
 end
@@ -1191,9 +1197,9 @@ true
 function multipliers(result::SolverCore.AbstractExecutionStats, y::Constraint)
     o = y.offset
     len = length(y.itr)
-    return view(result.multipliers, (o+1):(o+len))
+    return view(result.multipliers, (o + 1):(o + len))
 end
 
 
 _adapt_gen(gen) = Base.Generator(gen.f, collect(gen.iter))
-_adapt_gen(gen::Base.Generator{P}) where {P<:Union{AbstractArray,AbstractRange}} = gen
+_adapt_gen(gen::Base.Generator{P}) where {P <: Union{AbstractArray, AbstractRange}} = gen

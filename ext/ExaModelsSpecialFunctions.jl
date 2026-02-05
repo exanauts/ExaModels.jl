@@ -11,7 +11,7 @@ ExaModels.@register_univariate(
     SpecialFunctions.erfcinv,
     x -> -0.8862269254527579409597137782839126884937286376953125 * exp(erfcinv(x)^2),
     x ->
-        -0.8862269254527579409597137782839126884937286376953125 *
+    -0.8862269254527579409597137782839126884937286376953125 *
         exp(erfcinv(x)^2) *
         2 *
         erfcinv(x) *
@@ -22,14 +22,14 @@ ExaModels.@register_univariate(
     SpecialFunctions.erfcx,
     x -> 2 * x * erfcx(x) - 1.1283791670955125585606992899556644260883331298828125,
     x ->
-        2 * erfcx(x) +
+    2 * erfcx(x) +
         (2 * x * erfcx(x) - 1.1283791670955125585606992899556644260883331298828125) * 2 * x
 )
 ExaModels.@register_univariate(
     SpecialFunctions.invdigamma,
     x -> inv(trigamma(invdigamma(x))),
     x ->
-        (-abs2(inv(trigamma(invdigamma(x))))) *
+    (-abs2(inv(trigamma(invdigamma(x))))) *
         polygamma(2, invdigamma(x)) *
         inv(trigamma(invdigamma(x)))
 )
@@ -70,7 +70,7 @@ ExaModels.@register_univariate(
     SpecialFunctions.erfinv,
     x -> 0.8862269254527579409597137782839126884937286376953125 * exp(erfinv(x)^2),
     x ->
-        0.8862269254527579409597137782839126884937286376953125 *
+    0.8862269254527579409597137782839126884937286376953125 *
         exp(erfinv(x)^2) *
         2 *
         erfinv(x) *
@@ -108,13 +108,13 @@ ExaModels.@register_bivariate(
     (x1, x2) -> beta(x1, x2) * (digamma(x1) - digamma(x1 + x2)),
     (x1, x2) -> beta(x1, x2) * (digamma(x2) - digamma(x1 + x2)),
     (x1, x2) ->
-        beta(x1, x2) * (digamma(x1) - digamma(x1 + x2)) * (digamma(x1) - digamma(x1 + x2)) +
+    beta(x1, x2) * (digamma(x1) - digamma(x1 + x2)) * (digamma(x1) - digamma(x1 + x2)) +
         (trigamma(x1) + -trigamma(x1 + x2)) * beta(x1, x2),
     (x1, x2) ->
-        beta(x1, x2) * (digamma(x2) - digamma(x1 + x2)) * (digamma(x1) - digamma(x1 + x2)) +
+    beta(x1, x2) * (digamma(x2) - digamma(x1 + x2)) * (digamma(x1) - digamma(x1 + x2)) +
         (-trigamma(x1 + x2)) * beta(x1, x2),
     (x1, x2) ->
-        beta(x1, x2) * (digamma(x2) - digamma(x1 + x2)) * (digamma(x2) - digamma(x1 + x2)) +
+    beta(x1, x2) * (digamma(x2) - digamma(x1 + x2)) * (digamma(x2) - digamma(x1 + x2)) +
         (trigamma(x2) + -trigamma(x1 + x2)) * beta(x1, x2)
 )
 ExaModels.@register_bivariate(

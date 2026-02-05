@@ -1,4 +1,4 @@
-@inline (a::Pair{P,S} where {P,S<:AbstractNode})(i, x, θ) = a.second(i, x, θ)
+@inline (a::Pair{P, S} where {P, S <: AbstractNode})(i, x, θ) = a.second(i, x, θ)
 
 """
     Compressor{I}
@@ -13,7 +13,7 @@ struct Compressor{I}
 end
 @inline (i::Compressor{I})(n) where {I} = @inbounds i.inner[n]
 
-struct SIMDFunction{F,C1,C2}
+struct SIMDFunction{F, C1, C2}
     f::F
     comp1::C1
     comp2::C2
@@ -24,8 +24,8 @@ struct SIMDFunction{F,C1,C2}
     o2step::Int
 end
 
-@inline (sf::SIMDFunction{F,C1,C2})(i, x, θ) where {F,C1,C2} = sf.f(i, x, θ)
-@inline (sf::SIMDFunction{F,C1,C2})(i, x, θ) where {F<:Real,C1,C2} = sf.f
+@inline (sf::SIMDFunction{F, C1, C2})(i, x, θ) where {F, C1, C2} = sf.f(i, x, θ)
+@inline (sf::SIMDFunction{F, C1, C2})(i, x, θ) where {F <: Real, C1, C2} = sf.f
 
 """
     SIMDFunction(gen::Base.Generator, o0 = 0, o1 = 0, o2 = 0)
@@ -38,13 +38,13 @@ Returns a `SIMDFunction` using the `gen`.
 - `o1`: offset for the derivative evalution
 - `o2`: offset for the second-order derivative evalution
 """
-function SIMDFunction(gen::Base.Generator, full_exp_refs1, full_exp_refs2, exps, isexp, o0=0, o1=0, o2=0)
+function SIMDFunction(gen::Base.Generator, full_exp_refs1, full_exp_refs2, exps, isexp, o0 = 0, o1 = 0, o2 = 0)
     f = gen.f(ParSource())
-    _simdfunction(f, full_exp_refs1, full_exp_refs2, exps, isexp, o0, o1, o2)
+    return _simdfunction(f, full_exp_refs1, full_exp_refs2, exps, isexp, o0, o1, o2)
 end
 
-function _simdfunction(f::F, exps, isexp, o0, o1, o2) where {F<:Real}
-    SIMDFunction(
+function _simdfunction(f::F, exps, isexp, o0, o1, o2) where {F <: Real}
+    return SIMDFunction(
         f,
         ExaModels.Compressor{Tuple{}}(()),
         ExaModels.Compressor{Tuple{}}(()),
@@ -73,7 +73,7 @@ end
 function get_full_exp_refs(full_exp_refs, exps, isexp, y_raw)
     y = []
     for y_rawi in y_raw
-        offset = typeof(y_rawi) <: Node2{typeof(+),T,Int} where T ? y_rawi.inner2 + 1 : 1
+        offset = typeof(y_rawi) <: Node2{typeof(+), T, Int} where {T} ? y_rawi.inner2 + 1 : 1
         if isexp[offset] != 0
             exp_i = exp_index(exps, offset)
             Base.append!(y, full_exp_refs[exp_i])
@@ -99,7 +99,7 @@ function compress_ref_cnts(y, a)
         end
     end
     push!(ret, cnt)
-    ret
+    return ret
 end
 
 function _simdfunction(f, full_exp_refs1, full_exp_refs2, exps, isexp, o0, o1, o2)
@@ -121,5 +121,5 @@ function _simdfunction(f, full_exp_refs1, full_exp_refs2, exps, isexp, o0, o1, o
     o2step = length(a2)
     c2 = Compressor(Tuple(findfirst(isequal(di), a2) for di in y2))
 
-    SIMDFunction(f, c1, c2, o0, o1, o2, o1step, o2step)
+    return SIMDFunction(f, c1, c2, o0, o1, o2, o1step, o2step)
 end
