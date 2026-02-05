@@ -145,6 +145,7 @@ function distillation_column_model_with_subexpr(T = 3; backend = nothing)
     dxA = subexpr(c, (xA[t, i] - xA[t - 1, i]) / dt for t in 1:T, i in 0:(NT + 1))
     dyA = subexpr(c, yA[t, i] - yA[t, i + 1] for t in 0:T, i in 0:NT)
 
+
     ## Objectives
     objective(c, (yA[t, 1] - ybar)^2 for t in 0:T)
     objective(c, (u[t] - ubar)^2 for t in 0:T)

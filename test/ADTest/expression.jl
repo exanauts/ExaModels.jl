@@ -3,8 +3,8 @@ function test_expression()
         @testset "Basic tests" begin
             m = ExaCore()
             v = variable(m, 5)
-            e1 = expression(m, (4,), v[i] * v[i + 1] for i in 1:4)
-            e2 = expression(m, (4,), e1[i] + v[i] for i in 1:4)
+            e1 = subexpr(m, (4,), v[i] * v[i + 1] for i in 1:4)
+            e2 = subexpr(m, (4,), e1[i] + v[i] for i in 1:4)
             c = constraint(m, e2[i] / i for i in 1:4; ucon = 10.0)
             o = objective(m, e2[i] for i in 1:4)
             mod = ExaModel(m)
@@ -73,7 +73,7 @@ function test_expression()
             # Test with expression: e = x*y, f(e) = e, c(e) = e - 1 = 0
             m = ExaCore()
             v = variable(m, 2)
-            e1 = expression(m, (1,), v[1] * v[2] for _ in 1:1)  # e = x*y
+            e1 = subexpr(m, (1,), v[1] * v[2] for _ in 1:1)  # e = x*y
             o = objective(m, e1[1] for _ in 1:1)  # f = e = x*y
             c = constraint(m, e1[1] for _ in 1:1; lcon = 1.0, ucon = 1.0)  # c = x*y = 1
             mod = ExaModel(m)
@@ -102,8 +102,8 @@ function test_expression()
             # Test nested expressions: e1 = x^2, e2 = e1 + x, f = e2
             m = ExaCore()
             v = variable(m, 1)
-            e1 = expression(m, (1,), v[1]^2 for _ in 1:1)  # e1 = x^2
-            e2 = expression(m, (1,), e1[1] + v[1] for _ in 1:1)  # e2 = e1 + x = x^2 + x
+            e1 = subexpr(m, (1,), v[1]^2 for _ in 1:1)  # e1 = x^2
+            e2 = subexpr(m, (1,), e1[1] + v[1] for _ in 1:1)  # e2 = e1 + x = x^2 + x
             o = objective(m, e2[1] for _ in 1:1)  # f = e2 = x^2 + x
             mod = ExaModel(m)
 
