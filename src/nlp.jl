@@ -778,6 +778,7 @@ function subexpr(
     end
     subexpr(c, (nsi for nsi in ns), gen)
 end
+subexpr(c::C, gen::G) where {T, C <: ExaCore{T}, G<:Base.Generator} = subexpr(c, (length(gen.iter),), gen)
 
 function subexpr(
         c::C,

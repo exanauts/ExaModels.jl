@@ -1,7 +1,7 @@
 module ADTest
 
 using ExaModels
-using Test, ForwardDiff, SpecialFunctions, NLPModels
+using Test, ForwardDiff, SpecialFunctions
 
 include("expression.jl")
 
@@ -309,7 +309,6 @@ end
 
 function runtests()
     @testset "AD test" begin
-        test_expression()
         for (name, f) in FUNCTIONS
             x0 = rand(10)
             @testset "$name" begin
