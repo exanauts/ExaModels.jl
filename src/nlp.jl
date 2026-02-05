@@ -119,7 +119,7 @@ Base.show(io::IO, v::ConstraintAug) = print(
 )
 
 """
-ExaCore([array_eltype::Type; backend = backend, minimize = true])
+    ExaCore([array_eltype::Type; backend = backend, minimize = true])
 
 Returns an intermediate data object `ExaCore`, which later can be used for creating `ExaModel`
 
@@ -201,6 +201,10 @@ Base.@kwdef mutable struct ExaCore{
     lcon::VT = similar(x0)
     ucon::VT = similar(x0)
     minimize::Bool = true
+    # Parameter subexpression support
+    nparam_subexpr::Int = 0
+    param_subexpr_values::VT = similar(x0, 0)
+    param_subexpr_fns::Vector{Any} = Any[]
 end
 
 # Deprecated as of v0.7
@@ -279,7 +283,7 @@ julia> x = variable(c, 1:10);              # create variables
 
 julia> objective(c, x[i]^2 for i in 1:10); # set objective function
 
-julia> m = ExaModel(c)                     # creat an ExaModel object
+julia> m = ExaModel(c)                     # create an ExaModel object
 An ExaModel{Float64, Vector{Float64}, ...}
 
   Problem name: Generic
@@ -293,6 +297,8 @@ An ExaModel{Float64, Vector{Float64}, ...}
             nnzh: ( 81.82% sparsity)   10              linear: ⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅ 0
                                                     nonlinear: ⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅ 0
                                                          nnzj: (------% sparsity)
+                                                     lin_nnzj: (------% sparsity)
+                                                     nln_nnzj: (------% sparsity)
 
 julia> using NLPModelsIpopt
 
@@ -533,6 +539,28 @@ function set_parameter!(c::ExaCore, param::Parameter, values::AbstractArray)
 
     copyto!(@view(c.θ[start_idx:end_idx]), values)
 
+    # Re-evaluate parameter subexpressions that depend on θ
+    _recompute_param_subexprs!(c)
+
+    return nothing
+end
+
+"""
+    _recompute_param_subexprs!(c::ExaCore)
+
+Re-evaluates all parameter-only subexpressions and updates their cached values in θ.
+Called automatically by `set_parameter!`.
+"""
+function _recompute_param_subexprs!(c::ExaCore)
+    for ps in c.param_subexpr_fns
+        # Re-evaluate the subexpression with current θ values
+        # Note: θ contains both user parameters and param subexpr values
+        # The eval function only reads user parameters (earlier in θ)
+        new_values = ps.fn(c.θ)
+        start_idx = ps.offset + 1
+        end_idx = ps.offset + ps.length
+        copyto!(@view(c.θ[start_idx:end_idx]), new_values)
+    end
     return nothing
 end
 
@@ -596,7 +624,7 @@ end
 Adds constraints specified by a `generator` to `core`, and returns an `Constraint` object.
 
 ## Keyword Arguments
-- `start`: The initial guess of the solution. Can either be `Number`, `AbstractArray`, or `Generator`.
+- `start`: The initial guess of the dual solution. Can either be `Number`, `AbstractArray`, or `Generator`.
 - `lcon` : The constraint lower bound. Can either be `Number`, `AbstractArray`, or `Generator`.
 - `ucon` : The constraint upper bound. Can either be `Number`, `AbstractArray`, or `Generator`.
 

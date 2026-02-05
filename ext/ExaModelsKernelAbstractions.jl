@@ -14,7 +14,6 @@ function ExaModels.getptr(backend, array; cmp = (x, y) -> x != y)
 
     bitarray = similar(array, Bool, length(array) + 1)
     kergetptr(backend)(cmp, bitarray, array; ndrange = length(array) + 1)
-    synchronize(backend)
 
     return ExaModels.findall(identity, bitarray)
 end
@@ -33,14 +32,15 @@ struct KAExtension{T, VT <: AbstractVector{T}, H, VI1, VI2, B}
 end
 
 function ExaModels.ExaModel(
-        c::C;
-        prod = false,
-        kwargs...,
-    ) where {T, VT <: AbstractVector{T}, B <: KernelAbstractions.Backend, C <: ExaModels.ExaCore{T, VT, B}}
-
-    gsparsity = similar(c.x0, Tuple{Int, Int}, c.nnzg)
+    c::C;
+    prod = false,
+    kwargs...,
+) where {T,VT<:AbstractVector{T},B<:KernelAbstractions.Backend,C<:ExaModels.ExaCore{T,VT,B}}
+    
+    gsparsity = similar(c.x0, Tuple{Int,Int}, c.nnzg)
 
     _grad_structure!(c.backend, c.obj, gsparsity)
+    
     if !isempty(gsparsity)
         ExaModels.sort!(gsparsity; lt = ((i, j), (k, l)) -> i < k)
     end
@@ -61,6 +61,7 @@ function ExaModels.ExaModel(
         hesssparsityi = similar(c.x0, Tuple{Tuple{Int, Int}, Int}, c.nnzh)
 
         _jac_structure!(c.backend, c.con, jacsparsityi, nothing)
+        
         jacsparsityj = copy(jacsparsityi)
         _obj_hess_structure!(c.backend, c.obj, hesssparsityi, nothing)
         _con_hess_structure!(c.backend, c.con, hesssparsityi, nothing)
@@ -145,7 +146,6 @@ function _conaug_structure!(backend, cons, sparsity)
         kers(backend)(sparsity, cons.f, cons.itr, cons.oa; ndrange = length(cons.itr))
     end
     _conaug_structure!(backend, cons.inner, sparsity)
-    return synchronize(backend)
 end
 function _conaug_structure!(backend, cons::ExaModels.Constraint, sparsity)
     return _conaug_structure!(backend, cons.inner, sparsity)
@@ -160,7 +160,6 @@ end
 function _grad_structure!(backend, objs, gsparsity)
     ExaModels.sgradient!(backend, gsparsity, objs, nothing, nothing, NaN)
     _grad_structure!(backend, objs.inner, gsparsity)
-    return synchronize(backend)
 end
 function _grad_structure!(backend, objs::ExaModels.ObjectiveNull, gsparsity) end
 
@@ -177,7 +176,6 @@ end
 function _jac_structure!(backend, cons, rows, cols)
     ExaModels.sjacobian!(backend, rows, cols, cons, nothing, nothing, NaN)
     _jac_structure!(backend, cons.inner, rows, cols)
-    return synchronize(backend)
 end
 function _jac_structure!(backend, cons::ExaModels.ConstraintNull, rows, cols) end
 
@@ -190,20 +188,18 @@ function ExaModels.hess_structure!(
     if !isempty(rows)
         _obj_hess_structure!(m.ext.backend, m.objs, rows, cols)
         _con_hess_structure!(m.ext.backend, m.cons, rows, cols)
-    end
+        end
     return rows, cols
 end
 
 function _obj_hess_structure!(backend, objs, rows, cols)
     ExaModels.shessian!(backend, rows, cols, objs, nothing, nothing, NaN, NaN)
     _obj_hess_structure!(backend, objs.inner, rows, cols)
-    return synchronize(backend)
 end
 function _obj_hess_structure!(backend, objs::ExaModels.ObjectiveNull, rows, cols) end
 function _con_hess_structure!(backend, cons, rows, cols)
     ExaModels.shessian!(backend, rows, cols, cons, nothing, nothing, NaN, NaN)
     _con_hess_structure!(backend, cons.inner, rows, cols)
-    return synchronize(backend)
 end
 function _con_hess_structure!(backend, cons::ExaModels.ConstraintNull, rows, cols) end
 
@@ -214,7 +210,7 @@ function ExaModels.obj(
     ) where {T, VT, E <: KAExtension}
     if !isempty(m.ext.objbuffer)
         _obj(m.ext.backend, m.ext.objbuffer, m.objs, x, m.θ)
-        result = ExaModels.sum(m.ext.objbuffer)
+            result = ExaModels.sum(m.ext.objbuffer)
         return result
     else
         return zero(T)
@@ -225,7 +221,6 @@ function _obj(backend, objbuffer, obj, x, θ)
         kerf(backend)(objbuffer, obj.f, obj.itr, x, θ; ndrange = length(obj.itr))
     end
     _obj(backend, objbuffer, obj.inner, x, θ)
-    return synchronize(backend)
 end
 function _obj(backend, objbuffer, f::ExaModels.ObjectiveNull, x, θ) end
 
@@ -245,8 +240,7 @@ function ExaModels.cons_nln!(
             m.ext.conaugsparsity;
             ndrange = length(m.ext.conaugptr) - 1,
         )
-        synchronize(m.ext.backend)
-    end
+        end
     return y
 end
 function _cons_nln!(backend, y, con::ExaModels.Constraint, x, θ)
@@ -254,7 +248,6 @@ function _cons_nln!(backend, y, con::ExaModels.Constraint, x, θ)
         kerf(backend)(y, con.f, con.itr, x, θ; ndrange = length(con.itr))
     end
     _cons_nln!(backend, y, con.inner, x, θ)
-    return synchronize(backend)
 end
 function _cons_nln!(backend, y, con::ExaModels.ConstraintNull, x, θ) end
 function _cons_nln!(backend, y, con::ExaModels.ConstraintAug, x, θ)
@@ -267,7 +260,6 @@ function _conaugs!(backend, y, con::ExaModels.ConstraintAug, x, θ)
         kerf2(backend)(y, con.f, con.itr, x, θ, con.oa; ndrange = length(con.itr))
     end
     _conaugs!(backend, y, con.inner, x, θ)
-    return synchronize(backend)
 end
 function _conaugs!(backend, y, con::ExaModels.Constraint, x, θ)
     return _conaugs!(backend, y, con.inner, x, θ)
@@ -284,7 +276,7 @@ function ExaModels.grad!(
     if !isempty(gradbuffer)
         fill!(gradbuffer, zero(eltype(gradbuffer)))
         _grad!(m.ext.backend, m.ext.gradbuffer, m.objs, x, m.θ)
-
+    
         fill!(y, zero(eltype(y)))
         compress_to_dense(m.ext.backend)(
             y,
@@ -293,15 +285,13 @@ function ExaModels.grad!(
             m.ext.gsparsity;
             ndrange = length(m.ext.gptr) - 1,
         )
-        synchronize(m.ext.backend)
-    end
+        end
 
     return y
 end
 function _grad!(backend, y, objs, x, θ)
     ExaModels.sgradient!(backend, y, objs, x, θ, one(eltype(y)))
     _grad!(backend, y, objs.inner, x, θ)
-    return synchronize(backend)
 end
 function _grad!(backend, y, objs::ExaModels.ObjectiveNull, x, θ) end
 
@@ -317,7 +307,6 @@ end
 function _jac_coord!(backend, y, cons, x, θ)
     ExaModels.sjacobian!(backend, y, nothing, cons, x, θ, one(eltype(y)))
     _jac_coord!(backend, y, cons.inner, x, θ)
-    return synchronize(backend)
 end
 function _jac_coord!(backend, y, cons::ExaModels.ConstraintNull, x, θ) end
 
@@ -347,7 +336,6 @@ function ExaModels.jprod_nln!(
     fill!(Jv, zero(eltype(Jv)))
     fill!(m.ext.prodhelper.jacbuffer, zero(eltype(Jv)))
     _jac_coord!(m.ext.backend, m.ext.prodhelper.jacbuffer, m.cons, x, m.θ)
-    synchronize(m.ext.backend)
     kerspmv(m.ext.backend)(
         Jv,
         v,
@@ -356,7 +344,6 @@ function ExaModels.jprod_nln!(
         m.ext.prodhelper.jacptri,
         ndrange = length(m.ext.prodhelper.jacptri) - 1,
     )
-    synchronize(m.ext.backend)
     return Jv
 end
 function ExaModels.jtprod_nln!(
@@ -369,7 +356,6 @@ function ExaModels.jtprod_nln!(
     fill!(Jtv, zero(eltype(Jtv)))
     fill!(m.ext.prodhelper.jacbuffer, zero(eltype(Jtv)))
     _jac_coord!(m.ext.backend, m.ext.prodhelper.jacbuffer, m.cons, x, m.θ)
-    synchronize(m.ext.backend)
     kerspmv2(m.ext.backend)(
         Jtv,
         v,
@@ -378,7 +364,6 @@ function ExaModels.jtprod_nln!(
         m.ext.prodhelper.jacptrj,
         ndrange = length(m.ext.prodhelper.jacptrj) - 1,
     )
-    synchronize(m.ext.backend)
     return Jtv
 end
 function ExaModels.hprod!(
@@ -399,7 +384,6 @@ function ExaModels.hprod!(
 
     _obj_hess_coord!(m.ext.backend, m.ext.prodhelper.hessbuffer, m.objs, x, m.θ, obj_weight)
     _con_hess_coord!(m.ext.backend, m.ext.prodhelper.hessbuffer, m.cons, x, m.θ, y)
-    synchronize(m.ext.backend)
     kersyspmv(m.ext.backend)(
         Hv,
         v,
@@ -408,7 +392,6 @@ function ExaModels.hprod!(
         m.ext.prodhelper.hessptri,
         ndrange = length(m.ext.prodhelper.hessptri) - 1,
     )
-    synchronize(m.ext.backend)
     kersyspmv2(m.ext.backend)(
         Hv,
         v,
@@ -417,7 +400,6 @@ function ExaModels.hprod!(
         m.ext.prodhelper.hessptrj,
         ndrange = length(m.ext.prodhelper.hessptrj) - 1,
     )
-    synchronize(m.ext.backend)
 
     return Hv
 end
@@ -437,7 +419,6 @@ function ExaModels.hprod!(
     fill!(m.ext.prodhelper.hessbuffer, zero(eltype(Hv)))
 
     _obj_hess_coord!(m.ext.backend, m.ext.prodhelper.hessbuffer, m.objs, x, m.θ, obj_weight)
-    synchronize(m.ext.backend)
     kersyspmv(m.ext.backend)(
         Hv,
         v,
@@ -446,7 +427,6 @@ function ExaModels.hprod!(
         m.ext.prodhelper.hessptri,
         ndrange = length(m.ext.prodhelper.hessptri) - 1,
     )
-    synchronize(m.ext.backend)
     kersyspmv2(m.ext.backend)(
         Hv,
         v,
@@ -455,7 +435,6 @@ function ExaModels.hprod!(
         m.ext.prodhelper.hessptrj,
         ndrange = length(m.ext.prodhelper.hessptrj) - 1,
     )
-    synchronize(m.ext.backend)
 
     return Hv
 end
@@ -507,13 +486,11 @@ end
 function _obj_hess_coord!(backend, hess, objs, x, θ, obj_weight)
     ExaModels.shessian!(backend, hess, nothing, objs, x, θ, obj_weight, zero(eltype(hess)))
     _obj_hess_coord!(backend, hess, objs.inner, x, θ, obj_weight)
-    return synchronize(backend)
 end
 function _obj_hess_coord!(backend, hess, objs::ExaModels.ObjectiveNull, x, θ, obj_weight) end
 function _con_hess_coord!(backend, hess, cons, x, θ, y)
     ExaModels.shessian!(backend, hess, nothing, cons, x, θ, y, zero(eltype(hess)))
     _con_hess_coord!(backend, hess, cons.inner, x, θ, y)
-    return synchronize(backend)
 end
 function _con_hess_coord!(backend, hess, cons::ExaModels.ConstraintNull, x, θ, y) end
 
@@ -689,7 +666,6 @@ ExaModels.getbackend(m::ExaModels.ExaModel{T, VT, E}) where {T, VT, E <: KAExten
 function ExaModels._compress!(V, buffer, ptr, sparsity, backend)
     fill!(V, zero(eltype(V)))
     ker_compress!(backend)(V, buffer, ptr, sparsity; ndrange = length(ptr) - 1)
-    return synchronize(backend)
 end
 
 @kernel function ker_compress!(V, @Const(buffer), @Const(ptr), @Const(sparsity))
@@ -701,7 +677,6 @@ end
 
 function ExaModels._structure!(I, J, ptr, sparsity, backend)
     ker_structure!(backend)(I, J, ptr, sparsity, ndrange = length(ptr) - 1)
-    return synchronize(backend)
 end
 
 @kernel function ker_structure!(I, J, @Const(ptr), @Const(sparsity))
@@ -712,7 +687,6 @@ end
 function ExaModels.get_compressed_sparsity(nnz, Ibuffer, Jbuffer, backend)
     sparsity = similar(Ibuffer, Tuple{Tuple{Int, Int}, Int}, nnz)
     ker_get_compressed_sparsity(backend)(sparsity, Ibuffer, Jbuffer; ndrange = nnz)
-    synchronize(backend)
     return sparsity
 end
 @kernel function ker_get_compressed_sparsity(sparsity, @Const(I), @Const(J))

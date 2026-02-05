@@ -75,8 +75,9 @@ Add the same constraints as before:
 ````julia
 constraint(
     c_param,
-    3x_p[i+1]^3 + 2 * x_p[i+2] - 5 + sin(x_p[i+1] - x_p[i+2])sin(x_p[i+1] + x_p[i+2]) + 4x_p[i+1] -
-    x_p[i]exp(x_p[i] - x_p[i+1]) - 3 for i = 1:(N-2)
+    3x_p[i+1]^3 + 2 * x_p[i+2] - 5 +
+    sin(x_p[i+1] - x_p[i+2])sin(x_p[i+1] + x_p[i+2]) +
+    4x_p[i+1] - x_p[i]exp(x_p[i] - x_p[i+1]) - 3 for i = 1:(N-2)
 )
 ````
 
@@ -110,6 +111,8 @@ An ExaModel{Float64, Vector{Float64}, ...}
             nnzh: (-36.36% sparsity)   75              linear: ⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅ 0     
                                                     nonlinear: ████████████████████ 8     
                                                          nnzj: ( 70.00% sparsity)   24    
+                                                     lin_nnzj: (------% sparsity)         
+                                                     nln_nnzj: ( 70.00% sparsity)   24    
 
 
 ````
@@ -122,7 +125,7 @@ println("Original objective: $(result1.objective)")
 ````
 
 ````
-This is Ipopt version 3.14.17, running with linear solver MUMPS 5.8.0.
+This is Ipopt version 3.14.19, running with linear solver MUMPS 5.8.1.
 
 Number of nonzeros in equality constraint Jacobian...:       24
 Number of nonzeros in inequality constraint Jacobian.:        0
@@ -165,7 +168,7 @@ Number of inequality constraint evaluations          = 0
 Number of equality constraint Jacobian evaluations   = 7
 Number of inequality constraint Jacobian evaluations = 0
 Number of Lagrangian Hessian evaluations             = 6
-Total seconds in IPOPT                               = 0.441
+Total seconds in IPOPT                               = 0.193
 
 EXIT: Optimal Solution Found.
 Original objective: 6.232458632437464
@@ -181,7 +184,7 @@ println("Modified penalty objective: $(result2.objective)")
 ````
 
 ````
-This is Ipopt version 3.14.17, running with linear solver MUMPS 5.8.0.
+This is Ipopt version 3.14.19, running with linear solver MUMPS 5.8.1.
 
 Number of nonzeros in equality constraint Jacobian...:       24
 Number of nonzeros in inequality constraint Jacobian.:        0
@@ -224,7 +227,7 @@ Number of inequality constraint evaluations          = 0
 Number of equality constraint Jacobian evaluations   = 7
 Number of inequality constraint Jacobian evaluations = 0
 Number of Lagrangian Hessian evaluations             = 6
-Total seconds in IPOPT                               = 0.003
+Total seconds in IPOPT                               = 0.001
 
 EXIT: Optimal Solution Found.
 Modified penalty objective: 8.647439751691499
@@ -240,7 +243,7 @@ println("Modified offset objective: $(result3.objective)")
 ````
 
 ````
-This is Ipopt version 3.14.17, running with linear solver MUMPS 5.8.0.
+This is Ipopt version 3.14.19, running with linear solver MUMPS 5.8.1.
 
 Number of nonzeros in equality constraint Jacobian...:       24
 Number of nonzeros in inequality constraint Jacobian.:        0
@@ -283,7 +286,7 @@ Number of inequality constraint evaluations          = 0
 Number of equality constraint Jacobian evaluations   = 7
 Number of inequality constraint Jacobian evaluations = 0
 Number of Lagrangian Hessian evaluations             = 6
-Total seconds in IPOPT                               = 0.003
+Total seconds in IPOPT                               = 0.001
 
 EXIT: Optimal Solution Found.
 Modified offset objective: 8.845162987294774

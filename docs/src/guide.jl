@@ -71,6 +71,32 @@ constraint(
     lcon = -1.0, ucon = Inf
 )
 
+# ## Subexpressions
+# When complex expressions are reused across multiple objectives or constraints, you can define them as subexpressions using [`subexpr`](@ref). This improves code readability and can help with derivative computation efficiency.
+#
+# Subexpressions are "lifted" to auxiliary variables with defining equality constraints. This means:
+# - Each subexpression creates new auxiliary variables
+# - Equality constraints define the relationship between the subexpression and its value
+# - Derivative code is generated once per subexpression pattern
+#
+# Here's a simple example:
+c2 = ExaCore()
+y = variable(c2, N; start = 1.0)
+# Define a subexpression for y[i]^2
+s = subexpr(c2, y[i]^2 for i in 1:N)
+# Now s[i] can be used in objectives and constraints
+objective(c2, (s[i] - 1)^2 for i in 1:N)
+constraint(c2, s[i] + s[i + 1] for i in 1:(N - 1); lcon = 0.0)
+
+# Multi-dimensional subexpressions are also supported with automatic dimension inference:
+# ```julia
+# dx = subexpr(c, x[t, i] - x[t-1, i] for t in 1:T, i in 1:N)
+# # dx[t, i] can now be used in constraints
+# constraint(c, dx[t, i] - something for t in 1:T, i in 1:N)
+# ```
+#
+# For a comprehensive example using subexpressions, see the [Distillation Column example](@ref distillation).
+
 # ## ExaModel
 # Finally, we are ready to create an `ExaModel` from the data we have collected in `ExaCore`. Since `ExaCore` includes all the necessary information, we can do this simply by:
 m = ExaModel(c)
@@ -96,6 +122,6 @@ sol = solution(result, x)
 # - [`multipliers_U`](@ref) inquires the upper bound dual solution.
 
 # This concludes a short tutorial on how to use ExaModels to model and solve optimization problems. Want to learn more? Take a look at the following examples, which provide further tutorial on how to use ExaModels.jl. Each of the examples are designed to instruct a few additional techniques.
-# - [Example: Quadrotor](): modeling multiple types of objective values and constraints.
-# - [Example: Distillation Column](): using two-dimensional index sets for variables.
-# - [Example: Optimal Power Flow](): handling complex data and using constraint augmentation.
+# - [Example: Quadrotor](@ref quad): modeling multiple types of objective values and constraints.
+# - [Example: Distillation Column](@ref distillation): using subexpressions and two-dimensional index sets.
+# - [Example: Optimal Power Flow](@ref opf): handling complex data and using constraint augmentation.

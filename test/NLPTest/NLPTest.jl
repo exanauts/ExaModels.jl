@@ -41,6 +41,7 @@ include("power.jl")
 include("luksan_struct.jl")
 include("luksan_expr.jl")
 include("parameter_test.jl")
+include("subexpr_test.jl")
 
 # m1 should always be an examodel
 function test_nlp((m1, varis1), (m2, varis2); full = false)
@@ -211,6 +212,10 @@ function runtests()
 
                 @testset "Parameter Test" begin
                     test_parametric_vs_nonparametric(backend)
+                end
+
+                @testset "Subexpr Test" begin
+                    test_subexpr(backend)
                 end
             end
         end

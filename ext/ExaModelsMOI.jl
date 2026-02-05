@@ -23,7 +23,15 @@ const PARAMETER_INDEX_THRESHOLD = Int64(4_611_686_018_427_387_904) # div(typemax
 """
 abstract type AbstractBin end
 
-struct Bin{E, P, I} <: AbstractBin
+"""
+    struct Bin{E,P,I} <: AbstractBin
+
+This linked list with `inner` represents a sum of expressions `∑_{i in data} head(i)`
+It is a linked list and not a `Vector` as each `head` may have a different type.
+We append new ones at the beginning because `Bin` is non-mutable and
+its fields are concretely typed.
+"""
+struct Bin{E,P,I} <: AbstractBin
     head::E
     data::P
     inner::I
@@ -73,11 +81,12 @@ function check_supported(T, moim)
 end
 
 function ExaModels.ExaModel(
-        moim::MOI.ModelLike;
-        backend = nothing,
-        prod = false,
-        T = Float64,
+    moim::MOI.ModelLike;
+    backend = nothing,
+    prod = false,
+    T = Float64,
     )
+
     c, _ = to_exacore(moim; backend = backend, T = T)
     return ExaModels.ExaModel(c; prod = prod)
 end
@@ -196,8 +205,17 @@ function copy_constraints!(c, moim, var_to_idx, T)
 
     con_types = MOI.get(moim, MOI.ListOfConstraintTypesPresent())
     for (F, S) in con_types
-        F <: MOI.VariableIndex && continue
-        cis = MOI.get(moim, MOI.ListOfConstraintIndices{F, S}())
+        cis = MOI.get(moim, MOI.ListOfConstraintIndices{F,S}())
+        if F <: MOI.VariableIndex
+            for ci in cis
+                vi = MOI.get(moim, MOI.ConstraintFunction(), ci)
+                vartype, var_idx = var_to_idx[vi]
+                if vartype === :variable
+                    con_to_idx[ci] = var_idx
+                end
+            end
+            continue
+        end
         bin, offset =
             exafy_con(moim, cis, bin, offset, lcon, ucon, y0, var_to_idx, con_to_idx)
     end
@@ -316,8 +334,8 @@ function exafy_con(
         set = MOI.get(moim, MOI.ConstraintSet(), ci)
         con_to_idx[ci] = offset + i
         start = if MOI.supports(
-                moim, MOI.ConstraintPrimalStart(), typeof(ci)
-            )
+            moim, MOI.ConstraintPrimalStart(), typeof(ci)
+        )
             MOI.get(moim, MOI.ConstraintPrimalStart(), ci)
         else
             nothing
@@ -711,6 +729,9 @@ function MOI.supports_constraint(
     )
     return true
 end
+function MOI.supports(::Optimizer, ::MOI.ObjectiveSense)
+    return true
+end
 function MOI.supports(::Optimizer, ::MOI.ObjectiveFunction{<:SUPPORTED_FUNC_TYPE_WITH_VAR})
     return true
 end
@@ -729,6 +750,7 @@ end
 function MOI.copy_to(dest::Optimizer, src::MOI.ModelLike)
     core, maps = to_exacore(src; backend = dest.backend)
     dest.model = ExaModels.ExaModel(core; prod = true)
+
     return _make_index_map(src, maps)
 end
 
@@ -859,6 +881,10 @@ function _make_constraints_map(
         map[c] = typeof(c)(con_to_idx[c])
     end
     return
+end
+
+function MOI.set(model::Optimizer, ::MOI.NLPBlock, nlp_data::MOI.NLPBlockData)
+    error("The legacy nonlinear model interface is not supported. Please use the new MOI-based interface.")
 end
 
 end # module
