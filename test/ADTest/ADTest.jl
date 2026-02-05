@@ -1,7 +1,9 @@
 module ADTest
 
 using ExaModels
-using Test, ForwardDiff, SpecialFunctions
+using Test, ForwardDiff, SpecialFunctions, NLPModels
+
+include("expression.jl")
 
 const FUNCTIONS = [
     ("basic-functions-:+", x -> +(x[1])),
@@ -304,8 +306,10 @@ function shessian_with_params(f, x, θ)
     end
     return y
 end
+
 function runtests()
     @testset "AD test" begin
+        test_expression()
         for (name, f) in FUNCTIONS
             x0 = rand(10)
             @testset "$name" begin

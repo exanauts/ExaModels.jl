@@ -384,7 +384,6 @@ function hdrpass(
     cnt
 end
 
-# hess_coord! - Var × Var
 @inline function hdrpass(
     e,
     e_starts,
@@ -408,7 +407,6 @@ end
     cnt
 end
 
-# hess_coord! - Expr × Var (outer product: uses expression Jacobian e)
 @inline function hdrpass(
     e,
     e_starts,
@@ -433,7 +431,6 @@ end
     return cnt
 end
 
-# hess_coord! - Var × Expr (outer product: uses expression Jacobian e)
 @inline function hdrpass(
     e,
     e_starts,
@@ -458,7 +455,6 @@ end
     return cnt
 end
 
-# hess_coord! - Expr × Expr (outer product of two expression Jacobians)
 @inline function hdrpass(
     e,
     e_starts,
@@ -497,7 +493,6 @@ end
 end
 
 
-# hprod - Var × Var
 @inline function hdrpass(
     e,
     e_starts,
@@ -570,7 +565,6 @@ Performs sparse hessian evaluation (`d²f/dx²` portion) via the reverse pass on
     cnt
 end
 
-# hrpass for SecondAdjointNodeExpr - uses e2 (inner Hessian of expression)
 @inline function hrpass(
     e,
     e_starts,
@@ -588,7 +582,6 @@ end
     adj,
     adj2,
 ) where {D<:SecondAdjointNodeExpr}
-    # Term 1: Inner Hessian contribution from e2
     (cnt_start2, e_start2) = e2_starts[t.i]
     len2 = e2_cnts[cnt_start2]
     cnt += 1
@@ -599,7 +592,6 @@ end
     return cnt
 end
 
-# hrpass for SecondAdjointNodeExpr - structure mode (Integer output)
 @inline function hrpass(
     e,
     e_starts,
@@ -617,7 +609,6 @@ end
     adj,
     adj2,
 ) where {D<:SecondAdjointNodeExpr,I<:Integer,V<:AbstractVector{I}}
-    # Structure mode: write indices from e2 to y1/y2
     (cnt_start2, e_start2) = e2_starts[t.i]
     len2 = e2_cnts[cnt_start2]
     cnt += 1
@@ -687,7 +678,6 @@ end
     cnt
 end
 
-# Default fallback to hrpass
 @inline hrpass0(args...) = hrpass(args...)
 
 @inline function hrpass0(
@@ -860,7 +850,6 @@ end
     cnt
 end
 
-# hrpass0 for SecondAdjointNodeVar - no Hessian contribution from variables
 @inline function hrpass0(
     e,
     e_starts,
@@ -901,7 +890,6 @@ end
     cnt
 end
 
-# hrpass0 for SecondAdjointNodeExpr - uses e2 (inner Hessian of expression)
 @inline function hrpass0(
     e,
     e_starts,
@@ -919,7 +907,6 @@ end
     adj,
     adj2,
 ) where {T<:SecondAdjointNodeExpr}
-    # Term 1: Inner Hessian contribution from e2
     (cnt_start2, e_start2) = e2_starts[t.i]
     len2 = e2_cnts[cnt_start2]
     cnt += 1
@@ -928,13 +915,10 @@ end
         cnt += e2_cnts[cnt_start2+i]
     end
 
-    # Note: Term 2 (outer product of Jacobians) is handled by hdrpass when 
-    # this node interacts with other nodes in SecondAdjointNode2's hdrpass call
 
     return cnt
 end
 
-# Analysis pass - SecondAdjointNodeVar
 function hdrpass(
     e,
     e_starts,
@@ -954,14 +938,12 @@ function hdrpass(
     cnt
 end
 
-# Analysis pass - hrpass for SecondAdjointNodeVar
 function hrpass(e, e_starts, e_cnts, e2, e2_starts, e2_cnts, isexp, t::SecondAdjointNodeVar, comp::Nothing, y1, y2, o2, cnt, adj, adj2)
     cnt += 1
     push!(y1, (t.i, t.i))
     cnt
 end
 
-# hess_coord! - hrpass for SecondAdjointNodeVar
 @inline function hrpass(
     e,
     e_starts,
@@ -984,7 +966,6 @@ end
     return (cnt += 1)
 end
 
-# hess_coord! - hrpass for SecondAdjointNodeVar
 @inline function hrpass(
     e,
     e_starts,
@@ -1006,7 +987,6 @@ end
     cnt
 end
 
-# hrpass0 for SecondAdjointNodeVar - no Hessian contribution from variables
 @inline function hrpass(
     e,
     e_starts,
@@ -1064,7 +1044,6 @@ end
 @inline unpack_row(v) = Int(v >> 32)
 @inline unpack_col(v) = Int(v & 0xFFFFFFFF)
 
-# hess_structure! - hdrpass for Var × Var
 @inline function hdrpass(
     e,
     e_starts,
@@ -1082,7 +1061,6 @@ end
     i, j = t1.i, t2.i
     ind = o2 + comp(cnt += 1)
 
-    # If y1 and y2 are the same (expression structure pass), pack indices
     if y1 === y2
         if i != 0 || j != 0
             @inbounds if i >= j
@@ -1134,7 +1112,6 @@ end
     cnt
 end
 
-# hess_structure! - hrpass0 for SecondAdjointNodeExpr (structure mode)
 @inline function hrpass0(
     e,
     e_starts,
@@ -1152,7 +1129,6 @@ end
     adj,
     adj2,
 ) where {T<:SecondAdjointNodeExpr,I<:Integer,V<:AbstractVector{I}}
-    # Structure mode: write indices from e2 to y1/y2
     (cnt_start2, e_start2) = e2_starts[t.i]
     len2 = e2_cnts[cnt_start2]
     cnt += 1
@@ -1176,7 +1152,6 @@ end
     return cnt
 end
 
-# hess_structure! - hdrpass for Expr × Var (structure mode)
 @inline function hdrpass(
     e,
     e_starts,
@@ -1222,7 +1197,6 @@ end
     return cnt
 end
 
-# hess_structure! - hdrpass for Var × Expr (structure mode)
 @inline function hdrpass(
     e,
     e_starts,
@@ -1268,7 +1242,6 @@ end
     return cnt
 end
 
-# hess_structure! - hdrpass for Expr × Expr (structure mode)
 @inline function hdrpass(
     e,
     e_starts,
