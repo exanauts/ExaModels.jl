@@ -25,7 +25,7 @@ struct SIMDFunction{F,C1,C2}
 end
 
 @inline (sf::SIMDFunction{F,C1,C2})(i, x, θ) where {F,C1,C2} = sf.f(i, x, θ)
-@inline (sf::SIMDFunction{F,C1,C2})(i, x, θ) where {F <: Real,C1,C2} = sf.f
+@inline (sf::SIMDFunction{F,C1,C2})(i, x, θ) where {F<:Real,C1,C2} = sf.f
 
 """
     SIMDFunction(gen::Base.Generator, o0 = 0, o1 = 0, o2 = 0)
@@ -38,7 +38,7 @@ Returns a `SIMDFunction` using the `gen`.
 - `o1`: offset for the derivative evalution
 - `o2`: offset for the second-order derivative evalution
 """
-function SIMDFunction(gen::Base.Generator, full_exp_refs1, full_exp_refs2, exps, isexp, o0 = 0, o1 = 0, o2 = 0)
+function SIMDFunction(gen::Base.Generator, full_exp_refs1, full_exp_refs2, exps, isexp, o0=0, o1=0, o2=0)
     f = gen.f(ParSource())
     _simdfunction(f, full_exp_refs1, full_exp_refs2, exps, isexp, o0, o1, o2)
 end
@@ -73,7 +73,7 @@ end
 function get_full_exp_refs(full_exp_refs, exps, isexp, y_raw)
     y = []
     for y_rawi in y_raw
-        offset = typeof(y_rawi) <: Node2{typeof(+), T, Int} where T ? y_rawi.inner2+1 : 1
+        offset = typeof(y_rawi) <: Node2{typeof(+),T,Int} where T ? y_rawi.inner2 + 1 : 1
         if isexp[offset] != 0
             exp_i = exp_index(exps, offset)
             Base.append!(y, full_exp_refs[exp_i])
@@ -110,7 +110,7 @@ function _simdfunction(f, full_exp_refs1, full_exp_refs2, exps, isexp, o0, o1, o
 
     y2_raw = []
     t = f(Identity(), SecondAdjointNodeSource(nothing, nothing), nothing)
-    ExaModels.hrpass(t, nothing, y2_raw, nothing, nothing, 0, NaN, NaN)
+    ExaModels.hrpass(nothing, nothing, nothing, nothing, nothing, nothing, nothing, t, nothing, y2_raw, nothing, nothing, 0, NaN, NaN)
     y2 = get_full_exp_refs(full_exp_refs2, exps, isexp, y2_raw)
 
     a1 = unique(y1)
