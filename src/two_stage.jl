@@ -46,7 +46,7 @@ Evaluates all scenarios in ONE kernel launch.
 - Global variable layout: [v₁; v₂; ...; vₛ; d]
 - Global constraint layout: [c₁; c₂; ...; cₛ]
 """
-struct TwoStageExaModel{T, VT <: AbstractVector{T}, M <: ExaModel{T, VT}}
+struct TwoStageExaModel{T, VT <: AbstractVector{T}, M <: ExaModel{T, VT}} <: NLPModels.AbstractNLPModel{T,VT}
     model::M
     ns::Int
     nv::Int
