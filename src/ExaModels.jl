@@ -37,6 +37,7 @@ include("hessian.jl")
 include("nlp.jl")
 include("utils.jl")
 include("two_stage.jl")
+include("batch.jl")
 
 export ExaModel,
     ExaCore,
@@ -58,6 +59,7 @@ export ExaModel,
     multipliers_U,
     @register_univariate,
     @register_bivariate,
-    TwoStageExaModel
+    TwoStageExaModel,
+    BatchExaModel
 
 end # module ExaModels
