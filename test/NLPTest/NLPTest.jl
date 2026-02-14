@@ -14,6 +14,7 @@ const NLP_TEST_ARGUMENTS = [
     ("luksan_vlcek", 20),
     ("ac_power", "pglib_opf_case3_lmbd.m"),
     ("ac_power", "pglib_opf_case14_ieee.m"),
+    ("trivialmax", 1), # Issue #518 in MadNLP
 ]
 
 const SOLVERS = [
@@ -22,7 +23,7 @@ const SOLVERS = [
     ("percival", nlp -> percival(nlp)),
 ]
 
-const EXCLUDE1 = [("ac_power", "percival"), ("struct_ac_power", "percival")]
+const EXCLUDE1 = [("ac_power", "percival"), ("struct_ac_power", "percival"), ("trivialmax", "percival")]
 const EXCLUDE2 = []
 
 for backend in BACKENDS
@@ -39,6 +40,7 @@ include("power.jl")
 include("luksan_struct.jl")
 include("parameter_test.jl")
 include("subexpr_test.jl")
+include("trivialmax.jl")
 
 function test_nlp(m1, m2; full = false)
     @testset "NLP meta tests" begin
