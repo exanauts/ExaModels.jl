@@ -53,7 +53,6 @@ struct Var{I} <: AbstractNode
     i::I
 end
 
-
 struct ParameterSource <: AbstractNode end
 struct ParameterNode{I} <: AbstractNode
     i::I
@@ -75,11 +74,11 @@ A parameterized data node
 # Fields:
 - `inner::I`: parameter for the data
 """
-struct ParIndexed{I,J} <: AbstractNode
+struct ParIndexed{I, J} <: AbstractNode
     inner::I
 end
 
-@inline ParIndexed(inner::I, n) where {I} = ParIndexed{I,n}(inner)
+@inline ParIndexed(inner::I, n) where {I} = ParIndexed{I, n}(inner)
 """
     Node1{F, I}
 
@@ -88,7 +87,7 @@ A node with one child for symbolic expression tree
 # Fields:
 - `inner::I`: children
 """
-struct Node1{F,I} <: AbstractNode
+struct Node1{F, I} <: AbstractNode
     inner::I
 end
 
@@ -101,7 +100,7 @@ A node with two children for symbolic expression tree
 - `inner1::I1`: children #1
 - `inner2::I2`: children #2
 """
-struct Node2{F,I1,I2} <: AbstractNode
+struct Node2{F, I1, I2} <: AbstractNode
     inner1::I1
     inner2::I2
 end
@@ -115,36 +114,35 @@ end
 
 @inline Base.getproperty(n::ParSource, s::Symbol) = ParIndexed(n, s)
 @inline Base.getindex(n::ParSource, i) = ParIndexed(n, i)
-@inline Base.indexed_iterate(n::P, idx, start = 1) where P <: Union{ParSource, ParIndexed} = (ParIndexed(n, idx), idx + 1)
+@inline Base.indexed_iterate(n::P, idx, start = 1) where {P <: Union{ParSource, ParIndexed}} = (ParIndexed(n, idx), idx + 1)
 
 @inline Base.getproperty(v::ParIndexed{I, n}, s::Symbol) where {I, n} = ParIndexed(v, s)
 @inline Base.getindex(v::ParIndexed{I, n}, i) where {I, n} = ParIndexed(v, i)
 @inline Base.indexed_iterate(v::ParIndexed{I, n}, idx, start = 1) where {I, n} = (ParIndexed(v, idx), idx + 1)
 
-
 @inline Base.getindex(n::VarSource, i) = Var(i)
 @inline Base.getindex(::ParameterSource, i) = ParameterNode(i)
 
-@inline Node1(f::F, inner::I) where {F,I} = Node1{F,I}(inner)
-@inline Node2(f::F, inner1::I1, inner2::I2) where {F,I1,I2} = Node2{F,I1,I2}(inner1, inner2)
+@inline Node1(f::F, inner::I) where {F, I} = Node1{F, I}(inner)
+@inline Node2(f::F, inner1::I1, inner2::I2) where {F, I1, I2} = Node2{F, I1, I2}(inner1, inner2)
 
 
 struct Identity end
 
-@inline (v::Var{I})(i, x, θ) where {I<:AbstractNode} = @inbounds x[v.i(i, x, θ)]
+@inline (v::Var{I})(i, x, θ) where {I <: AbstractNode} = @inbounds x[v.i(i, x, θ)]
 @inline (v::Var{I})(i, x, θ) where {I} = @inbounds x[v.i]
-@inline (v::Var{I})(i::Identity, x, θ) where {I<:AbstractNode} = @inbounds x[v.i]
+@inline (v::Var{I})(i::Identity, x, θ) where {I <: AbstractNode} = @inbounds x[v.i]
 
-@inline (v::ParameterNode{I})(i, x, θ) where {I<:AbstractNode} = @inbounds θ[v.i(i, x, θ)]
+@inline (v::ParameterNode{I})(i, x, θ) where {I <: AbstractNode} = @inbounds θ[v.i(i, x, θ)]
 @inline (v::ParameterNode{I})(::Any, x, θ) where {I} = @inbounds θ[v.i]
-@inline (v::ParameterNode{I})(::Identity, x, θ) where {I<:AbstractNode} = @inbounds θ[v.i]
+@inline (v::ParameterNode{I})(::Identity, x, θ) where {I <: AbstractNode} = @inbounds θ[v.i]
 
-@inline (v::ParameterNode{I})(i, x, ::Nothing) where {I<:AbstractNode} = NaN
+@inline (v::ParameterNode{I})(i, x, ::Nothing) where {I <: AbstractNode} = NaN
 @inline (v::ParameterNode{I})(::Any, x, ::Nothing) where {I} = NaN
-@inline (v::ParameterNode{I})(::Identity, x, ::Nothing) where {I<:AbstractNode} = NaN
+@inline (v::ParameterNode{I})(::Identity, x, ::Nothing) where {I <: AbstractNode} = NaN
 
 @inline (v::ParSource)(i, x, θ) = i
-@inline (v::ParIndexed{I,n})(i, x, θ) where {I,n} = @inbounds getfield(getfield(v, :inner)(i, x, θ), n)
+@inline (v::ParIndexed{I, n})(i, x, θ) where {I, n} = @inbounds getfield(getfield(v, :inner)(i, x, θ), n)
 
 (v::ParIndexed)(i::Identity, x, θ) = NaN # despecialized
 (v::ParSource)(i::Identity, x, θ) = NaN # despecialized
@@ -159,7 +157,7 @@ A node with one child for first-order forward pass tree
 - `y::T`: first-order sensitivity
 - `inner::I`: children
 """
-struct AdjointNode1{F,T,I} <: AbstractAdjointNode
+struct AdjointNode1{F, T, I} <: AbstractAdjointNode
     x::T
     y::T
     inner::I
@@ -176,7 +174,7 @@ A node with two children for first-order forward pass tree
 - `inner1::I1`: children #1
 - `inner2::I2`: children #2
 """
-struct AdjointNode2{F,T,I1,I2} <: AbstractAdjointNode
+struct AdjointNode2{F, T, I1, I2} <: AbstractAdjointNode
     x::T
     y1::T
     y2::T
@@ -192,7 +190,12 @@ A variable node for first-order forward pass tree
 - `i::I`: index
 - `x::T`: value
 """
-struct AdjointNodeVar{I,T} <: AbstractAdjointNode
+struct AdjointNodeVar{I, T} <: AbstractAdjointNode
+    i::I
+    x::T
+end
+
+struct AdjointNodeExpr{I, T} <: AbstractAdjointNode
     i::I
     x::T
 end
@@ -205,20 +208,22 @@ A source of `AdjointNode`. `adjoint_node_source[i]` returns an `AdjointNodeVar` 
 # Fields:
 - `inner::VT`: variable vector
 """
-struct AdjointNodeSource{VT}
+struct AdjointNodeSource{VT, VI}
     inner::VT
+    isexp::VI
 end
 
-@inline AdjointNode1(f::F, x::T, y, inner::I) where {F,T,I} =
-    AdjointNode1{F,T,I}(x, y, inner)
-@inline AdjointNode2(f::F, x::T, y1, y2, inner1::I1, inner2::I2) where {F,T,I1,I2} =
-    AdjointNode2{F,T,I1,I2}(x, y1, y2, inner1, inner2)
+@inline AdjointNode1(f::F, x::T, y, inner::I) where {F, T, I} =
+    AdjointNode1{F, T, I}(x, y, inner)
+@inline AdjointNode2(f::F, x::T, y1, y2, inner1::I1, inner2::I2) where {F, T, I1, I2} =
+    AdjointNode2{F, T, I1, I2}(x, y1, y2, inner1, inner2)
 
-@inline Base.getindex(x::I, i) where {I<:AdjointNodeSource{Nothing}} =
+@inline Base.getindex(x::I, i) where {I <: AdjointNodeSource{Nothing, Nothing}} =
     AdjointNodeVar(i, NaN)
-@inline Base.getindex(x::I, i) where {I<:AdjointNodeSource} =
-    @inbounds AdjointNodeVar(i, x.inner[i])
-
+@inline Base.getindex(x::I, i) where {I <: AdjointNodeSource{Nothing}} =
+    @inbounds x.isexp[i] == 0 ? AdjointNodeVar(i, NaN) : AdjointNodeExpr(i, NaN)
+@inline Base.getindex(x::I, i) where {I <: AdjointNodeSource} =
+    @inbounds x.isexp[i] == 0 ? AdjointNodeVar(i, x.inner[i]) : AdjointNodeExpr(i, x.inner[i])
 
 """
     SecondAdjointNode1{F, T, I}
@@ -231,7 +236,7 @@ A node with one child for second-order forward pass tree
 - `h::T`: second-order sensitivity
 - `inner::I`: DESCRIPTION
 """
-struct SecondAdjointNode1{F,T,I} <: AbstractSecondAdjointNode
+struct SecondAdjointNode1{F, T, I} <: AbstractSecondAdjointNode
     x::T
     y::T
     h::T
@@ -245,14 +250,14 @@ A node with one child for second-order forward pass tree
 # Fields:
 - `x::T`: function value
 - `y1::T`: first-order sensitivity w.r.t. first argument
-- `y2::T`: first-order sensitivity w.r.t. first argument
+- `y2::T`: first-order sensitivity w.r.t. second argument
 - `h11::T`: second-order sensitivity w.r.t. first argument
 - `h12::T`: second-order sensitivity w.r.t. first and second argument
 - `h22::T`: second-order sensitivity w.r.t. second argument
 - `inner1::I1`: children #1
 - `inner2::I2`: children #2
 """
-struct SecondAdjointNode2{F,T,I1,I2} <: AbstractSecondAdjointNode
+struct SecondAdjointNode2{F, T, I1, I2} <: AbstractSecondAdjointNode
     x::T
     y1::T
     y2::T
@@ -272,25 +277,32 @@ A variable node for first-order forward pass tree
 - `i::I`: index
 - `x::T`: value
 """
-struct SecondAdjointNodeVar{I,T} <: AbstractSecondAdjointNode
+struct SecondAdjointNodeVar{I, T} <: AbstractSecondAdjointNode
+    i::I
+    x::T
+end
+
+struct SecondAdjointNodeExpr{I, T} <: AbstractSecondAdjointNode
     i::I
     x::T
 end
 
 """
-    SecondAdjointNodeSource{VT}
+    SecondAdjointNodeSource{VT,VTI}
 
 A source of `AdjointNode`. `adjoint_node_source[i]` returns an `AdjointNodeVar` at index `i`.
 
 # Fields:
 - `inner::VT`: variable vector
+- 'isexp::VTI': expression vector
 """
-struct SecondAdjointNodeSource{VT}
+struct SecondAdjointNodeSource{VT, VI}
     inner::VT
+    isexp::VI
 end
 
-@inline SecondAdjointNode1(f::F, x::T, y, h, inner::I) where {F,T,I} =
-    SecondAdjointNode1{F,T,I}(x, y, h, inner)
+@inline SecondAdjointNode1(f::F, x::T, y, h, inner::I) where {F, T, I} =
+    SecondAdjointNode1{F, T, I}(x, y, h, inner)
 @inline SecondAdjointNode2(
     f::F,
     x::T,
@@ -301,16 +313,17 @@ end
     h22,
     inner1::I1,
     inner2::I2,
-) where {F,T,I1,I2} =
-    SecondAdjointNode2{F,T,I1,I2}(x, y1, y2, h11, h12, h22, inner1, inner2)
+) where {F, T, I1, I2} =
+    SecondAdjointNode2{F, T, I1, I2}(x, y1, y2, h11, h12, h22, inner1, inner2)
 
-@inline Base.getindex(x::I, i) where {I<:SecondAdjointNodeSource{Nothing}} =
+@inline Base.getindex(x::I, i) where {I <: SecondAdjointNodeSource{Nothing, Nothing}} =
     SecondAdjointNodeVar(i, NaN)
-@inline Base.getindex(x::I, i) where {I<:SecondAdjointNodeSource} =
-    @inbounds SecondAdjointNodeVar(i, x.inner[i])
+@inline Base.getindex(x::I, i) where {I <: SecondAdjointNodeSource{Nothing}} =
+    @inbounds x.isexp[i] == 0 ? SecondAdjointNodeVar(i, NaN) : SecondAdjointNodeExpr(i, NaN)
+@inline Base.getindex(x::I, i) where {I <: SecondAdjointNodeSource} =
+    @inbounds x.isexp[i] == 0 ? SecondAdjointNodeVar(i, x.inner[i]) : SecondAdjointNodeExpr(i, x.inner[i])
 
-
-@inline (v::Null{Nothing})(i, x::V, θ) where {T,V<:AbstractVector{T}} = zero(T)
-@inline (v::Null{N})(i, x::V, θ) where {N,T,V<:AbstractVector{T}} = T(v.value)
-@inline (v::Null{N})(i, x::AdjointNodeSource{T}, θ) where {N,T} = AdjointNull()
-@inline (v::Null{N})(i, x::SecondAdjointNodeSource{T}, θ) where {N,T} = SecondAdjointNull()
+@inline (v::Null{Nothing})(i, x::V, θ) where {T, V <: AbstractVector{T}} = zero(T)
+@inline (v::Null{N})(i, x::V, θ) where {N, T, V <: AbstractVector{T}} = T(v.value)
+@inline (v::Null{N})(i, x::AdjointNodeSource{T}, θ) where {N, T} = AdjointNull()
+@inline (v::Null{N})(i, x::SecondAdjointNodeSource{T}, θ) where {N, T} = SecondAdjointNull()

@@ -3,6 +3,8 @@ module ADTest
 using ExaModels
 using Test, ForwardDiff, SpecialFunctions
 
+include("expression.jl")
+
 const FUNCTIONS = [
     ("basic-functions-:+", x -> +(x[1])),
     ("basic-functions-:-", x -> -(x[1])),
@@ -304,6 +306,7 @@ function shessian_with_params(f, x, θ)
     end
     return y
 end
+
 function runtests()
     @testset "AD test" begin
         for (name, f) in FUNCTIONS

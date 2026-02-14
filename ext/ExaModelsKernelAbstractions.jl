@@ -8,7 +8,7 @@ ExaModels.convert_array(v, backend::CPU) = v
 function getitr(gen::UnitRange{Int64})
     return gen
 end
-function getitr(gen::Base.Iterators.ProductIterator{NTuple{N,UnitRange{Int64}}}) where {N} end
+function getitr(gen::Base.Iterators.ProductIterator{NTuple{N, UnitRange{Int64}}}) where {N} end
 
 function ExaModels.getptr(backend, array; cmp = (x, y) -> x != y)
 
@@ -19,7 +19,7 @@ function ExaModels.getptr(backend, array; cmp = (x, y) -> x != y)
 end
 
 
-struct KAExtension{T,VT<:AbstractVector{T},H,VI1,VI2,B}
+struct KAExtension{T, VT <: AbstractVector{T}, H, VI1, VI2, B}
     backend::B
     objbuffer::VT
     gradbuffer::VT
@@ -46,7 +46,7 @@ function ExaModels.ExaModel(
     end
     gptr = ExaModels.getptr(c.backend, gsparsity; cmp = (x, y) -> x[1] != y[1])
 
-    conaugsparsity = similar(c.x0, Tuple{Int,Int}, c.nconaug)
+    conaugsparsity = similar(c.x0, Tuple{Int, Int}, c.nconaug)
     _conaug_structure!(c.backend, c.con, conaugsparsity)
     if !isempty(conaugsparsity)
         ExaModels.sort!(conaugsparsity; lt = ((i, j), (k, l)) -> i < k)
@@ -57,8 +57,8 @@ function ExaModels.ExaModel(
     if prod
         jacbuffer = similar(c.x0, c.nnzj)
         hessbuffer = similar(c.x0, c.nnzh)
-        jacsparsityi = similar(c.x0, Tuple{Tuple{Int,Int},Int}, c.nnzj)
-        hesssparsityi = similar(c.x0, Tuple{Tuple{Int,Int},Int}, c.nnzh)
+        jacsparsityi = similar(c.x0, Tuple{Tuple{Int, Int}, Int}, c.nnzj)
+        hesssparsityi = similar(c.x0, Tuple{Tuple{Int, Int}, Int}, c.nnzh)
 
         _jac_structure!(c.backend, c.con, jacsparsityi, nothing)
 
@@ -110,6 +110,7 @@ function ExaModels.ExaModel(
     return ExaModels.ExaModel(
         c.obj,
         c.con,
+        c.exp,
         c.θ,
         NLPModels.NLPModelMeta(
             c.nvar,
@@ -124,6 +125,8 @@ function ExaModels.ExaModel(
             ucon = c.ucon,
             minimize = c.minimize,
         ),
+        c.nne1,
+        c.nne2,
         NLPModels.Counters(),
         KAExtension(
             c.backend,
@@ -146,14 +149,13 @@ function _conaug_structure!(backend, cons, sparsity)
     _conaug_structure!(backend, cons.inner, sparsity)
 end
 function _conaug_structure!(backend, cons::ExaModels.Constraint, sparsity)
-    _conaug_structure!(backend, cons.inner, sparsity)
+    return _conaug_structure!(backend, cons.inner, sparsity)
 end
 function _conaug_structure!(backend, cons::ExaModels.ConstraintNull, sparsity) end
 @kernel function kers(sparsity, @Const(f), @Const(itr), @Const(oa))
     I = @index(Global)
-    @inbounds sparsity[oa+I] = (ExaModels.offset0(f, itr, I), oa + I)
+    @inbounds sparsity[oa + I] = (ExaModels.offset0(f, itr, I), oa + I)
 end
-
 
 
 function _grad_structure!(backend, objs, gsparsity)
@@ -163,10 +165,10 @@ end
 function _grad_structure!(backend, objs::ExaModels.ObjectiveNull, gsparsity) end
 
 function ExaModels.jac_structure!(
-    m::ExaModels.ExaModel{T,VT,E},
-    rows::V,
-    cols::V,
-) where {T,VT,E<:KAExtension,V<:AbstractVector}
+        m::ExaModels.ExaModel{T, VT, E},
+        rows::V,
+        cols::V,
+    ) where {T, VT, E <: KAExtension, V <: AbstractVector}
     if !isempty(rows)
         _jac_structure!(m.ext.backend, m.cons, rows, cols)
     end
@@ -180,10 +182,10 @@ function _jac_structure!(backend, cons::ExaModels.ConstraintNull, rows, cols) en
 
 
 function ExaModels.hess_structure!(
-    m::ExaModels.ExaModel{T,VT,E},
-    rows::V,
-    cols::V,
-) where {T,VT,E<:KAExtension,V<:AbstractVector}
+        m::ExaModels.ExaModel{T, VT, E},
+        rows::V,
+        cols::V,
+    ) where {T, VT, E <: KAExtension, V <: AbstractVector}
     if !isempty(rows)
         _obj_hess_structure!(m.ext.backend, m.objs, rows, cols)
         _con_hess_structure!(m.ext.backend, m.cons, rows, cols)
@@ -204,9 +206,9 @@ function _con_hess_structure!(backend, cons::ExaModels.ConstraintNull, rows, col
 
 
 function ExaModels.obj(
-    m::ExaModels.ExaModel{T,VT,E},
-    x::AbstractVector,
-) where {T,VT,E<:KAExtension}
+        m::ExaModels.ExaModel{T, VT, E},
+        x::AbstractVector,
+    ) where {T, VT, E <: KAExtension}
     if !isempty(m.ext.objbuffer)
         _obj(m.ext.backend, m.ext.objbuffer, m.objs, x, m.θ)
             result = ExaModels.sum(m.ext.objbuffer)
@@ -224,10 +226,10 @@ end
 function _obj(backend, objbuffer, f::ExaModels.ObjectiveNull, x, θ) end
 
 function ExaModels.cons_nln!(
-    m::ExaModels.ExaModel{T,VT,E},
-    x::AbstractVector,
-    y::AbstractVector,
-) where {T,VT,E<:KAExtension}
+        m::ExaModels.ExaModel{T, VT, E},
+        x::AbstractVector,
+        y::AbstractVector,
+    ) where {T, VT, E <: KAExtension}
     _cons_nln!(m.ext.backend, y, m.cons, x, m.θ)
     _conaugs!(m.ext.backend, m.ext.conbuffer, m.cons, x, m.θ)
 
@@ -250,9 +252,8 @@ function _cons_nln!(backend, y, con::ExaModels.Constraint, x, θ)
 end
 function _cons_nln!(backend, y, con::ExaModels.ConstraintNull, x, θ) end
 function _cons_nln!(backend, y, con::ExaModels.ConstraintAug, x, θ)
-    _cons_nln!(backend, y, con.inner, x, θ)
+    return _cons_nln!(backend, y, con.inner, x, θ)
 end
-
 
 
 function _conaugs!(backend, y, con::ExaModels.ConstraintAug, x, θ)
@@ -262,15 +263,15 @@ function _conaugs!(backend, y, con::ExaModels.ConstraintAug, x, θ)
     _conaugs!(backend, y, con.inner, x, θ)
 end
 function _conaugs!(backend, y, con::ExaModels.Constraint, x, θ)
-    _conaugs!(backend, y, con.inner, x, θ)
+    return _conaugs!(backend, y, con.inner, x, θ)
 end
 function _conaugs!(backend, y, con::ExaModels.ConstraintNull, x, θ) end
 
 function ExaModels.grad!(
-    m::ExaModels.ExaModel{T,VT,E},
-    x::V,
-    y::V,
-) where {T,VT,E<:KAExtension,V<:AbstractVector}
+        m::ExaModels.ExaModel{T, VT, E},
+        x::V,
+        y::V,
+    ) where {T, VT, E <: KAExtension, V <: AbstractVector}
     gradbuffer = m.ext.gradbuffer
 
     if !isempty(gradbuffer)
@@ -296,10 +297,10 @@ end
 function _grad!(backend, y, objs::ExaModels.ObjectiveNull, x, θ) end
 
 function ExaModels.jac_coord!(
-    m::ExaModels.ExaModel{T,VT,E},
-    x::V,
-    y::V,
-) where {T,VT,E<:KAExtension,V<:AbstractVector}
+        m::ExaModels.ExaModel{T, VT, E},
+        x::V,
+        y::V,
+    ) where {T, VT, E <: KAExtension, V <: AbstractVector}
     fill!(y, zero(eltype(y)))
     _jac_coord!(m.ext.backend, y, m.cons, x, m.θ)
     return y
@@ -311,27 +312,27 @@ end
 function _jac_coord!(backend, y, cons::ExaModels.ConstraintNull, x, θ) end
 
 function ExaModels.jprod_nln!(
-    m::ExaModels.ExaModel{T,VT,E},
-    x::AbstractVector,
-    v::AbstractVector,
-    Jv::AbstractVector,
-) where {T,VT,E<:KAExtension{T,VT,Nothing}}
+        m::ExaModels.ExaModel{T, VT, E},
+        x::AbstractVector,
+        v::AbstractVector,
+        Jv::AbstractVector,
+    ) where {T, VT, E <: KAExtension{T, VT, Nothing}}
     error("Prodhelper is not defined. Use ExaModels(c; prod=true) to use jprod_nln!")
 end
 function ExaModels.jtprod_nln!(
-    m::ExaModels.ExaModel{T,VT,E},
-    x::AbstractVector,
-    v::AbstractVector,
-    Jtv::AbstractVector,
-) where {T,VT,E<:KAExtension{T,VT,Nothing}}
+        m::ExaModels.ExaModel{T, VT, E},
+        x::AbstractVector,
+        v::AbstractVector,
+        Jtv::AbstractVector,
+    ) where {T, VT, E <: KAExtension{T, VT, Nothing}}
     error("Prodhelper is not defined. Use ExaModels(c; prod=true) to use jtprod_nln!")
 end
 function ExaModels.jprod_nln!(
-    m::ExaModels.ExaModel{T,VT,E},
-    x::AbstractVector,
-    v::AbstractVector,
-    Jv::AbstractVector,
-) where {T,VT,N<:NamedTuple,E<:KAExtension{T,VT,N}}
+        m::ExaModels.ExaModel{T, VT, E},
+        x::AbstractVector,
+        v::AbstractVector,
+        Jv::AbstractVector,
+    ) where {T, VT, N <: NamedTuple, E <: KAExtension{T, VT, N}}
 
     fill!(Jv, zero(eltype(Jv)))
     fill!(m.ext.prodhelper.jacbuffer, zero(eltype(Jv)))
@@ -347,11 +348,11 @@ function ExaModels.jprod_nln!(
     return Jv
 end
 function ExaModels.jtprod_nln!(
-    m::ExaModels.ExaModel{T,VT,E},
-    x::AbstractVector,
-    v::AbstractVector,
-    Jtv::AbstractVector,
-) where {T,VT,N<:NamedTuple,E<:KAExtension{T,VT,N}}
+        m::ExaModels.ExaModel{T, VT, E},
+        x::AbstractVector,
+        v::AbstractVector,
+        Jtv::AbstractVector,
+    ) where {T, VT, N <: NamedTuple, E <: KAExtension{T, VT, N}}
 
     fill!(Jtv, zero(eltype(Jtv)))
     fill!(m.ext.prodhelper.jacbuffer, zero(eltype(Jtv)))
@@ -367,13 +368,13 @@ function ExaModels.jtprod_nln!(
     return Jtv
 end
 function ExaModels.hprod!(
-    m::ExaModels.ExaModel{T,VT,E},
-    x::AbstractVector,
-    y::AbstractVector,
-    v::AbstractVector,
-    Hv::AbstractVector;
-    obj_weight = one(eltype(x)),
-) where {T,VT,N<:NamedTuple,E<:KAExtension{T,VT,N}}
+        m::ExaModels.ExaModel{T, VT, E},
+        x::AbstractVector,
+        y::AbstractVector,
+        v::AbstractVector,
+        Hv::AbstractVector;
+        obj_weight = one(eltype(x)),
+    ) where {T, VT, N <: NamedTuple, E <: KAExtension{T, VT, N}}
 
     if isnothing(m.ext.prodhelper)
         error("Prodhelper is not defined. Use ExaModels(c; prod=true) to use hprod!")
@@ -404,12 +405,12 @@ function ExaModels.hprod!(
     return Hv
 end
 function ExaModels.hprod!(
-    m::ExaModels.ExaModel{T,VT,E},
-    x::AbstractVector,
-    v::AbstractVector,
-    Hv::AbstractVector;
-    obj_weight = one(eltype(x)),
-) where {T,VT,N<:NamedTuple,E<:KAExtension{T,VT,N}}
+        m::ExaModels.ExaModel{T, VT, E},
+        x::AbstractVector,
+        v::AbstractVector,
+        Hv::AbstractVector;
+        obj_weight = one(eltype(x)),
+    ) where {T, VT, N <: NamedTuple, E <: KAExtension{T, VT, N}}
 
     if isnothing(m.ext.prodhelper)
         error("Prodhelper is not defined. Use ExaModels(c; prod=true) to use hprod!")
@@ -441,28 +442,28 @@ end
 
 @kernel function kerspmv(y, @Const(x), @Const(coord), @Const(V), @Const(ptr))
     idx = @index(Global)
-    @inbounds for l = ptr[idx]:(ptr[idx+1]-1)
+    @inbounds for l in ptr[idx]:(ptr[idx + 1] - 1)
         ((i, j), ind) = coord[l]
         y[i] += V[ind] * x[j]
     end
 end
 @kernel function kerspmv2(y, @Const(x), @Const(coord), @Const(V), @Const(ptr))
     idx = @index(Global)
-    @inbounds for l = ptr[idx]:(ptr[idx+1]-1)
+    @inbounds for l in ptr[idx]:(ptr[idx + 1] - 1)
         ((i, j), ind) = coord[l]
         y[j] += V[ind] * x[i]
     end
 end
 @kernel function kersyspmv(y, @Const(x), @Const(coord), @Const(V), @Const(ptr))
     idx = @index(Global)
-    @inbounds for l = ptr[idx]:(ptr[idx+1]-1)
+    @inbounds for l in ptr[idx]:(ptr[idx + 1] - 1)
         ((i, j), ind) = coord[l]
         y[i] += V[ind] * x[j]
     end
 end
 @kernel function kersyspmv2(y, @Const(x), @Const(coord), @Const(V), @Const(ptr))
     idx = @index(Global)
-    @inbounds for l = ptr[idx]:(ptr[idx+1]-1)
+    @inbounds for l in ptr[idx]:(ptr[idx + 1] - 1)
         ((i, j), ind) = coord[l]
         if i != j
             y[j] += V[ind] * x[i]
@@ -471,14 +472,13 @@ end
 end
 
 
-
 function ExaModels.hess_coord!(
-    m::ExaModels.ExaModel{T,VT,E},
-    x::V,
-    y::V,
-    hess::V;
-    obj_weight = one(eltype(y)),
-) where {T,VT,E<:KAExtension,V<:AbstractVector}
+        m::ExaModels.ExaModel{T, VT, E},
+        x::V,
+        y::V,
+        hess::V;
+        obj_weight = one(eltype(y)),
+    ) where {T, VT, E <: KAExtension, V <: AbstractVector}
     fill!(hess, zero(eltype(hess)))
     _obj_hess_coord!(m.ext.backend, hess, m.objs, x, m.θ, obj_weight)
     _con_hess_coord!(m.ext.backend, hess, m.cons, x, m.θ, y)
@@ -497,73 +497,73 @@ function _con_hess_coord!(backend, hess, cons::ExaModels.ConstraintNull, x, θ, 
 
 
 function ExaModels.sgradient!(
-    backend::B,
-    y,
-    f,
-    x,
-    θ,
-    adj,
-) where {B<:KernelAbstractions.Backend}
+        backend::B,
+        y,
+        f,
+        x,
+        θ,
+        adj,
+    ) where {B <: KernelAbstractions.Backend}
 
-    if !isempty(f.itr)
+    return if !isempty(f.itr)
         kerg(backend)(y, f.f, f.itr, x, θ, adj; ndrange = length(f.itr))
     end
 end
 
 function ExaModels.sjacobian!(
-    backend::B,
-    y1,
-    y2,
-    f,
-    x,
-    θ,
-    adj,
-) where {B<:KernelAbstractions.Backend}
-    if !isempty(f.itr)
+        backend::B,
+        y1,
+        y2,
+        f,
+        x,
+        θ,
+        adj,
+    ) where {B <: KernelAbstractions.Backend}
+    return if !isempty(f.itr)
         kerj(backend)(y1, y2, f.f, f.itr, x, θ, adj; ndrange = length(f.itr))
     end
 end
 
 function ExaModels.shessian!(
-    backend::B,
-    y1,
-    y2,
-    f,
-    x,
-    θ,
-    adj,
-    adj2,
-) where {B<:KernelAbstractions.Backend}
-    if !isempty(f.itr)
+        backend::B,
+        y1,
+        y2,
+        f,
+        x,
+        θ,
+        adj,
+        adj2,
+    ) where {B <: KernelAbstractions.Backend}
+    return if !isempty(f.itr)
         kerh(backend)(y1, y2, f.f, f.itr, x, θ, adj, adj2; ndrange = length(f.itr))
     end
 end
 
 function ExaModels.shessian!(
-    backend::B,
-    y1,
-    y2,
-    f,
-    x,
-    θ,
-    adj::V,
-    adj2,
-) where {B<:KernelAbstractions.Backend,V<:AbstractVector}
-    if !isempty(f.itr)
+        backend::B,
+        y1,
+        y2,
+        f,
+        x,
+        θ,
+        adj::V,
+        adj2,
+    ) where {B <: KernelAbstractions.Backend, V <: AbstractVector}
+    return if !isempty(f.itr)
         kerh2(backend)(y1, y2, f.f, f.itr, x, θ, adj, adj2; ndrange = length(f.itr))
     end
 end
 
 @kernel function kerh(
-    y1,
-    y2,
-    @Const(f),
-    @Const(itr),
-    @Const(x),
-    @Const(θ),
-    @Const(adj1),
-    @Const(adj2)
-)
+        y1,
+        y2,
+        @Const(f),
+        @Const(itr),
+        @Const(x),
+        @Const(θ),
+        @Const(adj1),
+        @Const(adj2)
+    )
     I = @index(Global)
     @inbounds ExaModels.hrpass0(
         f(itr[I], ExaModels.SecondAdjointNodeSource(x), θ),
@@ -578,15 +578,15 @@ end
 end
 
 @kernel function kerh2(
-    y1,
-    y2,
-    @Const(f),
-    @Const(itr),
-    @Const(x),
-    @Const(θ),
-    @Const(adjs1),
-    @Const(adj2)
-)
+        y1,
+        y2,
+        @Const(f),
+        @Const(itr),
+        @Const(x),
+        @Const(θ),
+        @Const(adjs1),
+        @Const(adj2)
+    )
     I = @index(Global)
     @inbounds ExaModels.hrpass0(
         f(itr[I], ExaModels.SecondAdjointNodeSource(x), θ),
@@ -632,13 +632,13 @@ end
 end
 @kernel function kerf2(y, @Const(f), @Const(itr), @Const(x), @Const(θ), @Const(oa))
     I = @index(Global)
-    @inbounds y[oa+I] = f(itr[I], x, θ)
+    @inbounds y[oa + I] = f(itr[I], x, θ)
 end
 
 
 @kernel function compress_to_dense(y, @Const(y0), @Const(ptr), @Const(sparsity))
     I = @index(Global)
-    @inbounds for j = ptr[I]:(ptr[I+1]-1)
+    @inbounds for j in ptr[I]:(ptr[I + 1] - 1)
         (k, l) = sparsity[j]
         y[k] += y0[l]
     end
@@ -651,7 +651,7 @@ end
     elseif I == length(array) + 1
         bitarray[I] = true
     else
-        i0 = array[I-1]
+        i0 = array[I - 1]
         i1 = array[I]
 
         if cmp(i0, i1)
@@ -662,7 +662,7 @@ end
     end
 end
 
-ExaModels.getbackend(m::ExaModels.ExaModel{T,VT,E}) where {T,VT,E<:KAExtension} =
+ExaModels.getbackend(m::ExaModels.ExaModel{T, VT, E}) where {T, VT, E <: KAExtension} =
     m.ext.backend
 function ExaModels._compress!(V, buffer, ptr, sparsity, backend)
     fill!(V, zero(eltype(V)))
@@ -671,7 +671,7 @@ end
 
 @kernel function ker_compress!(V, @Const(buffer), @Const(ptr), @Const(sparsity))
     i = @index(Global)
-    @inbounds for j = ptr[i]:(ptr[i+1]-1)
+    @inbounds for j in ptr[i]:(ptr[i + 1] - 1)
         V[i] += buffer[sparsity[j][2]]
     end
 end
@@ -686,7 +686,7 @@ end
 end
 
 function ExaModels.get_compressed_sparsity(nnz, Ibuffer, Jbuffer, backend)
-    sparsity = similar(Ibuffer, Tuple{Tuple{Int,Int},Int}, nnz)
+    sparsity = similar(Ibuffer, Tuple{Tuple{Int, Int}, Int}, nnz)
     ker_get_compressed_sparsity(backend)(sparsity, Ibuffer, Jbuffer; ndrange = nnz)
     return sparsity
 end

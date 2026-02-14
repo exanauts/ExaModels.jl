@@ -9,7 +9,7 @@ UTIL_MODELS = [ExaModels.TimedNLPModel, ExaModels.CompressedNLPModel]
 FIELDS = [:solution, :multipliers, :multipliers_L, :multipliers_U, :objective]
 
 function runtests()
-    @testset "Utils tests" begin
+    return @testset "Utils tests" begin
         m, ~ = _exa_luksan_vlcek_model(nothing, 3)
 
         result = NLPModelsIpopt.ipopt(m; print_level = 0)
@@ -21,7 +21,7 @@ function runtests()
                 for field in FIELDS
                     @testset "$field" begin
                         @test getfield(util_result, field) ≈ getfield(result, field) atol =
-                            1e-6
+                            1.0e-6
                     end
                 end
             end

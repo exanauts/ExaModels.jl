@@ -8,20 +8,31 @@ Performs dense gradient evaluation via the reverse pass on the computation (sub)
 - `y`: result vector
 - `adj`: adjoint propagated up to the current node
 """
-@inline function drpass(d::D, y, adj) where {D<:AdjointNull}
-    nothing
+@inline function drpass(isexp, e, e_starts, e_cnts, d::D, y, adj) where {D <: AdjointNull}
+    return nothing
 end
-@inline function drpass(d::D, y, adj) where {D<:AdjointNode1}
-    offset = drpass(d.inner, y, adj * d.y)
-    nothing
+@inline function drpass(isexp, e, e_starts, e_cnts, d::D, y, adj) where {D <: AdjointNode1}
+    offset = drpass(isexp, e, e_starts, e_cnts, d.inner, y, adj * d.y)
+    return nothing
 end
-@inline function drpass(d::D, y, adj) where {D<:AdjointNode2}
-    offset = drpass(d.inner1, y, adj * d.y1)
-    offset = drpass(d.inner2, y, adj * d.y2)
-    nothing
+@inline function drpass(isexp, e, e_starts, e_cnts, d::D, y, adj) where {D <: AdjointNode2}
+    offset = drpass(isexp, e, e_starts, e_cnts, d.inner1, y, adj * d.y1)
+    offset = drpass(isexp, e, e_starts, e_cnts, d.inner2, y, adj * d.y2)
+    return nothing
 end
-@inline function drpass(d::D, y, adj) where {D<:AdjointNodeVar}
+@inline function drpass(isexp, e, e_starts, e_cnts, d::D, y, adj) where {D <: AdjointNodeVar}
     @inbounds y[d.i] += adj
+    return nothing
+end
+@inline function drpass(isexp, e, e_starts, e_cnts, d::D, y, adj) where {D <: AdjointNodeExpr}
+    (cnt_start, e_start) = e_starts[d.i]
+    len = e_cnts[cnt_start]
+    cnt += 1
+    for i in 1:len
+        @inbounds y[o1 + comp(cnt)] += adj * e[e_start + i - 1]
+        cnt += e_cnts[cnt_start + i]
+    end
+    return cnt
     nothing
 end
 
@@ -36,15 +47,15 @@ Performs dense gradient evalution
 - `x`: variable vector
 - `adj`: initial adjoint
 """
-function gradient!(y, f, x, θ, adj)
+function gradient!(isexp, e, e_starts, e_cnts, y, f, x, θ, adj)
     @simd for k in eachindex(f.itr)
-        @inbounds gradient!(y, f.f, x, θ, f.itr[k], adj)
+        @inbounds gradient!(isexp, e, e_starts, e_cnts, y, f.f, x, θ, f.itr[k], adj)
     end
     return y
 end
-function gradient!(y, f, x, θ, p, adj)
-    graph = f(p, AdjointNodeSource(x), θ)
-    drpass(graph, y, adj)
+function gradient!(isexp, e, e_starts, e_cnts, y, f, x, θ, p, adj)
+    graph = f(p, AdjointNodeSource(x, isexp), θ)
+    drpass(isexp, e, e_starts, e_cnts, graph, y, adj)
     return y
 end
 
@@ -62,26 +73,26 @@ Performs dsparse gradient evaluation via the reverse pass on the computation (su
 - `adj`: adjoint propagated up to the current node
     """
 @inline function grpass(
-    d::D,
-    comp,
-    y,
-    o1,
-    cnt,
-    adj,
-) where {D<:Union{AdjointNull,ParIndexed,Real}}
+        d::D,
+        comp,
+        y,
+        o1,
+        cnt,
+        adj,
+    ) where {D <: Union{AdjointNull, ParIndexed, Real}}
     return cnt
 end
-@inline function grpass(d::D, comp, y, o1, cnt, adj) where {D<:AdjointNode1}
+@inline function grpass(d::D, comp, y, o1, cnt, adj) where {D <: AdjointNode1}
     cnt = grpass(d.inner, comp, y, o1, cnt, adj * d.y)
     return cnt
 end
-@inline function grpass(d::D, comp, y, o1, cnt, adj) where {D<:AdjointNode2}
+@inline function grpass(d::D, comp, y, o1, cnt, adj) where {D <: AdjointNode2}
     cnt = grpass(d.inner1, comp, y, o1, cnt, adj * d.y1)
     cnt = grpass(d.inner2, comp, y, o1, cnt, adj * d.y2)
     return cnt
 end
-@inline function grpass(d::D, comp, y, o1, cnt, adj) where {D<:AdjointNodeVar}
-    @inbounds y[o1+comp(cnt+=1)] += adj
+@inline function grpass(d::D, comp, y, o1, cnt, adj) where {D <: AdjointNodeVar}
+    @inbounds y[o1 + comp(cnt += 1)] += adj
     return cnt
 end
 @inline function grpass(d::AdjointNodeVar, comp::Nothing, y, o1, cnt, adj) # despecialization
@@ -89,13 +100,13 @@ end
     return (cnt += 1)
 end
 @inline function grpass(
-    d::D,
-    comp,
-    y::V,
-    o1,
-    cnt,
-    adj,
-) where {D<:AdjointNodeVar,V<:AbstractVector{Tuple{Int,Int}}}
+        d::D,
+        comp,
+        y::V,
+        o1,
+        cnt,
+        adj,
+    ) where {D <: AdjointNodeVar, V <: AbstractVector{Tuple{Int, Int}}}
     ind = o1 + comp(cnt += 1)
     @inbounds y[ind] = (d.i, ind)
     return cnt
@@ -119,7 +130,7 @@ function sgradient!(y, f, x, θ, adj)
 end
 
 function sgradient!(y, f, p, x, θ, comp, o1, adj)
-    graph = f(p, AdjointNodeSource(x), θ)
+    graph = f(p, AdjointNodeSource(x, isexp), θ)
     grpass(graph, comp, y, o1, 0, adj)
     return y
 end
