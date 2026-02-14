@@ -36,11 +36,11 @@ function ExaModels.ExaModel(
     prod = false,
     kwargs...,
 ) where {T,VT<:AbstractVector{T},B<:KernelAbstractions.Backend,C<:ExaModels.ExaCore{T,VT,B}}
-    
+
     gsparsity = similar(c.x0, Tuple{Int,Int}, c.nnzg)
 
     _grad_structure!(c.backend, c.obj, gsparsity)
-    
+
     if !isempty(gsparsity)
         ExaModels.sort!(gsparsity; lt = ((i, j), (k, l)) -> i < k)
     end
@@ -61,7 +61,7 @@ function ExaModels.ExaModel(
         hesssparsityi = similar(c.x0, Tuple{Tuple{Int,Int},Int}, c.nnzh)
 
         _jac_structure!(c.backend, c.con, jacsparsityi, nothing)
-        
+
         jacsparsityj = copy(jacsparsityi)
         _obj_hess_structure!(c.backend, c.obj, hesssparsityi, nothing)
         _con_hess_structure!(c.backend, c.con, hesssparsityi, nothing)
@@ -122,6 +122,7 @@ function ExaModels.ExaModel(
             y0 = c.y0,
             lcon = c.lcon,
             ucon = c.ucon,
+            minimize = c.minimize,
         ),
         NLPModels.Counters(),
         KAExtension(
@@ -275,7 +276,7 @@ function ExaModels.grad!(
     if !isempty(gradbuffer)
         fill!(gradbuffer, zero(eltype(gradbuffer)))
         _grad!(m.ext.backend, m.ext.gradbuffer, m.objs, x, m.θ)
-    
+
         fill!(y, zero(eltype(y)))
         compress_to_dense(m.ext.backend)(
             y,
