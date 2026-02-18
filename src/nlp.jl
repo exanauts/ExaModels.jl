@@ -253,8 +253,14 @@ An ExaCore
 """,
 )
 
+"""
+    AbstractExaModel
 
-struct ExaModel{T,VT,E,O,C} <: NLPModels.AbstractNLPModel{T,VT}
+An abstract type for ExaModel, which is a subtype of `NLPModels.AbstractNLPModel`.
+"""
+abstract type AbstractExaModels{T,VT} <: NLPModels.AbstractNLPModel{T,VT}
+
+struct ExaModel{T,VT,E,O,C} <: AbstractExaModels{T,VT}
     objs::O
     cons::C
     θ::VT
@@ -263,7 +269,7 @@ struct ExaModel{T,VT,E,O,C} <: NLPModels.AbstractNLPModel{T,VT}
     ext::E
 end
 
-function Base.show(io::IO, c::ExaModel{T,VT}) where {T,VT}
+function Base.show(io::IO, c::AbstractExaModel{T,VT}) where {T,VT}
     println(io, "An ExaModel{$T, $VT, ...}\n")
     Base.show(io, c.meta)
 end
@@ -972,7 +978,7 @@ function subexpr(c::C, gen::Base.Generator; reduced::Bool = false, parameter_onl
 end
 
 
-function jac_structure!(m::ExaModel, rows::AbstractVector, cols::AbstractVector)
+function jac_structure!(m::AbstractExaModel, rows::AbstractVector, cols::AbstractVector)
     _jac_structure!(m.cons, rows, cols)
     return rows, cols
 end
@@ -983,7 +989,7 @@ function _jac_structure!(cons, rows, cols)
     sjacobian!(rows, cols, cons, nothing, nothing, NaN)
 end
 
-function hess_structure!(m::ExaModel, rows::AbstractVector, cols::AbstractVector)
+function hess_structure!(m::AbstractExaModel, rows::AbstractVector, cols::AbstractVector)
     _obj_hess_structure!(m.objs, rows, cols)
     _con_hess_structure!(m.cons, rows, cols)
     return rows, cols
@@ -1001,7 +1007,7 @@ function _con_hess_structure!(cons, rows, cols)
     shessian!(rows, cols, cons, nothing, nothing, NaN, NaN)
 end
 
-function obj(m::ExaModel, x::AbstractVector)
+function obj(m::AbstractExaModel, x::AbstractVector)
     return _obj(m.objs, x, m.θ)
 end
 
@@ -1010,7 +1016,7 @@ _obj(objs, x, θ) =
     (isempty(objs.itr) ? zero(eltype(x)) : sum(objs.f(k, x, θ) for k in objs.itr))
 _obj(objs::ObjectiveNull, x, θ) = zero(eltype(x))
 
-function cons_nln!(m::ExaModel, x::AbstractVector, g::AbstractVector)
+function cons_nln!(m::AbstractExaModel, x::AbstractVector, g::AbstractVector)
     fill!(g, zero(eltype(g)))
     _cons_nln!(m.cons, x, m.θ, g)
     return g
@@ -1026,7 +1032,7 @@ _cons_nln!(cons::ConstraintNull, x, θ, g) = nothing
 
 
 
-function grad!(m::ExaModel, x::AbstractVector, f::AbstractVector)
+function grad!(m::AbstractExaModel, x::AbstractVector, f::AbstractVector)
     fill!(f, zero(eltype(f)))
     _grad!(m.objs, x, m.θ, f)
     return f
@@ -1038,7 +1044,7 @@ function _grad!(objs, x, θ, f)
 end
 _grad!(objs::ObjectiveNull, x, θ, f) = nothing
 
-function jac_coord!(m::ExaModel, x::AbstractVector, jac::AbstractVector)
+function jac_coord!(m::AbstractExaModel, x::AbstractVector, jac::AbstractVector)
     fill!(jac, zero(eltype(jac)))
     _jac_coord!(m.cons, x, m.θ, jac)
     return jac
@@ -1050,7 +1056,7 @@ function _jac_coord!(cons, x, θ, jac)
     sjacobian!(jac, nothing, cons, x, θ, one(eltype(jac)))
 end
 
-function jprod_nln!(m::ExaModel, x::AbstractVector, v::AbstractVector, Jv::AbstractVector)
+function jprod_nln!(m::AbstractExaModel, x::AbstractVector, v::AbstractVector, Jv::AbstractVector)
     fill!(Jv, zero(eltype(Jv)))
     _jprod_nln!(m.cons, x, m.θ, v, Jv)
     return Jv
@@ -1062,7 +1068,7 @@ function _jprod_nln!(cons, x, θ, v, Jv)
     sjacobian!((Jv, v), nothing, cons, x, θ, one(eltype(Jv)))
 end
 
-function jtprod_nln!(m::ExaModel, x::AbstractVector, v::AbstractVector, Jtv::AbstractVector)
+function jtprod_nln!(m::AbstractExaModel, x::AbstractVector, v::AbstractVector, Jtv::AbstractVector)
     fill!(Jtv, zero(eltype(Jtv)))
     _jtprod_nln!(m.cons, x, m.θ, v, Jtv)
     return Jtv
@@ -1075,7 +1081,7 @@ function _jtprod_nln!(cons, x, θ, v, Jtv)
 end
 
 function hess_coord!(
-    m::ExaModel,
+    m::AbstractExaModel,
     x::AbstractVector,
     hess::AbstractVector;
     obj_weight = one(eltype(x)),
@@ -1086,7 +1092,7 @@ function hess_coord!(
 end
 
 function hess_coord!(
-    m::ExaModel,
+    m::AbstractExaModel,
     x::AbstractVector,
     y::AbstractVector,
     hess::AbstractVector;
@@ -1111,7 +1117,7 @@ function _con_hess_coord!(cons, x, θ, y, hess, obj_weight)
 end
 
 function hprod!(
-    m::ExaModel,
+    m::AbstractExaModel,
     x::AbstractVector,
     v::AbstractVector,
     Hv::AbstractVector;
@@ -1123,7 +1129,7 @@ function hprod!(
 end
 
 function hprod!(
-    m::ExaModel,
+    m::AbstractExaModel,
     x::AbstractVector,
     y::AbstractVector,
     v::AbstractVector,
