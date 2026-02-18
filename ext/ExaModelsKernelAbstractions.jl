@@ -163,7 +163,7 @@ end
 function _grad_structure!(backend, objs::ExaModels.ObjectiveNull, gsparsity) end
 
 function ExaModels.jac_structure!(
-    m::ExaModels.ExaModel{T,VT,E},
+    m::ExaModels.AbstractExaModel{T,VT,E},
     rows::V,
     cols::V,
 ) where {T,VT,E<:KAExtension,V<:AbstractVector}
@@ -180,7 +180,7 @@ function _jac_structure!(backend, cons::ExaModels.ConstraintNull, rows, cols) en
 
 
 function ExaModels.hess_structure!(
-    m::ExaModels.ExaModel{T,VT,E},
+    m::ExaModels.AbstractExaModel{T,VT,E},
     rows::V,
     cols::V,
 ) where {T,VT,E<:KAExtension,V<:AbstractVector}
@@ -204,7 +204,7 @@ function _con_hess_structure!(backend, cons::ExaModels.ConstraintNull, rows, col
 
 
 function ExaModels.obj(
-    m::ExaModels.ExaModel{T,VT,E},
+    m::ExaModels.AbstractExaModel{T,VT,E},
     x::AbstractVector,
 ) where {T,VT,E<:KAExtension}
     if !isempty(m.ext.objbuffer)
@@ -224,7 +224,7 @@ end
 function _obj(backend, objbuffer, f::ExaModels.ObjectiveNull, x, θ) end
 
 function ExaModels.cons_nln!(
-    m::ExaModels.ExaModel{T,VT,E},
+    m::ExaModels.AbstractExaModel{T,VT,E},
     x::AbstractVector,
     y::AbstractVector,
 ) where {T,VT,E<:KAExtension}
@@ -267,7 +267,7 @@ end
 function _conaugs!(backend, y, con::ExaModels.ConstraintNull, x, θ) end
 
 function ExaModels.grad!(
-    m::ExaModels.ExaModel{T,VT,E},
+    m::ExaModels.AbstractExaModel{T,VT,E},
     x::V,
     y::V,
 ) where {T,VT,E<:KAExtension,V<:AbstractVector}
@@ -296,7 +296,7 @@ end
 function _grad!(backend, y, objs::ExaModels.ObjectiveNull, x, θ) end
 
 function ExaModels.jac_coord!(
-    m::ExaModels.ExaModel{T,VT,E},
+    m::ExaModels.AbstractExaModel{T,VT,E},
     x::V,
     y::V,
 ) where {T,VT,E<:KAExtension,V<:AbstractVector}
@@ -311,7 +311,7 @@ end
 function _jac_coord!(backend, y, cons::ExaModels.ConstraintNull, x, θ) end
 
 function ExaModels.jprod_nln!(
-    m::ExaModels.ExaModel{T,VT,E},
+    m::ExaModels.AbstractExaModel{T,VT,E},
     x::AbstractVector,
     v::AbstractVector,
     Jv::AbstractVector,
@@ -319,7 +319,7 @@ function ExaModels.jprod_nln!(
     error("Prodhelper is not defined. Use ExaModels(c; prod=true) to use jprod_nln!")
 end
 function ExaModels.jtprod_nln!(
-    m::ExaModels.ExaModel{T,VT,E},
+    m::ExaModels.AbstractExaModel{T,VT,E},
     x::AbstractVector,
     v::AbstractVector,
     Jtv::AbstractVector,
@@ -327,7 +327,7 @@ function ExaModels.jtprod_nln!(
     error("Prodhelper is not defined. Use ExaModels(c; prod=true) to use jtprod_nln!")
 end
 function ExaModels.jprod_nln!(
-    m::ExaModels.ExaModel{T,VT,E},
+    m::ExaModels.AbstractExaModel{T,VT,E},
     x::AbstractVector,
     v::AbstractVector,
     Jv::AbstractVector,
@@ -347,7 +347,7 @@ function ExaModels.jprod_nln!(
     return Jv
 end
 function ExaModels.jtprod_nln!(
-    m::ExaModels.ExaModel{T,VT,E},
+    m::ExaModels.AbstractExaModel{T,VT,E},
     x::AbstractVector,
     v::AbstractVector,
     Jtv::AbstractVector,
@@ -367,7 +367,7 @@ function ExaModels.jtprod_nln!(
     return Jtv
 end
 function ExaModels.hprod!(
-    m::ExaModels.ExaModel{T,VT,E},
+    m::ExaModels.AbstractExaModel{T,VT,E},
     x::AbstractVector,
     y::AbstractVector,
     v::AbstractVector,
@@ -404,7 +404,7 @@ function ExaModels.hprod!(
     return Hv
 end
 function ExaModels.hprod!(
-    m::ExaModels.ExaModel{T,VT,E},
+    m::ExaModels.AbstractExaModel{T,VT,E},
     x::AbstractVector,
     v::AbstractVector,
     Hv::AbstractVector;
@@ -473,7 +473,7 @@ end
 
 
 function ExaModels.hess_coord!(
-    m::ExaModels.ExaModel{T,VT,E},
+    m::ExaModels.AbstractExaModel{T,VT,E},
     x::V,
     y::V,
     hess::V;
@@ -662,7 +662,7 @@ end
     end
 end
 
-ExaModels.getbackend(m::ExaModels.ExaModel{T,VT,E}) where {T,VT,E<:KAExtension} =
+ExaModels.getbackend(m::ExaModels.AbstractExaModel{T,VT,E}) where {T,VT,E<:KAExtension} =
     m.ext.backend
 function ExaModels._compress!(V, buffer, ptr, sparsity, backend)
     fill!(V, zero(eltype(V)))
