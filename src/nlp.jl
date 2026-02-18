@@ -258,7 +258,7 @@ An ExaCore
 
 An abstract type for ExaModel, which is a subtype of `NLPModels.AbstractNLPModel`.
 """
-abstract type AbstractExaModels{T,VT} <: NLPModels.AbstractNLPModel{T,VT}
+abstract type AbstractExaModels{T,VT} <: NLPModels.AbstractNLPModel{T,VT} end
 
 struct ExaModel{T,VT,E,O,C} <: AbstractExaModels{T,VT}
     objs::O
