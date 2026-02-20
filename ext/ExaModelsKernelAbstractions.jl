@@ -136,6 +136,8 @@ function ExaModels.ExaModel(
             conaugptr,
             prodhelper,
         ),
+        nothing,
+        nothing,
     )
 end
 

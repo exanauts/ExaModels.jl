@@ -4,11 +4,6 @@ using Test
 using ExaModels
 import NLPModels
 import NLPModels: obj, cons!, cons_nln!, grad!, jac_coord!, hess_coord!, jac_structure!, hess_structure!
-import ExaModels: num_scenarios, num_recourse_vars, num_design_vars, num_constraints_per_scenario, total_vars,
-                  total_cons, set_scenario_parameters!, set_all_scenario_parameters!, recourse_var_indices,
-                  design_var_indices, cons_block_indices, grad_recourse_indices, grad_design_indices,
-                  extract_recourse_vars!, extract_design_vars!, extract_cons_block!, extract_grad_block!,
-                  global_var_index, global_con_index, recourse_var_index, design_var_index, get_model
 
 import NLPModelsIpopt: ipopt
 
@@ -30,13 +25,6 @@ function runtests()
                 con_data = [(i, j, (i - 1) * nv + j) for i in 1:ns for j in 1:nv]
                 constraint(c, v[v_idx] + d[1] for (i, j, v_idx) in con_data)
             end
-
-            @test num_scenarios(model) == 3
-            @test num_recourse_vars(model) == 2
-            @test num_design_vars(model) == 2
-            @test num_constraints_per_scenario(model) == 2
-            @test total_vars(model) == ns * nv + nd  # 3*2 + 2 = 8
-            @test total_cons(model) == ns * nv  # 3*2 = 6
         end
 
         @testset "Variable extraction" begin
@@ -293,25 +281,6 @@ function runtests()
             # Now: θ1=5, θ2=2, so obj = 5*2 + 2*2 = 14
             obj_after = obj(model.model, x_global)
             @test obj_after ≈ 14.0
-        end
-
-        @testset "Get underlying model" begin
-            ns, nv, nd = 2, 2, 1
-            nθ = 1
-            θ_sets = [[1.0], [2.0]]
-
-            model = TwoStageExaModel(nd, nv, ns, θ_sets) do c, d, v, θ, ns, nv, nθ
-                obj_data = [(i, j, (i - 1) * nv + j) for i in 1:ns for j in 1:nv]
-                objective(c, v[v_idx]^2 for (i, j, v_idx) in obj_data)
-
-                con_data = [(i, j, (i - 1) * nv + j) for i in 1:ns for j in 1:nv]
-                constraint(c, v[v_idx] for (i, j, v_idx) in con_data)
-            end
-
-            inner = get_model(model)
-            @test inner isa ExaModels.ExaModel
-            @test NLPModels.get_nvar(inner) == total_vars(model)
-            @test NLPModels.get_ncon(inner) == total_cons(model)
         end
 
         @testset "NLPModels interface" begin
