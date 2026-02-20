@@ -304,8 +304,58 @@ function shessian_with_params(f, x, θ)
     end
     return y
 end
+# Verify derivative tables against finite differences.
+# Step sizes: h1 for first derivatives (central diff truncation O(h^2)),
+# h2 for second derivatives (optimal h ~ eps^(1/4) ≈ 1e-4 to balance truncation vs rounding).
+function verify_derivative_tables()
+    h1 = 1.0e-7
+    h2 = 1.0e-4
+    @testset "Univariate derivative tables" begin
+        # Special test points for domain-sensitive functions
+        special_x = Dict(
+            :acosh => 1.7, :acoth => 1.7, :atanh => 0.3,
+            # Degree-based trig: use degrees as test points
+            :sind => 15.0, :cosd => 15.0, :tand => 15.0,
+            :cscd => 15.0, :secd => 15.0, :cotd => 15.0,
+            :atand => 15.0, :acotd => 15.0,
+        )
+        for (fname, df, ddf) in ExaModels._UNIVARIATES
+            f = getfield(Base, fname)
+            test_x = get(special_x, fname, 0.7)
+            @testset "$fname" begin
+                fd_df = (f(test_x + h1) - f(test_x - h1)) / (2h1)
+                @test df(test_x) ≈ fd_df atol = 1.0e-6 rtol = 1.0e-5
+                ddf_val = ddf(test_x)
+                if !isnan(ddf_val)
+                    fd_ddf = (f(test_x + h2) - 2 * f(test_x) + f(test_x - h2)) / h2^2
+                    @test ddf_val ≈ fd_ddf atol = 1.0e-6 rtol = 1.0e-4
+                end
+            end
+        end
+    end
+    return @testset "Bivariate derivative tables" begin
+        for (fname, df1, df2, ddf11, ddf12, ddf22) in ExaModels._BIVARIATES
+            f = getfield(Base, fname)
+            x1, x2 = 0.7, 1.3
+            @testset "$fname" begin
+                fd_df1 = (f(x1 + h1, x2) - f(x1 - h1, x2)) / (2h1)
+                fd_df2 = (f(x1, x2 + h1) - f(x1, x2 - h1)) / (2h1)
+                @test df1(x1, x2) ≈ fd_df1 rtol = 1.0e-5
+                @test df2(x1, x2) ≈ fd_df2 rtol = 1.0e-5
+                fd_ddf11 = (f(x1 + h2, x2) - 2 * f(x1, x2) + f(x1 - h2, x2)) / h2^2
+                fd_ddf22 = (f(x1, x2 + h2) - 2 * f(x1, x2) + f(x1, x2 - h2)) / h2^2
+                fd_ddf12 = (f(x1 + h2, x2 + h2) - f(x1 + h2, x2 - h2) - f(x1 - h2, x2 + h2) + f(x1 - h2, x2 - h2)) / (4 * h2^2)
+                @test ddf11(x1, x2) ≈ fd_ddf11 atol = 1.0e-6 rtol = 1.0e-4
+                @test ddf12(x1, x2) ≈ fd_ddf12 atol = 1.0e-6 rtol = 1.0e-4
+                @test ddf22(x1, x2) ≈ fd_ddf22 atol = 1.0e-6 rtol = 1.0e-4
+            end
+        end
+    end
+end
+
 function runtests()
     @testset "AD test" begin
+        verify_derivative_tables()
         for (name, f) in FUNCTIONS
             x0 = rand(10)
             @testset "$name" begin
