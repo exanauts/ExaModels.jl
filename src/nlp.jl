@@ -195,7 +195,7 @@ An ExaCore
   number of constraint patterns: ... 0
 ```
 """
-Base.@kwdef mutable struct ExaCore{T,VT<:AbstractVector{T},B}
+Base.@kwdef mutable struct ExaCore{T,VT<:AbstractVector{T}, B, VI <: AbstractVector{Int}, S}
     backend::B = nothing
     obj::AbstractObjective = ObjectiveNull()
     con::AbstractConstraint = ConstraintNull()
@@ -220,20 +220,39 @@ Base.@kwdef mutable struct ExaCore{T,VT<:AbstractVector{T},B}
     nparam_subexpr::Int = 0
     param_subexpr_values::VT = similar(x0, 0)
     param_subexpr_fns::Vector{Any} = Any[]
+    is_scenario::S = Val(false)
+    var_scenario::VI = similar(x0, Int, 0)
+    con_scenario::VI = similar(x0, Int, 0)
 end
 
-# Deprecated as of v0.7
-function ExaCore(::Type{T}, backend) where {T<:AbstractFloat}
-    @warn "ExaCore(T, backend) is deprecated. Use ExaCore(T; backend = backend) instead"
-    return ExaCore(T; backend = backend)
-end
-function ExaCore(backend)
-    @warn "ExaCore(backend) is deprecated. Use ExaCore(T; backend = backend) instead"
-    return ExaCore(; backend = backend)
-end
+const SingleStageExaCore{T,VT,B,VI} = ExaCore{T,VT,B,VI,Val{false}}
+const TwoStageExaCore{T,VT,B,VI} = ExaCore{T,VT,B,VI,Val{true}}
+TwoStageExaCore(args...; kwargs...) = ExaCore(args...; kwargs..., is_scenario = Val{true}())
+# function TwoStageExaCore(::Type{T}; backend = nothing, kwargs...) where {T<:AbstractFloat}
+#     x0 = convert_array(zeros(T, 0), backend)
+#     var_scenario = similar(x0, Int, 0)
+    
+#     return ExaCore(
+#         ;
+#         x0,
+#         var_scenario,
+#         is_scenario = Val{true}(),
+#         backend,
+#         kwargs...)
+# end
 
-ExaCore(::Type{T}; backend = nothing, kwargs...) where {T<:AbstractFloat} =
-    ExaCore(x0 = convert_array(zeros(T, 0), backend); backend = backend, kwargs...)
+function ExaCore(::Type{T}; backend = nothing, kwargs...) where {T<:AbstractFloat}
+
+    x0 = convert_array(zeros(T, 0), backend)
+    var_scenario = similar(x0, Int, 0)
+    
+    return ExaCore(
+        ;
+        x0,
+        var_scenario,
+        backend,
+        kwargs...)
+end
 
 depth(a) = depth(a.inner) + 1
 depth(a::ObjectiveNull) = 0
@@ -260,13 +279,15 @@ An abstract type for ExaModel, which is a subtype of `NLPModels.AbstractNLPModel
 """
 abstract type AbstractExaModel{T,VT,E} <: NLPModels.AbstractNLPModel{T,VT} end
 
-struct ExaModel{T,VT,E,O,C} <: AbstractExaModel{T,VT,E}
+struct ExaModel{T,VT,E,O,C,S} <: AbstractExaModel{T,VT,E}
     objs::O
     cons::C
     θ::VT
     meta::NLPModels.NLPModelMeta{T,VT}
     counters::NLPModels.Counters
     ext::E
+    var_scenario::S
+    con_scenario::S
 end
 
 function Base.show(io::IO, c::AbstractExaModel{T,VT}) where {T,VT}
@@ -315,7 +336,7 @@ julia> result = ipopt(m; print_level=0)    # solve the problem
 
 ```
 """
-function ExaModel(c::C; prod = nothing) where {C<:ExaCore}
+function ExaModel(c::C; prod = nothing) where {C<:SingleStageExaCore}
     return ExaModel(
         c.obj,
         c.con,
@@ -335,6 +356,33 @@ function ExaModel(c::C; prod = nothing) where {C<:ExaCore}
         ),
         NLPModels.Counters(),
         nothing,
+        nothing,
+        nothing,
+    )
+end
+
+function ExaModel(c::C; prod = nothing) where {C<:TwoStageExaCore}
+    return ExaModel(
+        c.obj,
+        c.con,
+        c.θ,
+        NLPModels.NLPModelMeta(
+            c.nvar,
+            ncon = c.ncon,
+            nnzj = c.nnzj,
+            nnzh = c.nnzh,
+            x0 = c.x0,
+            lvar = c.lvar,
+            uvar = c.uvar,
+            y0 = c.y0,
+            lcon = c.lcon,
+            ucon = c.ucon,
+            minimize = c.minimize,
+        ),
+        NLPModels.Counters(),
+        nothing,
+        c.var_scenario,
+        c.con_scenario,
     )
 end
 
@@ -478,7 +526,7 @@ _start(n::Int) = 1
 _start(n::UnitRange) = n.start
 
 """
-    variable(core, dims...; start = 0, lvar = -Inf, uvar = Inf)
+    variable(core, dims...; start = 0, lvar = -Inf, uvar = Inf, scenario = 0)
 
 Adds variables with dimensions specified by `dims` to `core`, and returns `Variable` object. `dims` can be either `Integer` or `UnitRange`.
 
@@ -512,7 +560,7 @@ function variable(
     start = zero(T),
     lvar = T(-Inf),
     uvar = T(Inf),
-) where {T,C<:ExaCore{T}}
+) where {T,C<:SingleStageExaCore{T}}
 
 
     o = c.nvar
@@ -521,6 +569,27 @@ function variable(
     c.x0 = append!(c.backend, c.x0, start, total(ns))
     c.lvar = append!(c.backend, c.lvar, lvar, total(ns))
     c.uvar = append!(c.backend, c.uvar, uvar, total(ns))
+
+    return Variable(ns, len, o)
+
+end
+
+function variable(
+    c::C,
+    ns...;
+    start = zero(T),
+    lvar = T(-Inf),
+    uvar = T(Inf),
+    scenario = 0,
+) where {T,C<:TwoStageExaCore{T}}
+
+    o = c.nvar
+    len = total(ns)
+    c.nvar += len
+    c.x0 = append!(c.backend, c.x0, start, total(ns))
+    c.lvar = append!(c.backend, c.lvar, lvar, total(ns))
+    c.uvar = append!(c.backend, c.uvar, uvar, total(ns))
+    c.uvar = append!(c.backend, c.var_scenario, scenario, total(ns))
 
     return Variable(ns, len, o)
 
@@ -699,13 +768,14 @@ function constraint(
     start = zero(T),
     lcon = zero(T),
     ucon = zero(T),
+    kwargs...
 ) where {T,C<:ExaCore{T}}
 
     gen = _adapt_gen(gen)
     f = SIMDFunction(gen, c.ncon, c.nnzj, c.nnzh)
     pars = gen.iter
 
-    _constraint(c, f, pars, start, lcon, ucon)
+    _constraint(c, f, pars, start, lcon, ucon; kwargs...)
 end
 
 """
@@ -720,11 +790,12 @@ function constraint(
     start = zero(T),
     lcon = zero(T),
     ucon = zero(T),
+    kwargs...
 ) where {T,C<:ExaCore{T},N<:AbstractNode}
 
     f = _simdfunction(expr, c.ncon, c.nnzj, c.nnzh)
 
-    _constraint(c, f, pars, start, lcon, ucon)
+    _constraint(c, f, pars, start, lcon, ucon; kwargs...)
 end
 
 """
@@ -738,15 +809,16 @@ function constraint(
     start = zero(T),
     lcon = zero(T),
     ucon = zero(T),
+    kwargs...
 ) where {T,C<:ExaCore{T}}
 
     f = _simdfunction(Null(), c.ncon, c.nnzj, c.nnzh)
 
-    _constraint(c, f, 1:n, start, lcon, ucon)
+    _constraint(c, f, 1:n, start, lcon, ucon; kwargs...)
 end
 
 
-function _constraint(c, f, pars, start, lcon, ucon)
+function _constraint(c::C, f, pars, start, lcon, ucon) where {C<:SingleStageExaCore}
     nitr = length(pars)
     o = c.ncon
     c.ncon += nitr
@@ -759,6 +831,23 @@ function _constraint(c, f, pars, start, lcon, ucon)
 
     c.con = Constraint(c.con, f, convert_array(pars, c.backend), o)
 end
+
+function _constraint(c::C, f, pars, start, lcon, ucon; scenario = 0) where {C<:TwoStageExaCore}
+    nitr = length(pars)
+    o = c.ncon
+    c.ncon += nitr
+    c.nnzj += nitr * f.o1step
+    c.nnzh += nitr * f.o2step
+
+    c.y0 = append!(c.backend, c.y0, start, nitr)
+    c.lcon = append!(c.backend, c.lcon, lcon, nitr)
+    c.ucon = append!(c.backend, c.ucon, ucon, nitr)
+    c.con_scenario = append!(c.backend, c.con_scenario, scenario, nitr)
+
+    c.con = Constraint(c.con, f, convert_array(pars, c.backend), o)
+end
+
+
 
 """
     constraint!(c::C, c1, gen::Base.Generator) where {C<:ExaCore}
