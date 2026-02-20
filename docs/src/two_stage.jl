@@ -19,7 +19,7 @@ weight = 1.0 / ns
 core = ExaCore(two_stage = Val(true))
 
 d = variable(core; start = 1.0, lvar = 0.0, uvar = Inf, scenario = 0)  ## design variable d
-v = variable(core, ns, nv; start = 1.0, lvar = 0.0, uvar = Inf, scenario = [i for i=1:ns, j=1:nv])  ## recourse variables vᵢ
+v = variable(core, ns, nv; start = 1.0, lvar = 0.0, uvar = Inf, scenario = [i for i=1:ns, j=1:nv])  ## recourse variables v
 
 constraint(core, v[s,1] - v[s,2]^2 for s in 1:ns; lcon = 0.0, scenario = 1:ns)
 
