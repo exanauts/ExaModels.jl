@@ -61,6 +61,16 @@ for op in (:+, :-, :*)
     end
 end
 
+# Null op Integer / Integer op Null — disambiguate Null{T} op Real vs AbstractNode op Integer
+for op in (:+, :-, :*)
+    @eval @inline function Base.$op(a::ExaModels.Null{T}, b::Integer) where {T <: Real}
+        return ExaModels.Null(Base.$op(a.value, b))
+    end
+    @eval @inline function Base.$op(a::Integer, b::ExaModels.Null{T}) where {T <: Real}
+        return ExaModels.Null(Base.$op(a, b.value))
+    end
+end
+
 # Integer × AbstractNode zero/one elimination (more specific than core's Real × AbstractNode)
 # Fixes: 0 * x → Null(0), 1 * x → x, 0 + x → x, etc.
 @inline function Base.:*(a::Integer, b::ExaModels.AbstractNode)
@@ -96,9 +106,24 @@ const ExaNode = Union{
 const VecExaNode = AbstractVector{<:ExaNode}
 const MatExaNode = AbstractMatrix{<:ExaNode}
 
+# --- ExaVector / ExaMatrix convenience constructors ---
+
+# Variable constructors
+ExaModels.ExaVector(c::ExaModels.ExaCore, n::Int; kwargs...) =
+    ExaModels.ExaVector(ExaModels.variable(c, n; kwargs...))
+ExaModels.ExaMatrix(c::ExaModels.ExaCore, m::Int, n::Int; kwargs...) =
+    ExaModels.ExaMatrix(ExaModels.variable(c, m, n; kwargs...))
+
+# Parameter constructors
+ExaModels.ExaVector(c::ExaModels.ExaCore, start::AbstractVector) =
+    ExaModels.ExaVector(ExaModels.parameter(c, start))
+ExaModels.ExaMatrix(c::ExaModels.ExaCore, start::AbstractMatrix) =
+    ExaModels.ExaMatrix(ExaModels.parameter(c, start))
+
 # Type promotion: [x, 0] should give Vector{AbstractNode} with Null(0), not Vector{Any}
 Base.promote_rule(::Type{<:ExaModels.AbstractNode}, ::Type{<:Real}) = ExaModels.AbstractNode
-Base.convert(::Type{ExaModels.AbstractNode}, x::Real) = ExaModels.Null(x)
+Base.convert(::Type{ExaModels.AbstractNode}, x::Real) =
+    iszero(x) ? zero(ExaModels.AbstractNode) : ExaModels.Null(x)
 
 # zero/one for ExaNode types — needed by stdlib (e.g. tr) and general array ops
 Base.zero(::Type{<:ExaModels.AbstractNode}) = ExaModels.Null(0)
@@ -113,6 +138,14 @@ Base.adjoint(x::ExaModels.AbstractSecondAdjointNode) = x
 Base.transpose(x::ExaModels.AbstractNode) = x
 Base.transpose(x::ExaModels.AbstractAdjointNode) = x
 Base.transpose(x::ExaModels.AbstractSecondAdjointNode) = x
+
+# adjoint/transpose for matrices of ExaNode — materialize to plain Matrix
+function Base.adjoint(A::MatExaNode)
+    return [A[j, i] for i in axes(A, 2), j in axes(A, 1)]
+end
+function Base.transpose(A::MatExaNode)
+    return [A[j, i] for i in axes(A, 2), j in axes(A, 1)]
+end
 
 # Dispatch pair constants for 3-way type combos
 const _VEC_PAIRS = [
@@ -223,6 +256,18 @@ for op in (:+, :-)
     end
 end
 
+# Win dispatch over Base's +(::Array, ::Array...) from arraymath.jl
+for (T1, T2) in [(ExaNode, ExaNode), (Real, ExaNode), (ExaNode, Real)]
+    @eval function Base.:+(a::Array{<:$T1, 1}, b::Array{<:$T2, 1})
+        @assert length(a) == length(b)
+        return [a[i] + b[i] for i in eachindex(a)]
+    end
+    @eval function Base.:+(A::Array{<:$T1, 2}, B::Array{<:$T2, 2})
+        @assert size(A) == size(B)
+        return [A[i, j] + B[i, j] for i in axes(A, 1), j in axes(A, 2)]
+    end
+end
+
 # Unary minus for vector/matrix of nodes
 function Base.:-(a::VecExaNode)
     return [-a[i] for i in eachindex(a)]
@@ -245,7 +290,8 @@ end
 # --- tr ---
 
 function _tr_impl(A)
-    n = minimum(size(A))
+    @assert size(A, 1) == size(A, 2) "Matrix must be square for tr"
+    n = size(A, 1)
     s = A[1, 1]
     for i in 2:n
         s = s + A[i, i]
@@ -304,7 +350,7 @@ for (TA, TV, TB) in [
         v = parent(a)
         @assert length(v) == size(B, 1)
         n = size(B, 2)
-        return [LinearAlgebra.dot(v, [B[k, j] for k in 1:size(B, 1)]) for j in 1:n]
+        return adjoint([LinearAlgebra.dot(v, [B[k, j] for k in 1:size(B, 1)]) for j in 1:n])
     end
 end
 function Base.:*(
@@ -314,7 +360,7 @@ function Base.:*(
     v = parent(a)
     @assert length(v) == size(B, 1)
     n = size(B, 2)
-    return [LinearAlgebra.dot(v, view(B, :, j)) for j in 1:n]
+    return adjoint([LinearAlgebra.dot(v, view(B, :, j)) for j in 1:n])
 end
 
 # ============================================================================
@@ -438,6 +484,16 @@ function LinearAlgebra.norm(v::VecExaNode, p::Real)
     end
 end
 
+# Frobenius norm for matrices of nodes: sqrt(sum(aij^2))
+function LinearAlgebra.norm(A::MatExaNode)
+    s = A[1, 1]^2
+    for j in axes(A, 2), i in axes(A, 1)
+        (i == 1 && j == 1) && continue
+        s = s + A[i, j]^2
+    end
+    return sqrt(s)
+end
+
 # --- cross product (3D only) ---
 
 for (T1, T2) in _VEC_PAIRS
@@ -449,6 +505,27 @@ for (T1, T2) in _VEC_PAIRS
             a[1] * b[2] - a[2] * b[1],
         ]
     end
+end
+
+# ============================================================================
+# Section F: Vector constraint method
+# ============================================================================
+
+function ExaModels.constraint(
+        c::ExaModels.ExaCore{T}, v::VecExaNode;
+        start = zero(T), lcon = zero(T), ucon = zero(T), kwargs...,
+    ) where {T}
+    n = length(v)
+    _get(x::AbstractVector, i) = x[i]
+    _get(x, _) = x
+    c1 = nothing
+    for i in 1:n
+        c1 = ExaModels.constraint(
+            c, v[i]; start = _get(start, i), lcon = _get(lcon, i), ucon = _get(ucon, i),
+            kwargs...,
+        )
+    end
+    return c1
 end
 
 end # module ExaModelsLinearAlgebra
