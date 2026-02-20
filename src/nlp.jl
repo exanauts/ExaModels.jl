@@ -518,6 +518,14 @@ function variable(
     o = c.nvar
     len = total(ns)
     c.nvar += len
+
+    @assert(
+        (isa(start, Number) || length(start) == ns) &&
+        (isa(lvar, Number) || length(lvar) == ns) &&
+        (isa(uvar, Number) || length(uvar) == ns),
+        "Initial values and bounds must be either scalars or match variable dimensions",
+    )
+    
     c.x0 = append!(c.backend, c.x0, start, total(ns))
     c.lvar = append!(c.backend, c.lvar, lvar, total(ns))
     c.uvar = append!(c.backend, c.uvar, uvar, total(ns))
@@ -548,6 +556,12 @@ function parameter(c::C, start::AbstractArray;) where {T,C<:ExaCore{T}}
     ns = Base.size(start)
     o = c.npar
     len = total(ns)
+
+    @assert(
+        (isa(start, Number) || length(start) == ns),
+        "Initial values must be either a scalar or match parameter dimensions",
+    )
+    
     c.npar += len
     c.θ = append!(c.backend, c.θ, start, len)
     return Parameter(ns, len, o)
@@ -704,6 +718,13 @@ function constraint(
     gen = _adapt_gen(gen)
     f = SIMDFunction(gen, c.ncon, c.nnzj, c.nnzh)
     pars = gen.iter
+
+    @assert(
+        (isa(start, Number) || length(start) == length(pars)) &&
+        (isa(lcon, Number) || length(lcon) == length(pars)) &&
+        (isa(ucon, Number) || length(ucon) == length(pars)),
+        "Initial values and bounds must be either scalars or match constraint dimensions",
+    )
 
     _constraint(c, f, pars, start, lcon, ucon)
 end
