@@ -9,7 +9,6 @@ include("NLPTest/NLPTest.jl")
 include("ADTest/ADTest.jl")
 include("JuMPTest/JuMPTest.jl")
 include("UtilsTest/UtilsTest.jl")
-include("TwoStageTest/TwoStageTest.jl")
 
 @testset "ExaModels test" begin
     @info "Running AD Test"
@@ -23,7 +22,4 @@ include("TwoStageTest/TwoStageTest.jl")
 
     @info "Running Utils Test"
     UtilsTest.runtests()
-
-    @info "Running TwoStage Test"
-    TwoStageTest.runtests()
 end

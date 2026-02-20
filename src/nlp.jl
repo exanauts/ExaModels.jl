@@ -195,7 +195,7 @@ An ExaCore
   number of constraint patterns: ... 0
 ```
 """
-Base.@kwdef mutable struct ExaCore{T,VT<:AbstractVector{T}, B, VI <: AbstractVector{Int}, S}
+Base.@kwdef mutable struct ExaCore{T,VT<:AbstractVector{T}, B, VI <: AbstractVector{Int}, S <: Val}
     backend::B = nothing
     obj::AbstractObjective = ObjectiveNull()
     con::AbstractConstraint = ConstraintNull()
@@ -220,26 +220,14 @@ Base.@kwdef mutable struct ExaCore{T,VT<:AbstractVector{T}, B, VI <: AbstractVec
     nparam_subexpr::Int = 0
     param_subexpr_values::VT = similar(x0, 0)
     param_subexpr_fns::Vector{Any} = Any[]
-    is_scenario::S = Val(false)
+    two_stage::S = Val(false)
     var_scenario::VI = similar(x0, Int, 0)
     con_scenario::VI = similar(x0, Int, 0)
 end
 
 const SingleStageExaCore{T,VT,B,VI} = ExaCore{T,VT,B,VI,Val{false}}
 const TwoStageExaCore{T,VT,B,VI} = ExaCore{T,VT,B,VI,Val{true}}
-TwoStageExaCore(args...; kwargs...) = ExaCore(args...; kwargs..., is_scenario = Val{true}())
-# function TwoStageExaCore(::Type{T}; backend = nothing, kwargs...) where {T<:AbstractFloat}
-#     x0 = convert_array(zeros(T, 0), backend)
-#     var_scenario = similar(x0, Int, 0)
-    
-#     return ExaCore(
-#         ;
-#         x0,
-#         var_scenario,
-#         is_scenario = Val{true}(),
-#         backend,
-#         kwargs...)
-# end
+TwoStageExaCore(args...; kwargs...) = ExaCore(args...; kwargs..., two_stage = Val{true}())
 
 function ExaCore(::Type{T}; backend = nothing, kwargs...) where {T<:AbstractFloat}
 
