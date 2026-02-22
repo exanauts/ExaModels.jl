@@ -223,8 +223,8 @@ Base.@kwdef mutable struct ExaCore{T,VT<:AbstractVector{T}, B, S}
     tags::S = nothing
 end
 
-append_var_tags(::Nothing, backend, len; kwargs...) = nothing
-append_con_tags(::Nothing, backend, len; kwargs...) = nothing
+append_var_tags(::Nothing, backend, len) = nothing
+append_con_tags(::Nothing, backend, len) = nothing
 
 ExaCore(::Type{T}; backend = nothing, kwargs...) where {T<:AbstractFloat} =
     ExaCore(x0 = convert_array(zeros(T, 0), backend); backend, kwargs...)
@@ -310,7 +310,7 @@ julia> result = ipopt(m; print_level=0)    # solve the problem
 
 ```
 """
-function ExaModel(c::C; prod = nothing) where {C<:ExaCore}
+function ExaModel(c::C; kwargs...) where {C<:ExaCore}
     return ExaModel(
         c.obj,
         c.con,
@@ -329,10 +329,12 @@ function ExaModel(c::C; prod = nothing) where {C<:ExaCore}
             minimize = c.minimize,
         ),
         NLPModels.Counters(),
-        nothing,
+        build_extension(c; kwargs...),
         c.tags
     )
 end
+
+build_extension(c::ExaCore; kwargs...) = nothing
 
 @inline function Base.getindex(v::V, i) where {V<:Variable}
     _bound_check(v.size, i)
@@ -474,7 +476,7 @@ _start(n::Int) = 1
 _start(n::UnitRange) = n.start
 
 """
-    variable(core, dims...; start = 0, lvar = -Inf, uvar = Inf, scenario = 0)
+    variable(core, dims...; start = 0, lvar = -Inf, uvar = Inf, kwargs...)
 
 Adds variables with dimensions specified by `dims` to `core`, and returns `Variable` object. `dims` can be either `Integer` or `UnitRange`.
 
@@ -482,7 +484,7 @@ Adds variables with dimensions specified by `dims` to `core`, and returns `Varia
 - `start`: The initial guess of the solution. Can either be `Number`, `AbstractArray`, or `Generator`.
 - `lvar` : The variable lower bound. Can either be `Number`, `AbstractArray`, or `Generator`.
 - `uvar` : The variable upper bound. Can either be `Number`, `AbstractArray`, or `Generator`.
-
+- `kwargs...`: Additional keyword arguments for variable tags (e.g., `scenario` for two-stage models)
 
 ## Example
 ```jldoctest
@@ -666,7 +668,7 @@ function _objective(c, f, pars)
 end
 
 """
-    constraint(core, generator; start = 0, lcon = 0,  ucon = 0)
+    constraint(core, generator; start = 0, lcon = 0, ucon = 0, kwargs...)
 
 Adds constraints specified by a `generator` to `core`, and returns an `Constraint` object.
 
@@ -674,6 +676,7 @@ Adds constraints specified by a `generator` to `core`, and returns an `Constrain
 - `start`: The initial guess of the dual solution. Can either be `Number`, `AbstractArray`, or `Generator`.
 - `lcon` : The constraint lower bound. Can either be `Number`, `AbstractArray`, or `Generator`.
 - `ucon` : The constraint upper bound. Can either be `Number`, `AbstractArray`, or `Generator`.
+- `kwargs...`: Additional keyword arguments for constraint tags (e.g., `scenario` for two-stage models)
 
 ## Example
 ```jldoctest
