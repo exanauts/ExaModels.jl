@@ -223,6 +223,9 @@ Base.@kwdef mutable struct ExaCore{T,VT<:AbstractVector{T}, B, S}
     tags::S = nothing
 end
 
+append_var_tags(::Nothing, backend, len; kwargs...) = nothing
+append_con_tags(::Nothing, backend, len; kwargs...) = nothing
+
 ExaCore(::Type{T}; backend = nothing, kwargs...) where {T<:AbstractFloat} =
     ExaCore(x0 = convert_array(zeros(T, 0), backend); backend, kwargs...)
 
