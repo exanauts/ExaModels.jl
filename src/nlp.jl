@@ -195,7 +195,7 @@ An ExaCore
   number of constraint patterns: ... 0
 ```
 """
-Base.@kwdef mutable struct ExaCore{T,VT<:AbstractVector{T}, B, VI <: AbstractVector{Int}, S <: Val}
+Base.@kwdef mutable struct ExaCore{T,VT<:AbstractVector{T}, B, S}
     backend::B = nothing
     obj::AbstractObjective = ObjectiveNull()
     con::AbstractConstraint = ConstraintNull()
@@ -220,27 +220,11 @@ Base.@kwdef mutable struct ExaCore{T,VT<:AbstractVector{T}, B, VI <: AbstractVec
     nparam_subexpr::Int = 0
     param_subexpr_values::VT = similar(x0, 0)
     param_subexpr_fns::Vector{Any} = Any[]
-    two_stage::S = Val(false)
-    var_scenario::VI = similar(x0, Int, 0)
-    con_scenario::VI = similar(x0, Int, 0)
+    tags::S = nothing
 end
 
-const SingleStageExaCore{T,VT,B,VI} = ExaCore{T,VT,B,VI,Val{false}}
-const TwoStageExaCore{T,VT,B,VI} = ExaCore{T,VT,B,VI,Val{true}}
-TwoStageExaCore(args...; kwargs...) = ExaCore(args...; kwargs..., two_stage = Val{true}())
-
-function ExaCore(::Type{T}; backend = nothing, kwargs...) where {T<:AbstractFloat}
-
-    x0 = convert_array(zeros(T, 0), backend)
-    var_scenario = similar(x0, Int, 0)
-    
-    return ExaCore(
-        ;
-        x0,
-        var_scenario,
-        backend,
-        kwargs...)
-end
+ExaCore(::Type{T}; backend = nothing, kwargs...) where {T<:AbstractFloat} =
+    ExaCore(x0 = convert_array(zeros(T, 0), backend); backend, kwargs...)
 
 depth(a) = depth(a.inner) + 1
 depth(a::ObjectiveNull) = 0
@@ -274,8 +258,7 @@ struct ExaModel{T,VT,E,O,C,S} <: AbstractExaModel{T,VT,E}
     meta::NLPModels.NLPModelMeta{T,VT}
     counters::NLPModels.Counters
     ext::E
-    var_scenario::S
-    con_scenario::S
+    tags::S
 end
 
 function Base.show(io::IO, c::AbstractExaModel{T,VT}) where {T,VT}
@@ -324,7 +307,7 @@ julia> result = ipopt(m; print_level=0)    # solve the problem
 
 ```
 """
-function ExaModel(c::C; prod = nothing) where {C<:SingleStageExaCore}
+function ExaModel(c::C; prod = nothing) where {C<:ExaCore}
     return ExaModel(
         c.obj,
         c.con,
@@ -344,33 +327,7 @@ function ExaModel(c::C; prod = nothing) where {C<:SingleStageExaCore}
         ),
         NLPModels.Counters(),
         nothing,
-        nothing,
-        nothing,
-    )
-end
-
-function ExaModel(c::C; prod = nothing) where {C<:TwoStageExaCore}
-    return ExaModel(
-        c.obj,
-        c.con,
-        c.θ,
-        NLPModels.NLPModelMeta(
-            c.nvar,
-            ncon = c.ncon,
-            nnzj = c.nnzj,
-            nnzh = c.nnzh,
-            x0 = c.x0,
-            lvar = c.lvar,
-            uvar = c.uvar,
-            y0 = c.y0,
-            lcon = c.lcon,
-            ucon = c.ucon,
-            minimize = c.minimize,
-        ),
-        NLPModels.Counters(),
-        nothing,
-        c.var_scenario,
-        c.con_scenario,
+        c.tags
     )
 end
 
@@ -548,7 +505,8 @@ function variable(
     start = zero(T),
     lvar = T(-Inf),
     uvar = T(Inf),
-) where {T,C<:SingleStageExaCore{T}}
+    kwargs...
+) where {T,C<:ExaCore{T}}
 
 
     o = c.nvar
@@ -558,26 +516,7 @@ function variable(
     c.lvar = append!(c.backend, c.lvar, lvar, total(ns))
     c.uvar = append!(c.backend, c.uvar, uvar, total(ns))
 
-    return Variable(ns, len, o)
-
-end
-
-function variable(
-    c::C,
-    ns...;
-    start = zero(T),
-    lvar = T(-Inf),
-    uvar = T(Inf),
-    scenario = 0,
-) where {T,C<:TwoStageExaCore{T}}
-
-    o = c.nvar
-    len = total(ns)
-    c.nvar += len
-    c.x0 = append!(c.backend, c.x0, start, total(ns))
-    c.lvar = append!(c.backend, c.lvar, lvar, total(ns))
-    c.uvar = append!(c.backend, c.uvar, uvar, total(ns))
-    c.uvar = append!(c.backend, c.var_scenario, scenario, total(ns))
+    append_var_tags(c.tags, c.backend, total(ns); kwargs...)
 
     return Variable(ns, len, o)
 
@@ -806,7 +745,7 @@ function constraint(
 end
 
 
-function _constraint(c::C, f, pars, start, lcon, ucon) where {C<:SingleStageExaCore}
+function _constraint(c::C, f, pars, start, lcon, ucon; kwargs...) where {C<:ExaCore}
     nitr = length(pars)
     o = c.ncon
     c.ncon += nitr
@@ -816,21 +755,7 @@ function _constraint(c::C, f, pars, start, lcon, ucon) where {C<:SingleStageExaC
     c.y0 = append!(c.backend, c.y0, start, nitr)
     c.lcon = append!(c.backend, c.lcon, lcon, nitr)
     c.ucon = append!(c.backend, c.ucon, ucon, nitr)
-
-    c.con = Constraint(c.con, f, convert_array(pars, c.backend), o)
-end
-
-function _constraint(c::C, f, pars, start, lcon, ucon; scenario = 0) where {C<:TwoStageExaCore}
-    nitr = length(pars)
-    o = c.ncon
-    c.ncon += nitr
-    c.nnzj += nitr * f.o1step
-    c.nnzh += nitr * f.o2step
-
-    c.y0 = append!(c.backend, c.y0, start, nitr)
-    c.lcon = append!(c.backend, c.lcon, lcon, nitr)
-    c.ucon = append!(c.backend, c.ucon, ucon, nitr)
-    c.con_scenario = append!(c.backend, c.con_scenario, scenario, nitr)
+    append_con_tags(c.tags, c.backend, nitr; kwargs...)
 
     c.con = Constraint(c.con, f, convert_array(pars, c.backend), o)
 end

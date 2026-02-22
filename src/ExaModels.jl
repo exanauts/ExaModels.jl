@@ -35,6 +35,7 @@ include("gradient.jl")
 include("jacobian.jl")
 include("hessian.jl")
 include("nlp.jl")
+include("tags.jl")
 include("utils.jl")
 
 export ExaModel,
