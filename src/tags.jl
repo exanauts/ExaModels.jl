@@ -22,3 +22,4 @@ function TwoStageExaCore(args...; backend = nothing, kwargs...)
     )
 end
 
+export TwoStageExaCore
