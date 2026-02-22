@@ -32,7 +32,7 @@ struct KAExtension{T,VT<:AbstractVector{T},H,VI1,VI2,B}
 end
 
 function ExaModels.build_extension(
-    c::C, 
+    c::C;
     prod = false,
     kwargs...,
 ) where {T,VT<:AbstractVector{T},B<:KernelAbstractions.Backend,C<:ExaModels.ExaCore{T,VT,B}}
@@ -677,3 +677,5 @@ end
 end
 
 end # module ExaModelsKernelAbstractions
+
+
