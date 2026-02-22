@@ -31,8 +31,8 @@ struct KAExtension{T,VT<:AbstractVector{T},H,VI1,VI2,B}
     prodhelper::H
 end
 
-function ExaModels.ExaModel(
-    c::C;
+function ExaModels.build_extension(
+    c::C, 
     prod = false,
     kwargs...,
 ) where {T,VT<:AbstractVector{T},B<:KernelAbstractions.Backend,C<:ExaModels.ExaCore{T,VT,B}}
@@ -107,37 +107,16 @@ function ExaModels.ExaModel(
         prodhelper = nothing
     end
 
-    return ExaModels.ExaModel(
-        c.obj,
-        c.con,
-        c.θ,
-        NLPModels.NLPModelMeta(
-            c.nvar,
-            ncon = c.ncon,
-            nnzj = c.nnzj,
-            nnzh = c.nnzh,
-            x0 = c.x0,
-            lvar = c.lvar,
-            uvar = c.uvar,
-            y0 = c.y0,
-            lcon = c.lcon,
-            ucon = c.ucon,
-            minimize = c.minimize,
-        ),
-        NLPModels.Counters(),
-        KAExtension(
-            c.backend,
-            similar(c.x0, c.nobj),
-            similar(c.x0, c.nnzg),
-            gsparsity,
-            gptr,
-            similar(c.x0, c.nconaug),
-            conaugsparsity,
-            conaugptr,
-            prodhelper,
-        ),
-        nothing,
-        nothing,
+    return KAExtension(
+        c.backend,
+        similar(c.x0, c.nobj),
+        similar(c.x0, c.nnzg),
+        gsparsity,
+        gptr,
+        similar(c.x0, c.nconaug),
+        conaugsparsity,
+        conaugptr,
+        prodhelper,
     )
 end
 

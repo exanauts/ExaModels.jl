@@ -310,29 +310,27 @@ julia> result = ipopt(m; print_level=0)    # solve the problem
 
 ```
 """
-function ExaModel(c::C; kwargs...) where {C<:ExaCore}
-    return ExaModel(
-        c.obj,
-        c.con,
-        c.θ,
-        NLPModels.NLPModelMeta(
-            c.nvar,
-            ncon = c.ncon,
-            nnzj = c.nnzj,
-            nnzh = c.nnzh,
-            x0 = c.x0,
-            lvar = c.lvar,
-            uvar = c.uvar,
-            y0 = c.y0,
-            lcon = c.lcon,
-            ucon = c.ucon,
-            minimize = c.minimize,
-        ),
-        NLPModels.Counters(),
-        build_extension(c; kwargs...),
-        c.tags
-    )
-end
+ExaModel(c::C; kwargs...) where {C<:ExaCore} = ExaModel(
+    c.obj,
+    c.con,
+    c.θ,
+    NLPModels.NLPModelMeta(
+        c.nvar,
+        ncon = c.ncon,
+        nnzj = c.nnzj,
+        nnzh = c.nnzh,
+        x0 = c.x0,
+        lvar = c.lvar,
+        uvar = c.uvar,
+        y0 = c.y0,
+        lcon = c.lcon,
+        ucon = c.ucon,
+        minimize = c.minimize,
+    ),
+    NLPModels.Counters(),
+    build_extension(c; kwargs...),
+    c.tags
+)
 
 build_extension(c::ExaCore; kwargs...) = nothing
 
