@@ -121,10 +121,10 @@ function BatchExaModel(
         ns::Int,
         θ_data::AbstractMatrix,
     )
-    size(θ_data, 2) == ns || throw(
-        ArgumentError("θ_data must have ns=$ns columns, got $(size(θ_data, 2))"),
+    Base.size(θ_data, 2) == ns || throw(
+        ArgumentError("θ_data must have ns=$ns columns, got $(Base.size(θ_data, 2))"),
     )
-    nθ = size(θ_data, 1)
+    nθ = Base.size(θ_data, 1)
 
     # Register parameters as a flat vector (column-major: scenario 1, scenario 2, ...)
     parameter(c, vec(θ_data))
