@@ -127,7 +127,7 @@ function test_api(result1, vars1, cons1, vars2, cons2)
             @test multipliers_U(result1, var1) ≈ [-dual_ub(var) for var in var2] atol = 1e-6
         end
         for (con1, con2) in zip(cons1, cons2)
-            @test multipliers(result1, con1) ≈ [-dual.(con) for con in con2] atol = 1e-6
+            @test multipliers(result1, con1) ≈ [dual.(con) for con in con2] atol = 1e-6
         end
     end
 end
