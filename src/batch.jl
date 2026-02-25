@@ -402,14 +402,17 @@ function hess_coord!(
     nh = m.nnzh_per
     perm = m.hess_perm
 
-    if allequal(bobj_weight)
+    # Move perm to device for GPU-compatible gather indexing
+    perm_dev = similar(m.hess_buffer, Int, length(perm))
+    copyto!(perm_dev, perm)
+
+    bobj_weight_cpu = Array(bobj_weight)
+    if allequal(bobj_weight_cpu)
         # Common case: uniform obj_weight → single fused call + permute
-        w = bobj_weight[1]
+        w = bobj_weight_cpu[1]
         hess_coord!(m.model, x_flat, y_flat, m.hess_buffer; obj_weight = w)
         bhvals_flat = vec(bhvals)
-        for i in eachindex(perm)
-            bhvals_flat[i] = m.hess_buffer[perm[i]]
-        end
+        bhvals_flat .= m.hess_buffer[perm_dev]
     else
         # Varying weights: 2-pass approach
         # Pass 1: objective hessian only (y=0, obj_weight=1)
@@ -421,13 +424,14 @@ function hess_coord!(
         # Pass 2: constraint hessian only (obj_weight=0)
         hess_coord!(m.model, x_flat, y_flat, m.hess_buffer; obj_weight = zero(eltype(x_flat)))
 
-        # Combine per scenario
+        # Build per-element weight vector: element i belongs to scenario (i-1)÷nh+1
+        w_cpu = [bobj_weight_cpu[(i - 1) ÷ nh + 1] for i in 1:length(perm)]
+        w_dev = similar(bobj_weight, length(perm))
+        copyto!(w_dev, w_cpu)
+
+        # Combine per scenario (vectorized for GPU)
         bhvals_flat = vec(bhvals)
-        for i in eachindex(perm)
-            s = (i - 1) ÷ nh + 1
-            bhvals_flat[i] =
-                bobj_weight[s] * hess_obj[perm[i]] + m.hess_buffer[perm[i]]
-        end
+        bhvals_flat .= w_dev .* hess_obj[perm_dev] .+ m.hess_buffer[perm_dev]
     end
     return bhvals
 end
