@@ -200,7 +200,7 @@ end
 
 # --- tr ---
 
-function LinearAlgebra.tr(A::MatExaNode)
+function _tr_impl(A)
     n = minimum(size(A))
     s = A[1, 1]
     for i in 2:n
@@ -208,6 +208,10 @@ function LinearAlgebra.tr(A::MatExaNode)
     end
     return s
 end
+
+LinearAlgebra.tr(A::MatExaNode) = _tr_impl(A)
+# More specific method to win dispatch over stdlib's tr(::StridedMatrix{T}) in dense.jl
+LinearAlgebra.tr(A::StridedMatrix{<:ExaNode}) = _tr_impl(A)
 
 # --- diag ---
 
