@@ -1,7 +1,7 @@
 name = "ExaModels"
 uuid = "1037b233-b668-4ce9-9b63-f9f681f55dd2"
 authors = ["Sungho Shin <sushin@mit.edu>"]
-version = "0.9.3"
+version = "0.9.4"
 
 [deps]
 NLPModels = "a4795742-8479-5a88-8948-cc11e1c8c1a6"
@@ -39,7 +39,7 @@ CUDA = "5"
 Ipopt = "1.11"
 JuMP = "1"
 KernelAbstractions = "0.9"
-MadNLP = "0.8"
+MadNLP = "0.9"
 MathOptInterface = "1.19"
 NLPModels = "0.18, 0.19, 0.20, 0.21"
 NLPModelsIpopt = "0.11"

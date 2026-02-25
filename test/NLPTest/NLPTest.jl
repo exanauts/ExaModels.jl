@@ -119,7 +119,7 @@ end
 dual_lb(x) = has_lower_bound(x) ? dual(LowerBoundRef(x)) : 0.0
 dual_ub(x) = has_upper_bound(x) ? dual(UpperBoundRef(x)) : 0.0
 
-function test_api(result1, vars1, cons1, vars2, cons2)
+function test_api(result1, vars1, cons1, vars2, cons2, minimize::Bool)
     @testset "API test" begin
         for (var1, var2) in zip(vars1, vars2)
             @test solution(result1, var1) ≈ [value(var) for var in var2] atol = 1e-6
@@ -127,7 +127,11 @@ function test_api(result1, vars1, cons1, vars2, cons2)
             @test multipliers_U(result1, var1) ≈ [-dual_ub(var) for var in var2] atol = 1e-6
         end
         for (con1, con2) in zip(cons1, cons2)
-            @test multipliers(result1, con1) ≈ [-dual.(con) for con in con2] atol = 1e-6
+            if minimize
+                @test multipliers(result1, con1) ≈ [-dual.(con) for con in con2] atol = 1e-6
+            else
+                @test multipliers(result1, con1) ≈ [dual.(con) for con in con2] atol = 1e-6
+            end
         end
     end
 end
@@ -175,7 +179,7 @@ function runtests()
                             end
                         end
                         result1 = madnlp(m1; print_level = MadNLP.ERROR)
-                        test_api(result1, vars1, cons1, vars2, cons2)
+                        test_api(result1, vars1, cons1, vars2, cons2, m2.meta.minimize)
                     end
                 end
 
