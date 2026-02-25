@@ -19,7 +19,7 @@
     itr1 = ExaModels.convert_array(collect(Iterators.product(1:T, (FT+1):NT)), backend)
     itr2 = ExaModels.convert_array(collect(Iterators.product(0:T, 0:(NT+1))), backend)
 
-    c = ExaCore(backend)
+    c = ExaCore(; backend)
 
     xA = variable(c, 0:T, 0:(NT+1); start = 0.5)
     yA = variable(c, 0:T, 0:(NT+1); start = 0.5)
@@ -85,7 +85,7 @@ end</code></pre><pre><code class="nohighlight hljs">distillation_column_model (g
     xAf = 0.5
     xA0s = ExaModels.convert_array([(i, 0.5) for i in 0:(NT + 1)], backend)
 
-    c = ExaCore(backend)
+    c = ExaCore(; backend)
 
     # Decision variables
     xA = variable(c, 0:T, 0:(NT + 1); start = 0.5)
@@ -147,7 +147,7 @@ end</code></pre><pre><code class="nohighlight hljs">distillation_column_model_wi
     xAf = 0.5
     xA0s = ExaModels.convert_array([(i, 0.5) for i in 0:(NT + 1)], backend)
 
-    c = ExaCore(backend)
+    c = ExaCore(; backend)
 
     # Decision variables (same as original)
     xA = variable(c, 0:T, 0:(NT + 1); start = 0.5)
@@ -226,4 +226,4 @@ Distillation Column Model Comparison (T=10)
 )
 
 println(&quot;All models converge to same objective: $all_same&quot;)</code></pre><pre><code class="nohighlight hljs">All models converge to same objective: true
-</code></pre><p>Key observations:</p><ul><li>Lifted subexpressions ADD variables/constraints (auxiliary vars + defining constraints)</li><li>Reduced subexpressions maintain the original problem size (no aux vars)</li><li>All models reach the same optimal solution</li></ul><hr/><p><em>This page was generated using <a href="https://github.com/fredrikekre/Literate.jl">Literate.jl</a>.</em></p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../quad/">« Example: Quadrotor</a><a class="docs-footer-nextpage" href="../opf/">Example: Optimal Power Flow »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.16.1 on <span class="colophon-date" title="Wednesday 18 February 2026 15:53">Wednesday 18 February 2026</span>. Using Julia version 1.12.5.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
+</code></pre><p>Key observations:</p><ul><li>Lifted subexpressions ADD variables/constraints (auxiliary vars + defining constraints)</li><li>Reduced subexpressions maintain the original problem size (no aux vars)</li><li>All models reach the same optimal solution</li></ul><hr/><p><em>This page was generated using <a href="https://github.com/fredrikekre/Literate.jl">Literate.jl</a>.</em></p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../quad/">« Example: Quadrotor</a><a class="docs-footer-nextpage" href="../opf/">Example: Optimal Power Flow »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.17.0 on <span class="colophon-date" title="Tuesday 24 February 2026 19:47">Tuesday 24 February 2026</span>. Using Julia version 1.12.4.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
