@@ -195,7 +195,7 @@ An ExaCore
   number of constraint patterns: ... 0
 ```
 """
-Base.@kwdef mutable struct ExaCore{T,VT<:AbstractVector{T},B}
+Base.@kwdef mutable struct ExaCore{T,VT<:AbstractVector{T}, B, S}
     backend::B = nothing
     obj::AbstractObjective = ObjectiveNull()
     con::AbstractConstraint = ConstraintNull()
@@ -220,20 +220,14 @@ Base.@kwdef mutable struct ExaCore{T,VT<:AbstractVector{T},B}
     nparam_subexpr::Int = 0
     param_subexpr_values::VT = similar(x0, 0)
     param_subexpr_fns::Vector{Any} = Any[]
+    tags::S = nothing
 end
 
-# Deprecated as of v0.7
-function ExaCore(::Type{T}, backend) where {T<:AbstractFloat}
-    @warn "ExaCore(T, backend) is deprecated. Use ExaCore(T; backend = backend) instead"
-    return ExaCore(T; backend = backend)
-end
-function ExaCore(backend)
-    @warn "ExaCore(backend) is deprecated. Use ExaCore(T; backend = backend) instead"
-    return ExaCore(; backend = backend)
-end
+append_var_tags(::Nothing, backend, len) = nothing
+append_con_tags(::Nothing, backend, len) = nothing
 
 ExaCore(::Type{T}; backend = nothing, kwargs...) where {T<:AbstractFloat} =
-    ExaCore(x0 = convert_array(zeros(T, 0), backend); backend = backend, kwargs...)
+    ExaCore(x0 = convert_array(zeros(T, 0), backend); backend, kwargs...)
 
 depth(a) = depth(a.inner) + 1
 depth(a::ObjectiveNull) = 0
@@ -260,13 +254,14 @@ An abstract type for ExaModel, which is a subtype of `NLPModels.AbstractNLPModel
 """
 abstract type AbstractExaModel{T,VT,E} <: NLPModels.AbstractNLPModel{T,VT} end
 
-struct ExaModel{T,VT,E,O,C} <: AbstractExaModel{T,VT,E}
+struct ExaModel{T,VT,E,O,C,S} <: AbstractExaModel{T,VT,E}
     objs::O
     cons::C
     θ::VT
     meta::NLPModels.NLPModelMeta{T,VT}
     counters::NLPModels.Counters
     ext::E
+    tags::S
 end
 
 function Base.show(io::IO, c::AbstractExaModel{T,VT}) where {T,VT}
@@ -315,28 +310,29 @@ julia> result = ipopt(m; print_level=0)    # solve the problem
 
 ```
 """
-function ExaModel(c::C; prod = nothing) where {C<:ExaCore}
-    return ExaModel(
-        c.obj,
-        c.con,
-        c.θ,
-        NLPModels.NLPModelMeta(
-            c.nvar,
-            ncon = c.ncon,
-            nnzj = c.nnzj,
-            nnzh = c.nnzh,
-            x0 = c.x0,
-            lvar = c.lvar,
-            uvar = c.uvar,
-            y0 = c.y0,
-            lcon = c.lcon,
-            ucon = c.ucon,
-            minimize = c.minimize,
-        ),
-        NLPModels.Counters(),
-        nothing,
-    )
-end
+ExaModel(c::C; kwargs...) where {C<:ExaCore} = ExaModel(
+    c.obj,
+    c.con,
+    c.θ,
+    NLPModels.NLPModelMeta(
+        c.nvar,
+        ncon = c.ncon,
+        nnzj = c.nnzj,
+        nnzh = c.nnzh,
+        x0 = c.x0,
+        lvar = c.lvar,
+        uvar = c.uvar,
+        y0 = c.y0,
+        lcon = c.lcon,
+        ucon = c.ucon,
+        minimize = c.minimize,
+    ),
+    NLPModels.Counters(),
+    build_extension(c; kwargs...),
+    c.tags
+)
+
+build_extension(c::ExaCore; kwargs...) = nothing
 
 @inline function Base.getindex(v::V, i) where {V<:Variable}
     _bound_check(v.size, i)
@@ -478,7 +474,7 @@ _start(n::Int) = 1
 _start(n::UnitRange) = n.start
 
 """
-    variable(core, dims...; start = 0, lvar = -Inf, uvar = Inf)
+    variable(core, dims...; start = 0, lvar = -Inf, uvar = Inf, kwargs...)
 
 Adds variables with dimensions specified by `dims` to `core`, and returns `Variable` object. `dims` can be either `Integer` or `UnitRange`.
 
@@ -486,7 +482,7 @@ Adds variables with dimensions specified by `dims` to `core`, and returns `Varia
 - `start`: The initial guess of the solution. Can either be `Number`, `AbstractArray`, or `Generator`.
 - `lvar` : The variable lower bound. Can either be `Number`, `AbstractArray`, or `Generator`.
 - `uvar` : The variable upper bound. Can either be `Number`, `AbstractArray`, or `Generator`.
-
+- `kwargs...`: Additional keyword arguments for variable tags (e.g., `scenario` for two-stage models)
 
 ## Example
 ```jldoctest
@@ -512,6 +508,7 @@ function variable(
     start = zero(T),
     lvar = T(-Inf),
     uvar = T(Inf),
+    kwargs...
 ) where {T,C<:ExaCore{T}}
 
 
@@ -521,6 +518,8 @@ function variable(
     c.x0 = append!(c.backend, c.x0, start, total(ns))
     c.lvar = append!(c.backend, c.lvar, lvar, total(ns))
     c.uvar = append!(c.backend, c.uvar, uvar, total(ns))
+
+    append_var_tags(c.tags, c.backend, total(ns); kwargs...)
 
     return Variable(ns, len, o)
 
@@ -667,7 +666,7 @@ function _objective(c, f, pars)
 end
 
 """
-    constraint(core, generator; start = 0, lcon = 0,  ucon = 0)
+    constraint(core, generator; start = 0, lcon = 0, ucon = 0, kwargs...)
 
 Adds constraints specified by a `generator` to `core`, and returns an `Constraint` object.
 
@@ -675,6 +674,7 @@ Adds constraints specified by a `generator` to `core`, and returns an `Constrain
 - `start`: The initial guess of the dual solution. Can either be `Number`, `AbstractArray`, or `Generator`.
 - `lcon` : The constraint lower bound. Can either be `Number`, `AbstractArray`, or `Generator`.
 - `ucon` : The constraint upper bound. Can either be `Number`, `AbstractArray`, or `Generator`.
+- `kwargs...`: Additional keyword arguments for constraint tags (e.g., `scenario` for two-stage models)
 
 ## Example
 ```jldoctest
@@ -699,13 +699,14 @@ function constraint(
     start = zero(T),
     lcon = zero(T),
     ucon = zero(T),
+    kwargs...
 ) where {T,C<:ExaCore{T}}
 
     gen = _adapt_gen(gen)
     f = SIMDFunction(gen, c.ncon, c.nnzj, c.nnzh)
     pars = gen.iter
 
-    _constraint(c, f, pars, start, lcon, ucon)
+    _constraint(c, f, pars, start, lcon, ucon; kwargs...)
 end
 
 """
@@ -720,11 +721,12 @@ function constraint(
     start = zero(T),
     lcon = zero(T),
     ucon = zero(T),
+    kwargs...
 ) where {T,C<:ExaCore{T},N<:AbstractNode}
 
     f = _simdfunction(expr, c.ncon, c.nnzj, c.nnzh)
 
-    _constraint(c, f, pars, start, lcon, ucon)
+    _constraint(c, f, pars, start, lcon, ucon; kwargs...)
 end
 
 """
@@ -738,15 +740,16 @@ function constraint(
     start = zero(T),
     lcon = zero(T),
     ucon = zero(T),
+    kwargs...
 ) where {T,C<:ExaCore{T}}
 
     f = _simdfunction(Null(), c.ncon, c.nnzj, c.nnzh)
 
-    _constraint(c, f, 1:n, start, lcon, ucon)
+    _constraint(c, f, 1:n, start, lcon, ucon; kwargs...)
 end
 
 
-function _constraint(c, f, pars, start, lcon, ucon)
+function _constraint(c::C, f, pars, start, lcon, ucon; kwargs...) where {C<:ExaCore}
     nitr = length(pars)
     o = c.ncon
     c.ncon += nitr
@@ -756,9 +759,12 @@ function _constraint(c, f, pars, start, lcon, ucon)
     c.y0 = append!(c.backend, c.y0, start, nitr)
     c.lcon = append!(c.backend, c.lcon, lcon, nitr)
     c.ucon = append!(c.backend, c.ucon, ucon, nitr)
+    append_con_tags(c.tags, c.backend, nitr; kwargs...)
 
     c.con = Constraint(c.con, f, convert_array(pars, c.backend), o)
 end
+
+
 
 """
     constraint!(c::C, c1, gen::Base.Generator) where {C<:ExaCore}
