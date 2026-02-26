@@ -4,9 +4,19 @@ struct TwoStageTags{VI <: AbstractVector{Int}}
     con_scenario::VI
 end
 function append_var_tags(tags::TwoStageTags, backend, len; scenario = 0)
+    if scenario isa AbstractArray
+        length(scenario) == len || throw(
+            DimensionMismatch("scenario tag length ($(length(scenario))) must match count ($len)"),
+        )
+    end
     append!(backend, tags.var_scenario, scenario, len)
 end
 function append_con_tags(tags::TwoStageTags, backend, len; scenario = 0)
+    if scenario isa AbstractArray
+        length(scenario) == len || throw(
+            DimensionMismatch("scenario tag length ($(length(scenario))) must match count ($len)"),
+        )
+    end
     append!(backend, tags.con_scenario, scenario, len)
 end
 const TwoStageExaCore{T,VT,B} = ExaCore{T,VT,B,S} where S <: TwoStageTags
