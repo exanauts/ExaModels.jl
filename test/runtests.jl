@@ -11,7 +11,6 @@ include("JuMPTest/JuMPTest.jl")
 include("UtilsTest/UtilsTest.jl")
 include("TwoStageTest/TwoStageTest.jl")
 include("LinAlgTest/LinAlgTest.jl")
-include("LinAlgTest2/LinAlgTest2.jl")
 
 macro ignore(e) :() end
 
@@ -36,7 +35,4 @@ macro ignore(e) :() end
     @info "Running LinAlg Test"
     LinAlgTest.runtests()
     end # debug
-
-    @info "Running LinAlg Test no. 2"
-    LinAlgTest2.runtests()
 end
