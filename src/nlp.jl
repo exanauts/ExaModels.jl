@@ -915,7 +915,7 @@ dx = subexpr(c, x[t, i] - x[t-1, i] for t in 1:T, i in 1:N)
 constraint(c, dx[t, i] - something for t in 1:T, i in 1:N)
 ```
 """
-function subexpr(c::C, gen::Base.Generator; reduced::Bool = false, parameter_only::Bool = false) where {T, C <: ExaCore{T}}
+function subexpr(c::C, gen::Base.Generator; reduced::Bool = false, parameter_only::Bool = false, kwargs...) where {T, C <: ExaCore{T}}
     # Infer dimensions before adapting (which may collect the iterator)
     ns = _infer_subexpr_dims(gen.iter)
 
@@ -964,7 +964,7 @@ function subexpr(c::C, gen::Base.Generator; reduced::Bool = false, parameter_onl
     start_values = T[gen.f(p)(Identity(), x0_cpu, θ_cpu) for p in iter_collected]
 
     # Create auxiliary variables for subexpression values with computed start values
-    v = variable(c, ns...; start = start_values)
+    v = variable(c, ns...; start = start_values, kwargs...)
 
     # Create defining constraints: v[k] - expr(itr[k]) = 0 for k = 1:n
     # We pair each element with its linear index for proper variable indexing
@@ -978,7 +978,7 @@ function subexpr(c::C, gen::Base.Generator; reduced::Bool = false, parameter_onl
     end
     def_gen = Base.Generator(def_f, paired_iter)
 
-    con = constraint(c, def_gen; lcon = zero(T), ucon = zero(T))
+    con = constraint(c, def_gen; lcon = zero(T), ucon = zero(T), kwargs...)
 
     return Subexpr(ns, n, v.offset, con)
 end
