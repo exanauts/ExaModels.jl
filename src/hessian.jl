@@ -944,6 +944,128 @@ function hrpass(e, e_starts, e_cnts, e2, e2_starts, e2_cnts, isexp, t::SecondAdj
     cnt
 end
 
+function hrpass(
+    e,
+    e_starts,
+    e_cnts,
+    e2,
+    e2_starts,
+    e2_cnts,
+    isexp,
+    t::SecondAdjointNodeExpr,
+    comp::Nothing,
+    y1,
+    y2,
+    o2,
+    cnt,
+    adj,
+    adj2,
+)
+    (cnt_start2, e_start2) = e2_starts[t.i]
+    len2 = e2_cnts[cnt_start2]
+    cnt += 1
+    for i in 1:len2
+        val = e2[e_start2+i-1]
+        r = unpack_row(val)
+        c = unpack_col(val)
+        if r != 0 || c != 0
+            push!(y1, (r, c))
+        end
+        cnt += e2_cnts[cnt_start2+i]
+    end
+    return cnt
+end
+
+function hdrpass(
+    e,
+    e_starts,
+    e_cnts,
+    isexp,
+    t1::SecondAdjointNodeExpr,
+    t2::SecondAdjointNodeVar,
+    comp::Nothing,
+    y1,
+    y2,
+    o2,
+    cnt,
+    adj,
+)
+    (cnt_start, e_start) = e_starts[t1.i]
+    len = e_cnts[cnt_start]
+    j = t2.i
+    cnt += 1
+    for i in 1:len
+        idx = e[e_start+i-1]
+        if idx != 0 || j != 0
+            push!(y1, (Int(idx), Int(j)))
+        end
+        cnt += e_cnts[cnt_start+i]
+    end
+    return cnt
+end
+
+function hdrpass(
+    e,
+    e_starts,
+    e_cnts,
+    isexp,
+    t1::SecondAdjointNodeVar,
+    t2::SecondAdjointNodeExpr,
+    comp::Nothing,
+    y1,
+    y2,
+    o2,
+    cnt,
+    adj,
+)
+    i = t1.i
+    (cnt_start, e_start) = e_starts[t2.i]
+    len = e_cnts[cnt_start]
+    cnt += 1
+    for k in 1:len
+        idx = e[e_start+k-1]
+        if i != 0 || idx != 0
+            push!(y1, (Int(i), Int(idx)))
+        end
+        cnt += e_cnts[cnt_start+k]
+    end
+    return cnt
+end
+
+function hdrpass(
+    e,
+    e_starts,
+    e_cnts,
+    isexp,
+    t1::SecondAdjointNodeExpr,
+    t2::SecondAdjointNodeExpr,
+    comp::Nothing,
+    y1,
+    y2,
+    o2,
+    cnt,
+    adj,
+)
+    (cnt_start1, e_start1) = e_starts[t1.i]
+    len1 = e_cnts[cnt_start1]
+    (cnt_start2, e_start2) = e_starts[t2.i]
+    len2 = e_cnts[cnt_start2]
+
+    cnt += 1
+    for i in 1:len1
+        idx1 = e[e_start1+i-1]
+        for j in 1:len2
+            idx2 = e[e_start2+j-1]
+            if idx1 != 0 || idx2 != 0
+                push!(y1, (Int(idx1), Int(idx2)))
+            end
+            cnt += e_cnts[cnt_start2+j]
+        end
+        cnt += e_cnts[cnt_start1+i]
+    end
+    return cnt
+end
+
 @inline function hrpass(
     e,
     e_starts,

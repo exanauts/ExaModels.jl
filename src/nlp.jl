@@ -778,7 +778,7 @@ function subexpr(
     end
     subexpr(c, (nsi for nsi in ns), gen)
 end
-subexpr(c::C, gen::G) where {T, C <: ExaCore{T}, G<:Base.Generator} = subexpr(c, (length(gen.iter),), gen)
+subexpr(c::C, gen::G) where {T, C <: ExaCore{T}, G<:Base.Generator} = subexpr(c, Base.size(gen.iter), gen)
 
 function subexpr(
         c::C,
@@ -797,12 +797,12 @@ function subexpr(
     start = convert_array(zeros(nitr), c.backend)
     lvar = convert_array(zeros(nitr), c.backend)
     uvar = convert_array(zeros(nitr), c.backend)
-    # TODO: this fails if lvar / uvar infinite and f is trig (for example)
-    #@simd for i in 1:nitr
-    #    start[i] = f.f(pars[i], c.x0, c.θ)
-    #    lvar[i] = f.f(pars[i], c.lvar, c.θ)
-    #    uvar[i] = f.f(pars[i], c.uvar, c.θ)
-    #end
+    # TODO: analyze bound prop
+    # @simd for i in 1:nitr
+    #     start[i] = f.f(pars[i], c.x0, c.θ)
+    #     lvar[i] = f.f(pars[i], c.lvar, c.θ)
+    #     uvar[i] = f.f(pars[i], c.uvar, c.θ)
+    # end
     c.x0 = append!(c.backend, c.x0, start, nitr)
     c.lvar = append!(c.backend, c.lvar, lvar, nitr)
     c.uvar = append!(c.backend, c.uvar, uvar, nitr)
@@ -882,8 +882,6 @@ function hess_structure!(m::ExaModel, rows::AbstractVector, cols::AbstractVector
     e2_uint = reinterpret(UInt, m.e2)
     fill!(e1_uint, zero(UInt))
     fill!(e2_uint, zero(UInt))
-    # Expression structures are already computed during model construction
-    # Just run structure pass on the expressions to populate e1_uint/e2_uint
     _jac_structure!(m.exps, m, e1_uint, nothing, e1_uint)  # Populates e1_uint indices
     _exp_hess_structure!(m.exps, m, e2_uint)  # Populates e2_uint indices
     _obj_hess_structure!(m.objs, m, rows, cols, e1_uint, e2_uint)
@@ -945,14 +943,14 @@ function grad!(m::ExaModel, x::AbstractVector, out::AbstractVector)
     fill!(out, zero(eltype(out)))
     _grad!(m.exps, m, x, out)
     _grad!(m.objs, m, x, out)
-    return f
+    return out
 end
 
 _grad!(f::ObjectiveNull, m, x, out) = nothing
 _grad!(f::ExpressionNull, m, x, out) = nothing
 function _grad!(f, m, x, out)
     _grad!(f.inner, m, x, out)
-    gradient!(m.isexp, m.e1, m.e1_starts, m.e1_cntsegrad, f, objs, x, θ, one(eltype(out)))
+    gradient!(m.isexp, m.e1, m.e1_starts, m.e1_cnts, out, m.objs, x, m.θ, one(eltype(out)))
 end
 
 function jac_coord!(m::ExaModel, x::AbstractVector, jac::AbstractVector)
@@ -973,27 +971,31 @@ end
 function jprod_nln!(m::ExaModel, x::AbstractVector, v::AbstractVector, Jv::AbstractVector)
     expr!(m, x, m.θ)
     fill!(Jv, zero(eltype(Jv)))
-    _jprod_nln!(m.cons, m.isexp, m.eJv, nothing, x, m.θ, v, Jv)
+    _jprod_nln!(m.exps, x, m, v, m.e1)
+    _jprod_nln!(m.cons, x, m, v, Jv)
     return Jv
 end
 
-_jprod_nln!(cons::ConstraintNull, isexp, ey1, ey2, x, θ, v, Jv) = nothing
-function _jprod_nln!(cons, isexp, ey1, ey2, x, θ, v, Jv)
-    _jprod_nln!(cons.inner, isexp, ey1, ey2, x, θ, v, Jv)
-    sjacobian!(isexp, ey1, ey2, (Jv, v), nothing, cons, x, θ, one(eltype(Jv)))
+_jprod_nln!(f::ConstraintNull, x, m, v, Jv) = nothing
+_jprod_nln!(f::ExpressionNull, x, m, v, Jv) = nothing
+function _jprod_nln!(f, x, m, v, Jv)
+    _jprod_nln!(f.inner, x, m, v, Jv)
+    sjacobian!(m.e1, m.e1_starts, m.e1_cnts, m.isexp, (Jv, v), nothing, f, x, m.θ, one(eltype(Jv)))
 end
 
 function jtprod_nln!(m::ExaModel, x::AbstractVector, v::AbstractVector, Jtv::AbstractVector)
     expr!(m, x, m.θ)
-    fill!(Jtv, zero(eltype(Jtv)))
-    _jtprod_nln!(m.cons, m.isexp, nothing, m.eJtv, x, m.θ, v, Jtv)
+    fill!(Jtv, zero(eltype(Jv)))
+    _jtprod_nln!(m.exps, x, m, v, m.e1)
+    _jtprod_nln!(m.cons, x, m, v, Jtv)
     return Jtv
 end
 
-_jtprod_nln!(cons::ConstraintNull, isexp, ey1, ey2, x, θ, v, Jtv) = nothing
-function _jtprod_nln!(cons, isexp, ey1, ey2, x, θ, v, Jtv)
-    _jtprod_nln!(cons.inner, isexp, ey1, ey2, x, θ, v, Jtv)
-    sjacobian!(isexp, ey1, ey2, nothing, (Jtv, v), cons, x, θ, one(eltype(Jtv)))
+_jtprod_nln!(f::ConstraintNull, x, m, v, Jtv) = nothing
+_jtprod_nln!(f::ExpressionNull, x, m, v, Jtv) = nothing
+function _jtprod_nln!(f, x, m, v, Jtv)
+    _jtprod_nln!(f.inner, x, m, v, Jtv)
+    sjacobian!(m.e1, m.e1_starts, m.e1_cnts, m.isexp, nothing, (Jtv, v), f, x, m.θ, one(eltype(Jv)))
 end
 
 function hess_coord!(
@@ -1006,11 +1008,8 @@ function hess_coord!(
     fill!(m.e1, zero(eltype(m.e1)))
     fill!(m.e2, zero(eltype(m.e2)))
     expr!(m, x, m.θ)
-    # First compute expression Jacobians (e1)
     _jac_coord!(m.exps, x, m, m.e1)
-    # Then compute expression Hessians (e2)
     _exp_hess_coord!(m.exps, x, m)
-    # Now compute objective Hessian
     _obj_hess_coord!(m.objs, x, m, hess, obj_weight)
     return hess
 end
@@ -1026,11 +1025,8 @@ function hess_coord!(
     fill!(m.e1, zero(eltype(m.e1)))
     fill!(m.e2, zero(eltype(m.e2)))
     expr!(m, x, m.θ)
-    # First compute expression Jacobians (e1)
     _jac_coord!(m.exps, x, m, m.e1)
-    # Then compute expression Hessians (e2)
     _exp_hess_coord!(m.exps, x, m)
-    # Now compute objective and constraint Hessians
     _obj_hess_coord!(m.objs, x, m, hess, obj_weight)
     _con_hess_coord!(m.cons, x, m, y, hess)
     return hess

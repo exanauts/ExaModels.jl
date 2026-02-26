@@ -12,12 +12,12 @@ Performs dense gradient evaluation via the reverse pass on the computation (sub)
     nothing
 end
 @inline function drpass(isexp, e, e_starts, e_cnts, d::D, y, adj) where {D<:AdjointNode1}
-    offset = drpass(isexp, e, e_starts, e_cnts, d.inner, y, adj * d.y)
+    drpass(isexp, e, e_starts, e_cnts, d.inner, y, adj * d.y)
     nothing
 end
 @inline function drpass(isexp, e, e_starts, e_cnts, d::D, y, adj) where {D<:AdjointNode2}
-    offset = drpass(isexp, e, e_starts, e_cnts, d.inner1, y, adj * d.y1)
-    offset = drpass(isexp, e, e_starts, e_cnts, d.inner2, y, adj * d.y2)
+    drpass(isexp, e, e_starts, e_cnts, d.inner1, y, adj * d.y1)
+    drpass(isexp, e, e_starts, e_cnts, d.inner2, y, adj * d.y2)
     nothing
 end
 @inline function drpass(isexp, e, e_starts, e_cnts, d::D, y, adj) where {D<:AdjointNodeVar}
@@ -25,14 +25,7 @@ end
     nothing
 end
 @inline function drpass(isexp, e, e_starts, e_cnts, d::D, y, adj) where {D<:AdjointNodeExpr}
-    (cnt_start, e_start) = e_starts[d.i]
-    len = e_cnts[cnt_start]
-    cnt += 1
-    for i in 1:len
-        @inbounds y[o1 + comp(cnt)] += adj * e[e_start + i - 1]
-        cnt += e_cnts[cnt_start + i]
-    end
-    return cnt
+    y[d.i] += e[e_starts[d.i][2]]
     nothing
 end
 

@@ -110,7 +110,7 @@ function _simdfunction(f, full_exp_refs1, full_exp_refs2, exps, isexp, o0, o1, o
 
     y2_raw = []
     t = f(Identity(), SecondAdjointNodeSource(nothing, nothing), nothing)
-    ExaModels.hrpass(nothing, nothing, nothing, nothing, nothing, nothing, nothing, t, nothing, y2_raw, nothing, nothing, 0, NaN, NaN)
+    ExaModels.hrpass0(nothing, nothing, nothing, nothing, nothing, nothing, nothing, t, nothing, y2_raw, nothing, nothing, 0, NaN, NaN)
     y2 = get_full_exp_refs(full_exp_refs2, exps, isexp, y2_raw)
 
     a1 = unique(y1)

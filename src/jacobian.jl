@@ -72,6 +72,7 @@ end
     @inbounds y[o0] += adj * v[d.i]
     return 0
 end
+# TODO; jprod expressions
 # jtprod_nln
 @inline function jrpass(
     d::D,
@@ -91,6 +92,7 @@ end
     @inbounds y[d.i] += adj * v[o0]
     return 0
 end
+# TODO; jtprod expressions
 # jac_structure
 @inline function jrpass(
     d::D,
