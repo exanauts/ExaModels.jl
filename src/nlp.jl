@@ -611,6 +611,18 @@ function _recompute_param_subexprs!(c::ExaCore)
     return nothing
 end
 
+function set_parameter!(m::ExaModel, param::Parameter, values::AbstractArray)
+    if Base.size(values) != param.size
+        throw(
+            DimensionMismatch(
+                "Parameter size mismatch: expected $(param.size), got $(Base.size(values))",
+            ),
+        )
+    end
+    copyto!(view(m.θ, (param.offset + 1):(param.offset + param.length)), values)
+    return nothing
+end
+
 function variable(c::C; kwargs...) where {T,C<:ExaCore{T}}
 
     return variable(c, 1; kwargs...)[1]
