@@ -128,9 +128,9 @@ function test_api(result1, vars1, cons1, vars2, cons2, minimize::Bool)
         end
         for (con1, con2) in zip(cons1, cons2)
             if minimize
-                @test multipliers(result1, con1) ≈ [-dual.(con) for con in con2] atol = 1e-6
+                @test multipliers(result1, con1) ≈ [-dual.(con) for con in con2] atol = 1.0e-6
             else
-                @test multipliers(result1, con1) ≈ [dual.(con) for con in con2] atol = 1e-6
+                @test multipliers(result1, con1) ≈ [dual.(con) for con in con2] atol = 1.0e-6
             end
         end
     end

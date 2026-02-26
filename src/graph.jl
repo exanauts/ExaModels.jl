@@ -18,18 +18,22 @@ end
 Null() = Null(nothing)
 
 """
-    Null
-A null node
+    AdjointNull{V}
+A null (constant) node in the adjoint tree, carrying the primal value.
 
 """
-struct AdjointNull <: AbstractAdjointNode end
+struct AdjointNull{V} <: AbstractAdjointNode
+    x::V
+end
 
 """
-    Null
-A null node
+    SecondAdjointNull{V}
+A null (constant) node in the second-adjoint tree, carrying the primal value.
 
 """
-struct SecondAdjointNull <: AbstractSecondAdjointNode end
+struct SecondAdjointNull{V} <: AbstractSecondAdjointNode
+    x::V
+end
 
 
 """
@@ -312,5 +316,7 @@ end
 
 @inline (v::Null{Nothing})(i, x::V, θ) where {T,V<:AbstractVector{T}} = zero(T)
 @inline (v::Null{N})(i, x::V, θ) where {N,T,V<:AbstractVector{T}} = T(v.value)
-@inline (v::Null{N})(i, x::AdjointNodeSource{T}, θ) where {N,T} = AdjointNull()
-@inline (v::Null{N})(i, x::SecondAdjointNodeSource{T}, θ) where {N,T} = SecondAdjointNull()
+@inline (v::Null{Nothing})(i, x::AdjointNodeSource{T}, θ) where {T} = AdjointNull(0.0)
+@inline (v::Null{N})(i, x::AdjointNodeSource{T}, θ) where {N, T} = AdjointNull(v.value)
+@inline (v::Null{Nothing})(i, x::SecondAdjointNodeSource{T}, θ) where {T} = SecondAdjointNull(0.0)
+@inline (v::Null{N})(i, x::SecondAdjointNodeSource{T}, θ) where {N, T} = SecondAdjointNull(v.value)
