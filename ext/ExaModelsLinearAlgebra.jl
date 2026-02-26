@@ -61,6 +61,29 @@ for op in (:+, :-, :*)
     end
 end
 
+# Integer × AbstractNode zero/one elimination (more specific than core's Real × AbstractNode)
+# Fixes: 0 * x → Null(0), 1 * x → x, 0 + x → x, etc.
+@inline function Base.:*(a::Integer, b::ExaModels.AbstractNode)
+    return iszero(a) ? ExaModels.Null(zero(a)) :
+        isone(a) ? b : ExaModels.Node2(*, a, b)
+end
+@inline function Base.:*(a::ExaModels.AbstractNode, b::Integer)
+    return iszero(b) ? ExaModels.Null(zero(b)) :
+        isone(b) ? a : ExaModels.Node2(*, a, b)
+end
+@inline function Base.:+(a::Integer, b::ExaModels.AbstractNode)
+    return iszero(a) ? b : ExaModels.Node2(+, a, b)
+end
+@inline function Base.:+(a::ExaModels.AbstractNode, b::Integer)
+    return iszero(b) ? a : ExaModels.Node2(+, a, b)
+end
+@inline function Base.:-(a::Integer, b::ExaModels.AbstractNode)
+    return iszero(a) ? ExaModels.Node1(-, b) : ExaModels.Node2(-, a, b)
+end
+@inline function Base.:-(a::ExaModels.AbstractNode, b::Integer)
+    return iszero(b) ? a : ExaModels.Node2(-, a, b)
+end
+
 # ============================================================================
 # Section C: Type aliases, promotion, and adjoint for nodes
 # ============================================================================
@@ -83,10 +106,13 @@ Base.zero(::ExaNode) = ExaModels.Null(0)
 Base.one(::Type{<:ExaModels.AbstractNode}) = ExaModels.Null(1)
 Base.one(::ExaNode) = ExaModels.Null(1)
 
-# adjoint for scalar ExaNode — nodes are real-valued, so adjoint is identity
+# adjoint/transpose for scalar ExaNode — nodes are real-valued, so both are identity
 Base.adjoint(x::ExaModels.AbstractNode) = x
 Base.adjoint(x::ExaModels.AbstractAdjointNode) = x
 Base.adjoint(x::ExaModels.AbstractSecondAdjointNode) = x
+Base.transpose(x::ExaModels.AbstractNode) = x
+Base.transpose(x::ExaModels.AbstractAdjointNode) = x
+Base.transpose(x::ExaModels.AbstractSecondAdjointNode) = x
 
 # Dispatch pair constants for 3-way type combos
 const _VEC_PAIRS = [
@@ -197,9 +223,12 @@ for op in (:+, :-)
     end
 end
 
-# Unary minus for vector of nodes
+# Unary minus for vector/matrix of nodes
 function Base.:-(a::VecExaNode)
     return [-a[i] for i in eachindex(a)]
+end
+function Base.:-(A::MatExaNode)
+    return [-A[i, j] for i in axes(A, 1), j in axes(A, 2)]
 end
 
 # --- matrix +/- ---
