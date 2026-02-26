@@ -62,7 +62,7 @@ for op in (:+, :-, :*)
 end
 
 # ============================================================================
-# Section C: Type aliases for vectors/matrices of nodes
+# Section C: Type aliases, promotion, and adjoint for nodes
 # ============================================================================
 
 const ExaNode = Union{
@@ -72,6 +72,21 @@ const ExaNode = Union{
 }
 const VecExaNode = AbstractVector{<:ExaNode}
 const MatExaNode = AbstractMatrix{<:ExaNode}
+
+# Type promotion: [x, 0] should give Vector{AbstractNode} with Null(0), not Vector{Any}
+Base.promote_rule(::Type{<:ExaModels.AbstractNode}, ::Type{<:Real}) = ExaModels.AbstractNode
+Base.convert(::Type{ExaModels.AbstractNode}, x::Real) = ExaModels.Null(x)
+
+# zero/one for ExaNode types — needed by stdlib (e.g. tr) and general array ops
+Base.zero(::Type{<:ExaModels.AbstractNode}) = ExaModels.Null(0)
+Base.zero(::ExaNode) = ExaModels.Null(0)
+Base.one(::Type{<:ExaModels.AbstractNode}) = ExaModels.Null(1)
+Base.one(::ExaNode) = ExaModels.Null(1)
+
+# adjoint for scalar ExaNode — nodes are real-valued, so adjoint is identity
+Base.adjoint(x::ExaModels.AbstractNode) = x
+Base.adjoint(x::ExaModels.AbstractAdjointNode) = x
+Base.adjoint(x::ExaModels.AbstractSecondAdjointNode) = x
 
 # Dispatch pair constants for 3-way type combos
 const _VEC_PAIRS = [
@@ -210,7 +225,9 @@ function _tr_impl(A)
 end
 
 LinearAlgebra.tr(A::MatExaNode) = _tr_impl(A)
-# More specific method to win dispatch over stdlib's tr(::StridedMatrix{T}) in dense.jl
+# More specific methods to win dispatch over stdlib's tr(::Matrix{T}) (Julia 1.10)
+# and tr(::StridedMatrix{T}) (Julia 1.12+)
+LinearAlgebra.tr(A::Matrix{<:ExaNode}) = _tr_impl(A)
 LinearAlgebra.tr(A::StridedMatrix{<:ExaNode}) = _tr_impl(A)
 
 # --- diag ---
