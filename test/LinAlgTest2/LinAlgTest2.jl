@@ -18,7 +18,7 @@ function create_nodes()
 end
 
 function runtests()
-    @testset "ExaModels Linear Algebra Tests" begin
+    return @testset "ExaModels Linear Algebra Tests" begin
         x, y, z, w = create_nodes()
 
         @testset "Type conversions and promotions" begin
