@@ -12,11 +12,7 @@ include("UtilsTest/UtilsTest.jl")
 include("TwoStageTest/TwoStageTest.jl")
 include("LinAlgTest/LinAlgTest.jl")
 
-macro ignore(e) :() end
-
 @testset "ExaModels test" begin
-    @ignore begin # debug
-
     @info "Running AD Test"
     ADTest.runtests()
 
@@ -34,5 +30,4 @@ macro ignore(e) :() end
 
     @info "Running LinAlg Test"
     LinAlgTest.runtests()
-    end # debug
 end
