@@ -106,20 +106,6 @@ const ExaNode = Union{
 const VecExaNode = AbstractVector{<:ExaNode}
 const MatExaNode = AbstractMatrix{<:ExaNode}
 
-# --- ExaVector / ExaMatrix convenience constructors ---
-
-# Variable constructors
-ExaModels.ExaVector(c::ExaModels.ExaCore, n::Int; kwargs...) =
-    ExaModels.ExaVector(ExaModels.variable(c, n; kwargs...))
-ExaModels.ExaMatrix(c::ExaModels.ExaCore, m::Int, n::Int; kwargs...) =
-    ExaModels.ExaMatrix(ExaModels.variable(c, m, n; kwargs...))
-
-# Parameter constructors
-ExaModels.ExaVector(c::ExaModels.ExaCore, start::AbstractVector) =
-    ExaModels.ExaVector(ExaModels.parameter(c, start))
-ExaModels.ExaMatrix(c::ExaModels.ExaCore, start::AbstractMatrix) =
-    ExaModels.ExaMatrix(ExaModels.parameter(c, start))
-
 # Type promotion: [x, 0] should give Vector{AbstractNode} with Null(0), not Vector{Any}
 Base.promote_rule(::Type{<:ExaModels.AbstractNode}, ::Type{<:Real}) = ExaModels.AbstractNode
 Base.convert(::Type{ExaModels.AbstractNode}, x::Real) =
