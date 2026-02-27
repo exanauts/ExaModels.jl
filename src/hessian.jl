@@ -294,6 +294,11 @@ end
     return (cnt += 1)
 end
 
+# SecondAdjointNull: constant branch contributes zero cross-derivatives
+@inline hdrpass(::Any, ::SecondAdjointNull, comp, y1, y2, o2, cnt, adj) = cnt
+@inline hdrpass(::SecondAdjointNull, ::Any, comp, y1, y2, o2, cnt, adj) = cnt
+@inline hdrpass(::SecondAdjointNull, ::SecondAdjointNull, comp, y1, y2, o2, cnt, adj) = cnt
+
 """
     hrpass(t::D, comp, y1, y2, o2, cnt, adj, adj2)
 
