@@ -98,6 +98,20 @@ Parameter
   θ ∈ R^{$(join(size(v.size)," × "))}
 """,
 )
+const Indexable = Union{Variable, Parameter, Subexpr, ParameterSubexpr}
+
+struct ExaVector{V<:Indexable} <: AbstractVector{AbstractNode}
+    var::V
+end
+Base.size(v::ExaVector) = (v.var.length,)
+Base.getindex(v::ExaVector, i::Int) = v.var[i]
+
+struct ExaMatrix{V<:Indexable} <: AbstractMatrix{AbstractNode}
+    var::V
+end
+Base.size(M::ExaMatrix) = M.var.size
+Base.getindex(M::ExaMatrix, i::Int, j::Int) = M.var[i, j]
+
 struct Objective{R,F,I} <: AbstractObjective
     inner::R
     f::F
