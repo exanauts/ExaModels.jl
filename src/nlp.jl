@@ -656,13 +656,17 @@ function objective(c::C, expr::N, pars = 1:1) where {C<:ExaCore,N<:AbstractNode}
     _objective(c, f, pars)
 end
 
-function _objective(c, f, pars)
+function _objective(c, f, pars; check_redundancy = true)
     nitr = length(pars)
     c.nobj += nitr
     c.nnzg += nitr * f.o1step
     c.nnzh += nitr * f.o2step
 
-    c.obj = Objective(c.obj, f, convert_array(pars, c.backend))
+    obj = Objective(c.obj, f, convert_array(pars, c.backend))
+
+    check_redundancy && check_redundant(c.obj, obj)
+    
+    c.obj = obj
 end
 
 """
@@ -749,7 +753,7 @@ function constraint(
 end
 
 
-function _constraint(c::C, f, pars, start, lcon, ucon; kwargs...) where {C<:ExaCore}
+function _constraint(c::C, f, pars, start, lcon, ucon; check_redundancy = true, kwargs...) where {C<:ExaCore}
     nitr = length(pars)
     o = c.ncon
     c.ncon += nitr
@@ -761,10 +765,36 @@ function _constraint(c::C, f, pars, start, lcon, ucon; kwargs...) where {C<:ExaC
     c.ucon = append!(c.backend, c.ucon, ucon, nitr)
     append_con_tags(c.tags, c.backend, nitr; kwargs...)
 
-    c.con = Constraint(c.con, f, convert_array(pars, c.backend), o)
+    con = Constraint(c.con, f, convert_array(pars, c.backend), o)
+
+    check_redundancy && check_redundant(c.con, con)
+
+    c.con = con
 end
 
+const ObjectiveOrConstraintNull = Union{ConstraintNull, ObjectiveNull}
+const ObjectiveOrConstraintOrConstraintAug{I, S} = Union{Constraint{I,S}, Objective{I,S}, ConstraintAug{I,S}}
 
+@inline function check_redundant(
+    e1::E1,
+    e2::E2
+) where {I, A <: SIMDFunction, E1 <: ObjectiveOrConstraintNull, E2 <: ObjectiveOrConstraintOrConstraintAug{I, A}}
+end
+
+@inline function check_redundant(
+    e1::E1,
+    e2::E2
+    ) where {I1, I2, S <: SIMDFunction, E1 <: ObjectiveOrConstraintOrConstraintAug{I1, S}, E2 <: ObjectiveOrConstraintOrConstraintAug{I2, S}}
+
+    @warn "Redundant constraint detected: identical constraint pattern already exists. Consider consolidating constraints to reduce compilation time and improve callback performance."
+end
+
+@inline function check_redundant(
+    e1,
+    e2::E
+) where {I, S <: SIMDFunction, E <: ObjectiveOrConstraintOrConstraintAug{I, S}}
+    check_redundant(e1.inner, e2)
+end
 
 """
     constraint!(c::C, c1, gen::Base.Generator) where {C<:ExaCore}
@@ -795,13 +825,13 @@ Constraint Augmentation
   where |P| = 3
 ```
 """
-function constraint!(c::C, c1, gen::Base.Generator) where {C<:ExaCore}
+function constraint!(c::C, c1, gen::Base.Generator; kwargs...) where {C<:ExaCore}
 
     gen = _adapt_gen(gen)
     f = SIMDFunction(gen, offset0(c1, 0), c.nnzj, c.nnzh)
     pars = gen.iter
 
-    _constraint!(c, f, pars)
+    _constraint!(c, f, pars; kwargs...)
 end
 
 """
@@ -809,13 +839,13 @@ end
 
 Expands the existing constraint `c1` in `c` by adding addtional constraints terms specified by `expr` and `pars`.
 """
-function constraint!(c::C, c1, expr, pars) where {C<:ExaCore}
+function constraint!(c::C, c1, expr, pars; kwargs...) where {C<:ExaCore}
     f = _simdfunction(expr, offset0(c1, 0), c.nnzj, c.nnzh)
 
-    _constraint!(c, f, pars)
+    _constraint!(c, f, pars; kwargs...)
 end
 
-function _constraint!(c, f, pars)
+function _constraint!(c, f, pars; check_redundancy = true)
     oa = c.nconaug
 
     nitr = length(pars)
@@ -824,7 +854,11 @@ function _constraint!(c, f, pars)
     c.nnzj += nitr * f.o1step
     c.nnzh += nitr * f.o2step
 
-    c.con = ConstraintAug(c.con, f, convert_array(pars, c.backend), oa)
+    con = ConstraintAug(c.con, f, convert_array(pars, c.backend), oa)
+    
+    check_redundancy && check_redundant(c.con, con)
+
+    c.con = con
 end
 
 # Helper to infer dimensions from iterator
