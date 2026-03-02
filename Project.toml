@@ -25,6 +25,7 @@ oneAPI = "8f75cd03-7ff8-4ecb-9b8f-daf728133b1b"
 [extensions]
 ExaModelsAMDGPU = "AMDGPU"
 ExaModelsCUDA = "CUDA"
+ExaModelsGenOpt = "GenOpt"
 ExaModelsIpopt = ["MathOptInterface", "NLPModelsIpopt"]
 ExaModelsJuMP = "JuMP"
 ExaModelsKernelAbstractions = "KernelAbstractions"
