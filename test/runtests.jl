@@ -25,7 +25,11 @@ include("TwoStageTest/TwoStageTest.jl")
 include("GetterSetterTest/GetterSetterTest.jl")
 include("PrettyPrintTest.jl")
 # include("OptimalControlTest/OptimalControlTest.jl")
+<<<<<<< HEAD
 include("OracleTest/OracleTest.jl")
+=======
+include("GenOptTest/GenOptTest.jl")
+>>>>>>> f1489f44 (Add extension to GenOpt)
 
 @testset verbose = true "ExaModels test" begin
     @info "Running Deprecated API Test"
@@ -60,6 +64,12 @@ include("OracleTest/OracleTest.jl")
 
     @info "Running Oracle Test"
     OracleTest.runtests()
+
+    @info "Running LinAlg Test"
+    LinAlgTest.runtests()
+
+    @info "Running GenOpt Test"
+    GenOptTest.runtests()
 end
 
 # Force full GC before Julia exits so that OpenCL/PoCL objects are finalized
