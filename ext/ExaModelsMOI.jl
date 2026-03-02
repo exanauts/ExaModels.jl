@@ -200,6 +200,23 @@ function copy_objective!(c, moim, var_to_idx)
     build_objective!(c, bin)
 end
 
+function ExaModels.copy_constraints!(moim, bin, offset, var_to_idx, con_to_idx, ::Type{MOI.VariableIndex}, ::Type{S}) where {S}
+    cis = MOI.get(moim, MOI.ListOfConstraintIndices{MOI.VariableIndex,S}())
+    for ci in cis
+        vi = MOI.get(moim, MOI.ConstraintFunction(), ci)
+        vartype, var_idx = var_to_idx[vi]
+        if vartype === :variable
+            con_to_idx[ci] = var_idx
+        end
+    end
+    return bin, offset
+end
+
+function ExaModels.copy_constraints!(moim, bin, offset, var_to_idx, con_to_idx, ::Type{F}, ::Type{S}) where {F, S}
+    cis = MOI.get(moim, MOI.ListOfConstraintIndices{F,S}())
+    return exafy_con(moim, cis, bin, offset, lcon, ucon, y0, var_to_idx, con_to_idx)
+end
+
 function copy_constraints!(c, moim, var_to_idx, T)
     bin = BinNull()
     offset = 0
@@ -210,29 +227,14 @@ function copy_constraints!(c, moim, var_to_idx, T)
 
     con_types = MOI.get(moim, MOI.ListOfConstraintTypesPresent())
     for (F, S) in con_types
+        # This serves both as function barrier for type instability
+        # and as an opportunity for ExaModelsGenOpt to handle its
+        # specific constraint type
+        bin, offset = ExaModels.copy_constraints!(c, moim, cis, bin, offset, var_to_idx, con_to_idx)
         F <: FunctionGenerator && continue
-        cis = MOI.get(moim, MOI.ListOfConstraintIndices{F,S}())
-        if F <: MOI.VariableIndex
-            for ci in cis
-                vi = MOI.get(moim, MOI.ConstraintFunction(), ci)
-                vartype, var_idx = var_to_idx[vi]
-                if vartype === :variable
-                    con_to_idx[ci] = var_idx
-                end
-            end
-            continue
-        end
-        bin, offset =
-            exafy_con(moim, cis, bin, offset, lcon, ucon, y0, var_to_idx, con_to_idx)
     end
     cons = ExaModels.constraint(c, offset; start = y0, lcon = lcon, ucon = ucon)
     build_constraint!(c, cons, bin)
-
-    for (F, S) in con_types
-        F <: FunctionGenerator || continue
-        cis = MOI.get(moim, MOI.ListOfConstraintIndices{F,S}())
-        copy_generator_constraints!(c, moim, cis, var_to_idx, con_to_idx, T)
-    end
 
     return con_to_idx
 end
@@ -293,17 +295,6 @@ end
 
 function _exafy(func::SumGenerator, _)
     return _exagen(func.func, func.iterators)
-end
-
-function copy_generator_constraints!(c, moim, cis, var_to_idx, con_to_idx, T)
-    # FIXME we assume that `var_to_idx` is the identity
-    for ci in cis
-        func = MOI.get(moim, MOI.ConstraintFunction(), ci)
-        set = MOI.get(moim, MOI.ConstraintSet(), ci)
-        con_to_idx[ci] = c.ncon
-        expr, pars = _exagen(func.func, func.iterators)
-        ExaModels.constraint(c, expr, pars; lcon = _lower_bounds(set, T), ucon = _upper_bounds(set, T))
-    end
 end
 
 function _exafy_con(
