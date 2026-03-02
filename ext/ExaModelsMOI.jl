@@ -86,6 +86,17 @@ function check_supported(T, moim)
     return obj_sense === MOI.MIN_SENSE
 end
 
+function ExaModels.ExaModel(
+    moim::MOI.ModelLike;
+    backend = nothing,
+    prod = false,
+    T = Float64,
+    )
+
+    c, _ = to_exacore(moim; backend = backend, T = T)
+    return ExaModels.ExaModel(c; prod = prod)
+end
+
 function to_exacore(moim::MOI.ModelLike; backend = nothing, T = Float64)
     minimize = check_supported(T, moim)
 
