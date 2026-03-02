@@ -43,7 +43,10 @@ function update_bin!(bin, e, p)
     if _update_bin!(bin, e, p) # if update succeeded, return the original bin
         return bin
     else # if update has failed, return a new bin
-        return Bin(e, [p], bin)
+        if p isa Tuple
+            p = [p]
+        end
+        return Bin(e, p, bin)
     end
 end
 function _update_bin!(bin::Bin{E,P,I}, e, p) where {E,P,I}
@@ -61,6 +64,9 @@ end
 function check_supported(T, moim)
     con_types = MOI.get(moim, MOI.ListOfConstraintTypesPresent())
     for (F, S) in con_types
+        if ExaModels.is_extension_type(F)
+            continue
+        end
         !(F <: SUPPORTED_FUNC_TYPE_WITH_VAR) && error("Unsupported function type $F.")
         if F <: MOI.VariableIndex
             !(S <: SUPPORTED_VAR_SET_TYPE) &&
@@ -71,7 +77,7 @@ function check_supported(T, moim)
     end
 
     obj_type = MOI.get(moim, MOI.ObjectiveFunctionType())
-    !(obj_type <: SUPPORTED_FUNC_TYPE_WITH_VAR) &&
+    !(obj_type <: SUPPORTED_FUNC_TYPE_WITH_VAR || ExaModels.is_extension_type(obj_type)) &&
         error("Unsupported objective function type $obj_type.")
 
     obj_sense = MOI.get(moim, MOI.ObjectiveSense())
@@ -204,22 +210,18 @@ function copy_constraints!(c, moim, var_to_idx, T)
 
     con_types = MOI.get(moim, MOI.ListOfConstraintTypesPresent())
     for (F, S) in con_types
+        F <: MOI.VariableIndex && continue
+        ExaModels.is_extension_type(F) && continue
         cis = MOI.get(moim, MOI.ListOfConstraintIndices{F,S}())
-        if F <: MOI.VariableIndex
-            for ci in cis
-                vi = MOI.get(moim, MOI.ConstraintFunction(), ci)
-                vartype, var_idx = var_to_idx[vi]
-                if vartype === :variable
-                    con_to_idx[ci] = var_idx
-                end
-            end
-            continue
-        end
-        bin, offset =
-            exafy_con(moim, cis, bin, offset, lcon, ucon, y0, var_to_idx, con_to_idx)
+        bin, offset = exafy_con(moim, cis, bin, offset, lcon, ucon, y0, var_to_idx, con_to_idx)
     end
     c, cons = ExaModels.add_con(c, offset; start = y0, lcon = lcon, ucon = ucon)
     c = build_constraint!(c, cons, bin)
+
+    # Hook for extensions (e.g. GenOpt) to add their constraint types
+    if applicable(ExaModels.copy_extra_constraints!, c, moim, var_to_idx, con_to_idx, T)
+        ExaModels.copy_extra_constraints!(c, moim, var_to_idx, con_to_idx, T)
+    end
 
     return c, con_to_idx
 end
@@ -323,7 +325,9 @@ function exafy_con(
     var_to_idx,
     con_to_idx,
 ) where {V<:Vector{<:MOI.ConstraintIndex}}
-    l = length(cons)
+    l = sum(cons) do ci
+        MOI.dimension(MOI.get(moim, MOI.ConstraintSet(), ci))
+    end
 
     resize!(lcon, offset + l)
     resize!(ucon, offset + l)
@@ -331,7 +335,7 @@ function exafy_con(
     for (i, ci) in enumerate(cons)
         func = MOI.get(moim, MOI.ConstraintFunction(), ci)
         set = MOI.get(moim, MOI.ConstraintSet(), ci)
-        con_to_idx[ci] = offset + i
+        con_to_idx[ci] = offset + 1
         start = if MOI.supports(
             moim, MOI.ConstraintPrimalStart(), typeof(ci)
         )
@@ -342,8 +346,9 @@ function exafy_con(
         _exafy_con_update_start(ci, start, y0, con_to_idx)
         _exafy_con_update_vector(ci, set, lcon, ucon, con_to_idx)
         bin = _exafy_con(ci, func, bin, var_to_idx, con_to_idx)
+        offset += MOI.dimension(set)
     end
-    return bin, (offset += l)
+    return bin, offset
 end
 
 function _exafy_con_update_start(i, start, y0, con_to_idx)
@@ -452,8 +457,15 @@ function exafy_obj(o::MOI.ScalarNonlinearFunction, bin, var_to_idx)
                 end
                 constant += m.constant
             else
-                e, p = _exafy(m, var_to_idx)
-                bin = update_bin!(bin, e, p)
+                # Try extension hook first (e.g. for SumGenerator)
+                result = ExaModels.exafy_extension_obj_arg(m)
+                if !isnothing(result)
+                    e, p = result
+                    bin = update_bin!(bin, e, p)
+                else
+                    e, p = _exafy(m, var_to_idx)
+                    bin = update_bin!(bin, e, p)
+                end
             end
         end
     else
@@ -462,6 +474,16 @@ function exafy_obj(o::MOI.ScalarNonlinearFunction, bin, var_to_idx)
     end
 
     return update_bin!(bin, ExaModels.Null(constant), (1,)) # TODO see if this can be empty tuple
+end
+
+# Fallback for extension objective types (e.g. SumGenerator as top-level objective)
+function exafy_obj(o, bin, var_to_idx)
+    result = ExaModels.exafy_extension_obj_arg(o)
+    if isnothing(result)
+        error("Unsupported objective function type $(typeof(o))")
+    end
+    e, p = result
+    return update_bin!(bin, e, p)
 end
 
 function _exafy(v::MOI.VariableIndex, var_to_idx, p = ())
@@ -481,7 +503,7 @@ function _exafy(i::R, var_to_idx, p) where {R<:Real}
 end
 
 function _exafy(e::MOI.ScalarNonlinearFunction, var_to_idx, p = ())
-    return op(e.head)((begin
+    return ExaModels.op(e.head)((begin
         c, p = _exafy(e, var_to_idx, p)
         c
     end for e in e.args)...), p
@@ -542,159 +564,6 @@ function _exafy(e::MOI.ScalarQuadraticTerm{T}, var_to_idx, p = ()) where {T}
     end
 end
 
-# eval can be a performance killer -- we want to explicitly include symbols for frequently used operations.
-function op(s::Symbol)
-    # uni/multi
-    if s === :+
-        return +
-    elseif s === :-
-        return -
-        # multi
-    elseif s === :*
-        return *
-    elseif s === :^
-        return ^
-    elseif s === :/
-        return /
-        # uni
-    elseif s === :abs
-        return abs
-    elseif s === :sign
-        error("sign not supported")
-    elseif s === :sqrt
-        return sqrt
-    elseif s === :cbrt
-        return cbrt
-    elseif s === :abs2
-        return abs2
-    elseif s === :inv
-        return inv
-    elseif s === :log
-        return log
-    elseif s === :log10
-        return log10
-    elseif s === :log2
-        return log2
-    elseif s === :log1p
-        return log1p
-    elseif s === :exp
-        return exp
-    elseif s === :exp2
-        return exp2
-    elseif s === :expm1
-        error("expm1 not supported")
-        # trig
-    elseif s === :sin
-        return sin
-    elseif s === :cos
-        return cos
-    elseif s === :tan
-        return tan
-    elseif s === :sec
-        return sec
-    elseif s === :csc
-        return csc
-    elseif s === :cot
-        return cot
-    elseif s === :sind
-        return sind
-    elseif s === :cosd
-        return cosd
-    elseif s === :tand
-        return tand
-    elseif s === :secd
-        return secd
-    elseif s === :cscd
-        return cscd
-    elseif s === :cotd
-        return cotd
-    elseif s === :asin
-        return asin
-    elseif s === :acos
-        return acos
-    elseif s === :atan
-        return atan
-    elseif s === :asec
-        error("asec not supported")
-    elseif s === :acsc
-        error("acsc not supported")
-    elseif s === :acot
-        return acot
-    elseif s === :asind
-        error("asind not supported")
-    elseif s === :acosd
-        error("acosd not supported")
-    elseif s === :atand
-        return atand
-    elseif s === :asecd
-        error("aced not supported")
-    elseif s === :acscd
-        error("acscd not supported")
-    elseif s === :acotd
-        return acotd
-    elseif s === :sinh
-        return sinh
-    elseif s === :cosh
-        return cosh
-    elseif s === :tanh
-        return tanh
-    elseif s === :sech
-        return sech
-    elseif s === :csch
-        return csch
-    elseif s === :coth
-        return coth
-    elseif s === :asinh
-        return asinh
-    elseif s === :acosh
-        return acosh
-    elseif s === :atanh
-        return atanh
-    elseif s === :asech
-        error("asech not supported")
-    elseif s === :acsch
-        error("acsch not supported")
-    elseif s === :acoth
-        return acoth
-        # special (commented will use `eval` which would succeed if SpecialFunctions is loaded)
-    elseif s === :deg2rad
-        error("deg2rad not supported")
-    elseif s === :rad2deg
-        error("rad2deg not supported")
-        # elseif s === :erf          error("erf not supported")
-        # elseif s === :erfinv       error("erfinv not supported")
-        # elseif s === :erfc         error("erfc not supported")
-        # elseif s === :erfcinv      error("erfcinv not supported")
-        # elseif s === :erfi         error("erfi not supported")
-        # elseif s === :gamma        error("gamma not supported")
-    elseif s === :lgamma
-        error("lgamma not supported")
-        # elseif s === :digamma      error("digamma not supported")
-        # elseif s === :invdigamma   error("invdigamma not supported")
-        # elseif s === :trigamma     error("trigamma not supported")
-        # elseif s === :airyai       error("airyai not supported")
-        # elseif s === :airybi       error("airybi not supported")
-        # elseif s === :airyaiprime  error("airyaiprime not supported")
-        # elseif s === :airybiprime  error("airybiprime not supported")
-        # elseif s === :besselj0     error("besselj0 not supported")
-        # elseif s === :besselj1     error("besselj1 not supported")
-        # elseif s === :bessely0     error("bessely0 not supported")
-        # elseif s === :bessely1     error("bessely1 not supported")
-        # elseif s === :erfcx        error("erfcx not supported")
-        # elseif s === :dawson       error("dawson not supported")
-
-        # not in MOI
-    elseif s === :exp10
-        return exp10
-    elseif s === :beta
-        return beta
-    elseif s === :logbeta
-        return logbeta
-    else
-        return eval(s)
-    end
-end
-
 
 # struct EmptyOptimizer{B}
 #     backend::B
@@ -709,6 +578,14 @@ mutable struct Optimizer{B,S} <: MOI.AbstractOptimizer
 end
 
 MOI.is_empty(model::Optimizer) = isnothing(model.model)
+
+function MOI.supports_constraint(
+    ::Optimizer,
+    ::Type{F},
+    ::Type{S},
+) where {F<:MOI.AbstractFunction, S<:MOI.AbstractSet}
+    return ExaModels.is_extension_type(F)
+end
 
 function MOI.supports_constraint(
     ::Optimizer,
@@ -729,6 +606,9 @@ function MOI.supports(::Optimizer, ::MOI.ObjectiveSense)
 end
 function MOI.supports(::Optimizer, ::MOI.ObjectiveFunction{<:SUPPORTED_FUNC_TYPE_WITH_VAR})
     return true
+end
+function MOI.supports(::Optimizer, ::MOI.ObjectiveFunction{F}) where {F}
+    return ExaModels.is_extension_type(F)
 end
 function MOI.supports(::Optimizer, ::MOI.VariablePrimalStart, ::Type{MOI.VariableIndex})
     return true
@@ -873,7 +753,9 @@ function _make_constraints_map(
     con_to_idx,
 ) where {F,S}
     for c in MOI.get(model, MOI.ListOfConstraintIndices{F,S}())
-        map[c] = typeof(c)(con_to_idx[c])
+        if haskey(con_to_idx, c)
+            map[c] = typeof(c)(con_to_idx[c])
+        end
     end
     return
 end
