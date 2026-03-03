@@ -43,12 +43,25 @@ function sym2lambda(expr, vars::Symbol...)
     typevar = string(vars[1])
     s = replace_float_constants(s, typevar)
     s = replace_integer_constants(s, typevar)
+    s = _runic_mul_spaces(s)
     if length(vars) == 1
         return "$(vars[1]) -> $s"
     else
         vstr = join(vars, ", ")
         return "($vstr) -> $s"
     end
+end
+
+"""
+Ensure spaces around `*` for Runic formatting compliance.
+Symbolics.jl emits `a*b`; Runic expects `a * b`.
+Two passes handle chains like `a*b*c`.
+"""
+function _runic_mul_spaces(s::String)
+    for _ in 1:2
+        s = replace(s, r"(\S)\*(\S)" => s"\1 * \2")
+    end
+    return s
 end
 
 # ============================================================================
