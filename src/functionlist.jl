@@ -23,8 +23,19 @@
 # Runtime registration helpers — use Base.$fname pattern (symbols) to avoid
 # syntax errors with operator function names like Base.:+.
 
+# _needs_overload: true when no ExaModels-specific method exists yet.
+# Plain `hasmethod` is too conservative — it returns true for
+# untyped Base generics like max(x,y) = ifelse(isless(x,y),y,x),
+# which prevents the Node2 overload from being added.  Check the
+# module of the matched method: only skip if ExaModels already owns it
+# (e.g. the identity-element specializations in specialization.jl).
+function _needs_overload(f, types)
+    hasmethod(f, types) || return true
+    return which(f, types).module !== @__MODULE__
+end
+
 function _register_univ(fname::Symbol, df, ddf)
-    if !hasmethod(getfield(Base, fname), Tuple{AbstractNode})
+    if _needs_overload(getfield(Base, fname), Tuple{AbstractNode})
         @eval @inline Base.$fname(n::N) where {N <: AbstractNode} = Node1(Base.$fname, n)
     end
     @eval @inline Base.$fname(d::D) where {D <: AbstractAdjointNode} =
@@ -36,7 +47,8 @@ function _register_univ(fname::Symbol, df, ddf)
 end
 
 function _register_biv(fname::Symbol, df1, df2, ddf11, ddf12, ddf22)
-    if !hasmethod(getfield(Base, fname), Tuple{AbstractNode, AbstractNode})
+    f = getfield(Base, fname)
+    if _needs_overload(f, Tuple{AbstractNode, AbstractNode})
         @eval @inline function Base.$fname(
                 d1::D1,
                 d2::D2,
@@ -44,7 +56,7 @@ function _register_biv(fname::Symbol, df1, df2, ddf11, ddf12, ddf22)
             return Node2(Base.$fname, d1, d2)
         end
     end
-    if !hasmethod(getfield(Base, fname), Tuple{AbstractNode, Real})
+    if _needs_overload(f, Tuple{AbstractNode, Real})
         @eval @inline function Base.$fname(
                 d1::D1,
                 d2::D2,
@@ -52,7 +64,7 @@ function _register_biv(fname::Symbol, df1, df2, ddf11, ddf12, ddf22)
             return Node2(Base.$fname, d1, d2)
         end
     end
-    if !hasmethod(getfield(Base, fname), Tuple{Real, AbstractNode})
+    if _needs_overload(f, Tuple{Real, AbstractNode})
         @eval @inline function Base.$fname(
                 d1::D1,
                 d2::D2,
@@ -164,33 +176,33 @@ const _UNIVARIATES = [
     (:log10, x -> 1 / (_clog10(x) * x), x -> -_clog10(x) / (_clog10(x)^2 * (x^2))),
     (:sin, x -> cos(x), x -> -sin(x)),
     (:cos, x -> -sin(x), x -> -cos(x)),
-    (:tan, x -> sec(x)^2, x -> 2(sec(x)^2) * tan(x)),
-    (:asin, x -> 1 / sqrt(1 - (x^2)), x -> x / ((1 - (x^2)) * sqrt(1 - (x^2)))),
-    (:acos, x -> -1 / sqrt(1 - (x^2)), x -> (-x) / ((1 - (x^2)) * sqrt(1 - (x^2)))),
+    (:tan, x -> sec(x)^2, x -> 2(sec(x)^2)*tan(x)),
+    (:asin, x -> 1 / sqrt(1 - (x^2)), x -> x / ((1 - (x^2))*sqrt(1 - (x^2)))),
+    (:acos, x -> -1 / sqrt(1 - (x^2)), x -> (-x) / ((1 - (x^2))*sqrt(1 - (x^2)))),
     (:atan, x -> 1 / (1 + x^2), x -> (-2x) / ((1 + x^2)^2)),
     (:acot, x -> -1 / (1 + x^2), x -> (2x) / ((1 + x^2)^2)),
-    (:csc, x -> -cot(x) * csc(x), x -> -(-1 - (cot(x)^2)) * csc(x) + (cot(x)^2) * csc(x)),
-    (:sec, x -> sec(x) * tan(x), x -> sec(x)^3 + sec(x) * (tan(x)^2)),
-    (:cot, x -> -1 - (cot(x)^2), x -> -2cot(x) * (-1 - (cot(x)^2))),
+    (:csc, x -> -cot(x)*csc(x), x -> -(-1 - (cot(x)^2))*csc(x) + (cot(x)^2)*csc(x)),
+    (:sec, x -> sec(x)*tan(x), x -> sec(x)^3 + sec(x)*(tan(x)^2)),
+    (:cot, x -> -1 - (cot(x)^2), x -> -2cot(x)*(-1 - (cot(x)^2))),
     (:sinh, x -> cosh(x), x -> sinh(x)),
     (:cosh, x -> sinh(x), x -> cosh(x)),
-    (:tanh, x -> 1 - (tanh(x)^2), x -> -2tanh(x) * (1 - (tanh(x)^2))),
-    (:asinh, x -> 1 / sqrt(1 + x^2), x -> (-x) / ((1 + x^2) * sqrt(1 + x^2))),
-    (:acosh, x -> 1 / sqrt(-1 + x^2), x -> (-x) / ((-1 + x^2) * sqrt(-1 + x^2))),
-    (:csch, x -> -csch(x) * coth(x), x -> csch(x)^3 + csch(x) * (coth(x)^2)),
-    (:sech, x -> -tanh(x) * sech(x), x -> -(1 - (tanh(x)^2)) * sech(x) + (tanh(x)^2) * sech(x)),
-    (:coth, x -> -(csch(x)^2), x -> 2(csch(x)^2) * coth(x)),
+    (:tanh, x -> 1 - (tanh(x)^2), x -> -2tanh(x)*(1 - (tanh(x)^2))),
+    (:asinh, x -> 1 / sqrt(1 + x^2), x -> (-x) / ((1 + x^2)*sqrt(1 + x^2))),
+    (:acosh, x -> 1 / sqrt(-1 + x^2), x -> (-x) / ((-1 + x^2)*sqrt(-1 + x^2))),
+    (:csch, x -> -csch(x)*coth(x), x -> csch(x)^3 + csch(x)*(coth(x)^2)),
+    (:sech, x -> -tanh(x)*sech(x), x -> -(1 - (tanh(x)^2))*sech(x) + (tanh(x)^2)*sech(x)),
+    (:coth, x -> -(csch(x)^2), x -> 2(csch(x)^2)*coth(x)),
     (:sind, x -> deg2rad(cosd(x)), x -> -_cd2r(x) * deg2rad(sind(x))),
     (:cosd, x -> -deg2rad(sind(x)), x -> -_cd2r(x) * deg2rad(cosd(x))),
-    (:tand, x -> deg2rad(1 + tand(x)^2), x -> (2 * _cd2r(x)) * tand(x) * deg2rad(1 + tand(x)^2)),
-    (:cscd, x -> -deg2rad(cscd(x) * cotd(x)), x -> -_cd2r(x) * (-deg2rad(cscd(x) * cotd(x)) * cotd(x) - cscd(x) * deg2rad(1 + cotd(x)^2))),
-    (:secd, x -> deg2rad(tand(x) * secd(x)), x -> _cd2r(x) * (deg2rad(tand(x) * secd(x)) * tand(x) + deg2rad(1 + tand(x)^2) * secd(x))),
-    (:cotd, x -> -deg2rad(1 + cotd(x)^2), x -> (2 * _cd2r(x)) * cotd(x) * deg2rad(1 + cotd(x)^2)),
+    (:tand, x -> deg2rad(1 + tand(x)^2), x -> (2 * _cd2r(x)) * tand(x)*deg2rad(1 + tand(x)^2)),
+    (:cscd, x -> -deg2rad(cscd(x)*cotd(x)), x -> -_cd2r(x) * (-deg2rad(cscd(x)*cotd(x))*cotd(x) - cscd(x)*deg2rad(1 + cotd(x)^2))),
+    (:secd, x -> deg2rad(tand(x)*secd(x)), x -> _cd2r(x) * (deg2rad(tand(x)*secd(x))*tand(x) + deg2rad(1 + tand(x)^2)*secd(x))),
+    (:cotd, x -> -deg2rad(1 + cotd(x)^2), x -> (2 * _cd2r(x)) * cotd(x)*deg2rad(1 + cotd(x)^2)),
     (:atand, x -> 1 / deg2rad(1 + x^2), x -> (-(2 * _cd2r(x)) * x) / (deg2rad(1 + x^2)^2)),
     (:acotd, x -> -1 / deg2rad(1 + x^2), x -> ((2 * _cd2r(x)) * x) / (deg2rad(1 + x^2)^2)),
     (:sinpi, x -> _cpi(x) * cospi(x), x -> -_cpi(x)^2 * sinpi(x)),
     (:cospi, x -> -_cpi(x) * sinpi(x), x -> -_cpi(x)^2 * cospi(x)),
-    (:sinc, x -> (-sinpi(x) + _cpi(x) * x * cospi(x)) / (_cpi(x) * (x^2)), x -> ((2 * _cpi(x)^2) * sinpi(x) - (2 * _cpi(x)^3) * x * cospi(x) - _cpi(x)^4 * (x^2) * sinpi(x)) / (_cpi(x)^3 * (x^3))),
+    (:sinc, x -> (-sinpi(x) + _cpi(x) * x*cospi(x)) / (_cpi(x) * (x^2)), x -> ((2 * _cpi(x)^2) * sinpi(x) - (2 * _cpi(x)^3) * x*cospi(x) - _cpi(x)^4 * (x^2)*sinpi(x)) / (_cpi(x)^3 * (x^3))),
     (:deg2rad, x -> _cd2r(x), x -> zero(x)),
     (:rad2deg, x -> _cr2d(x), x -> zero(x)),
     (:signbit, x -> zero(x), x -> zero(x)),
@@ -215,9 +227,9 @@ const _BIVARIATES = [
     (:-, (x1, x2) -> one(x1), (x1, x2) -> -one(x1), (x1, x2) -> zero(x1), (x1, x2) -> zero(x1), (x1, x2) -> zero(x1)),
     (:*, (x1, x2) -> x2, (x1, x2) -> x1, (x1, x2) -> zero(x1), (x1, x2) -> one(x1), (x1, x2) -> zero(x1)),
     (:/, (x1, x2) -> 1 / x2, (x1, x2) -> (-x1) / (x2^2), (x1, x2) -> zero(x1), (x1, x2) -> -1 / (x2^2), (x1, x2) -> (2x1) / (x2^3)),
-    (:^, (x1, x2) -> x2 * (x1^(-1 + x2)), (x1, x2) -> log(x1) * (x1^x2), (x1, x2) -> (-1 + x2) * x2 * (x1^(-2 + x2)), (x1, x2) -> x1^(-1 + x2) + x2 * (x1^(-1 + x2)) * log(x1), (x1, x2) -> (log(x1)^2) * (x1^x2)),
-    (:atan, (x1, x2) -> x2 / (x1^2 + x2^2), (x1, x2) -> (-x1) / (x1^2 + x2^2), (x1, x2) -> (-2x1 * x2) / ((x1^2 + x2^2)^2), (x1, x2) -> (x1^2 - (x2^2)) / (x1^4 + 2(x1^2) * (x2^2) + x2^4), (x1, x2) -> (2x1 * x2) / ((x1^2 + x2^2)^2)),
-    (:hypot, (x1, x2) -> x1 / hypot(x1, x2), (x1, x2) -> x2 / hypot(x1, x2), (x1, x2) -> (-(x1^2) + hypot(x1, x2)^2) / (hypot(x1, x2)^3), (x1, x2) -> (-x1 * x2) / (hypot(x1, x2)^3), (x1, x2) -> (-(x2^2) + hypot(x1, x2)^2) / (hypot(x1, x2)^3)),
+    (:^, (x1, x2) -> x2*(x1^(-1 + x2)), (x1, x2) -> log(x1)*(x1^x2), (x1, x2) -> (-1 + x2)*x2*(x1^(-2 + x2)), (x1, x2) -> x1^(-1 + x2) + x2*(x1^(-1 + x2))*log(x1), (x1, x2) -> (log(x1)^2)*(x1^x2)),
+    (:atan, (x1, x2) -> x2 / (x1^2 + x2^2), (x1, x2) -> (-x1) / (x1^2 + x2^2), (x1, x2) -> (-2x1*x2) / ((x1^2 + x2^2)^2), (x1, x2) -> (x1^2 - (x2^2)) / (x1^4 + 2(x1^2)*(x2^2) + x2^4), (x1, x2) -> (2x1*x2) / ((x1^2 + x2^2)^2)),
+    (:hypot, (x1, x2) -> x1 / hypot(x1, x2), (x1, x2) -> x2 / hypot(x1, x2), (x1, x2) -> (-(x1^2) + hypot(x1, x2)^2) / (hypot(x1, x2)^3), (x1, x2) -> (-x1*x2) / (hypot(x1, x2)^3), (x1, x2) -> (-(x2^2) + hypot(x1, x2)^2) / (hypot(x1, x2)^3)),
     (:max, (x1, x2) -> ifelse(x1 > x2, one(x1), zero(x1)), (x1, x2) -> ifelse(x1 > x2, zero(x1), one(x1)), (x1, x2) -> zero(x1), (x1, x2) -> zero(x1), (x1, x2) -> zero(x1)),
     (:min, (x1, x2) -> ifelse(x1 < x2, one(x1), zero(x1)), (x1, x2) -> ifelse(x1 < x2, zero(x1), one(x1)), (x1, x2) -> zero(x1), (x1, x2) -> zero(x1), (x1, x2) -> zero(x1)),
 ]
