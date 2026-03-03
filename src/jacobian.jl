@@ -38,6 +38,22 @@ end
     @inbounds y1[o1+comp(cnt+=1)] += adj
     return cnt
 end
+@generated function jrpass(
+    d::ExaModels.AdjointNodeN{F,N},
+    comp,
+    i,
+    y1,
+    y2,
+    o1,
+    cnt,
+    adj,
+) where {F,N}
+    stmts = [:(cnt = ExaModels.jrpass(d.args[$k], comp, i, y1, y2, o1, cnt, adj * d.g[$k])) for k in 1:N]
+    return quote
+        $(stmts...)
+        return cnt
+    end
+end
 @inline function jrpass(
     d::D,
     comp,

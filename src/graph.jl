@@ -314,6 +314,71 @@ end
     @inbounds SecondAdjointNodeVar(i, x.inner[i])
 
 
+"""
+    NodeN{F, N, Args}
+
+A node with N children for symbolic expression tree (multivariate registered function).
+
+# Fields:
+- `args::Args`: tuple of N children nodes
+"""
+struct NodeN{F,N,Args} <: AbstractNode
+    args::Args
+end
+
+@inline NodeN(f::F, args::Args) where {F,N,Args<:NTuple{N,Any}} =
+    NodeN{F,N,Args}(args)
+
+"""
+    AdjointNodeN{F, N, T, Args}
+
+A node with N children for first-order forward pass tree (multivariate registered function).
+
+# Fields:
+- `x::T`: function value
+- `g::NTuple{N,T}`: first-order sensitivities (∂f/∂xᵢ) for each argument
+- `args::Args`: tuple of N children `AbstractAdjointNode`s
+"""
+struct AdjointNodeN{F,N,T,Args} <: AbstractAdjointNode
+    x::T
+    g::NTuple{N,T}
+    args::Args
+end
+
+@inline AdjointNodeN(f::F, x::T, g::NTuple{N,T}, args::Args) where {F,N,T,Args} =
+    AdjointNodeN{F,N,T,Args}(x, g, args)
+
+"""
+    SecondAdjointNodeN{F, N, T, Args}
+
+A node with N children for second-order forward pass tree (multivariate registered function).
+
+# Fields:
+- `x::T`: function value
+- `g::NTuple{N,T}`: first-order sensitivities (∂f/∂xᵢ) for each argument
+- `h::NTuple{K,T}`: upper-triangular Hessian entries packed row-major;
+  K = N*(N+1)÷2. Entry (i,j) with i≤j is at position i*(2N-i+1)÷2 + (j-i) + 1.
+- `args::Args`: tuple of N children `AbstractSecondAdjointNode`s
+"""
+struct SecondAdjointNodeN{F,N,T,Args} <: AbstractSecondAdjointNode
+    x::T
+    g::NTuple{N,T}
+    h::NTuple   # length N*(N+1)÷2
+    args::Args
+end
+
+@inline SecondAdjointNodeN(
+    f::F,
+    x::T,
+    g::NTuple{N,T},
+    h::NTuple{K,T},
+    args::Args,
+) where {F,N,K,T,Args} = SecondAdjointNodeN{F,N,T,Args}(x, g, h, args)
+
+# Upper-triangular index helper: (i,j) with 1-based i≤j
+@inline _hess_index(i, j, N) = (i - 1) * N - (i - 1) * (i - 2) ÷ 2 + (j - i) + 1
+
+
 @inline (v::Null{Nothing})(i, x::V, θ) where {T,V<:AbstractVector{T}} = zero(T)
 @inline (v::Null{N})(i, x::V, θ) where {N,T,V<:AbstractVector{T}} = T(v.value)
 @inline (v::Null{Nothing})(i, x::AdjointNodeSource{T}, θ) where {T} = AdjointNull(0.0)

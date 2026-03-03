@@ -57,6 +57,7 @@ export ExaModel,
     multipliers_L,
     multipliers_U,
     @register_univariate,
-    @register_bivariate
+    @register_bivariate,
+    @register_multivariate
 
 end # module ExaModels

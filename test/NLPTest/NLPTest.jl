@@ -41,6 +41,7 @@ include("luksan_struct.jl")
 include("parameter_test.jl")
 include("subexpr_test.jl")
 include("trivialmax.jl")
+include("multivariate_test.jl")
 
 function test_nlp(m1, m2; full = false)
     @testset "NLP meta tests" begin
@@ -196,6 +197,10 @@ function runtests()
 
                 @testset "Subexpr Test" begin
                     test_subexpr(backend)
+                end
+
+                @testset "Multivariate Test" begin
+                    test_multivariate(backend)
                 end
             end
         end
