@@ -1,75 +1,48 @@
 """
-    @register_multivariate(f, N, grad!, hess!)
+    @register_multivariate(f, N, grad, hess)
 
 Register an N-argument scalar function `f` to `ExaModels`, so that it can be used within
-objective and constraint expressions. The derivatives are supplied by the user via
-`grad!` and `hess!` callbacks.
+objective and constraint expressions on **any backend including GPU**.
 
 # Arguments:
 - `f`: function `f(x1, ..., xN) -> scalar`
 - `N`: number of arguments (positive integer literal)
-- `grad!`: gradient callback `grad!(g::AbstractVector, x1, ..., xN)` — fills `g[1:N]`
-  with partial derivatives `∂f/∂xᵢ`
-- `hess!`: Hessian callback `hess!(H::AbstractVector, x1, ..., xN)` — fills `H[1:N*(N+1)÷2]`
-  with upper-triangular entries packed row-major: `H[k]` corresponds to `∂²f/∂xᵢ∂xⱼ`
-  for `(i,j)` with `i ≤ j`, ordered as `(1,1),(1,2),...,(1,N),(2,2),...,(N,N)`.
+- `grad`: gradient function `grad(x1, ..., xN) -> NTuple{N}` — returns partial
+  derivatives `(∂f/∂x1, ..., ∂f/∂xN)` as a tuple (no heap allocation, GPU-safe)
+- `hess`: Hessian function `hess(x1, ..., xN) -> NTuple{N*(N+1)÷2}` — returns
+  upper-triangular entries packed row-major as a tuple: entry (i,j) with i ≤ j is at
+  position `(i-1)*N - (i-1)*(i-2)÷2 + (j-i) + 1`.
+  Order: `(1,1),(1,2),...,(1,N),(2,2),...,(N,N)`.
+
+Both `grad` and `hess` must be **pure functions returning plain tuples** — no mutation,
+no heap allocation — so that they can be called inside GPU kernels.
 
 ## Example
 ```julia
 using ExaModels
 
-# f(x,y,z) = x^2 + 2*y^2 + 3*z^2
-f3(x,y,z) = x^2 + 2*y^2 + 3*z^2
+# f(x,y,z) = x^2 + 2y^2 + 3z^2
+f3(x, y, z) = x^2 + 2y^2 + 3z^2
+grad_f3(x, y, z) = (2x, 4y, 6z)
+# upper-triangular row-major: (1,1),(1,2),(1,3),(2,2),(2,3),(3,3)
+hess_f3(x, y, z) = (2.0, 0.0, 0.0, 4.0, 0.0, 6.0)
 
-function grad_f3!(g, x, y, z)
-    g[1] = 2*x
-    g[2] = 4*y
-    g[3] = 6*z
-end
-
-function hess_f3!(H, x, y, z)
-    # upper-triangular row-major: (1,1),(1,2),(1,3),(2,2),(2,3),(3,3)
-    H[1] = 2.0; H[2] = 0.0; H[3] = 0.0
-    H[4] = 4.0; H[5] = 0.0
-    H[6] = 6.0
-end
-
-@register_multivariate(f3, 3, grad_f3!, hess_f3!)
+@register_multivariate(f3, 3, grad_f3, hess_f3)
 ```
 """
-macro register_multivariate(f, N_expr, grad!, hess!)
+macro register_multivariate(f, N_expr, grad, hess)
     N = N_expr isa Integer ? N_expr : N_expr  # handled at parse time
     # Build (d1, d2, ..., dN) argument symbols
     arg_syms = [Symbol("_d", k) for k in 1:N]
-    arg_sym_types_node    = [:($(Symbol("D",k))<:ExaModels.AbstractNode) for k in 1:N]
-    arg_sym_types_adjoint = [:($(Symbol("D",k))<:ExaModels.AbstractAdjointNode) for k in 1:N]
+    arg_sym_types_node     = [:($(Symbol("D",k))<:ExaModels.AbstractNode) for k in 1:N]
+    arg_sym_types_adjoint  = [:($(Symbol("D",k))<:ExaModels.AbstractAdjointNode) for k in 1:N]
     arg_sym_types_sadjoint = [:($(Symbol("D",k))<:ExaModels.AbstractSecondAdjointNode) for k in 1:N]
-    arg_decls_node    = [:($(arg_syms[k])::$(Symbol("D",k))) for k in 1:N]
-    arg_decls_adjoint = [:($(arg_syms[k])::$(Symbol("D",k))) for k in 1:N]
+    arg_decls_node     = [:($(arg_syms[k])::$(Symbol("D",k))) for k in 1:N]
+    arg_decls_adjoint  = [:($(arg_syms[k])::$(Symbol("D",k))) for k in 1:N]
     arg_decls_sadjoint = [:($(arg_syms[k])::$(Symbol("D",k))) for k in 1:N]
-    where_node    = Expr(:where, :(_dummy), arg_sym_types_node...)
-    where_adjoint = Expr(:where, :(_dummy), arg_sym_types_adjoint...)
-    where_sadjoint = Expr(:where, :(_dummy), arg_sym_types_sadjoint...)
 
-    # x_vals = (d1.x, d2.x, ..., dN.x)
+    # Primal values of each child (for calling f, grad, hess at the evaluation point)
     xvals = [:($(arg_syms[k]).x) for k in 1:N]
-    # inner tuple of children for NodeN
-    args_tuple = Expr(:tuple, arg_syms...)
-    # xvals tuple for grad! / hess! calls
-    xvals_tuple = Expr(:tuple, xvals...)
-
-    # Build g-tuple from buffer after grad! call
-    g_accesses = [:(g_buf[$k]) for k in 1:N]
-    g_tuple = Expr(:tuple, g_accesses...)
-
-    # Build h-tuple from buffer after hess! call
-    Khess = N * (N + 1) ÷ 2
-    h_accesses = [:(h_buf[$k]) for k in 1:Khess]
-    h_tuple = Expr(:tuple, h_accesses...)
-
-    # eval overload: (n::NodeN{typeof(f),...})(i, x, θ)
-    eval_inner_calls = [:(n.args[$k](i, x, θ)) for k in 1:N]
-    eval_call = :($f($(eval_inner_calls...)))
 
     return esc(
         quote
@@ -80,31 +53,26 @@ macro register_multivariate(f, N_expr, grad!, hess!)
                 end
             end
 
-            # 2. AbstractAdjointNode overload — first-order AD (calls grad!)
+            # 2. AbstractAdjointNode overload — first-order AD.
+            #    grad(x1,...,xN) returns NTuple{N} — no heap allocation, GPU-safe.
             @inline function $f($(arg_decls_adjoint...)) where {$(arg_sym_types_adjoint...)}
-                _xs = ($([:($(arg_syms[k]).x) for k in 1:N]...),)
-                g_buf = Vector{typeof(_xs[1])}($N)
-                $grad!( g_buf, _xs...)
                 ExaModels.AdjointNodeN(
                     $f,
-                    $f(_xs...),
-                    ($([:( g_buf[$k]) for k in 1:N]...),),
+                    $f($(xvals...)),
+                    $grad($(xvals...)),
                     ($(arg_syms...),),
                 )
             end
 
-            # 3. AbstractSecondAdjointNode overload — second-order AD (calls grad! and hess!)
+            # 3. AbstractSecondAdjointNode overload — second-order AD.
+            #    grad(x1,...,xN) and hess(x1,...,xN) return NTuples —
+            #    no heap allocation, GPU-safe.
             @inline function $f($(arg_decls_sadjoint...)) where {$(arg_sym_types_sadjoint...)}
-                _xs = ($([:($(arg_syms[k]).x) for k in 1:N]...),)
-                g_buf = Vector{typeof(_xs[1])}($N)
-                h_buf = Vector{typeof(_xs[1])}($(N * (N + 1) ÷ 2))
-                $grad!( g_buf, _xs...)
-                $hess!( h_buf, _xs...)
                 ExaModels.SecondAdjointNodeN(
                     $f,
-                    $f(_xs...),
-                    ($([:( g_buf[$k]) for k in 1:N]...),),
-                    ($([:( h_buf[$k]) for k in 1:N*(N+1)÷2]...),),
+                    $f($(xvals...)),
+                    $grad($(xvals...)),
+                    $hess($(xvals...)),
                     ($(arg_syms...),),
                 )
             end

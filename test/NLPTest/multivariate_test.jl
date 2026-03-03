@@ -6,41 +6,19 @@
 
 # f3(x,y,z) = x^2 + 2y^2 + 3z^2
 _f3(x, y, z) = x^2 + 2y^2 + 3z^2
+_grad_f3(x, y, z) = (2x, 4y, 6z)
+# upper-triangular row-major: (1,1),(1,2),(1,3),(2,2),(2,3),(3,3)
+_hess_f3(x, y, z) = (oftype(x, 2), zero(x), zero(x), oftype(x, 4), zero(x), oftype(x, 6))
 
-function _grad_f3!(g, x, y, z)
-    g[1] = 2x
-    g[2] = 4y
-    g[3] = 6z
-end
-
-function _hess_f3!(H, x, y, z)
-    # upper-triangular, row-major: (1,1),(1,2),(1,3),(2,2),(2,3),(3,3)
-    H[1] = 2.0  # d²/dx²
-    H[2] = 0.0  # d²/dxdy
-    H[3] = 0.0  # d²/dxdz
-    H[4] = 4.0  # d²/dy²
-    H[5] = 0.0  # d²/dydz
-    H[6] = 6.0  # d²/dz²
-end
-
-@register_multivariate(_f3, 3, _grad_f3!, _hess_f3!)
+@register_multivariate(_f3, 3, _grad_f3, _hess_f3)
 
 # g2(x,y) = sin(x) * cos(y)
 _g2(x, y) = sin(x) * cos(y)
+_grad_g2(x, y) = (cos(x) * cos(y), -sin(x) * sin(y))
+# upper-triangular row-major: (1,1),(1,2),(2,2)
+_hess_g2(x, y) = (-sin(x) * cos(y), -cos(x) * sin(y), -sin(x) * cos(y))
 
-function _grad_g2!(g, x, y)
-    g[1] = cos(x) * cos(y)
-    g[2] = -sin(x) * sin(y)
-end
-
-function _hess_g2!(H, x, y)
-    # (1,1),(1,2),(2,2)
-    H[1] = -sin(x) * cos(y)   # d²/dx²
-    H[2] = -cos(x) * sin(y)   # d²/dxdy
-    H[3] = -sin(x) * cos(y)   # d²/dy²
-end
-
-@register_multivariate(_g2, 2, _grad_g2!, _hess_g2!)
+@register_multivariate(_g2, 2, _grad_g2, _hess_g2)
 
 # ---------------------------------------------------------------------------
 # Test helpers

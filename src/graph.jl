@@ -360,10 +360,10 @@ A node with N children for second-order forward pass tree (multivariate register
   K = N*(N+1)÷2. Entry (i,j) with i≤j is at position i*(2N-i+1)÷2 + (j-i) + 1.
 - `args::Args`: tuple of N children `AbstractSecondAdjointNode`s
 """
-struct SecondAdjointNodeN{F,N,T,Args} <: AbstractSecondAdjointNode
+struct SecondAdjointNodeN{F,N,K,T,Args} <: AbstractSecondAdjointNode
     x::T
     g::NTuple{N,T}
-    h::NTuple   # length N*(N+1)÷2
+    h::NTuple{K,T}
     args::Args
 end
 
@@ -373,7 +373,7 @@ end
     g::NTuple{N,T},
     h::NTuple{K,T},
     args::Args,
-) where {F,N,K,T,Args} = SecondAdjointNodeN{F,N,T,Args}(x, g, h, args)
+) where {F,N,K,T,Args} = SecondAdjointNodeN{F,N,K,T,Args}(x, g, h, args)
 
 # Upper-triangular index helper: (i,j) with 1-based i≤j
 @inline _hess_index(i, j, N) = (i - 1) * N - (i - 1) * (i - 2) ÷ 2 + (j - i) + 1
