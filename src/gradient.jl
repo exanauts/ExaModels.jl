@@ -24,6 +24,13 @@ end
     @inbounds y[d.i] += adj
     nothing
 end
+@generated function drpass(d::ExaModels.AdjointNodeN{F,N}, y, adj) where {F,N}
+    stmts = [:(ExaModels.drpass(d.args[$k], y, adj * d.g[$k])) for k in 1:N]
+    return quote
+        $(stmts...)
+        nothing
+    end
+end
 
 """
     gradient!(y, f, x, adj)
@@ -83,6 +90,20 @@ end
 @inline function grpass(d::D, comp, y, o1, cnt, adj) where {D<:AdjointNodeVar}
     @inbounds y[o1+comp(cnt+=1)] += adj
     return cnt
+end
+@generated function grpass(
+    d::ExaModels.AdjointNodeN{F,N},
+    comp,
+    y,
+    o1,
+    cnt,
+    adj,
+) where {F,N}
+    stmts = [:(cnt = ExaModels.grpass(d.args[$k], comp, y, o1, cnt, adj * d.g[$k])) for k in 1:N]
+    return quote
+        $(stmts...)
+        return cnt
+    end
 end
 @inline function grpass(d::AdjointNodeVar, comp::Nothing, y, o1, cnt, adj) # despecialization
     push!(y, d.i)

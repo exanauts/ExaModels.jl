@@ -248,6 +248,65 @@ function hdrpass(
 end
 
 
+# hdrpass for SecondAdjointNodeN paired with any other SecondAdjointNode type
+@generated function hdrpass(
+    t1::ExaModels.SecondAdjointNodeN{F,N},
+    t2::T2,
+    comp,
+    y1,
+    y2,
+    o2,
+    cnt,
+    adj,
+) where {F,N,T2<:AbstractSecondAdjointNode}
+    stmts = [:(cnt = ExaModels.hdrpass(t1.args[$k], t2, comp, y1, y2, o2, cnt, adj * t1.g[$k])) for k in 1:N]
+    return quote
+        $(stmts...)
+        cnt
+    end
+end
+
+@generated function hdrpass(
+    t1::T1,
+    t2::ExaModels.SecondAdjointNodeN{F,N},
+    comp,
+    y1,
+    y2,
+    o2,
+    cnt,
+    adj,
+) where {T1<:AbstractSecondAdjointNode,F,N}
+    stmts = [:(cnt = ExaModels.hdrpass(t1, t2.args[$k], comp, y1, y2, o2, cnt, adj * t2.g[$k])) for k in 1:N]
+    return quote
+        $(stmts...)
+        cnt
+    end
+end
+
+# Disambiguate: SecondAdjointNodeN × SecondAdjointNodeN
+@generated function hdrpass(
+    t1::ExaModels.SecondAdjointNodeN{F1,N1},
+    t2::ExaModels.SecondAdjointNodeN{F2,N2},
+    comp,
+    y1,
+    y2,
+    o2,
+    cnt,
+    adj,
+) where {F1,N1,F2,N2}
+    stmts = Expr[]
+    for i in 1:N1
+        for j in 1:N2
+            push!(stmts, :(cnt = ExaModels.hdrpass(t1.args[$i], t2.args[$j], comp, y1, y2, o2, cnt, adj * t1.g[$i] * t2.g[$j])))
+        end
+    end
+    return quote
+        $(stmts...)
+        cnt
+    end
+end
+
+
 @inline function hdrpass(
     t1::T1,
     t2::T2,
@@ -357,6 +416,75 @@ end
     cnt = hrpass(t.inner2, comp, y1, y2, o2, cnt, adj * t.y2, adj2 * (t.y2)^2 + adj * t.h22)
     cnt = hdrpass(t.inner1, t.inner2, comp, y1, y2, o2, cnt, adj2y1y2 + adjh12)
     cnt
+end
+
+@generated function hrpass(
+    t::ExaModels.SecondAdjointNodeN{F,N},
+    comp,
+    y1,
+    y2,
+    o2,
+    cnt,
+    adj,
+    adj2,
+) where {F,N}
+    stmts = Expr[]
+    # diagonal terms: ∂f/∂xᵢ * ∂²cᵢ/∂x² + adj2 * (∂f/∂xᵢ)² * ∂cᵢ/∂x ⊗ ∂cᵢ/∂x
+    for k in 1:N
+        hkk_idx = k * (2N - k + 1) ÷ 2 - (N - k)  # index of (k,k) in upper-triangular packing
+        # simpler formula: row k, col k → offset = (k-1)*N - (k-1)*(k-2)/2 + 1
+        # = (k-1)*(2N - k + 2)/2 + 1  ... let's compute manually
+        idx = (k - 1) * N - (k - 1) * (k - 2) ÷ 2 + 1  # (k,k) entry, 1-based
+        push!(stmts, :(cnt = ExaModels.hrpass(
+            t.args[$k], comp, y1, y2, o2, cnt,
+            adj * t.g[$k],
+            adj2 * t.g[$k]^2 + adj * t.h[$idx],
+        )))
+    end
+    # off-diagonal cross terms: (∂²f/∂xᵢ∂xⱼ) * ∂cᵢ/∂x ⊗ ∂cⱼ/∂x  for i < j
+    for i in 1:N, j in (i+1):N
+        idx_ij = (i - 1) * N - (i - 1) * (i - 2) ÷ 2 + (j - i) + 1  # (i,j) entry
+        push!(stmts, :(cnt = ExaModels.hdrpass(
+            t.args[$i], t.args[$j], comp, y1, y2, o2, cnt,
+            adj2 * t.g[$i] * t.g[$j] + adj * t.h[$idx_ij],
+        )))
+    end
+    return quote
+        $(stmts...)
+        cnt
+    end
+end
+
+@generated function hrpass0(
+    t::ExaModels.SecondAdjointNodeN{F,N},
+    comp,
+    y1,
+    y2,
+    o2,
+    cnt,
+    adj,
+    adj2,
+) where {F,N}
+    stmts = Expr[]
+    for k in 1:N
+        idx = (k - 1) * N - (k - 1) * (k - 2) ÷ 2 + 1
+        push!(stmts, :(cnt = ExaModels.hrpass(
+            t.args[$k], comp, y1, y2, o2, cnt,
+            adj * t.g[$k],
+            adj2 * t.g[$k]^2 + adj * t.h[$idx],
+        )))
+    end
+    for i in 1:N, j in (i+1):N
+        idx_ij = (i - 1) * N - (i - 1) * (i - 2) ÷ 2 + (j - i) + 1
+        push!(stmts, :(cnt = ExaModels.hdrpass(
+            t.args[$i], t.args[$j], comp, y1, y2, o2, cnt,
+            adj2 * t.g[$i] * t.g[$j] + adj * t.h[$idx_ij],
+        )))
+    end
+    return quote
+        $(stmts...)
+        cnt
+    end
 end
 
 @inline hrpass0(args...) = hrpass(args...)
