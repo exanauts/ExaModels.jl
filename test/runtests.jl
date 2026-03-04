@@ -20,6 +20,8 @@ include("JuMPTest/JuMPTest.jl")
 include("UtilsTest/UtilsTest.jl")
 include("TwoStageTest/TwoStageTest.jl")
 include("LinAlgTest/LinAlgTest.jl")
+include("OracleTest/OracleTest.jl")
+include("OracleTest/MJXOracleTest.jl")
 
 @testset verbose = true "ExaModels test" begin
     @info "Running AD Test"
@@ -39,4 +41,10 @@ include("LinAlgTest/LinAlgTest.jl")
 
     @info "Running LinAlg Test"
     LinAlgTest.runtests()
+
+    @info "Running Oracle Test"
+    OracleTest.runtests()
+
+    @info "Running MJX Oracle Test"
+    MJXOracleTest.runtests()
 end

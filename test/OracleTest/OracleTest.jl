@@ -3,6 +3,7 @@ module OracleTest
 using ExaModels
 using NLPModels
 using SparseArrays
+using LinearAlgebra
 using Test
 
 import ..BACKENDS
@@ -209,7 +210,29 @@ end
 
 function test_jprod_jtprod(backend)
     @testset "jprod_nln! and jtprod_nln!" begin
-        m  = _build_oracle_model(backend)
+        c = ExaCore(Float64; backend = backend)
+        x = variable(c, 4; lvar = -Inf, uvar = Inf, start = [0.5, 0.5, 0.6, 0.4])
+        objective(c, x[i]^2 for i in 1:4)
+        constraint(c, x[1] + x[2]; lcon = 1.0, ucon = 1.0)
+        oracle_A = VectorNonlinearOracle(
+            nvar = 4, ncon = 1, nnzj = 2, nnzh = 0,
+            jac_rows = [1, 1], jac_cols = [3, 4],
+            lcon = [0.0], ucon = [0.0],
+            f!   = (cv, xv) -> (cv[1] = xv[3] - xv[4]; nothing),
+            jac! = (vv, xv) -> (vv[1] = 1.0; vv[2] = -1.0; nothing),
+        )
+        constraint(c, oracle_A)
+        oracle_B = VectorNonlinearOracle(
+            nvar = 4, ncon = 1, nnzj = 2, nnzh = 2,
+            jac_rows = [1, 1], jac_cols = [3, 4],
+            hess_rows = [3, 4], hess_cols = [3, 4],
+            lcon = [-Inf], ucon = [Inf],
+            f!    = (cv, xv) -> (cv[1] = xv[3]^2 + xv[4]^2; nothing),
+            jac!  = (vv, xv) -> (vv[1] = 2*xv[3]; vv[2] = 2*xv[4]; nothing),
+            hess! = (hv, xv, yv) -> (hv[1] = 2*yv[1]; hv[2] = 2*yv[1]; nothing),
+        )
+        constraint(c, oracle_B)
+        m  = ExaModel(c; prod = true)
         x0 = ExaModels.convert_array(X0, backend)
         J  = analytic_jac_dense(X0)
 
@@ -228,7 +251,29 @@ end
 
 function test_hprod(backend)
     @testset "hprod!" begin
-        m  = _build_oracle_model(backend)
+        c = ExaCore(Float64; backend = backend)
+        x = variable(c, 4; lvar = -Inf, uvar = Inf, start = [0.5, 0.5, 0.6, 0.4])
+        objective(c, x[i]^2 for i in 1:4)
+        constraint(c, x[1] + x[2]; lcon = 1.0, ucon = 1.0)
+        oracle_A = VectorNonlinearOracle(
+            nvar = 4, ncon = 1, nnzj = 2, nnzh = 0,
+            jac_rows = [1, 1], jac_cols = [3, 4],
+            lcon = [0.0], ucon = [0.0],
+            f!   = (cv, xv) -> (cv[1] = xv[3] - xv[4]; nothing),
+            jac! = (vv, xv) -> (vv[1] = 1.0; vv[2] = -1.0; nothing),
+        )
+        constraint(c, oracle_A)
+        oracle_B = VectorNonlinearOracle(
+            nvar = 4, ncon = 1, nnzj = 2, nnzh = 2,
+            jac_rows = [1, 1], jac_cols = [3, 4],
+            hess_rows = [3, 4], hess_cols = [3, 4],
+            lcon = [-Inf], ucon = [Inf],
+            f!    = (cv, xv) -> (cv[1] = xv[3]^2 + xv[4]^2; nothing),
+            jac!  = (vv, xv) -> (vv[1] = 2*xv[3]; vv[2] = 2*xv[4]; nothing),
+            hess! = (hv, xv, yv) -> (hv[1] = 2*yv[1]; hv[2] = 2*yv[1]; nothing),
+        )
+        constraint(c, oracle_B)
+        m  = ExaModel(c; prod = true)
         x0 = ExaModels.convert_array(X0, backend)
         y0 = ExaModels.convert_array([0.0, 0.0, 1.0], backend)
         v  = ExaModels.convert_array([1.0, -1.0, 2.0, -0.5], backend)
@@ -256,8 +301,8 @@ function test_multiple_oracles(backend)
             nvar=4, ncon=1, nnzj=2, nnzh=0,
             jac_rows=[1,1], jac_cols=[1,2],
             lcon=[0.0], ucon=[0.0],
-            f!  =(cv,xv)->(cv[1]=xv[1]-xv[2]; nothing),
-            jac!=(vv,xv)->(vv[1]=1.0; vv[2]=-1.0; nothing),
+            f!   = (cv,xv) -> (cv[1] = xv[1] - xv[2]; nothing),
+            jac! = (vv,xv) -> (vv[1] = 1.0; vv[2] = -1.0; nothing),
         )
         constraint(c, o1)
 
@@ -267,9 +312,9 @@ function test_multiple_oracles(backend)
             jac_rows=[1,1,2,2], jac_cols=[1,3,2,4],
             hess_rows=[1,2], hess_cols=[3,4],
             lcon=[0.0,0.0], ucon=[Inf,Inf],
-            f!   =(cv,xv)->(cv[1]=xv[1]*xv[3]; cv[2]=xv[2]*xv[4]; nothing),
-            jac! =(vv,xv)->(vv[1]=xv[3]; vv[2]=xv[1]; vv[3]=xv[4]; vv[4]=xv[2]; nothing),
-            hess!=(hv,xv,yv)->(hv[1]=yv[1]; hv[2]=yv[2]; nothing),
+            f!    = (cv,xv) -> (cv[1] = xv[1]*xv[3]; cv[2] = xv[2]*xv[4]; nothing),
+            jac!  = (vv,xv) -> (vv[1] = xv[3]; vv[2] = xv[1]; vv[3] = xv[4]; vv[4] = xv[2]; nothing),
+            hess! = (hv,xv,yv) -> (hv[1] = yv[1]; hv[2] = yv[2]; nothing),
         )
         constraint(c, o2)
 
@@ -301,6 +346,84 @@ function test_multiple_oracles(backend)
     end
 end
 
+function test_gpu_oracle(backend)
+    # Only meaningful for GPU backends; skip on CPU (nothing / CPU()).
+    # We simulate a "GPU-native black-box" by setting gpu=true and providing
+    # callbacks that operate directly on whatever array type the backend uses.
+    # For CPU backends the callbacks just receive plain Arrays, which is fine.
+    @testset "gpu=true oracle" begin
+        c  = ExaCore(Float64; backend = backend)
+        x  = variable(c, 4; lvar = -Inf, uvar = Inf, start = [0.5, 0.5, 0.6, 0.4])
+        objective(c, x[i]^2 for i in 1:4)
+        constraint(c, x[1] + x[2]; lcon = 1.0, ucon = 1.0)
+
+        # Oracle with gpu=true: callbacks receive the native array type of the
+        # backend (CuArray on CUDA, Array on CPU) without any host copy.
+        oracle_gpu = VectorNonlinearOracle(
+            nvar      = 4,
+            ncon      = 1,
+            nnzj      = 2,
+            nnzh      = 2,
+            jac_rows  = [1, 1],
+            jac_cols  = [3, 4],
+            hess_rows = [3, 4],
+            hess_cols = [3, 4],
+            lcon      = [-Inf],
+            ucon      = [Inf],
+            gpu       = true,
+            f!    = (cv, xv) -> (cv .= xv[3:3].^2 .+ xv[4:4].^2; nothing),
+            jac!  = (vv, xv) -> (vv .= 2 .* xv[3:4]; nothing),
+            hess! = (hv, xv, yv) -> (hv .= 2 .* yv; nothing),
+        )
+        constraint(c, oracle_gpu)
+        m  = ExaModel(c)
+        @test m isa ExaModelWithOracle
+
+        x0 = ExaModels.convert_array(X0, backend)
+        y0 = ExaModels.convert_array([0.0, 1.0], backend)
+
+        # cons
+        g = similar(x0, m.meta.ncon)
+        ExaModels.cons_nln!(m, x0, g)
+        @test Array(g)[1] ≈ 1.0   atol=1e-12
+        @test Array(g)[2] ≈ 0.52  atol=1e-12   # x3^2 + x4^2
+
+        # jac_coord
+        jac = similar(x0, m.meta.nnzj)
+        ExaModels.jac_coord!(m, x0, jac)
+        rows = similar(x0, Int, m.meta.nnzj)
+        cols = similar(x0, Int, m.meta.nnzj)
+        ExaModels.jac_structure!(m, rows, cols)
+        J = zeros(2, 4)
+        for k in eachindex(Array(rows))
+            J[Array(rows)[k], Array(cols)[k]] += Array(jac)[k]
+        end
+        @test J[1, 1] ≈ 1.0  atol=1e-12
+        @test J[1, 2] ≈ 1.0  atol=1e-12
+        @test J[2, 3] ≈ 2*X0[3]  atol=1e-12
+        @test J[2, 4] ≈ 2*X0[4]  atol=1e-12
+
+        # hess_coord with λ₂=1
+        hess = similar(x0, m.meta.nnzh)
+        ExaModels.hess_coord!(m, x0, y0, hess)
+        hrows = similar(x0, Int, m.meta.nnzh)
+        hcols = similar(x0, Int, m.meta.nnzh)
+        ExaModels.hess_structure!(m, hrows, hcols)
+        H = zeros(4, 4)
+        for k in eachindex(Array(hrows))
+            r, c_ = Array(hrows)[k], Array(hcols)[k]
+            H[r, c_] += Array(hess)[k]
+            r != c_ && (H[c_, r] += Array(hess)[k])
+        end
+        # obj: 2I; oracle hess: λ_oracle*2 on (3,3) and (4,4);
+        # y0=[0.0,1.0] so λ_oracle=y0[2]=1.0, contribution = 2.0
+        @test H[1,1] ≈ 2.0  atol=1e-12
+        @test H[2,2] ≈ 2.0  atol=1e-12
+        @test H[3,3] ≈ 4.0  atol=1e-12   # 2 (obj) + 2*1.0 (oracle)
+        @test H[4,4] ≈ 4.0  atol=1e-12   # 2 (obj) + 2*1.0 (oracle)
+    end
+end
+
 function runtests()
     @testset "OracleTest" begin
         @testset "VectorNonlinearOracle type checks" begin
@@ -317,6 +440,7 @@ function runtests()
                 test_jprod_jtprod(backend)
                 test_hprod(backend)
                 test_multiple_oracles(backend)
+                test_gpu_oracle(backend)
             end
         end
     end

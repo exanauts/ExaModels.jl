@@ -48,6 +48,9 @@ into an `ExaCore` with [`constraint`](@ref). The block is characterised by:
 - `f!`: `f!(c, x)` — writes residuals into `c[1:ncon]`
 - `jac!`: `jac!(vals, x)` — writes Jacobian values into `vals[1:nnzj]` in the declared sparsity order
 - `hess!`: `hess!(vals, x, y)` — writes Hessian values into `vals[1:nnzh]` (y = constraint multipliers)
+- `gpu`: if `true`, callbacks receive device arrays (e.g. `CuArray`) directly — no CPU round-trip.
+  Use this when your callbacks are already GPU-capable (CUDA kernels, CuDSS, etc.).
+  Default is `false` (CPU bridge: arrays are `Array`-copied before every call).
 """
 struct VectorNonlinearOracle{F, J, H, VT <: AbstractVector}
     nvar::Int
@@ -63,6 +66,7 @@ struct VectorNonlinearOracle{F, J, H, VT <: AbstractVector}
     f!::F
     jac!::J
     hess!::H
+    gpu::Bool                # true ⟹ callbacks accept device arrays directly
 end
 
 function VectorNonlinearOracle(;
@@ -79,6 +83,7 @@ function VectorNonlinearOracle(;
     f!,
     jac!,
     hess! = (vals, x, y) -> nothing,
+    gpu::Bool = false,
 )
     @assert length(jac_rows)  == nnzj "jac_rows length must equal nnzj"
     @assert length(jac_cols)  == nnzj "jac_cols length must equal nnzj"
@@ -91,7 +96,7 @@ function VectorNonlinearOracle(;
         jac_rows, jac_cols,
         hess_rows, hess_cols,
         lcon, ucon,
-        f!, jac!, hess!,
+        f!, jac!, hess!, gpu,
     )
 end
 
@@ -100,9 +105,21 @@ Base.show(io::IO, o::VectorNonlinearOracle) = print(
     """
 VectorNonlinearOracle
 
-  ncon: $(o.ncon)   nnzj: $(o.nnzj)   nnzh: $(o.nnzh)
+  ncon: $(o.ncon)   nnzj: $(o.nnzj)   nnzh: $(o.nnzh)   gpu: $(o.gpu)
 """,
 )
+
+# ── Array-routing helpers ────────────────────────────────────────────────────
+# When oracle.gpu == false (default): copy device → host before calling the
+# callback (CPU bridge, e.g. for PyCall).  Results are copyto!-ed back.
+# When oracle.gpu == true: pass the device array directly; the callback is
+# responsible for running on-device (CUDA kernels, CuDSS, etc.).
+_ensure_cpu(x::Array) = x          # already on CPU – no copy needed
+_ensure_cpu(x)        = Array(x)   # GPU array → copy to CPU
+
+# Choose the right input view for an oracle given its gpu flag.
+_oracle_input(oracle::VectorNonlinearOracle, x) =
+    oracle.gpu ? x : _ensure_cpu(x)
 
 # ── Registration ──────────────────────────────────────────────────────────────
 
@@ -225,17 +242,10 @@ end
 
 # ── NLPModels methods ──────────────────────────────────────────────────────────
 
-# --- objective and gradient: oracles are constraints only, delegate to SIMD ---
-
-function obj(m::ExaModelWithOracle, x::AbstractVector)
-    return _obj(m.objs, x, m.θ)
-end
-
-function grad!(m::ExaModelWithOracle, x::AbstractVector, f::AbstractVector)
-    fill!(f, zero(eltype(f)))
-    _grad!(m.objs, x, m.θ, f)
-    return f
-end
+# obj and grad! are not overridden here:
+# the KA extension provides AbstractExaModel{E<:KAExtension} overrides which
+# dispatch correctly for ExaModelWithOracle on GPU.  On CPU, NLPModels falls
+# back through AbstractExaModel -> nlp.jl definitions.
 
 # --- constraint residuals ---
 
@@ -243,10 +253,15 @@ function cons_nln!(m::ExaModelWithOracle, x::AbstractVector, g::AbstractVector)
     fill!(g, zero(eltype(g)))
     # SIMD symbolic constraints (indices 1 : n_simd_con)
     _cons_nln!(m.cons, x, m.θ, g)
-    # Oracle constraint blocks
+    # Oracle constraint blocks.
+    # When oracle.gpu=false (default): CPU-bridge (safe for PyCall).
+    # When oracle.gpu=true: pass device array directly (GPU black-box).
     for (i, oracle) in enumerate(m.oracles)
-        off = m.oracle_con_offsets[i]
-        oracle.f!(@view(g[off+1 : off+oracle.ncon]), x)
+        off  = m.oracle_con_offsets[i]
+        xin  = _oracle_input(oracle, x)
+        cv   = similar(xin, oracle.ncon)
+        oracle.f!(cv, xin)
+        copyto!(view(g, off+1 : off+oracle.ncon), cv)
     end
     return g
 end
@@ -256,13 +271,16 @@ end
 function jac_structure!(m::ExaModelWithOracle, rows::AbstractVector, cols::AbstractVector)
     # SIMD Jacobian sparsity
     _jac_structure!(m.cons, rows, cols)
-    # Oracle Jacobian sparsity (row indices shifted by oracle's constraint offset)
+    # Oracle Jacobian sparsity (row indices shifted by oracle's constraint offset).
+    # Use copyto! instead of a scalar loop so this is GPU-safe (e.g. CuArrays).
     for (i, oracle) in enumerate(m.oracles)
         off_j = m.oracle_jac_offsets[i]
         off_c = m.oracle_con_offsets[i]
-        for k in 1:oracle.nnzj
-            rows[off_j + k] = oracle.jac_rows[k] + off_c
-            cols[off_j + k] = oracle.jac_cols[k]
+        if oracle.nnzj > 0
+            copyto!(view(rows, off_j+1 : off_j+oracle.nnzj),
+                    oracle.jac_rows .+ off_c)
+            copyto!(view(cols, off_j+1 : off_j+oracle.nnzj),
+                    oracle.jac_cols)
         end
     end
     return rows, cols
@@ -272,10 +290,15 @@ function jac_coord!(m::ExaModelWithOracle, x::AbstractVector, jac::AbstractVecto
     fill!(jac, zero(eltype(jac)))
     # SIMD Jacobian values
     _jac_coord!(m.cons, x, m.θ, jac)
-    # Oracle Jacobian values
+    # Oracle Jacobian values.
     for (i, oracle) in enumerate(m.oracles)
         off_j = m.oracle_jac_offsets[i]
-        oracle.jac!(@view(jac[off_j+1 : off_j+oracle.nnzj]), x)
+        if oracle.nnzj > 0
+            xin = _oracle_input(oracle, x)
+            jv  = similar(xin, oracle.nnzj)
+            oracle.jac!(jv, xin)
+            copyto!(view(jac, off_j+1 : off_j+oracle.nnzj), jv)
+        end
     end
     return jac
 end
@@ -291,14 +314,23 @@ function jprod_nln!(
 )
     fill!(Jv, zero(eltype(Jv)))
     _jprod_nln!(m.cons, x, m.θ, v, Jv)
+    # Oracle part: CPU bridge unless oracle.gpu=true.
     for (i, oracle) in enumerate(m.oracles)
-        off_j = m.oracle_jac_offsets[i]
-        off_c = m.oracle_con_offsets[i]
-        jac_vals = similar(x, oracle.nnzj)
-        oracle.jac!(jac_vals, x)
+        off_c   = m.oracle_con_offsets[i]
+        xin     = _oracle_input(oracle, x)
+        vin     = oracle.gpu ? v : _ensure_cpu(v)
+        jac_buf = similar(xin, oracle.nnzj)
+        oracle.jac!(jac_buf, xin)
+        # Accumulate: always done on host to avoid scalar GPU indexing.
+        jac_host  = _ensure_cpu(jac_buf)
+        v_host    = _ensure_cpu(vin)
+        Jv_delta  = zeros(eltype(jac_host), length(Jv))
         for k in 1:oracle.nnzj
-            Jv[oracle.jac_rows[k] + off_c] += jac_vals[k] * v[oracle.jac_cols[k]]
+            Jv_delta[oracle.jac_rows[k] + off_c] += jac_host[k] * v_host[oracle.jac_cols[k]]
         end
+        Jv_buf = similar(Jv)
+        copyto!(Jv_buf, Jv_delta)
+        Jv .+= Jv_buf
     end
     return Jv
 end
@@ -312,13 +344,20 @@ function jtprod_nln!(
     fill!(Jtv, zero(eltype(Jtv)))
     _jtprod_nln!(m.cons, x, m.θ, v, Jtv)
     for (i, oracle) in enumerate(m.oracles)
-        off_j = m.oracle_jac_offsets[i]
-        off_c = m.oracle_con_offsets[i]
-        jac_vals = similar(x, oracle.nnzj)
-        oracle.jac!(jac_vals, x)
+        off_c   = m.oracle_con_offsets[i]
+        xin     = _oracle_input(oracle, x)
+        vin     = oracle.gpu ? v : _ensure_cpu(v)
+        jac_buf = similar(xin, oracle.nnzj)
+        oracle.jac!(jac_buf, xin)
+        jac_host  = _ensure_cpu(jac_buf)
+        v_host    = _ensure_cpu(vin)
+        Jtv_delta = zeros(eltype(jac_host), length(Jtv))
         for k in 1:oracle.nnzj
-            Jtv[oracle.jac_cols[k]] += jac_vals[k] * v[oracle.jac_rows[k] + off_c]
+            Jtv_delta[oracle.jac_cols[k]] += jac_host[k] * v_host[oracle.jac_rows[k] + off_c]
         end
+        Jtv_buf = similar(Jtv)
+        copyto!(Jtv_buf, Jtv_delta)
+        Jtv .+= Jtv_buf
     end
     return Jtv
 end
@@ -330,25 +369,21 @@ function hess_structure!(m::ExaModelWithOracle, rows::AbstractVector, cols::Abst
     _con_hess_structure!(m.cons, rows, cols)
     for (i, oracle) in enumerate(m.oracles)
         off_h = m.oracle_hess_offsets[i]
-        for k in 1:oracle.nnzh
-            rows[off_h + k] = oracle.hess_rows[k]
-            cols[off_h + k] = oracle.hess_cols[k]
+        if oracle.nnzh > 0
+            copyto!(view(rows, off_h+1 : off_h+oracle.nnzh), oracle.hess_rows)
+            copyto!(view(cols, off_h+1 : off_h+oracle.nnzh), oracle.hess_cols)
         end
     end
     return rows, cols
 end
 
-function hess_coord!(
-    m::ExaModelWithOracle,
-    x::AbstractVector,
-    hess::AbstractVector;
-    obj_weight = one(eltype(x)),
-)
-    fill!(hess, zero(eltype(hess)))
-    _obj_hess_coord!(m.objs, x, m.θ, hess, obj_weight)
-    return hess
-end
+# hess_coord! without y (obj-only) is handled by the KA extension for GPU;
+# for CPU the nlp.jl AbstractExaModel fallback is used.
 
+# hess_coord! with y: keep this for CPU (nothing backend) where the KA ext
+# does not provide a dispatch.  On GPU the KA extension's
+# ExaModels.hess_coord!(m::ExaModelWithOracle{T,VT,E<:KAExtension},...) takes
+# priority (it is more specific due to the E constraint).
 function hess_coord!(
     m::ExaModelWithOracle,
     x::AbstractVector,
@@ -357,31 +392,29 @@ function hess_coord!(
     obj_weight = one(eltype(x)),
 )
     fill!(hess, zero(eltype(hess)))
+    # Use the generic (non-backend) SIMD helpers so this works on CPU.
     _obj_hess_coord!(m.objs, x, m.θ, hess, obj_weight)
     _con_hess_coord!(m.cons, x, m.θ, y, hess, obj_weight)
     for (i, oracle) in enumerate(m.oracles)
         off_h = m.oracle_hess_offsets[i]
         off_c = m.oracle_con_offsets[i]
-        oracle.hess!(
-            @view(hess[off_h+1 : off_h+oracle.nnzh]),
-            x,
-            @view(y[off_c+1 : off_c+oracle.ncon]),
-        )
+        if oracle.nnzh > 0
+            xin  = _oracle_input(oracle, x)
+            yslice = if oracle.gpu
+                view(y, (off_c+1):(off_c+oracle.ncon))
+            else
+                view(_ensure_cpu(y), (off_c+1):(off_c+oracle.ncon))
+            end
+            hv = similar(xin, oracle.nnzh)
+            oracle.hess!(hv, xin, yslice)
+            copyto!(view(hess, off_h+1 : off_h+oracle.nnzh), hv)
+        end
     end
     return hess
 end
 
-function hprod!(
-    m::ExaModelWithOracle,
-    x::AbstractVector,
-    v::AbstractVector,
-    Hv::AbstractVector;
-    obj_weight = one(eltype(x)),
-)
-    fill!(Hv, zero(eltype(Hv)))
-    _obj_hprod!(m.objs, x, m.θ, v, Hv, obj_weight)
-    return Hv
-end
+# hprod! without y (obj-only) is handled by the KA extension for GPU;
+# for CPU the nlp.jl AbstractExaModel fallback is used.
 
 function hprod!(
     m::ExaModelWithOracle,
@@ -394,19 +427,34 @@ function hprod!(
     fill!(Hv, zero(eltype(Hv)))
     _obj_hprod!(m.objs, x, m.θ, v, Hv, obj_weight)
     _con_hprod!(m.cons, x, m.θ, y, v, Hv, obj_weight)
-    # Oracle Hessian-vector product via sparse accumulation
+    # Oracle Hessian-vector product.
+    # Accumulation is always done host-side (avoids scalar GPU indexing);
+    # the hess! call itself is on-device when oracle.gpu=true.
     for (i, oracle) in enumerate(m.oracles)
         off_c = m.oracle_con_offsets[i]
-        off_h = m.oracle_hess_offsets[i]
-        hess_vals = similar(x, oracle.nnzh)
-        oracle.hess!(hess_vals, x, @view(y[off_c+1 : off_c+oracle.ncon]))
+        oracle.nnzh == 0 && continue
+        xin    = _oracle_input(oracle, x)
+        yslice = if oracle.gpu
+            view(y, (off_c+1):(off_c+oracle.ncon))
+        else
+            view(_ensure_cpu(y), (off_c+1):(off_c+oracle.ncon))
+        end
+        vin    = oracle.gpu ? v : _ensure_cpu(v)
+        hess_buf = similar(xin, oracle.nnzh)
+        oracle.hess!(hess_buf, xin, yslice)
+        hess_host = _ensure_cpu(hess_buf)
+        v_host    = _ensure_cpu(vin)
+        Hv_delta  = zeros(eltype(hess_host), length(Hv))
         for k in 1:oracle.nnzh
             r, c_ = oracle.hess_rows[k], oracle.hess_cols[k]
-            Hv[r] += hess_vals[k] * v[c_]
+            Hv_delta[r] += hess_host[k] * v_host[c_]
             if r != c_
-                Hv[c_] += hess_vals[k] * v[r]
+                Hv_delta[c_] += hess_host[k] * v_host[r]
             end
         end
+        Hv_buf = similar(Hv)
+        copyto!(Hv_buf, Hv_delta)
+        Hv .+= Hv_buf
     end
     return Hv
 end
