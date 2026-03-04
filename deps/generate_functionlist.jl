@@ -43,12 +43,25 @@ function sym2lambda(expr, vars::Symbol...)
     typevar = string(vars[1])
     s = replace_float_constants(s, typevar)
     s = replace_integer_constants(s, typevar)
+    s = _runic_mul_spaces(s)
     if length(vars) == 1
         return "$(vars[1]) -> $s"
     else
         vstr = join(vars, ", ")
         return "($vstr) -> $s"
     end
+end
+
+"""
+Ensure spaces around `*` for Runic formatting compliance.
+Symbolics.jl emits `a*b`; Runic expects `a * b`.
+Two passes handle chains like `a*b*c`.
+"""
+function _runic_mul_spaces(s::String)
+    for _ in 1:2
+        s = replace(s, r"(\S)\*(\S)" => s"\1 * \2")
+    end
+    return s
 end
 
 # ============================================================================
@@ -201,8 +214,19 @@ function generate()
         io, raw"""# Runtime registration helpers — use Base.$fname pattern (symbols) to avoid
         # syntax errors with operator function names like Base.:+.
 
+        # _needs_overload: true when no ExaModels-specific method exists yet.
+        # Plain `hasmethod` is too conservative — it returns true for
+        # untyped Base generics like max(x,y) = ifelse(isless(x,y),y,x),
+        # which prevents the Node2 overload from being added.  Check the
+        # module of the matched method: only skip if ExaModels already owns it
+        # (e.g. the identity-element specializations in specialization.jl).
+        function _needs_overload(f, types)
+            hasmethod(f, types) || return true
+            return which(f, types).module !== @__MODULE__
+        end
+
         function _register_univ(fname::Symbol, df, ddf)
-            if !hasmethod(getfield(Base, fname), Tuple{AbstractNode})
+            if _needs_overload(getfield(Base, fname), Tuple{AbstractNode})
                 @eval @inline Base.$fname(n::N) where {N <: AbstractNode} = Node1(Base.$fname, n)
             end
             @eval @inline Base.$fname(d::D) where {D <: AbstractAdjointNode} =
@@ -214,7 +238,8 @@ function generate()
         end
 
         function _register_biv(fname::Symbol, df1, df2, ddf11, ddf12, ddf22)
-            if !hasmethod(getfield(Base, fname), Tuple{AbstractNode, AbstractNode})
+            f = getfield(Base, fname)
+            if _needs_overload(f, Tuple{AbstractNode, AbstractNode})
                 @eval @inline function Base.$fname(
                         d1::D1,
                         d2::D2,
@@ -222,7 +247,7 @@ function generate()
                     return Node2(Base.$fname, d1, d2)
                 end
             end
-            if !hasmethod(getfield(Base, fname), Tuple{AbstractNode, Real})
+            if _needs_overload(f, Tuple{AbstractNode, Real})
                 @eval @inline function Base.$fname(
                         d1::D1,
                         d2::D2,
@@ -230,7 +255,7 @@ function generate()
                     return Node2(Base.$fname, d1, d2)
                 end
             end
-            if !hasmethod(getfield(Base, fname), Tuple{Real, AbstractNode})
+            if _needs_overload(f, Tuple{Real, AbstractNode})
                 @eval @inline function Base.$fname(
                         d1::D1,
                         d2::D2,
