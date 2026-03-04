@@ -35,6 +35,7 @@ include("gradient.jl")
 include("jacobian.jl")
 include("hessian.jl")
 include("nlp.jl")
+include("oracle.jl")
 include("tags.jl")
 include("utils.jl")
 
@@ -57,6 +58,8 @@ export ExaModel,
     multipliers_L,
     multipliers_U,
     @register_univariate,
-    @register_bivariate
+    @register_bivariate,
+    VectorNonlinearOracle,
+    ExaModelWithOracle
 
 end # module ExaModels
