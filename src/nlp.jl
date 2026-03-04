@@ -226,6 +226,8 @@ Base.@kwdef mutable struct ExaCore{T,VT<:AbstractVector{T}, B, S}
     param_subexpr_values::VT = similar(x0, 0)
     param_subexpr_fns::Vector{Any} = Any[]
     tags::S = nothing
+    # VectorNonlinearOracle support
+    oracles::Vector{Any} = Any[]
 end
 
 default_T(backend) = Float64
@@ -316,27 +318,30 @@ julia> result = ipopt(m; print_level=0)    # solve the problem
 
 ```
 """
-ExaModel(c::C; kwargs...) where {C<:ExaCore} = ExaModel(
-    c.obj,
-    c.con,
-    c.θ,
-    NLPModels.NLPModelMeta(
-        c.nvar,
-        ncon = c.ncon,
-        nnzj = c.nnzj,
-        nnzh = c.nnzh,
-        x0 = c.x0,
-        lvar = c.lvar,
-        uvar = c.uvar,
-        y0 = c.y0,
-        lcon = c.lcon,
-        ucon = c.ucon,
-        minimize = c.minimize,
-    ),
-    NLPModels.Counters(),
-    build_extension(c; kwargs...),
-    c.tags
-)
+function ExaModel(c::C; kwargs...) where {C<:ExaCore}
+    isempty(c.oracles) || return _build_with_oracle(c; kwargs...)
+    return ExaModel(
+        c.obj,
+        c.con,
+        c.θ,
+        NLPModels.NLPModelMeta(
+            c.nvar,
+            ncon = c.ncon,
+            nnzj = c.nnzj,
+            nnzh = c.nnzh,
+            x0 = c.x0,
+            lvar = c.lvar,
+            uvar = c.uvar,
+            y0 = c.y0,
+            lcon = c.lcon,
+            ucon = c.ucon,
+            minimize = c.minimize,
+        ),
+        NLPModels.Counters(),
+        build_extension(c; kwargs...),
+        c.tags,
+    )
+end
 
 build_extension(c::ExaCore; kwargs...) = nothing
 
