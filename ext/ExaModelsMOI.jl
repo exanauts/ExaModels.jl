@@ -43,7 +43,10 @@ function update_bin!(bin, e, p)
     if _update_bin!(bin, e, p) # if update succeeded, return the original bin
         return bin
     else # if update has failed, return a new bin
-        return Bin(e, [p], bin)
+        if p isa Tuple
+            p = [p]
+        end
+        return Bin(e, p, bin)
     end
 end
 function _update_bin!(bin::Bin{E,P,I}, e, p) where {E,P,I}
@@ -61,6 +64,9 @@ end
 function check_supported(T, moim)
     con_types = MOI.get(moim, MOI.ListOfConstraintTypesPresent())
     for (F, S) in con_types
+        if F <: FunctionGenerator
+            continue
+        end
         !(F <: SUPPORTED_FUNC_TYPE_WITH_VAR) && error("Unsupported function type $F.")
         if F <: MOI.VariableIndex
             !(S <: SUPPORTED_VAR_SET_TYPE) &&
@@ -194,6 +200,23 @@ function copy_objective!(c, moim, var_to_idx)
     build_objective!(c, bin)
 end
 
+function ExaModels.copy_constraints!(moim, bin, offset, var_to_idx, con_to_idx, ::Type{MOI.VariableIndex}, ::Type{S}) where {S}
+    cis = MOI.get(moim, MOI.ListOfConstraintIndices{MOI.VariableIndex,S}())
+    for ci in cis
+        vi = MOI.get(moim, MOI.ConstraintFunction(), ci)
+        vartype, var_idx = var_to_idx[vi]
+        if vartype === :variable
+            con_to_idx[ci] = var_idx
+        end
+    end
+    return bin, offset
+end
+
+function ExaModels.copy_constraints!(moim, bin, offset, var_to_idx, con_to_idx, ::Type{F}, ::Type{S}) where {F, S}
+    cis = MOI.get(moim, MOI.ListOfConstraintIndices{F,S}())
+    return exafy_con(moim, cis, bin, offset, lcon, ucon, y0, var_to_idx, con_to_idx)
+end
+
 function copy_constraints!(c, moim, var_to_idx, T)
     bin = BinNull()
     offset = 0
@@ -204,24 +227,74 @@ function copy_constraints!(c, moim, var_to_idx, T)
 
     con_types = MOI.get(moim, MOI.ListOfConstraintTypesPresent())
     for (F, S) in con_types
-        cis = MOI.get(moim, MOI.ListOfConstraintIndices{F,S}())
-        if F <: MOI.VariableIndex
-            for ci in cis
-                vi = MOI.get(moim, MOI.ConstraintFunction(), ci)
-                vartype, var_idx = var_to_idx[vi]
-                if vartype === :variable
-                    con_to_idx[ci] = var_idx
-                end
-            end
-            continue
-        end
-        bin, offset =
-            exafy_con(moim, cis, bin, offset, lcon, ucon, y0, var_to_idx, con_to_idx)
+        # This serves both as function barrier for type instability
+        # and as an opportunity for ExaModelsGenOpt to handle its
+        # specific constraint type
+        bin, offset = ExaModels.copy_constraints!(c, moim, cis, bin, offset, var_to_idx, con_to_idx)
+        F <: FunctionGenerator && continue
     end
     cons = ExaModels.constraint(c, offset; start = y0, lcon = lcon, ucon = ucon)
     build_constraint!(c, cons, bin)
 
     return con_to_idx
+end
+
+exagen(α::Number, _) = α
+
+#exagen(i::IteratorIndex) = ExaModels.ParIndexed(ExaModels.ParSource(), i.value)
+
+function exagen(f::MOI.ScalarNonlinearFunction, offsets)
+    if f.head == :getindex
+        v = f.args[1]
+        if v isa ContiguousArrayOfVariables
+            idx = exagen(f.args[2], offsets)
+            if !iszero(v.offset)
+                idx = v.offset + idx
+            end
+            cp = cumprod(v.size)
+            for i in 3:length(f.args)
+                idx += cp[i-2] * (exagen(f.args[i], offsets) - 1)
+            end
+            return ExaModels.Var(idx)
+        elseif v isa IteratorIndex
+            @assert length(f.args) == 2
+            @assert f.args[2] isa Integer
+            if isnothing(offsets)
+                @assert isone(f.args[2])
+                return ExaModels.ParSource()
+            else
+                return ExaModels.ParIndexed(ExaModels.ParSource(), offsets[v.value] + f.args[2])
+            end
+        else
+            error("Unexpected the first operatand of `getindex` to be of type `$(typeof(v))`")
+        end
+    else
+        return op(f.head)((exagen(e, offsets) for e in f.args)...)
+    end
+end
+
+_lower_bounds(::Union{MOI.Zeros,MOI.Nonnegatives}, T) = zero(T)
+_lower_bounds(::MOI.Nonpositives, T) = typemin(T)
+_upper_bounds(::Union{MOI.Zeros,MOI.Nonpositives}, T) = zero(T)
+_upper_bounds(::MOI.Nonnegatives, T) = typemax(T)
+
+function _exagen(func::MOI.ScalarNonlinearFunction, iterators)
+    lengths = map(it -> length(first(it.values)), iterators)
+    if length(lengths) == 1 && lengths[] == 1
+        cs = nothing
+        pars = only.(iterators[].values)
+    else
+        cs = [0; cumsum(lengths)[1:end-1]]
+        pars = vec(map(Base.Iterators.ProductIterator(ntuple(i -> iterators[i].values, length(iterators)))) do I
+            reduce((i, j) -> tuple(i..., j...), I)
+        end)
+    end
+    expr = exagen(func, cs)
+    return expr, pars
+end
+
+function _exafy(func::SumGenerator, _)
+    return _exagen(func.func, func.iterators)
 end
 
 function _exafy_con(
@@ -323,7 +396,9 @@ function exafy_con(
     var_to_idx,
     con_to_idx,
 ) where {V<:Vector{<:MOI.ConstraintIndex}}
-    l = length(cons)
+    l = sum(cons) do ci
+        MOI.dimension(MOI.get(moim, MOI.ConstraintSet(), ci))
+    end
 
     resize!(lcon, offset + l)
     resize!(ucon, offset + l)
@@ -331,7 +406,7 @@ function exafy_con(
     for (i, ci) in enumerate(cons)
         func = MOI.get(moim, MOI.ConstraintFunction(), ci)
         set = MOI.get(moim, MOI.ConstraintSet(), ci)
-        con_to_idx[ci] = offset + i
+        con_to_idx[ci] = offset + 1
         start = if MOI.supports(
             moim, MOI.ConstraintPrimalStart(), typeof(ci)
         )
@@ -342,8 +417,9 @@ function exafy_con(
         _exafy_con_update_start(ci, start, y0, con_to_idx)
         _exafy_con_update_vector(ci, set, lcon, ucon, con_to_idx)
         bin = _exafy_con(ci, func, bin, var_to_idx, con_to_idx)
+        offset += MOI.dimension(set)
     end
-    return bin, (offset += l)
+    return bin, offest
 end
 
 function _exafy_con_update_start(i, start, y0, con_to_idx)
@@ -703,6 +779,14 @@ mutable struct Optimizer{B,S} <: MOI.AbstractOptimizer
 end
 
 MOI.is_empty(model::Optimizer) = isnothing(model.model)
+
+function MOI.supports_constraint(
+    ::Optimizer,
+    ::Type{<:FunctionGenerator},
+    ::Type{<:Union{MOI.Zeros,MOI.Nonnegatives,MOI.Nonpositives}},
+)
+    return true
+end
 
 function MOI.supports_constraint(
     ::Optimizer,
