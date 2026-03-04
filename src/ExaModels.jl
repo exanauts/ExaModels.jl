@@ -40,6 +40,8 @@ include("utils.jl")
 
 export ExaModel,
     ExaCore,
+    ExaVector,
+    ExaMatrix,
     ExaModelsBackend,
     Subexpr,
     ReducedSubexpr,
