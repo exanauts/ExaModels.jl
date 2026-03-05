@@ -55,10 +55,18 @@ function ExaModels.build_extension(
 
 
     if prod
+        # c.nnzj / c.nnzh include oracle contributions (if any).  The SIMD
+        # structure builders below only populate entries for c.con / c.obj.
+        # Keep dense value buffers at full size, but size sparsity coordinate
+        # arrays to the SIMD-only nnz counts to avoid uninitialized entries.
+        simd_nnzj = c.nnzj - sum(getproperty(o, :nnzj) for o in c.oracles; init=0)
+        simd_nnzh = c.nnzh - sum(getproperty(o, :nnzh) for o in c.oracles; init=0)
+        simd_ncon = c.ncon - sum(getproperty(o, :ncon) for o in c.oracles; init=0)
+
         jacbuffer = similar(c.x0, c.nnzj)
         hessbuffer = similar(c.x0, c.nnzh)
-        jacsparsityi = similar(c.x0, Tuple{Tuple{Int,Int},Int}, c.nnzj)
-        hesssparsityi = similar(c.x0, Tuple{Tuple{Int,Int},Int}, c.nnzh)
+        jacsparsityi = similar(c.x0, Tuple{Tuple{Int,Int},Int}, simd_nnzj)
+        hesssparsityi = similar(c.x0, Tuple{Tuple{Int,Int},Int}, simd_nnzh)
 
         _jac_structure!(c.backend, c.con, jacsparsityi, nothing)
 
@@ -91,6 +99,44 @@ function ExaModels.build_extension(
         hessptrj =
             ExaModels.getptr(c.backend, hesssparsityj; cmp = (x, y) -> x[1][2] != y[1][2])
 
+        # Per-oracle sorted sparsity + row/col pointers, precomputed once.
+        # Used in jprod_nln! / jtprod_nln! / hprod! so we never rebuild them
+        # at inference time.  oracle.gpu=false oracles store nothing.
+        _o_jac_off  = let s = simd_nnzj; v = [begin r = s; s += o.nnzj; r end for o in c.oracles]; v end
+        _o_hess_off = let s = simd_nnzh; v = [begin r = s; s += o.nnzh; r end for o in c.oracles]; v end
+        _o_con_off  = let s = simd_ncon; v = [begin r = s; s += o.ncon; r end for o in c.oracles]; v end
+        _SP = Tuple{Tuple{Int,Int},Int}  # element type shared with SIMD sparsity
+        oracle_prod = ntuple(length(c.oracles)) do i
+            oracle = c.oracles[i]
+            (!oracle.gpu || oracle.nnzj == 0) && return nothing
+            off_j = _o_jac_off[i];  off_c = _o_con_off[i];  off_h = _o_hess_off[i]
+            # Jac: row-sorted (for Jv) and col-sorted (for J'v)
+            jac_sp_i = _oracle_jac_sparsity(oracle, off_j, off_c, c.backend, c.x0)
+            ExaModels.sort!(jac_sp_i; lt = (((r1,c1),_),((r2,c2),__)) -> r1 < r2)
+            jac_ptr_i = ExaModels.getptr(c.backend, jac_sp_i; cmp = (a,b) -> a[1][1] != b[1][1])
+            jac_sp_j = copy(jac_sp_i)
+            ExaModels.sort!(jac_sp_j; lt = (((r1,c1),_),((r2,c2),__)) -> c1 < c2)
+            jac_ptr_j = ExaModels.getptr(c.backend, jac_sp_j; cmp = (a,b) -> a[1][2] != b[1][2])
+            # Hess: row-sorted (kersyspmv) and col-sorted (kersyspmv2)
+            if oracle.nnzh > 0
+                hess_sp_i = _oracle_hess_sparsity(oracle, off_h, c.backend, c.x0)
+                ExaModels.sort!(hess_sp_i; lt = (((r1,c1),_),((r2,c2),__)) -> r1 < r2)
+                hess_ptr_i = ExaModels.getptr(c.backend, hess_sp_i; cmp = (a,b) -> a[1][1] != b[1][1])
+                hess_sp_j = copy(hess_sp_i)
+                ExaModels.sort!(hess_sp_j; lt = (((r1,c1),_),((r2,c2),__)) -> c1 < c2)
+                hess_ptr_j = ExaModels.getptr(c.backend, hess_sp_j; cmp = (a,b) -> a[1][2] != b[1][2])
+            else
+                hess_sp_i = similar(c.x0, _SP, 0)
+                hess_ptr_i = ExaModels.getptr(c.backend, hess_sp_i; cmp = (a,b) -> a[1][1] != b[1][1])
+                hess_sp_j = similar(c.x0, _SP, 0)
+                hess_ptr_j = hess_ptr_i
+            end
+            (jacsparsityi  = jac_sp_i,  jacptri  = jac_ptr_i,
+             jacsparsityj  = jac_sp_j,  jacptrj  = jac_ptr_j,
+             hesssparsityi = hess_sp_i, hessptri = hess_ptr_i,
+             hesssparsityj = hess_sp_j, hessptrj = hess_ptr_j)
+        end
+
         prodhelper = (
             jacbuffer = jacbuffer,
             jacsparsityi = jacsparsityi,
@@ -102,6 +148,7 @@ function ExaModels.build_extension(
             hesssparsityj = hesssparsityj,
             hessptri = hessptri,
             hessptrj = hessptrj,
+            oracle_prod = oracle_prod,
         )
     else
         prodhelper = nothing
@@ -455,11 +502,22 @@ end
 
 function ExaModels.hess_coord!(
     m::ExaModels.AbstractExaModel{T,VT,E},
-    x::V,
-    y::V,
-    hess::V;
+    x::AbstractVector,
+    hess::AbstractVector;
+    obj_weight = one(eltype(x)),
+) where {T,VT,E<:KAExtension}
+    fill!(hess, zero(eltype(hess)))
+    _obj_hess_coord!(m.ext.backend, hess, m.objs, x, m.θ, obj_weight)
+    return hess
+end
+
+function ExaModels.hess_coord!(
+    m::ExaModels.AbstractExaModel{T,VT,E},
+    x::AbstractVector,
+    y::AbstractVector,
+    hess::AbstractVector;
     obj_weight = one(eltype(y)),
-) where {T,VT,E<:KAExtension,V<:AbstractVector}
+) where {T,VT,E<:KAExtension}
     fill!(hess, zero(eltype(hess)))
     _obj_hess_coord!(m.ext.backend, hess, m.objs, x, m.θ, obj_weight)
     _con_hess_coord!(m.ext.backend, hess, m.cons, x, m.θ, y)
@@ -645,6 +703,374 @@ end
 
 ExaModels.getbackend(m::ExaModels.AbstractExaModel{T,VT,E}) where {T,VT,E<:KAExtension} =
     m.ext.backend
+
+# ── GPU-specific overrides for ExaModelWithOracle ────────────────────────────
+#
+# When the backend is a KA GPU (CUDA, ROCm, …) the generic oracle.jl methods
+# would fall back to CPU scalar loops on device arrays.  The specialisations
+# below dispatch on E<:KAExtension and are therefore *more specific* than the
+# plain ExaModelWithOracle methods, so Julia's method resolution picks them for
+# GPU models.
+#
+# Design principle:
+#   • SIMD symbolic part  → GPU kernels (same as the non-oracle path)
+#   • Oracle callback part → CPU bridge: Array(gpu) → callback → copyto!(gpu, cpu)
+#     Oracle callbacks are always CPU functions (including PyCall wrappers).
+
+function ExaModels.jac_structure!(
+    m::ExaModels.ExaModelWithOracle{T,VT,E},
+    rows::V,
+    cols::V,
+) where {T,VT,E<:KAExtension,V<:AbstractVector}
+    if !isempty(rows)
+        _jac_structure!(m.ext.backend, m.cons, rows, cols)
+    end
+    # Oracle sparsity is static; copyto! from CPU arrays works for any backend.
+    for (i, oracle) in enumerate(m.oracles)
+        off_j = m.oracle_jac_offsets[i]
+        off_c = m.oracle_con_offsets[i]
+        if oracle.nnzj > 0
+            copyto!(view(rows, off_j+1 : off_j+oracle.nnzj),
+                    oracle.jac_rows .+ off_c)
+            copyto!(view(cols, off_j+1 : off_j+oracle.nnzj),
+                    oracle.jac_cols)
+        end
+    end
+    return rows, cols
+end
+
+function ExaModels.hess_structure!(
+    m::ExaModels.ExaModelWithOracle{T,VT,E},
+    rows::V,
+    cols::V,
+) where {T,VT,E<:KAExtension,V<:AbstractVector}
+    if !isempty(rows)
+        _obj_hess_structure!(m.ext.backend, m.objs, rows, cols)
+        _con_hess_structure!(m.ext.backend, m.cons, rows, cols)
+    end
+    for (i, oracle) in enumerate(m.oracles)
+        off_h = m.oracle_hess_offsets[i]
+        if oracle.nnzh > 0
+            copyto!(view(rows, off_h+1 : off_h+oracle.nnzh), oracle.hess_rows)
+            copyto!(view(cols, off_h+1 : off_h+oracle.nnzh), oracle.hess_cols)
+        end
+    end
+    return rows, cols
+end
+
+function ExaModels.cons_nln!(
+    m::ExaModels.ExaModelWithOracle{T,VT,E},
+    x::AbstractVector,
+    y::AbstractVector,
+) where {T,VT,E<:KAExtension}
+    # SIMD part: GPU-accelerated kernels.
+    _cons_nln!(m.ext.backend, y, m.cons, x, m.θ)
+    _conaugs!(m.ext.backend, m.ext.conbuffer, m.cons, x, m.θ)
+    if length(m.ext.conaugptr) > 1
+        compress_to_dense(m.ext.backend)(
+            y,
+            m.ext.conbuffer,
+            m.ext.conaugptr,
+            m.ext.conaugsparsity;
+            ndrange = length(m.ext.conaugptr) - 1,
+        )
+    end
+    # Oracle part: gpu=true → write directly into view of y (zero-copy).
+    #              gpu=false → CPU bridge.
+    for (i, oracle) in enumerate(m.oracles)
+        off = m.oracle_con_offsets[i]
+        if oracle.gpu
+            oracle.f!(view(y, off+1 : off+oracle.ncon), x)
+        else
+            xin = ExaModels._ensure_cpu(x)
+            cv  = similar(xin, oracle.ncon)
+            oracle.f!(cv, xin)
+            copyto!(view(y, off+1 : off+oracle.ncon), cv)
+        end
+    end
+    return y
+end
+
+function ExaModels.jac_coord!(
+    m::ExaModels.ExaModelWithOracle{T,VT,E},
+    x::V,
+    jac::V,
+) where {T,VT,E<:KAExtension,V<:AbstractVector}
+    fill!(jac, zero(eltype(jac)))
+    # SIMD part: GPU-accelerated.
+    _jac_coord!(m.ext.backend, jac, m.cons, x, m.θ)
+    # Oracle part: gpu=true → write directly into view of jac (zero-copy).
+    for (i, oracle) in enumerate(m.oracles)
+        off_j = m.oracle_jac_offsets[i]
+        oracle.nnzj == 0 && continue
+        if oracle.gpu
+            oracle.jac!(view(jac, off_j+1 : off_j+oracle.nnzj), x)
+        else
+            xin = ExaModels._ensure_cpu(x)
+            jv  = similar(xin, oracle.nnzj)
+            oracle.jac!(jv, xin)
+            copyto!(view(jac, off_j+1 : off_j+oracle.nnzj), jv)
+        end
+    end
+    return jac
+end
+
+function ExaModels.hess_coord!(
+    m::ExaModels.ExaModelWithOracle{T,VT,E},
+    x::AbstractVector,
+    y::AbstractVector,
+    hess::AbstractVector;
+    obj_weight = one(eltype(x)),
+) where {T,VT,E<:KAExtension}
+    fill!(hess, zero(eltype(hess)))
+    # SIMD part: GPU-accelerated.
+    _obj_hess_coord!(m.ext.backend, hess, m.objs, x, m.θ, obj_weight)
+    _con_hess_coord!(m.ext.backend, hess, m.cons, x, m.θ, y)
+    # Oracle part: gpu=true → write directly into views (zero-copy).
+    for (i, oracle) in enumerate(m.oracles)
+        off_h = m.oracle_hess_offsets[i]
+        off_c = m.oracle_con_offsets[i]
+        oracle.nnzh == 0 && continue
+        if oracle.gpu
+            oracle.hess!(view(hess, off_h+1 : off_h+oracle.nnzh), x,
+                         view(y, off_c+1 : off_c+oracle.ncon))
+        else
+            xin    = ExaModels._ensure_cpu(x)
+            yslice = view(Array(y), off_c+1 : off_c+oracle.ncon)
+            hv     = similar(xin, oracle.nnzh)
+            oracle.hess!(hv, xin, yslice)
+            copyto!(view(hess, off_h+1 : off_h+oracle.nnzh), hv)
+        end
+    end
+    return hess
+end
+
+# ── jprod_nln! / jtprod_nln! / hprod! for ExaModelWithOracle on GPU ──────────
+#
+# Strategy:
+#   • SIMD part: re-use the existing prod-helper GPU kernels (kerspmv etc.)
+#     which operate entirely on device memory with no scalar indexing.
+#   • Oracle part (gpu=true):  call jac!/hess! with device arrays, then use
+#     kerspmv/kersyspmv directly on the oracle's own device sparsity buffers.
+#   • Oracle part (gpu=false): CPU bridge; accumulate on host and copyto! back.
+#
+# For the "prod=false" case (no prodhelper) we still handle the oracle part
+# correctly; the SIMD part falls back to the cpu path via the base method.
+
+# Helper: build the ((row,col), global_index) sparsity vector for one oracle's
+# Jacobian, in the format expected by kerspmv / kerspmv2.
+function _oracle_jac_sparsity(oracle, off_j, off_c, backend, x0)
+    n = oracle.nnzj
+    cpu = [((oracle.jac_rows[k] + off_c, oracle.jac_cols[k]), off_j + k)
+           for k in 1:n]
+    dev = similar(x0, eltype(cpu), n)
+    copyto!(dev, cpu)
+    return dev
+end
+
+# Helper: build the symmetric sparsity vector for one oracle's Hessian.
+function _oracle_hess_sparsity(oracle, off_h, backend, x0)
+    n = oracle.nnzh
+    cpu = [((oracle.hess_rows[k], oracle.hess_cols[k]), off_h + k)
+           for k in 1:n]
+    dev = similar(x0, eltype(cpu), n)
+    copyto!(dev, cpu)
+    return dev
+end
+
+# jprod_nln! – error if no prodhelper for the SIMD part
+function ExaModels.jprod_nln!(
+    m::ExaModels.ExaModelWithOracle{T,VT,E},
+    x::AbstractVector,
+    v::AbstractVector,
+    Jv::AbstractVector,
+) where {T,VT,E<:KAExtension{T,VT,Nothing}}
+    error("Prodhelper is not defined. Use ExaModel(c; prod=true) to use jprod_nln!")
+end
+function ExaModels.jtprod_nln!(
+    m::ExaModels.ExaModelWithOracle{T,VT,E},
+    x::AbstractVector,
+    v::AbstractVector,
+    Jtv::AbstractVector,
+) where {T,VT,E<:KAExtension{T,VT,Nothing}}
+    error("Prodhelper is not defined. Use ExaModel(c; prod=true) to use jtprod_nln!")
+end
+
+function ExaModels.jprod_nln!(
+    m::ExaModels.ExaModelWithOracle{T,VT,E},
+    x::AbstractVector,
+    v::AbstractVector,
+    Jv::AbstractVector,
+) where {T,VT,N<:NamedTuple,E<:KAExtension{T,VT,N}}
+    fill!(Jv, zero(eltype(Jv)))
+    # SIMD symbolic part via GPU sparse-matvec kernel.
+    fill!(m.ext.prodhelper.jacbuffer, zero(eltype(Jv)))
+    _jac_coord!(m.ext.backend, m.ext.prodhelper.jacbuffer, m.cons, x, m.θ)
+    let _n = length(m.ext.prodhelper.jacptri) - 1
+        _n > 0 && kerspmv(m.ext.backend)(
+            Jv, v,
+            m.ext.prodhelper.jacsparsityi,
+            m.ext.prodhelper.jacbuffer,
+            m.ext.prodhelper.jacptri;
+            ndrange = _n,
+        )
+    end
+    # Oracle part: gpu=true → write directly into jacbuffer slice, use precomputed sparsity.
+    for (i, oracle) in enumerate(m.oracles)
+        off_j = m.oracle_jac_offsets[i]
+        off_c = m.oracle_con_offsets[i]
+        oracle.nnzj == 0 && continue
+        xin = ExaModels._oracle_input(oracle, x)
+        if oracle.gpu
+            cache = m.ext.prodhelper.oracle_prod[i]
+            oracle.jac!(view(m.ext.prodhelper.jacbuffer, off_j+1 : off_j+oracle.nnzj), xin)
+            let _n = length(cache.jacptri) - 1
+                _n > 0 && kerspmv(m.ext.backend)(
+                    Jv, v, cache.jacsparsityi, m.ext.prodhelper.jacbuffer, cache.jacptri;
+                    ndrange = _n,
+                )
+            end
+        else
+            jac_buf  = similar(xin, oracle.nnzj)
+            oracle.jac!(jac_buf, xin)
+            jac_host = Array(jac_buf)
+            v_host   = Array(v)
+            delta    = zeros(T, length(Jv))
+            for k in 1:oracle.nnzj
+                delta[oracle.jac_rows[k] + off_c] += jac_host[k] * v_host[oracle.jac_cols[k]]
+            end
+            buf = similar(Jv)
+            copyto!(buf, delta)
+            Jv .+= buf
+        end
+    end
+    return Jv
+end
+
+function ExaModels.jtprod_nln!(
+    m::ExaModels.ExaModelWithOracle{T,VT,E},
+    x::AbstractVector,
+    v::AbstractVector,
+    Jtv::AbstractVector,
+) where {T,VT,N<:NamedTuple,E<:KAExtension{T,VT,N}}
+    fill!(Jtv, zero(eltype(Jtv)))
+    # SIMD symbolic part.
+    fill!(m.ext.prodhelper.jacbuffer, zero(eltype(Jtv)))
+    _jac_coord!(m.ext.backend, m.ext.prodhelper.jacbuffer, m.cons, x, m.θ)
+    let _n = length(m.ext.prodhelper.jacptrj) - 1
+        _n > 0 && kerspmv2(m.ext.backend)(
+            Jtv, v,
+            m.ext.prodhelper.jacsparsityj,
+            m.ext.prodhelper.jacbuffer,
+            m.ext.prodhelper.jacptrj;
+            ndrange = _n,
+        )
+    end
+    # Oracle part: gpu=true → write directly into jacbuffer slice, use precomputed sparsity.
+    for (i, oracle) in enumerate(m.oracles)
+        off_j = m.oracle_jac_offsets[i]
+        off_c = m.oracle_con_offsets[i]
+        oracle.nnzj == 0 && continue
+        xin = ExaModels._oracle_input(oracle, x)
+        if oracle.gpu
+            cache = m.ext.prodhelper.oracle_prod[i]
+            oracle.jac!(view(m.ext.prodhelper.jacbuffer, off_j+1 : off_j+oracle.nnzj), xin)
+            let _n = length(cache.jacptrj) - 1
+                _n > 0 && kerspmv2(m.ext.backend)(
+                    Jtv, v, cache.jacsparsityj, m.ext.prodhelper.jacbuffer, cache.jacptrj;
+                    ndrange = _n,
+                )
+            end
+        else
+            jac_buf  = similar(xin, oracle.nnzj)
+            oracle.jac!(jac_buf, xin)
+            jac_host = Array(jac_buf)
+            v_host   = Array(v)
+            delta    = zeros(T, length(Jtv))
+            for k in 1:oracle.nnzj
+                delta[oracle.jac_cols[k]] += jac_host[k] * v_host[oracle.jac_rows[k] + off_c]
+            end
+            buf = similar(Jtv)
+            copyto!(buf, delta)
+            Jtv .+= buf
+        end
+    end
+    return Jtv
+end
+
+function ExaModels.hprod!(
+    m::ExaModels.ExaModelWithOracle{T,VT,E},
+    x::AbstractVector,
+    y::AbstractVector,
+    v::AbstractVector,
+    Hv::AbstractVector;
+    obj_weight = one(eltype(x)),
+) where {T,VT,N<:NamedTuple,E<:KAExtension{T,VT,N}}
+    fill!(Hv, zero(eltype(Hv)))
+    fill!(m.ext.prodhelper.hessbuffer, zero(eltype(Hv)))
+    # SIMD symbolic part.
+    _obj_hess_coord!(m.ext.backend, m.ext.prodhelper.hessbuffer, m.objs, x, m.θ, obj_weight)
+    _con_hess_coord!(m.ext.backend, m.ext.prodhelper.hessbuffer, m.cons, x, m.θ, y)
+    let _n = length(m.ext.prodhelper.hessptri) - 1
+        _n > 0 && kersyspmv(m.ext.backend)(
+            Hv, v,
+            m.ext.prodhelper.hesssparsityi,
+            m.ext.prodhelper.hessbuffer,
+            m.ext.prodhelper.hessptri;
+            ndrange = _n,
+        )
+    end
+    let _n = length(m.ext.prodhelper.hessptrj) - 1
+        _n > 0 && kersyspmv2(m.ext.backend)(
+            Hv, v,
+            m.ext.prodhelper.hesssparsityj,
+            m.ext.prodhelper.hessbuffer,
+            m.ext.prodhelper.hessptrj;
+            ndrange = _n,
+        )
+    end
+    # Oracle part: gpu=true → write directly into hessbuffer slice, use precomputed sparsity.
+    for (i, oracle) in enumerate(m.oracles)
+        off_h = m.oracle_hess_offsets[i]
+        off_c = m.oracle_con_offsets[i]
+        oracle.nnzh == 0 && continue
+        xin = ExaModels._oracle_input(oracle, x)
+        if oracle.gpu
+            cache  = m.ext.prodhelper.oracle_prod[i]
+            oracle.hess!(view(m.ext.prodhelper.hessbuffer, off_h+1 : off_h+oracle.nnzh),
+                         xin, view(y, off_c+1 : off_c+oracle.ncon))
+            let _n = length(cache.hessptri) - 1
+                _n > 0 && kersyspmv(m.ext.backend)(
+                    Hv, v, cache.hesssparsityi, m.ext.prodhelper.hessbuffer, cache.hessptri;
+                    ndrange = _n,
+                )
+            end
+            let _n = length(cache.hessptrj) - 1
+                _n > 0 && kersyspmv2(m.ext.backend)(
+                    Hv, v, cache.hesssparsityj, m.ext.prodhelper.hessbuffer, cache.hessptrj;
+                    ndrange = _n,
+                )
+            end
+        else
+            yslice   = view(Array(y), off_c+1 : off_c+oracle.ncon)
+            hess_buf = similar(xin, oracle.nnzh)
+            oracle.hess!(hess_buf, xin, yslice)
+            h_host = Array(hess_buf)
+            v_host = Array(v)
+            delta  = zeros(T, length(Hv))
+            for k in 1:oracle.nnzh
+                r, c_ = oracle.hess_rows[k], oracle.hess_cols[k]
+                delta[r] += h_host[k] * v_host[c_]
+                r != c_ && (delta[c_] += h_host[k] * v_host[r])
+            end
+            buf = similar(Hv)
+            copyto!(buf, delta)
+            Hv .+= buf
+        end
+    end
+    return Hv
+end
+
 function ExaModels._compress!(V, buffer, ptr, sparsity, backend)
     fill!(V, zero(eltype(V)))
     ker_compress!(backend)(V, buffer, ptr, sparsity; ndrange = length(ptr) - 1)
