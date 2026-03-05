@@ -878,8 +878,8 @@ function hess_structure!(m::ExaModel, rows::AbstractVector, cols::AbstractVector
     e2_uint = reinterpret(UInt, m.e2)
     fill!(e1_uint, zero(UInt))
     fill!(e2_uint, zero(UInt))
-    _jac_structure!(m.exps, m, e1_uint, nothing, e1_uint)  # Populates e1_uint indices
-    _exp_hess_structure!(m.exps, m, e2_uint)  # Populates e2_uint indices
+    _jac_structure!(m.exps, m, e1_uint, nothing, e1_uint)
+    _exp_hess_structure!(m.exps, m, e2_uint)
     _obj_hess_structure!(m.objs, m, rows, cols, e1_uint, e2_uint)
     _con_hess_structure!(m.cons, m, rows, cols, e1_uint, e2_uint)
     return rows, cols
@@ -888,9 +888,6 @@ end
 _exp_hess_structure!(exps::ExpressionNull, m, e2_uint) = nothing
 function _exp_hess_structure!(exps, m, e2_uint)
     _exp_hess_structure!(exps.inner, m, e2_uint)
-    # For expression Hessian structure, we need to record the indices in e2_uint
-    # similar to how jac_structure! records indices in e1_uint
-    # This uses the same shessian! but with structure-mode output (Integer vectors)
     shessian!(e2_uint, e2_uint, exps, nothing, nothing,
         reinterpret(UInt, m.e1), m.e1_starts, m.e1_cnts,
         e2_uint, m.e2_starts, m.e2_cnts,
@@ -906,7 +903,6 @@ end
 _con_hess_structure!(cons::ConstraintNull, m, rows, cols, e1_uint, e2_uint) = nothing
 function _con_hess_structure!(cons, m, rows, cols, e1_uint, e2_uint)
     _con_hess_structure!(cons.inner, m, rows, cols, e1_uint, e2_uint)
-    @info ("_con_hess_structure", cons)
     shessian!(rows, cols, cons, nothing, nothing, e1_uint, m.e1_starts, m.e1_cnts, e2_uint, m.e2_starts, m.e2_cnts, NaN, NaN, m.isexp)
 end
 
@@ -1123,7 +1119,7 @@ end
 @inline _idxx(coord, si, a) = a * (coord[1] - 1) + _idxx(coord[2:end], si[2:end], a * si[1])
 @inline _idxx(::Tuple{}, ::Tuple{}, a) = 0
 
-@inline coord(itr, i, (f, fs...)) = (f(idx(itr, i), nothing, nothing), coord(itr, i, fs)...)
+@inline coord(itr, i, (f, fs...)) = (f(idx(itr, i), nothing), coord(itr, i, fs)...)
 @inline coord(itr, i, ::Tuple{}) = ()
 
 for (thing, val) in [(:solution, 1), (:multipliers_L, 0), (:multipliers_U, 2)]

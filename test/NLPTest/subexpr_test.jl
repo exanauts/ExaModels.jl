@@ -14,6 +14,7 @@ function test_subexpr_basic(backend)
     # Constraint: x[i]^2 - 1 >= 0
     constraint(c1, x1[i]^2 - 1 for i in 1:dimx; lcon = 0.0)
     m1 = ExaModel(c1)
+    result1 = NLPModelsIpopt.ipopt(WrapperNLPModel(m1); print_level = 0)
 
     # Model WITH subexpressions
     c2 = ExaCore(; backend = backend)

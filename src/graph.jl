@@ -129,16 +129,13 @@ end
 @inline Node1(f::F, inner::I) where {F,I} = Node1{F,I}(inner)
 @inline Node2(f::F, inner1::I1, inner2::I2) where {F,I1,I2} = Node2{F,I1,I2}(inner1, inner2)
 
-
 struct Identity end
 
-@inline (v::Var{I})(i, x, θ) where {I<:AbstractNode} = @inbounds x[(v.i(i, x, θ), false)]
-@inline (v::Var{I})(i, x, θ) where {I} = @inbounds x[(v.i, false)]
-@inline (v::Var{I})(i::Identity, x, θ) where {I<:AbstractNode} = @inbounds x[(v.i, false)]
+@inline (v::Var{I})(i, x, θ) where {I<:AbstractNode} = @inbounds x[v.i(i, x, θ)]
+@inline (v::Var{I})(i, x, θ) where {I} = @inbounds x[v.i]
 
-@inline (e::Exp{I})(i, x, θ) where {I<:AbstractNode} = @inbounds x[(e.i(i, x, θ), true)]
-@inline (e::Exp{I})(i, x, θ) where {I} = @inbounds x[(e.i, true)]
-@inline (e::Exp{I})(i::Identity, x, θ) where {I<:AbstractNode} = @inbounds x[(e.i, true)]
+@inline (e::Exp{I})(i, x, θ) where {I<:AbstractNode} = @inbounds x[e.i(i, x, θ)]
+@inline (e::Exp{I})(i, x, θ) where {I} = @inbounds x[e.i]
 
 @inline (v::ParameterNode{I})(i, x, θ) where {I<:AbstractNode} = @inbounds θ[v.i(i, x, θ)]
 @inline (v::ParameterNode{I})(::Any, x, θ) where {I} = @inbounds θ[v.i]
@@ -151,6 +148,7 @@ struct Identity end
 @inline (v::ParSource)(i, x, θ) = i
 @inline (v::ParIndexed{I,n})(i, x, θ) where {I,n} = @inbounds getfield(getfield(v, :inner)(i, x, θ), n)
 
+@inline (v::ParSource)(i::Identity, x, θ, src::Nothing) = NaN
 (v::ParIndexed)(i::Identity, x, θ) = NaN # despecialized
 (v::ParSource)(i::Identity, x, θ) = NaN # despecialized
 
@@ -226,21 +224,21 @@ end
     AdjointNode2{F,T,I1,I2}(x, y1, y2, inner1, inner2)
 
 @inline function Base.getindex(x::I, i) where {I<:AdjointNodeSource{Nothing,Nothing}}
-    (i, isexp) = i
-    @inbounds i ? AdjointNodeVar(i, NaN) : AdjointNodeExpr(i, NaN)
+    (i, isexp, theta) = i
+    @inbounds isexp ? AdjointNodeExpr(i, NaN) : AdjointNodeVar(i, NaN)
 end
 @inline function Base.getindex(x::I, i) where {I<:AdjointNodeSource{Nothing}}
-    (i, isexp) = i
+    (i, isexp, theta) = i
     if isexp
+        dump(i)
         offset = typeof(i) <: Node2{typeof(+),T,Int} where T ? i.inner2 : 0
-        print(x.offset_exps)
-        x.offset_exps[offset].f.f(i)
+        x.offset_exps[offset].f.f(Identity(), x, theta, i)
     else
         AdjointNodeVar(i, NaN)
     end
 end
 @inline function Base.getindex(x::I, i) where {I<:AdjointNodeSource}
-    (i, isexp) = i
+    (i, isexp, theta) = i
     @inbounds isexp ? AdjointNodeExpr(i, x.inner[i]) : AdjointNodeVar(i, x.inner[i])
 end
 
@@ -336,20 +334,20 @@ end
     SecondAdjointNode2{F,T,I1,I2}(x, y1, y2, h11, h12, h22, inner1, inner2)
 
 @inline function Base.getindex(x::I, i) where {I<:SecondAdjointNodeSource{Nothing,Nothing}}
-    (i, isexp) = i
-    @inbounds i ? SecondAdjointNodeVar(i, NaN) : SecondAdjointNodeExpr(i, NaN)
+    (i, isexp, theta) = i
+    @inbounds isexp ? SecondAdjointNodeExpr(i, NaN) : SecondAdjointNodeVar(i, NaN)
 end
 @inline function Base.getindex(x::I, i) where {I<:SecondAdjointNodeSource{Nothing}}
-    (i, isexp) = i
+    (i, isexp, theta) = i
     if isexp
         offset = typeof(i) <: Node2{typeof(+),T,Int} where T ? i.inner2 : 0
-        x.offset_exps[offset].f.f(i[1])
+        x.offset_exps[offset].f.f(Identity(), x, theta, i)
     else
         SecondAdjointNodeVar(i, NaN)
     end
 end
 @inline function Base.getindex(x::I, i) where {I<:SecondAdjointNodeSource}
-    (i, isexp) = i
+    (i, isexp, theta) = i
     @inbounds isexp ? SecondAdjointNodeExpr(i, x.inner[i]) : SecondAdjointNodeVar(i, x.inner[i])
 end
 
@@ -357,3 +355,30 @@ end
 @inline (v::Null{N})(i, x::V, θ) where {N,T,V<:AbstractVector{T}} = T(v.value)
 @inline (v::Null{N})(i, x::AdjointNodeSource{T}, θ) where {N,T} = AdjointNull()
 @inline (v::Null{N})(i, x::SecondAdjointNodeSource{T}, θ) where {N,T} = SecondAdjointNull()
+
+const NodeSource = Union{AdjointNodeSource,SecondAdjointNodeSource}
+
+@inline (v::Var{I})(i, x::AdjointNodeSource, θ) where {I<:AbstractNode} = @inbounds AdjointNodeVar(v.i(i, x, θ), NaN)
+@inline (v::Var{I})(i, x::SecondAdjointNodeSource, θ) where {I<:AbstractNode} = @inbounds SecondAdjointNodeVar(v.i(i, x, θ), NaN)
+
+@inline (v::Var{I})(i, x::AdjointNodeSource, θ) where {I} = @inbounds AdjointNodeVar(i, NaN)
+@inline (v::Var{I})(i, x::SecondAdjointNodeSource, θ) where {I} = @inbounds SecondAdjointNodeVar(i, NaN)
+
+@inline (v::Var{I})(i::Identity, x::AdjointNodeSource, θ) where {I<:AbstractNode} = @inbounds AdjointNodeVar(v.i, NaN)
+@inline (v::Var{I})(i::Identity, x::SecondAdjointNodeSource, θ) where {I<:AbstractNode} = @inbounds SecondAdjointNodeVar(v.i, NaN)
+
+@inline (v::Exp{I})(i, x::AdjointNodeSource, θ) where {I<:AbstractNode} = @inbounds AdjointNodeExpr(v.i(i, x, θ), NaN)
+@inline (v::Exp{I})(i, x::SecondAdjointNodeSource, θ) where {I<:AbstractNode} = @inbounds SecondAdjointNodeExpr(v.i(i, x, θ), NaN)
+
+@inline function (e::Exp{I})(i::Identity, x::AdjointNodeSource, θ) where {I<:AbstractNode}
+    offset = typeof(e.i) <: Node2{typeof(+),T,Int} where T ? e.i.inner2 : 0
+    x.offset_exps[offset].f.f(e.i(i, x, θ), x, θ)
+end
+
+@inline function (e::Exp{I})(i::Identity, x::SecondAdjointNodeSource, θ) where {I<:AbstractNode}
+    offset = typeof(e.i) <: Node2{typeof(+),T,Int} where T ? e.i.inner2 : 0
+    x.offset_exps[offset].f.f(e.i(i, x, θ), x, θ)
+end
+
+@inline (v::Exp{I})(i, x::X, θ) where {I, X<:AdjointNodeSource} = @inbounds AdjointNodeExpr(i, NaN)
+@inline (v::Exp{I})(i, x::X, θ) where {I, X<:SecondAdjointNodeSource} = @inbounds SecondAdjointNodeExpr(i, NaN)

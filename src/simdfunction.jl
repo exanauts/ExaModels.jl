@@ -80,14 +80,10 @@ function _simdfunction(f, offset_exps, isexp, o0, o1, o2)
     y1 = []
     d = f(Identity(), AdjointNodeSource(nothing, offset_exps), nothing)
     ExaModels.grpass(d, nothing, y1, nothing, 0, NaN)
-    dump(d)
-    dump(y1)
 
     y2 = []
     t = f(Identity(), SecondAdjointNodeSource(nothing, offset_exps), nothing)
     ExaModels.hrpass0(nothing, nothing, nothing, nothing, nothing, nothing, t, nothing, y2, nothing, nothing, 0, NaN, NaN)
-    dump(t)
-    dump(y2)
 
     a1 = unique(y1)
     o1step = length(a1)
@@ -98,14 +94,5 @@ function _simdfunction(f, offset_exps, isexp, o0, o1, o2)
     c2 = Compressor(Tuple(findfirst(isequal(di), a2) for di in y2))
 
     f = SIMDFunction(f, c1, c2, o0, o1, o2, o1step, o2step)
-    dump(y2)
-    dump(a2)
-    dump(c2)
-    if length(f.comp2.inner) == 0
-        dump(t)
-        dump(f)
-        dump(stacktrace())
-        exit()
-    end
     return f
 end
