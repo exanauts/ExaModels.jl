@@ -37,6 +37,7 @@ include("hessian.jl")
 include("nlp.jl")
 include("tags.jl")
 include("utils.jl")
+include("two_stage.jl")
 
 export ExaModel,
     ExaCore,
@@ -57,6 +58,21 @@ export ExaModel,
     multipliers_L,
     multipliers_U,
     @register_univariate,
-    @register_bivariate
+    @register_bivariate,
+    TwoStageExaModel,
+    recourse_var_indices,
+    design_var_indices,
+    cons_block_indices,
+    recourse_var_index,
+    design_var_index,
+    global_con_index,
+    grad_recourse_indices,
+    grad_design_indices,
+    extract_recourse_vars!,
+    extract_design_vars!,
+    total_vars,
+    total_cons,
+    set_scenario_parameters!,
+    set_all_scenario_parameters!
 
 end # module ExaModels
