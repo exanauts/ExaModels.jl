@@ -164,8 +164,8 @@ Base.@kwdef mutable struct ExaCore{
     T,
     VT<:AbstractVector{T},
     VI<:AbstractVector{UInt},
+    DI<:Dict{Int,Expression},
     B,
-    MI<:AbstractVector{AbstractVector{Any}},
     VII<:AbstractVector{Tuple{UInt,UInt}}
 }
     backend::B = nothing
@@ -173,8 +173,7 @@ Base.@kwdef mutable struct ExaCore{
     con::AbstractConstraint = ConstraintNull()
     exp::AbstractExpression = ExpressionNull()
     # corresponds to y1 and y2 in _simdfunction()
-    full_exp_refs1::MI = AbstractVector{Any}[]
-    full_exp_refs2::MI = AbstractVector{Any}[]
+    offset_exps::DI = Dict{Int,Expression}()
     e1_starts::VII = convert_array(Tuple{UInt,UInt}[], backend)
     e2_starts::VII = convert_array(Tuple{UInt,UInt}[], backend)
     e1_cnts::VI = convert_array(UInt[], backend)
@@ -346,12 +345,12 @@ end
 
 @inline function Base.getindex(e::E, i) where {E<:Expression}
     _bound_check(e.size, i)
-    Var(i + (e.offset - _start(e.size[1]) + 1))
+    Exp(i + (e.offset - _start(e.size[1]) + 1))
 end
 @inline function Base.getindex(e::E, is...) where {E<:Expression}
     @assert(length(is) == length(e.size), "Expression index dimension error. Got $(length(is)) dimensions, expected $(length(e.size)).")
     _bound_check(e.size, is)
-    Var(e.offset + idxx(is .- (_start.(e.size) .- 1), _length.(e.size)))
+    Exp(e.offset + idxx(is .- (_start.(e.size) .- 1), _length.(e.size)))
 end
 
 @inline function Base.getindex(p::P, i) where {P<:Parameter}
@@ -564,7 +563,7 @@ Objective
 """
 function objective(c::C, gen) where {C<:ExaCore}
     gen = _adapt_gen(gen)
-    f = SIMDFunction(gen, c.full_exp_refs1, c.full_exp_refs2, c.exp, c.isexp, c.nobj, c.nnzg, c.nnzh)
+    f = SIMDFunction(gen, c.offset_exps, c.isexp, c.nobj, c.nnzg, c.nnzh)
     pars = gen.iter
 
     _objective(c, f, pars)
@@ -576,7 +575,7 @@ end
 Adds objective terms specified by a `expr` and `pars` to `core`, and returns an `Objective` object.
 """
 function objective(c::C, expr::N, pars=1:1) where {C<:ExaCore,N<:AbstractNode}
-    f = _simdfunction(expr, c.full_exp_refs1, c.full_exp_refs2, c.exp, c.isexp, c.nobj, c.nnzg, c.nnzh)
+    f = _simdfunction(expr, c.offset_exps, c.exp, c.isexp, c.nobj, c.nnzg, c.nnzh)
 
     _objective(c, f, pars)
 end
@@ -626,7 +625,7 @@ function constraint(
 ) where {T,C<:ExaCore{T}}
 
     gen = _adapt_gen(gen)
-    f = SIMDFunction(gen, c.full_exp_refs1, c.full_exp_refs2, c.exp, c.isexp, c.ncon, c.nnzj, c.nnzh)
+    f = SIMDFunction(gen, c.offset_exps, c.isexp, c.ncon, c.nnzj, c.nnzh)
     pars = gen.iter
 
     _constraint(c, f, pars, start, lcon, ucon)
@@ -646,7 +645,7 @@ function constraint(
     ucon=zero(T),
 ) where {T,C<:ExaCore{T},N<:AbstractNode}
 
-    f = _simdfunction(expr, c.full_exp_refs1, c.full_exp_refs2, c.exp, c.isexp, c.ncon, c.nnzj, c.nnzh)
+    f = _simdfunction(expr, c.offset_exps, c.isexp, c.ncon, c.nnzj, c.nnzh)
 
     _constraint(c, f, pars, start, lcon, ucon)
 end
@@ -664,7 +663,7 @@ function constraint(
     ucon=zero(T),
 ) where {T,C<:ExaCore{T}}
 
-    f = _simdfunction(Null(), c.full_exp_refs1, c.full_exp_refs2, c.exp, c.isexp, c.ncon, c.nnzj, c.nnzh)
+    f = _simdfunction(Null(), c.offset_exps, c.isexp, c.ncon, c.nnzj, c.nnzh)
 
     _constraint(c, f, 1:n, start, lcon, ucon)
 end
@@ -716,7 +715,7 @@ Constraint Augmentation
 function constraint!(c::C, c1, gen::Base.Generator) where {C<:ExaCore}
 
     gen = _adapt_gen(gen)
-    f = SIMDFunction(gen, c.full_exp_refs1, c.full_exp_refs2, c.exp, c.isexp, offset0(c1, 0), c.nnzj, c.nnzh)
+    f = SIMDFunction(gen, c.offset_exps, c.isexp, offset0(c1, 0), c.nnzj, c.nnzh)
     pars = gen.iter
 
     _constraint!(c, f, pars)
@@ -728,7 +727,7 @@ end
 Expands the existing constraint `c1` in `c` by adding addtional constraints terms specified by `expr` and `pars`.
 """
 function constraint!(c::C, c1, expr, pars) where {C<:ExaCore}
-    f = _simdfunction(expr, c.full_exp_refs1, c.full_exp_refs2, c.exp, c.isexp, offset0(c1, 0), c.nnzj, c.nnzh)
+    f = _simdfunction(expr, c.offset_exps, c.isexp, offset0(c1, 0), c.nnzj, c.nnzh)
 
     _constraint!(c, f, pars)
 end
@@ -807,6 +806,7 @@ function subexpr(
     c.lvar = append!(c.backend, c.lvar, lvar, nitr)
     c.uvar = append!(c.backend, c.uvar, uvar, nitr)
     c.exp = Expression(c.exp, f, convert_array(pars, c.backend), o, ns)
+    c.offset_exps[o] = c.exp
     return c.exp
 end
 
@@ -814,17 +814,13 @@ function simd_expr(c::ExaCore, gen,)
     f = gen.f(ParSource())
     nitr = length(gen.iter)
 
-    y1_raw = []
-    d = f(Identity(), AdjointNodeSource(nothing, nothing), nothing)
-    ExaModels.grpass(d, nothing, y1_raw, nothing, 0, NaN)
-    y1 = get_full_exp_refs(c.full_exp_refs1, c.exp, c.isexp, y1_raw)
-    push!(c.full_exp_refs1, y1)
+    y1 = []
+    d = f(Identity(), AdjointNodeSource(nothing, c.offset_exps), nothing)
+    ExaModels.grpass(d, nothing, y1, nothing, 0, NaN)
 
-    y2_raw = []
-    t = f(Identity(), SecondAdjointNodeSource(nothing, nothing), nothing)
-    ExaModels.hrpass(nothing, nothing, nothing, nothing, nothing, nothing, nothing, t, nothing, y2_raw, nothing, nothing, 0, NaN, NaN)
-    y2 = get_full_exp_refs(c.full_exp_refs2, c.exp, c.isexp, y2_raw)
-    push!(c.full_exp_refs2, y2)
+    y2 = []
+    t = f(Identity(), SecondAdjointNodeSource(nothing, c.offset_exps), nothing)
+    ExaModels.hrpass(nothing, nothing, nothing, nothing, nothing, nothing, t, nothing, y2, nothing, nothing, 0, NaN, NaN)
 
     a1 = unique(y1)
     o1step = length(a1)
@@ -910,6 +906,7 @@ end
 _con_hess_structure!(cons::ConstraintNull, m, rows, cols, e1_uint, e2_uint) = nothing
 function _con_hess_structure!(cons, m, rows, cols, e1_uint, e2_uint)
     _con_hess_structure!(cons.inner, m, rows, cols, e1_uint, e2_uint)
+    @info ("_con_hess_structure", cons)
     shessian!(rows, cols, cons, nothing, nothing, e1_uint, m.e1_starts, m.e1_cnts, e2_uint, m.e2_starts, m.e2_cnts, NaN, NaN, m.isexp)
 end
 

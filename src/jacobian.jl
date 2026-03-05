@@ -1,5 +1,5 @@
 """
-    jrpass(d::D, e, e_starts, e_cnts, isexp, comp, o0, y1, y2, o1, cnt, adj) where {D<:AdjointNode1}
+    jrpass(d::D, e, e_starts, e_cnts, comp, o0, y1, y2, o1, cnt, adj) where {D<:AdjointNode1}
 
 Performs sparse jacobian evaluation via the reverse pass on the computation (sub)graph formed by forward pass
 
@@ -18,7 +18,6 @@ Performs sparse jacobian evaluation via the reverse pass on the computation (sub
     e,
     e_starts,
     e_cnts,
-    isexp,
     comp,
     i,
     y1,
@@ -29,21 +28,21 @@ Performs sparse jacobian evaluation via the reverse pass on the computation (sub
 ) where {D<:Union{AdjointNull,Real}}
     return cnt
 end
-@inline function jrpass(d::D, e, e_starts, e_cnts, isexp, comp, o0, y1, y2, o1, cnt, adj) where {D<:AdjointNode1}
-    cnt = jrpass(d.inner, e, e_starts, e_cnts, isexp, comp, o0, y1, y2, o1, cnt, adj * d.y)
+@inline function jrpass(d::D, e, e_starts, e_cnts, comp, o0, y1, y2, o1, cnt, adj) where {D<:AdjointNode1}
+    cnt = jrpass(d.inner, e, e_starts, e_cnts, comp, o0, y1, y2, o1, cnt, adj * d.y)
     return cnt
 end
-@inline function jrpass(d::D, e, e_starts, e_cnts, isexp, comp, o0, y1, y2, o1, cnt, adj) where {D<:AdjointNode2}
-    cnt = jrpass(d.inner1, e, e_starts, e_cnts, isexp, comp, o0, y1, y2, o1, cnt, adj * d.y1)
-    cnt = jrpass(d.inner2, e, e_starts, e_cnts, isexp, comp, o0, y1, y2, o1, cnt, adj * d.y2)
+@inline function jrpass(d::D, e, e_starts, e_cnts, comp, o0, y1, y2, o1, cnt, adj) where {D<:AdjointNode2}
+    cnt = jrpass(d.inner1, e, e_starts, e_cnts, comp, o0, y1, y2, o1, cnt, adj * d.y1)
+    cnt = jrpass(d.inner2, e, e_starts, e_cnts, comp, o0, y1, y2, o1, cnt, adj * d.y2)
     return cnt
 end
 # jac_coord
-@inline function jrpass(d::D, e, e_starts, e_cnts, isexp, comp, o0, y1, y2, o1, cnt, adj) where {D<:AdjointNodeVar}
+@inline function jrpass(d::D, e, e_starts, e_cnts, comp, o0, y1, y2, o1, cnt, adj) where {D<:AdjointNodeVar}
     @inbounds y1[o1+comp(cnt+=1)] += adj
     return cnt
 end
-@inline function jrpass(d::D, e, e_starts, e_cnts, isexp, comp, o0, y1, y2, o1, cnt, adj) where {D<:AdjointNodeExpr}
+@inline function jrpass(d::D, e, e_starts, e_cnts, comp, o0, y1, y2, o1, cnt, adj) where {D<:AdjointNodeExpr}
     (cnt_start, e_start) = e_starts[d.i]
     len = e_cnts[cnt_start]
     cnt += 1
@@ -59,7 +58,6 @@ end
     e,
     e_starts,
     e_cnts,
-    isexp,
     comp,
     o0,
     y1::Tuple{V1,V2},
@@ -79,7 +77,6 @@ end
     e,
     e_starts,
     e_cnts,
-    isexp,
     comp,
     o0,
     y1::Nothing,
@@ -99,7 +96,6 @@ end
     e,
     e_starts,
     e_cnts,
-    isexp,
     comp,
     o0,
     y1::V,
@@ -118,7 +114,6 @@ end
     e,
     e_starts,
     e_cnts,
-    isexp,
     comp,
     o0,
     y1::V,
@@ -144,7 +139,6 @@ end
     e,
     e_starts,
     e_cnts,
-    isexp,
     comp,
     o0,
     y1::Nothing,
@@ -162,7 +156,6 @@ end
     e,
     e_starts,
     e_cnts,
-    isexp,
     comp,
     o0,
     y1::Nothing,
@@ -186,7 +179,6 @@ end
     e,
     e_starts,
     e_cnts,
-    isexp,
     comp,
     o0,
     y1::V,
@@ -234,7 +226,7 @@ function sjacobian!(e, e_starts, e_cnts, isexp, y1, y2, f, x, θ, adj)
 end
 
 function sjacobian!(isexp, y1, y2, f, e, e_starts, e_cnts, p, x, θ, comp, o0, o1, adj)
-    s = AdjointNodeSource(x, isexp)
+    s = AdjointNodeSource(x, nothing)
     graph = f(p, s, θ)
-    jrpass(graph, e, e_starts, e_cnts, isexp, comp, o0, y1, y2, o1, 0, adj)
+    jrpass(graph, e, e_starts, e_cnts, comp, o0, y1, y2, o1, 0, adj)
 end

@@ -1,5 +1,5 @@
 """
-    hdrpass(e, e_starts, e_cnts, isexp, t1::T1, t2::T2, comp, y1, y2, o2, cnt, adj)
+    hdrpass(e, e_starts, e_cnts, t1::T1, t2::T2, comp, y1, y2, o2, cnt, adj)
 
 Performs sparse hessian evaluation (`(df1/dx)(df2/dx)'` portion) via the reverse pass on the computation (sub)graph formed by second-order forward pass
 
@@ -21,7 +21,6 @@ Performs sparse hessian evaluation (`(df1/dx)(df2/dx)'` portion) via the reverse
     e,
     e_starts,
     e_cnts,
-    isexp,
     t1::T1,
     t2::T2,
     comp,
@@ -31,14 +30,13 @@ Performs sparse hessian evaluation (`(df1/dx)(df2/dx)'` portion) via the reverse
     cnt,
     adj,
 ) where {T1<:SecondAdjointNode1,T2<:SecondAdjointNode1}
-    cnt = hdrpass(e, e_starts, e_cnts, isexp, t1.inner, t2.inner, comp, y1, y2, o2, cnt, adj * t1.y * t2.y)
+    cnt = hdrpass(e, e_starts, e_cnts, t1.inner, t2.inner, comp, y1, y2, o2, cnt, adj * t1.y * t2.y)
     cnt
 end
 function hdrpass(
     e,
     e_starts,
     e_cnts,
-    isexp,
     t1::SecondAdjointNode1,
     t2::SecondAdjointNode1,
     comp::Nothing,
@@ -48,7 +46,7 @@ function hdrpass(
     cnt,
     adj,
 )  # despecialized
-    cnt = hdrpass(e, e_starts, e_cnts, isexp, t1.inner, t2.inner, comp, y1, y2, o2, cnt, adj * t1.y * t2.y)
+    cnt = hdrpass(e, e_starts, e_cnts, t1.inner, t2.inner, comp, y1, y2, o2, cnt, adj * t1.y * t2.y)
     cnt
 end
 
@@ -57,7 +55,6 @@ end
     e,
     e_starts,
     e_cnts,
-    isexp,
     t1::T1,
     t2::T2,
     comp,
@@ -67,14 +64,13 @@ end
     cnt,
     adj,
 ) where {T1<:Union{SecondAdjointNodeVar,SecondAdjointNodeExpr},T2<:SecondAdjointNode1}
-    cnt = hdrpass(e, e_starts, e_cnts, isexp, t1, t2.inner, comp, y1, y2, o2, cnt, adj * t2.y)
+    cnt = hdrpass(e, e_starts, e_cnts, t1, t2.inner, comp, y1, y2, o2, cnt, adj * t2.y)
     cnt
 end
 function hdrpass(
     e,
     e_starts,
     e_cnts,
-    isexp,
     t1::SecondAdjointNodeVar,
     t2::SecondAdjointNode1,
     comp::Nothing,
@@ -84,14 +80,13 @@ function hdrpass(
     cnt,
     adj,
 )  # despecialized
-    cnt = hdrpass(e, e_starts, e_cnts, isexp, t1, t2.inner, comp, y1, y2, o2, cnt, adj * t2.y)
+    cnt = hdrpass(e, e_starts, e_cnts, t1, t2.inner, comp, y1, y2, o2, cnt, adj * t2.y)
     cnt
 end
 function hdrpass(
     e,
     e_starts,
     e_cnts,
-    isexp,
     t1::SecondAdjointNodeExpr,
     t2::SecondAdjointNode1,
     comp::Nothing,
@@ -101,7 +96,7 @@ function hdrpass(
     cnt,
     adj,
 )  # despecialized
-    cnt = hdrpass(e, e_starts, e_cnts, isexp, t1, t2.inner, comp, y1, y2, o2, cnt, adj * t2.y)
+    cnt = hdrpass(e, e_starts, e_cnts, t1, t2.inner, comp, y1, y2, o2, cnt, adj * t2.y)
     cnt
 end
 
@@ -109,7 +104,6 @@ end
     e,
     e_starts,
     e_cnts,
-    isexp,
     t1::T1,
     t2::T2,
     comp,
@@ -119,14 +113,13 @@ end
     cnt,
     adj,
 ) where {T1<:SecondAdjointNode1,T2<:Union{SecondAdjointNodeVar,SecondAdjointNodeExpr}}
-    cnt = hdrpass(e, e_starts, e_cnts, isexp, t1.inner, t2, comp, y1, y2, o2, cnt, adj * t1.y)
+    cnt = hdrpass(e, e_starts, e_cnts, t1.inner, t2, comp, y1, y2, o2, cnt, adj * t1.y)
     cnt
 end
 function hdrpass(
     e,
     e_starts,
     e_cnts,
-    isexp,
     t1::SecondAdjointNode1,
     t2::SecondAdjointNodeVar,
     comp::Nothing,
@@ -136,14 +129,13 @@ function hdrpass(
     cnt,
     adj,
 )  # despecialized
-    cnt = hdrpass(e, e_starts, e_cnts, isexp, t1.inner, t2, comp, y1, y2, o2, cnt, adj * t1.y)
+    cnt = hdrpass(e, e_starts, e_cnts, t1.inner, t2, comp, y1, y2, o2, cnt, adj * t1.y)
     cnt
 end
 function hdrpass(
     e,
     e_starts,
     e_cnts,
-    isexp,
     t1::SecondAdjointNode1,
     t2::SecondAdjointNodeExpr,
     comp::Nothing,
@@ -153,7 +145,7 @@ function hdrpass(
     cnt,
     adj,
 )  # despecialized
-    cnt = hdrpass(e, e_starts, e_cnts, isexp, t1.inner, t2, comp, y1, y2, o2, cnt, adj * t1.y)
+    cnt = hdrpass(e, e_starts, e_cnts, t1.inner, t2, comp, y1, y2, o2, cnt, adj * t1.y)
     cnt
 end
 
@@ -162,7 +154,6 @@ end
     e,
     e_starts,
     e_cnts,
-    isexp,
     t1::T1,
     t2::T2,
     comp,
@@ -172,17 +163,16 @@ end
     cnt,
     adj,
 ) where {T1<:SecondAdjointNode2,T2<:SecondAdjointNode2}
-    cnt = hdrpass(e, e_starts, e_cnts, isexp, t1.inner1, t2.inner1, comp, y1, y2, o2, cnt, adj * t1.y1 * t2.y1)
-    cnt = hdrpass(e, e_starts, e_cnts, isexp, t1.inner1, t2.inner2, comp, y1, y2, o2, cnt, adj * t1.y1 * t2.y2)
-    cnt = hdrpass(e, e_starts, e_cnts, isexp, t1.inner2, t2.inner1, comp, y1, y2, o2, cnt, adj * t1.y2 * t2.y1)
-    cnt = hdrpass(e, e_starts, e_cnts, isexp, t1.inner2, t2.inner2, comp, y1, y2, o2, cnt, adj * t1.y2 * t2.y2)
+    cnt = hdrpass(e, e_starts, e_cnts, t1.inner1, t2.inner1, comp, y1, y2, o2, cnt, adj * t1.y1 * t2.y1)
+    cnt = hdrpass(e, e_starts, e_cnts, t1.inner1, t2.inner2, comp, y1, y2, o2, cnt, adj * t1.y1 * t2.y2)
+    cnt = hdrpass(e, e_starts, e_cnts, t1.inner2, t2.inner1, comp, y1, y2, o2, cnt, adj * t1.y2 * t2.y1)
+    cnt = hdrpass(e, e_starts, e_cnts, t1.inner2, t2.inner2, comp, y1, y2, o2, cnt, adj * t1.y2 * t2.y2)
     cnt
 end
 function hdrpass(
     e,
     e_starts,
     e_cnts,
-    isexp,
     t1::SecondAdjointNode2,
     t2::SecondAdjointNode2,
     comp::Nothing,
@@ -192,10 +182,10 @@ function hdrpass(
     cnt,
     adj,
 ) # despecialized
-    cnt = hdrpass(e, e_starts, e_cnts, isexp, t1.inner1, t2.inner1, comp, y1, y2, o2, cnt, adj * t1.y1 * t2.y1)
-    cnt = hdrpass(e, e_starts, e_cnts, isexp, t1.inner1, t2.inner2, comp, y1, y2, o2, cnt, adj * t1.y1 * t2.y2)
-    cnt = hdrpass(e, e_starts, e_cnts, isexp, t1.inner2, t2.inner1, comp, y1, y2, o2, cnt, adj * t1.y2 * t2.y1)
-    cnt = hdrpass(e, e_starts, e_cnts, isexp, t1.inner2, t2.inner2, comp, y1, y2, o2, cnt, adj * t1.y2 * t2.y2)
+    cnt = hdrpass(e, e_starts, e_cnts, t1.inner1, t2.inner1, comp, y1, y2, o2, cnt, adj * t1.y1 * t2.y1)
+    cnt = hdrpass(e, e_starts, e_cnts, t1.inner1, t2.inner2, comp, y1, y2, o2, cnt, adj * t1.y1 * t2.y2)
+    cnt = hdrpass(e, e_starts, e_cnts, t1.inner2, t2.inner1, comp, y1, y2, o2, cnt, adj * t1.y2 * t2.y1)
+    cnt = hdrpass(e, e_starts, e_cnts, t1.inner2, t2.inner2, comp, y1, y2, o2, cnt, adj * t1.y2 * t2.y2)
     cnt
 end
 
@@ -204,7 +194,6 @@ end
     e,
     e_starts,
     e_cnts,
-    isexp,
     t1::T1,
     t2::T2,
     comp,
@@ -214,15 +203,14 @@ end
     cnt,
     adj,
 ) where {T1<:SecondAdjointNode1,T2<:SecondAdjointNode2}
-    cnt = hdrpass(e, e_starts, e_cnts, isexp, t1.inner, t2.inner1, comp, y1, y2, o2, cnt, adj * t1.y * t2.y1)
-    cnt = hdrpass(e, e_starts, e_cnts, isexp, t1.inner, t2.inner2, comp, y1, y2, o2, cnt, adj * t1.y * t2.y2)
+    cnt = hdrpass(e, e_starts, e_cnts, t1.inner, t2.inner1, comp, y1, y2, o2, cnt, adj * t1.y * t2.y1)
+    cnt = hdrpass(e, e_starts, e_cnts, t1.inner, t2.inner2, comp, y1, y2, o2, cnt, adj * t1.y * t2.y2)
     cnt
 end
 function hdrpass(
     e,
     e_starts,
     e_cnts,
-    isexp,
     t1::SecondAdjointNode1,
     t2::SecondAdjointNode2,
     comp::Nothing,
@@ -232,8 +220,8 @@ function hdrpass(
     cnt,
     adj,
 ) # despecialized
-    cnt = hdrpass(e, e_starts, e_cnts, isexp, t1.inner, t2.inner1, comp, y1, y2, o2, cnt, adj * t1.y * t2.y1)
-    cnt = hdrpass(e, e_starts, e_cnts, isexp, t1.inner, t2.inner2, comp, y1, y2, o2, cnt, adj * t1.y * t2.y2)
+    cnt = hdrpass(e, e_starts, e_cnts, t1.inner, t2.inner1, comp, y1, y2, o2, cnt, adj * t1.y * t2.y1)
+    cnt = hdrpass(e, e_starts, e_cnts, t1.inner, t2.inner2, comp, y1, y2, o2, cnt, adj * t1.y * t2.y2)
     cnt
 end
 
@@ -241,7 +229,6 @@ end
     e,
     e_starts,
     e_cnts,
-    isexp,
     t1::T1,
     t2::T2,
     comp,
@@ -251,15 +238,14 @@ end
     cnt,
     adj,
 ) where {T1<:SecondAdjointNode2,T2<:SecondAdjointNode1}
-    cnt = hdrpass(e, e_starts, e_cnts, isexp, t1.inner1, t2.inner, comp, y1, y2, o2, cnt, adj * t1.y1 * t2.y)
-    cnt = hdrpass(e, e_starts, e_cnts, isexp, t1.inner2, t2.inner, comp, y1, y2, o2, cnt, adj * t1.y2 * t2.y)
+    cnt = hdrpass(e, e_starts, e_cnts, t1.inner1, t2.inner, comp, y1, y2, o2, cnt, adj * t1.y1 * t2.y)
+    cnt = hdrpass(e, e_starts, e_cnts, t1.inner2, t2.inner, comp, y1, y2, o2, cnt, adj * t1.y2 * t2.y)
     cnt
 end
 function hdrpass(
     e,
     e_starts,
     e_cnts,
-    isexp,
     t1::SecondAdjointNode2,
     t2::SecondAdjointNode1,
     comp::Nothing,
@@ -269,8 +255,8 @@ function hdrpass(
     cnt,
     adj,
 ) # despecialized
-    cnt = hdrpass(e, e_starts, e_cnts, isexp, t1.inner1, t2.inner, comp, y1, y2, o2, cnt, adj * t1.y1 * t2.y)
-    cnt = hdrpass(e, e_starts, e_cnts, isexp, t1.inner2, t2.inner, comp, y1, y2, o2, cnt, adj * t1.y2 * t2.y)
+    cnt = hdrpass(e, e_starts, e_cnts, t1.inner1, t2.inner, comp, y1, y2, o2, cnt, adj * t1.y1 * t2.y)
+    cnt = hdrpass(e, e_starts, e_cnts, t1.inner2, t2.inner, comp, y1, y2, o2, cnt, adj * t1.y2 * t2.y)
     cnt
 end
 
@@ -278,7 +264,6 @@ end
     e,
     e_starts,
     e_cnts,
-    isexp,
     t1::T1,
     t2::T2,
     comp,
@@ -288,15 +273,14 @@ end
     cnt,
     adj,
 ) where {T1<:Union{SecondAdjointNodeVar,SecondAdjointNodeExpr},T2<:SecondAdjointNode2}
-    cnt = hdrpass(e, e_starts, e_cnts, isexp, t1, t2.inner1, comp, y1, y2, o2, cnt, adj * t2.y1)
-    cnt = hdrpass(e, e_starts, e_cnts, isexp, t1, t2.inner2, comp, y1, y2, o2, cnt, adj * t2.y2)
+    cnt = hdrpass(e, e_starts, e_cnts, t1, t2.inner1, comp, y1, y2, o2, cnt, adj * t2.y1)
+    cnt = hdrpass(e, e_starts, e_cnts, t1, t2.inner2, comp, y1, y2, o2, cnt, adj * t2.y2)
     cnt
 end
 function hdrpass(
     e,
     e_starts,
     e_cnts,
-    isexp,
     t1::SecondAdjointNodeVar,
     t2::SecondAdjointNode2,
     comp::Nothing,
@@ -306,15 +290,14 @@ function hdrpass(
     cnt,
     adj,
 ) # despecialized
-    cnt = hdrpass(e, e_starts, e_cnts, isexp, t1, t2.inner1, comp, y1, y2, o2, cnt, adj * t2.y1)
-    cnt = hdrpass(e, e_starts, e_cnts, isexp, t1, t2.inner2, comp, y1, y2, o2, cnt, adj * t2.y2)
+    cnt = hdrpass(e, e_starts, e_cnts, t1, t2.inner1, comp, y1, y2, o2, cnt, adj * t2.y1)
+    cnt = hdrpass(e, e_starts, e_cnts, t1, t2.inner2, comp, y1, y2, o2, cnt, adj * t2.y2)
     cnt
 end
 function hdrpass(
     e,
     e_starts,
     e_cnts,
-    isexp,
     t1::SecondAdjointNodeExpr,
     t2::SecondAdjointNode2,
     comp::Nothing,
@@ -324,8 +307,8 @@ function hdrpass(
     cnt,
     adj,
 ) # despecialized
-    cnt = hdrpass(e, e_starts, e_cnts, isexp, t1, t2.inner1, comp, y1, y2, o2, cnt, adj * t2.y1)
-    cnt = hdrpass(e, e_starts, e_cnts, isexp, t1, t2.inner2, comp, y1, y2, o2, cnt, adj * t2.y2)
+    cnt = hdrpass(e, e_starts, e_cnts, t1, t2.inner1, comp, y1, y2, o2, cnt, adj * t2.y1)
+    cnt = hdrpass(e, e_starts, e_cnts, t1, t2.inner2, comp, y1, y2, o2, cnt, adj * t2.y2)
     cnt
 end
 
@@ -333,7 +316,6 @@ end
     e,
     e_starts,
     e_cnts,
-    isexp,
     t1::T1,
     t2::T2,
     comp,
@@ -343,15 +325,14 @@ end
     cnt,
     adj,
 ) where {T1<:SecondAdjointNode2,T2<:Union{SecondAdjointNodeVar,SecondAdjointNodeExpr}}
-    cnt = hdrpass(e, e_starts, e_cnts, isexp, t1.inner1, t2, comp, y1, y2, o2, cnt, adj * t1.y1)
-    cnt = hdrpass(e, e_starts, e_cnts, isexp, t1.inner2, t2, comp, y1, y2, o2, cnt, adj * t1.y2)
+    cnt = hdrpass(e, e_starts, e_cnts, t1.inner1, t2, comp, y1, y2, o2, cnt, adj * t1.y1)
+    cnt = hdrpass(e, e_starts, e_cnts, t1.inner2, t2, comp, y1, y2, o2, cnt, adj * t1.y2)
     cnt
 end
 function hdrpass(
     e,
     e_starts,
     e_cnts,
-    isexp,
     t1::SecondAdjointNode2,
     t2::SecondAdjointNodeVar,
     comp::Nothing,
@@ -361,15 +342,14 @@ function hdrpass(
     cnt,
     adj,
 ) # despecialized
-    cnt = hdrpass(e, e_starts, e_cnts, isexp, t1.inner1, t2, comp, y1, y2, o2, cnt, adj * t1.y1)
-    cnt = hdrpass(e, e_starts, e_cnts, isexp, t1.inner2, t2, comp, y1, y2, o2, cnt, adj * t1.y2)
+    cnt = hdrpass(e, e_starts, e_cnts, t1.inner1, t2, comp, y1, y2, o2, cnt, adj * t1.y1)
+    cnt = hdrpass(e, e_starts, e_cnts, t1.inner2, t2, comp, y1, y2, o2, cnt, adj * t1.y2)
     cnt
 end
 function hdrpass(
     e,
     e_starts,
     e_cnts,
-    isexp,
     t1::SecondAdjointNode2,
     t2::SecondAdjointNodeExpr,
     comp::Nothing,
@@ -379,8 +359,8 @@ function hdrpass(
     cnt,
     adj,
 ) # despecialized
-    cnt = hdrpass(e, e_starts, e_cnts, isexp, t1.inner1, t2, comp, y1, y2, o2, cnt, adj * t1.y1)
-    cnt = hdrpass(e, e_starts, e_cnts, isexp, t1.inner2, t2, comp, y1, y2, o2, cnt, adj * t1.y2)
+    cnt = hdrpass(e, e_starts, e_cnts, t1.inner1, t2, comp, y1, y2, o2, cnt, adj * t1.y1)
+    cnt = hdrpass(e, e_starts, e_cnts, t1.inner2, t2, comp, y1, y2, o2, cnt, adj * t1.y2)
     cnt
 end
 
@@ -388,7 +368,6 @@ end
     e,
     e_starts,
     e_cnts,
-    isexp,
     t1::T1,
     t2::T2,
     comp,
@@ -411,7 +390,6 @@ end
     e,
     e_starts,
     e_cnts,
-    isexp,
     t1::T1,
     t2::T2,
     comp,
@@ -435,7 +413,6 @@ end
     e,
     e_starts,
     e_cnts,
-    isexp,
     t1::T1,
     t2::T2,
     comp,
@@ -459,7 +436,6 @@ end
     e,
     e_starts,
     e_cnts,
-    isexp,
     t1::T1,
     t2::T2,
     comp,
@@ -497,7 +473,6 @@ end
     e,
     e_starts,
     e_cnts,
-    isexp,
     t1::T1,
     t2::T2,
     comp,
@@ -524,7 +499,7 @@ end
 end
 
 """
-    hrpass(e, e_starts, e_cnts, e2, e2_starts, e2_cnts, isexp, t::D, comp, y1, y2, o2, cnt, adj, adj2)
+    hrpass(e, e_starts, e_cnts, e2, e2_starts, e2_cnts, t::D, comp, y1, y2, o2, cnt, adj, adj2)
 
 Performs sparse hessian evaluation (`d²f/dx²` portion) via the reverse pass on the computation (sub)graph formed by second-order forward pass
 
@@ -552,7 +527,6 @@ Performs sparse hessian evaluation (`d²f/dx²` portion) via the reverse pass on
     e2,
     e2_starts,
     e2_cnts,
-    isexp,
     t::D,
     comp,
     y1,
@@ -572,7 +546,6 @@ end
     e2,
     e2_starts,
     e2_cnts,
-    isexp,
     t::D,
     comp,
     y1,
@@ -599,7 +572,6 @@ end
     e2,
     e2_starts,
     e2_cnts,
-    isexp,
     t::D,
     comp,
     y1::V,
@@ -639,7 +611,6 @@ end
     e2,
     e2_starts,
     e2_cnts,
-    isexp,
     t::D,
     comp,
     y1,
@@ -649,7 +620,7 @@ end
     adj,
     adj2,
 ) where {D<:SecondAdjointNode1}
-    cnt = hrpass(e, e_starts, e_cnts, e2, e2_starts, e2_cnts, isexp, t.inner, comp, y1, y2, o2, cnt, adj * t.y, adj2 * (t.y)^2 + adj * t.h)
+    cnt = hrpass(e, e_starts, e_cnts, e2, e2_starts, e2_cnts, t.inner, comp, y1, y2, o2, cnt, adj * t.y, adj2 * (t.y)^2 + adj * t.h)
     cnt
 end
 
@@ -660,7 +631,6 @@ end
     e2,
     e2_starts,
     e2_cnts,
-    isexp,
     t::D,
     comp,
     y1,
@@ -672,9 +642,9 @@ end
 ) where {D<:SecondAdjointNode2}
     adj2y1y2 = adj2 * t.y1 * t.y2
     adjh12 = adj * t.h12
-    cnt = hrpass(e, e_starts, e_cnts, e2, e2_starts, e2_cnts, isexp, t.inner1, comp, y1, y2, o2, cnt, adj * t.y1, adj2 * (t.y1)^2 + adj * t.h11)
-    cnt = hrpass(e, e_starts, e_cnts, e2, e2_starts, e2_cnts, isexp, t.inner2, comp, y1, y2, o2, cnt, adj * t.y2, adj2 * (t.y2)^2 + adj * t.h22)
-    cnt = hdrpass(e, e_starts, e_cnts, isexp, t.inner1, t.inner2, comp, y1, y2, o2, cnt, adj2y1y2 + adjh12)
+    cnt = hrpass(e, e_starts, e_cnts, e2, e2_starts, e2_cnts, t.inner1, comp, y1, y2, o2, cnt, adj * t.y1, adj2 * (t.y1)^2 + adj * t.h11)
+    cnt = hrpass(e, e_starts, e_cnts, e2, e2_starts, e2_cnts, t.inner2, comp, y1, y2, o2, cnt, adj * t.y2, adj2 * (t.y2)^2 + adj * t.h22)
+    cnt = hdrpass(e, e_starts, e_cnts, t.inner1, t.inner2, comp, y1, y2, o2, cnt, adj2y1y2 + adjh12)
     cnt
 end
 
@@ -687,7 +657,6 @@ end
     e2,
     e2_starts,
     e2_cnts,
-    isexp,
     t::D,
     comp,
     y1,
@@ -697,7 +666,7 @@ end
     adj,
     adj2,
 ) where {N<:Union{FirstFixed{typeof(*)},SecondFixed{typeof(*)}},D<:SecondAdjointNode1{N}}
-    cnt = hrpass0(e, e_starts, e_cnts, e2, e2_starts, e2_cnts, isexp, t.inner, comp, y1, y2, o2, cnt, adj * t.y, adj2 * (t.y)^2)
+    cnt = hrpass0(e, e_starts, e_cnts, e2, e2_starts, e2_cnts, t.inner, comp, y1, y2, o2, cnt, adj * t.y, adj2 * (t.y)^2)
     cnt
 end
 
@@ -708,7 +677,6 @@ end
     e2,
     e2_starts,
     e2_cnts,
-    isexp,
     t::D,
     comp,
     y1,
@@ -718,7 +686,7 @@ end
     adj,
     adj2,
 ) where {N<:Union{FirstFixed{typeof(+)},SecondFixed{typeof(+)}},D<:SecondAdjointNode1{N}}
-    cnt = hrpass0(e, e_starts, e_cnts, e2, e2_starts, e2_cnts, isexp, t.inner, comp, y1, y2, o2, cnt, adj, adj2)
+    cnt = hrpass0(e, e_starts, e_cnts, e2, e2_starts, e2_cnts, t.inner, comp, y1, y2, o2, cnt, adj, adj2)
     cnt
 end
 
@@ -729,7 +697,6 @@ end
     e2,
     e2_starts,
     e2_cnts,
-    isexp,
     t::D,
     comp,
     y1,
@@ -739,7 +706,7 @@ end
     adj,
     adj2,
 ) where {D<:SecondAdjointNode1{FirstFixed{typeof(-)}}}
-    cnt = hrpass0(e, e_starts, e_cnts, e2, e2_starts, e2_cnts, isexp, t.inner, comp, y1, y2, o2, cnt, -adj, adj2)
+    cnt = hrpass0(e, e_starts, e_cnts, e2, e2_starts, e2_cnts, t.inner, comp, y1, y2, o2, cnt, -adj, adj2)
     cnt
 end
 
@@ -750,7 +717,6 @@ end
     e2,
     e2_starts,
     e2_cnts,
-    isexp,
     t::D,
     comp,
     y1,
@@ -760,7 +726,7 @@ end
     adj,
     adj2,
 ) where {D<:SecondAdjointNode1{SecondFixed{typeof(-)}}}
-    cnt = hrpass0(e, e_starts, e_cnts, e2, e2_starts, e2_cnts, isexp, t.inner, comp, y1, y2, o2, cnt, adj, adj2)
+    cnt = hrpass0(e, e_starts, e_cnts, e2, e2_starts, e2_cnts, t.inner, comp, y1, y2, o2, cnt, adj, adj2)
     cnt
 end
 
@@ -771,7 +737,6 @@ end
     e2,
     e2_starts,
     e2_cnts,
-    isexp,
     t::D,
     comp,
     y1,
@@ -781,7 +746,7 @@ end
     adj,
     adj2,
 ) where {D<:SecondAdjointNode1{typeof(+)}}
-    cnt = hrpass0(e, e_starts, e_cnts, e2, e2_starts, e2_cnts, isexp, t.inner, comp, y1, y2, o2, cnt, adj, adj2)
+    cnt = hrpass0(e, e_starts, e_cnts, e2, e2_starts, e2_cnts, t.inner, comp, y1, y2, o2, cnt, adj, adj2)
     cnt
 end
 
@@ -792,7 +757,6 @@ end
     e2,
     e2_starts,
     e2_cnts,
-    isexp,
     t::D,
     comp,
     y1,
@@ -802,7 +766,7 @@ end
     adj,
     adj2,
 ) where {D<:SecondAdjointNode1{typeof(-)}}
-    cnt = hrpass0(e, e_starts, e_cnts, e2, e2_starts, e2_cnts, isexp, t.inner, comp, y1, y2, o2, cnt, -adj, adj2)
+    cnt = hrpass0(e, e_starts, e_cnts, e2, e2_starts, e2_cnts, t.inner, comp, y1, y2, o2, cnt, -adj, adj2)
     cnt
 end
 
@@ -813,7 +777,6 @@ end
     e2,
     e2_starts,
     e2_cnts,
-    isexp,
     t::D,
     comp,
     y1,
@@ -823,8 +786,8 @@ end
     adj,
     adj2,
 ) where {D<:SecondAdjointNode2{typeof(+)}}
-    cnt = hrpass0(e, e_starts, e_cnts, e2, e2_starts, e2_cnts, isexp, t.inner1, comp, y1, y2, o2, cnt, adj, adj2)
-    cnt = hrpass0(e, e_starts, e_cnts, e2, e2_starts, e2_cnts, isexp, t.inner2, comp, y1, y2, o2, cnt, adj, adj2)
+    cnt = hrpass0(e, e_starts, e_cnts, e2, e2_starts, e2_cnts, t.inner1, comp, y1, y2, o2, cnt, adj, adj2)
+    cnt = hrpass0(e, e_starts, e_cnts, e2, e2_starts, e2_cnts, t.inner2, comp, y1, y2, o2, cnt, adj, adj2)
     cnt
 end
 
@@ -835,7 +798,6 @@ end
     e2,
     e2_starts,
     e2_cnts,
-    isexp,
     t::D,
     comp,
     y1,
@@ -845,8 +807,8 @@ end
     adj,
     adj2,
 ) where {D<:SecondAdjointNode2{typeof(-)}}
-    cnt = hrpass0(e, e_starts, e_cnts, e2, e2_starts, e2_cnts, isexp, t.inner1, comp, y1, y2, o2, cnt, adj, adj2)
-    cnt = hrpass0(e, e_starts, e_cnts, e2, e2_starts, e2_cnts, isexp, t.inner2, comp, y1, y2, o2, cnt, -adj, adj2)
+    cnt = hrpass0(e, e_starts, e_cnts, e2, e2_starts, e2_cnts, t.inner1, comp, y1, y2, o2, cnt, adj, adj2)
+    cnt = hrpass0(e, e_starts, e_cnts, e2, e2_starts, e2_cnts, t.inner2, comp, y1, y2, o2, cnt, -adj, adj2)
     cnt
 end
 
@@ -857,7 +819,6 @@ end
     e2,
     e2_starts,
     e2_cnts,
-    isexp,
     t::T,
     comp,
     y1,
@@ -877,7 +838,6 @@ end
     e2,
     e2_starts,
     e2_cnts,
-    isexp,
     t::T,
     comp::Nothing,
     y1,
@@ -897,7 +857,6 @@ end
     e2,
     e2_starts,
     e2_cnts,
-    isexp,
     t::T,
     comp,
     y1,
@@ -923,24 +882,17 @@ function hdrpass(
     e,
     e_starts,
     e_cnts,
-    isexp,
-    t1::SecondAdjointNodeVar,
-    t2::SecondAdjointNodeVar,
+    t1::T1,
+    t2::T2,
     comp::Nothing,
     y1,
     y2,
     o2,
     cnt,
     adj,
-)
+) where {T1<:SecondAdjointNodeVar, T2<:SecondAdjointNodeVar}
     cnt += 1
     push!(y1, (t1.i, t2.i))
-    cnt
-end
-
-function hrpass(e, e_starts, e_cnts, e2, e2_starts, e2_cnts, isexp, t::SecondAdjointNodeVar, comp::Nothing, y1, y2, o2, cnt, adj, adj2)
-    cnt += 1
-    push!(y1, (t.i, t.i))
     cnt
 end
 
@@ -951,119 +903,18 @@ function hrpass(
     e2,
     e2_starts,
     e2_cnts,
-    isexp,
-    t::SecondAdjointNodeExpr,
+    t::T,
     comp::Nothing,
     y1,
     y2,
     o2,
     cnt,
     adj,
-    adj2,
-)
-    (cnt_start2, e_start2) = e2_starts[t.i]
-    len2 = e2_cnts[cnt_start2]
+    adj2
+) where {T<:SecondAdjointNodeVar}
     cnt += 1
-    for i in 1:len2
-        val = e2[e_start2+i-1]
-        r = unpack_row(val)
-        c = unpack_col(val)
-        if r != 0 || c != 0
-            push!(y1, (r, c))
-        end
-        cnt += e2_cnts[cnt_start2+i]
-    end
-    return cnt
-end
-
-function hdrpass(
-    e,
-    e_starts,
-    e_cnts,
-    isexp,
-    t1::SecondAdjointNodeExpr,
-    t2::SecondAdjointNodeVar,
-    comp::Nothing,
-    y1,
-    y2,
-    o2,
-    cnt,
-    adj,
-)
-    (cnt_start, e_start) = e_starts[t1.i]
-    len = e_cnts[cnt_start]
-    j = t2.i
-    cnt += 1
-    for i in 1:len
-        idx = e[e_start+i-1]
-        if idx != 0 || j != 0
-            push!(y1, (Int(idx), Int(j)))
-        end
-        cnt += e_cnts[cnt_start+i]
-    end
-    return cnt
-end
-
-function hdrpass(
-    e,
-    e_starts,
-    e_cnts,
-    isexp,
-    t1::SecondAdjointNodeVar,
-    t2::SecondAdjointNodeExpr,
-    comp::Nothing,
-    y1,
-    y2,
-    o2,
-    cnt,
-    adj,
-)
-    i = t1.i
-    (cnt_start, e_start) = e_starts[t2.i]
-    len = e_cnts[cnt_start]
-    cnt += 1
-    for k in 1:len
-        idx = e[e_start+k-1]
-        if i != 0 || idx != 0
-            push!(y1, (Int(i), Int(idx)))
-        end
-        cnt += e_cnts[cnt_start+k]
-    end
-    return cnt
-end
-
-function hdrpass(
-    e,
-    e_starts,
-    e_cnts,
-    isexp,
-    t1::SecondAdjointNodeExpr,
-    t2::SecondAdjointNodeExpr,
-    comp::Nothing,
-    y1,
-    y2,
-    o2,
-    cnt,
-    adj,
-)
-    (cnt_start1, e_start1) = e_starts[t1.i]
-    len1 = e_cnts[cnt_start1]
-    (cnt_start2, e_start2) = e_starts[t2.i]
-    len2 = e_cnts[cnt_start2]
-
-    cnt += 1
-    for i in 1:len1
-        idx1 = e[e_start1+i-1]
-        for j in 1:len2
-            idx2 = e[e_start2+j-1]
-            if idx1 != 0 || idx2 != 0
-                push!(y1, (Int(idx1), Int(idx2)))
-            end
-            cnt += e_cnts[cnt_start2+j]
-        end
-        cnt += e_cnts[cnt_start1+i]
-    end
-    return cnt
+    push!(y1, (t.i, t.i))
+    cnt
 end
 
 @inline function hrpass(
@@ -1073,7 +924,6 @@ end
     e2,
     e2_starts,
     e2_cnts,
-    isexp,
     t::T,
     comp,
     y1::Tuple{V1,V2},
@@ -1095,7 +945,6 @@ end
     e2,
     e2_starts,
     e2_cnts,
-    isexp,
     t::T,
     comp,
     y1,
@@ -1116,7 +965,6 @@ end
     e2,
     e2_starts,
     e2_cnts,
-    isexp,
     t::T,
     comp,
     y1::V,
@@ -1147,7 +995,6 @@ end
     e2,
     e2_starts,
     e2_cnts,
-    isexp,
     t::T,
     comp,
     y1::V,
@@ -1170,7 +1017,6 @@ end
     e,
     e_starts,
     e_cnts,
-    isexp,
     t1::T1,
     t2::T2,
     comp,
@@ -1209,7 +1055,6 @@ end
     e,
     e_starts,
     e_cnts,
-    isexp,
     t1::T1,
     t2::T2,
     comp,
@@ -1241,7 +1086,6 @@ end
     e2,
     e2_starts,
     e2_cnts,
-    isexp,
     t::T,
     comp,
     y1::V,
@@ -1278,7 +1122,6 @@ end
     e,
     e_starts,
     e_cnts,
-    isexp,
     t1::T1,
     t2::T2,
     comp,
@@ -1323,7 +1166,6 @@ end
     e,
     e_starts,
     e_cnts,
-    isexp,
     t1::T1,
     t2::T2,
     comp,
@@ -1368,7 +1210,6 @@ end
     e,
     e_starts,
     e_cnts,
-    isexp,
     t1::T1,
     t2::T2,
     comp,
@@ -1416,7 +1257,7 @@ end
 end
 
 """
-    shessian!(y1, y2, f, x, θ, e1, e1_starts, e1_cnts, e2, e2_starts, e2_cnts, adj1, adj2, isexp)
+    shessian!(y1, y2, f, x, θ, e1, e1_starts, e1_cnts, e2, e2_starts, e2_cnts, adj1, adj2)
 
 Performs sparse hessian evaluation
 
@@ -1477,7 +1318,6 @@ function shessian!(y1, y2, f, x, θ, e1, e1_starts, e1_cnts, e2, e2_starts, e2_c
 end
 
 function shessian!(y1, y2, f, p, x, θ, e1, e1_starts, e1_cnts, e2, e2_starts, e2_cnts, comp, o2, adj1, adj2, isexp)
-    graph = f(p, SecondAdjointNodeSource(x, isexp), θ)
-    hrpass0(e1, e1_starts, e1_cnts, e2, e2_starts, e2_cnts, isexp, graph, comp, y1, y2, o2, 0, adj1, adj2)
+    graph = f(p, SecondAdjointNodeSource(x, nothing), θ)
+    hrpass0(e1, e1_starts, e1_cnts, e2, e2_starts, e2_cnts, graph, comp, y1, y2, o2, 0, adj1, adj2)
 end
-

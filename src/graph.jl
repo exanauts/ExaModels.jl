@@ -52,6 +52,9 @@ A variable node for symbolic expression tree
 struct Var{I} <: AbstractNode
     i::I
 end
+struct Exp{I} <: AbstractNode
+    i::I
+end
 
 struct ParameterSource <: AbstractNode end
 struct ParameterNode{I} <: AbstractNode
@@ -129,9 +132,13 @@ end
 
 struct Identity end
 
-@inline (v::Var{I})(i, x, θ) where {I<:AbstractNode} = @inbounds x[v.i(i, x, θ)]
-@inline (v::Var{I})(i, x, θ) where {I} = @inbounds x[v.i]
-@inline (v::Var{I})(i::Identity, x, θ) where {I<:AbstractNode} = @inbounds x[v.i]
+@inline (v::Var{I})(i, x, θ) where {I<:AbstractNode} = @inbounds x[(v.i(i, x, θ), false)]
+@inline (v::Var{I})(i, x, θ) where {I} = @inbounds x[(v.i, false)]
+@inline (v::Var{I})(i::Identity, x, θ) where {I<:AbstractNode} = @inbounds x[(v.i, false)]
+
+@inline (e::Exp{I})(i, x, θ) where {I<:AbstractNode} = @inbounds x[(e.i(i, x, θ), true)]
+@inline (e::Exp{I})(i, x, θ) where {I} = @inbounds x[(e.i, true)]
+@inline (e::Exp{I})(i::Identity, x, θ) where {I<:AbstractNode} = @inbounds x[(e.i, true)]
 
 @inline (v::ParameterNode{I})(i, x, θ) where {I<:AbstractNode} = @inbounds θ[v.i(i, x, θ)]
 @inline (v::ParameterNode{I})(::Any, x, θ) where {I} = @inbounds θ[v.i]
@@ -208,9 +215,9 @@ A source of `AdjointNode`. `adjoint_node_source[i]` returns an `AdjointNodeVar` 
 # Fields:
 - `inner::VT`: variable vector
 """
-struct AdjointNodeSource{VT,VI}
+struct AdjointNodeSource{VT,OE}
     inner::VT
-    isexp::VI
+    offset_exps::OE
 end
 
 @inline AdjointNode1(f::F, x::T, y, inner::I) where {F,T,I} =
@@ -218,12 +225,24 @@ end
 @inline AdjointNode2(f::F, x::T, y1, y2, inner1::I1, inner2::I2) where {F,T,I1,I2} =
     AdjointNode2{F,T,I1,I2}(x, y1, y2, inner1, inner2)
 
-@inline Base.getindex(x::I, i) where {I<:AdjointNodeSource{Nothing,Nothing}} =
-    AdjointNodeVar(i, NaN)
-@inline Base.getindex(x::I, i) where {I<:AdjointNodeSource{Nothing}} =
-    @inbounds x.isexp[i] == 0 ? AdjointNodeVar(i, NaN) : AdjointNodeExpr(i, NaN)
-@inline Base.getindex(x::I, i) where {I<:AdjointNodeSource} =
-    @inbounds x.isexp[i] == 0 ? AdjointNodeVar(i, x.inner[i]) : AdjointNodeExpr(i, x.inner[i])
+@inline function Base.getindex(x::I, i) where {I<:AdjointNodeSource{Nothing,Nothing}}
+    (i, isexp) = i
+    @inbounds i ? AdjointNodeVar(i, NaN) : AdjointNodeExpr(i, NaN)
+end
+@inline function Base.getindex(x::I, i) where {I<:AdjointNodeSource{Nothing}}
+    (i, isexp) = i
+    if isexp
+        offset = typeof(i) <: Node2{typeof(+),T,Int} where T ? i.inner2 : 0
+        print(x.offset_exps)
+        x.offset_exps[offset].f.f(i)
+    else
+        AdjointNodeVar(i, NaN)
+    end
+end
+@inline function Base.getindex(x::I, i) where {I<:AdjointNodeSource}
+    (i, isexp) = i
+    @inbounds isexp ? AdjointNodeExpr(i, x.inner[i]) : AdjointNodeVar(i, x.inner[i])
+end
 
 """
     SecondAdjointNode1{F, T, I}
@@ -296,9 +315,9 @@ A source of `AdjointNode`. `adjoint_node_source[i]` returns an `AdjointNodeVar` 
 - `inner::VT`: variable vector
 - 'isexp::VTI': expression vector
 """
-struct SecondAdjointNodeSource{VT,VI}
+struct SecondAdjointNodeSource{VT,OE}
     inner::VT
-    isexp::VI
+    offset_exps::OE
 end
 
 @inline SecondAdjointNode1(f::F, x::T, y, h, inner::I) where {F,T,I} =
@@ -316,12 +335,23 @@ end
 ) where {F,T,I1,I2} =
     SecondAdjointNode2{F,T,I1,I2}(x, y1, y2, h11, h12, h22, inner1, inner2)
 
-@inline Base.getindex(x::I, i) where {I<:SecondAdjointNodeSource{Nothing,Nothing}} =
-    SecondAdjointNodeVar(i, NaN)
-@inline Base.getindex(x::I, i) where {I<:SecondAdjointNodeSource{Nothing}} =
-    @inbounds x.isexp[i] == 0 ? SecondAdjointNodeVar(i, NaN) : SecondAdjointNodeExpr(i, NaN)
-@inline Base.getindex(x::I, i) where {I<:SecondAdjointNodeSource} =
-    @inbounds x.isexp[i] == 0 ? SecondAdjointNodeVar(i, x.inner[i]) : SecondAdjointNodeExpr(i, x.inner[i])
+@inline function Base.getindex(x::I, i) where {I<:SecondAdjointNodeSource{Nothing,Nothing}}
+    (i, isexp) = i
+    @inbounds i ? SecondAdjointNodeVar(i, NaN) : SecondAdjointNodeExpr(i, NaN)
+end
+@inline function Base.getindex(x::I, i) where {I<:SecondAdjointNodeSource{Nothing}}
+    (i, isexp) = i
+    if isexp
+        offset = typeof(i) <: Node2{typeof(+),T,Int} where T ? i.inner2 : 0
+        x.offset_exps[offset].f.f(i[1])
+    else
+        SecondAdjointNodeVar(i, NaN)
+    end
+end
+@inline function Base.getindex(x::I, i) where {I<:SecondAdjointNodeSource}
+    (i, isexp) = i
+    @inbounds isexp ? SecondAdjointNodeExpr(i, x.inner[i]) : SecondAdjointNodeVar(i, x.inner[i])
+end
 
 @inline (v::Null{Nothing})(i, x::V, θ) where {T,V<:AbstractVector{T}} = zero(T)
 @inline (v::Null{N})(i, x::V, θ) where {N,T,V<:AbstractVector{T}} = T(v.value)

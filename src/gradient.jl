@@ -8,23 +8,23 @@ Performs dense gradient evaluation via the reverse pass on the computation (sub)
 - `y`: result vector
 - `adj`: adjoint propagated up to the current node
 """
-@inline function drpass(isexp, e, e_starts, e_cnts, d::D, y, adj) where {D<:AdjointNull}
+@inline function drpass(e, e_starts, e_cnts, d::D, y, adj) where {D<:AdjointNull}
     nothing
 end
-@inline function drpass(isexp, e, e_starts, e_cnts, d::D, y, adj) where {D<:AdjointNode1}
-    drpass(isexp, e, e_starts, e_cnts, d.inner, y, adj * d.y)
+@inline function drpass(e, e_starts, e_cnts, d::D, y, adj) where {D<:AdjointNode1}
+    drpass(e, e_starts, e_cnts, d.inner, y, adj * d.y)
     nothing
 end
-@inline function drpass(isexp, e, e_starts, e_cnts, d::D, y, adj) where {D<:AdjointNode2}
-    drpass(isexp, e, e_starts, e_cnts, d.inner1, y, adj * d.y1)
-    drpass(isexp, e, e_starts, e_cnts, d.inner2, y, adj * d.y2)
+@inline function drpass(e, e_starts, e_cnts, d::D, y, adj) where {D<:AdjointNode2}
+    drpass(e, e_starts, e_cnts, d.inner1, y, adj * d.y1)
+    drpass(e, e_starts, e_cnts, d.inner2, y, adj * d.y2)
     nothing
 end
-@inline function drpass(isexp, e, e_starts, e_cnts, d::D, y, adj) where {D<:AdjointNodeVar}
+@inline function drpass(e, e_starts, e_cnts, d::D, y, adj) where {D<:AdjointNodeVar}
     @inbounds y[d.i] += adj
     nothing
 end
-@inline function drpass(isexp, e, e_starts, e_cnts, d::D, y, adj) where {D<:AdjointNodeExpr}
+@inline function drpass(e, e_starts, e_cnts, d::D, y, adj) where {D<:AdjointNodeExpr}
     y[d.i] += e[e_starts[d.i][2]]
     nothing
 end
@@ -47,8 +47,8 @@ function gradient!(isexp, e, e_starts, e_cnts, y, f, x, θ, adj)
     return y
 end
 function gradient!(isexp, e, e_starts, e_cnts, y, f, x, θ, p, adj)
-    graph = f(p, AdjointNodeSource(x, isexp), θ)
-    drpass(isexp, e, e_starts, e_cnts, graph, y, adj)
+    graph = f(p, AdjointNodeSource(x, nothing), θ)
+    drpass(e, e_starts, e_cnts, graph, y, adj)
     return y
 end
 
@@ -115,15 +115,15 @@ Performs sparse gradient evalution
 - `x`: variable vector
 - `adj`: initial adjoint
 """
-function sgradient!(y, f, x, θ, adj)
+function sgradient!(y, f, x, θ, adj, isexp)
     @simd for k in eachindex(f.itr)
         @inbounds sgradient!(y, f.f, f.itr[k], x, θ, f.itr.comp1, offset1(f, k), adj)
     end
     return y
 end
 
-function sgradient!(y, f, p, x, θ, comp, o1, adj)
-    graph = f(p, AdjointNodeSource(x, isexp), θ)
+function sgradient!(y, f, p, x, θ, comp, o1, adj, isexp)
+    graph = f(p, AdjointNodeSource(x, nothing), θ)
     grpass(graph, comp, y, o1, 0, adj)
     return y
 end

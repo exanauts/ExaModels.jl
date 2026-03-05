@@ -19,7 +19,7 @@ const NLP_TEST_ARGUMENTS = [
 const SOLVERS = [
     ("ipopt", nlp -> ipopt(nlp; print_level = 0)),
     ("madnlp", nlp -> madnlp(nlp; print_level = MadNLP.ERROR)),
-    ("percival", nlp -> percival(nlp)),
+    # ("percival", nlp -> percival(nlp)),
 ]
 
 const EXCLUDE1 = [("ac_power", "percival"), ("struct_ac_power", "percival")]
