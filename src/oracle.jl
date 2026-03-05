@@ -254,14 +254,18 @@ function cons_nln!(m::ExaModelWithOracle, x::AbstractVector, g::AbstractVector)
     # SIMD symbolic constraints (indices 1 : n_simd_con)
     _cons_nln!(m.cons, x, m.θ, g)
     # Oracle constraint blocks.
-    # When oracle.gpu=false (default): CPU-bridge (safe for PyCall).
-    # When oracle.gpu=true: pass device array directly (GPU black-box).
+    # gpu=true : callback writes directly into the view of g — zero-copy.
+    # gpu=false: CPU bridge (safe for PythonCall / PyCall).
     for (i, oracle) in enumerate(m.oracles)
-        off  = m.oracle_con_offsets[i]
-        xin  = _oracle_input(oracle, x)
-        cv   = similar(xin, oracle.ncon)
-        oracle.f!(cv, xin)
-        copyto!(view(g, off+1 : off+oracle.ncon), cv)
+        off = m.oracle_con_offsets[i]
+        if oracle.gpu
+            oracle.f!(view(g, off+1 : off+oracle.ncon), x)
+        else
+            xin = _ensure_cpu(x)
+            cv  = similar(xin, oracle.ncon)
+            oracle.f!(cv, xin)
+            copyto!(view(g, off+1 : off+oracle.ncon), cv)
+        end
     end
     return g
 end
@@ -293,8 +297,11 @@ function jac_coord!(m::ExaModelWithOracle, x::AbstractVector, jac::AbstractVecto
     # Oracle Jacobian values.
     for (i, oracle) in enumerate(m.oracles)
         off_j = m.oracle_jac_offsets[i]
-        if oracle.nnzj > 0
-            xin = _oracle_input(oracle, x)
+        oracle.nnzj == 0 && continue
+        if oracle.gpu
+            oracle.jac!(view(jac, off_j+1 : off_j+oracle.nnzj), x)
+        else
+            xin = _ensure_cpu(x)
             jv  = similar(xin, oracle.nnzj)
             oracle.jac!(jv, xin)
             copyto!(view(jac, off_j+1 : off_j+oracle.nnzj), jv)
@@ -398,14 +405,14 @@ function hess_coord!(
     for (i, oracle) in enumerate(m.oracles)
         off_h = m.oracle_hess_offsets[i]
         off_c = m.oracle_con_offsets[i]
-        if oracle.nnzh > 0
-            xin  = _oracle_input(oracle, x)
-            yslice = if oracle.gpu
-                view(y, (off_c+1):(off_c+oracle.ncon))
-            else
-                view(_ensure_cpu(y), (off_c+1):(off_c+oracle.ncon))
-            end
-            hv = similar(xin, oracle.nnzh)
+        oracle.nnzh == 0 && continue
+        if oracle.gpu
+            oracle.hess!(view(hess, off_h+1 : off_h+oracle.nnzh), x,
+                         view(y, off_c+1 : off_c+oracle.ncon))
+        else
+            xin    = _ensure_cpu(x)
+            yslice = view(_ensure_cpu(y), off_c+1 : off_c+oracle.ncon)
+            hv     = similar(xin, oracle.nnzh)
             oracle.hess!(hv, xin, yslice)
             copyto!(view(hess, off_h+1 : off_h+oracle.nnzh), hv)
         end
