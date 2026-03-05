@@ -12,9 +12,10 @@ function TwoStageExaModel(
     d_start = nothing, v_start = nothing,
     d_lvar = -Inf, d_uvar = Inf,
     v_lvar = -Inf, v_uvar = Inf,
+    backend = nothing,
 )
     nθ = length(first(θ_sets))
-    core = TwoStageExaCore()
+    core = TwoStageExaCore(; backend = backend)
 
     # Recourse variables first: indices 1:ns*nv
     scenario_tags = [i for i in 1:ns for _ in 1:nv]
