@@ -25,8 +25,8 @@ include("LinAlgTest/LinAlgTest.jl")
     @info "Running Utils Test"
     UtilsTest.runtests()
 
-    # @info "Running TwoStage Test"
-    # TwoStageTest.runtests()
+    @info "Running TwoStage Test"
+    TwoStageTest.runtests()
 
     @info "Running LinAlg Test"
     LinAlgTest.runtests()
