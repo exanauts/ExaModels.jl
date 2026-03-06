@@ -7,7 +7,7 @@ import NLPModels:
     obj, obj!, cons!, cons_nln!, grad!, jac_coord!, hess_coord!, jac_structure!,
     hess_structure!
 import ExaModels:
-    num_scenarios, set_scenario_parameters!, set_all_scenario_parameters!,
+    set_scenario_parameters!, set_all_scenario_parameters!,
     var_indices, cons_block_indices, get_model
 
 import NLPModelsIpopt: ipopt
@@ -30,7 +30,7 @@ function runtests()
                 constraint(c, v[j] for j in 1:nv)
             end
 
-            @test num_scenarios(model) == 3
+            @test NLPModels.get_nbatch(model) == 3
             @test NLPModels.get_nvar(model) == nv
             @test NLPModels.get_ncon(model) == nv
             @test NLPModels.get_nbatch(model) == ns

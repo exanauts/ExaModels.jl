@@ -230,8 +230,6 @@ end
 # Accessors
 # ============================================================================
 
-num_scenarios(m::BatchExaModel) = m.ns
-
 """
     get_model(model::BatchExaModel)
 
