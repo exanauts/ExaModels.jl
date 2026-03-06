@@ -64,26 +64,26 @@ struct ParameterNode{I} <: AbstractNode
 end
 
 """
-    ParSource
+    DataSource
 
 A source of parameterized data
 
 """
-struct ParSource <: AbstractNode end
+struct DataSource <: AbstractNode end
 
 """
-    ParIndexed{I, J}
+    DataIndexed{I, J}
 
 A parameterized data node
 
 # Fields:
 - `inner::I`: parameter for the data
 """
-struct ParIndexed{I,J} <: AbstractNode
+struct DataIndexed{I,J} <: AbstractNode
     inner::I
 end
 
-@inline ParIndexed(inner::I, n) where {I} = ParIndexed{I,n}(inner)
+@inline DataIndexed(inner::I, n) where {I} = DataIndexed{I,n}(inner)
 """
     Node1{F, I}
 
@@ -117,13 +117,13 @@ struct SecondFixed{F}
     inner::F
 end
 
-@inline Base.getproperty(n::ParSource, s::Symbol) = ParIndexed(n, s)
-@inline Base.getindex(n::ParSource, i) = ParIndexed(n, i)
-@inline Base.indexed_iterate(n::P, idx, start = 1) where P <: Union{ParSource, ParIndexed} = (ParIndexed(n, idx), idx + 1)
+@inline Base.getproperty(n::DataSource, s::Symbol) = DataIndexed(n, s)
+@inline Base.getindex(n::DataSource, i) = DataIndexed(n, i)
+@inline Base.indexed_iterate(n::P, idx, start = 1) where P <: Union{DataSource, DataIndexed} = (DataIndexed(n, idx), idx + 1)
 
-@inline Base.getproperty(v::ParIndexed{I, n}, s::Symbol) where {I, n} = ParIndexed(v, s)
-@inline Base.getindex(v::ParIndexed{I, n}, i) where {I, n} = ParIndexed(v, i)
-@inline Base.indexed_iterate(v::ParIndexed{I, n}, idx, start = 1) where {I, n} = (ParIndexed(v, idx), idx + 1)
+@inline Base.getproperty(v::DataIndexed{I, n}, s::Symbol) where {I, n} = DataIndexed(v, s)
+@inline Base.getindex(v::DataIndexed{I, n}, i) where {I, n} = DataIndexed(v, i)
+@inline Base.indexed_iterate(v::DataIndexed{I, n}, idx, start = 1) where {I, n} = (DataIndexed(v, idx), idx + 1)
 
 
 @inline Base.getindex(n::VarSource, i) = Var(i)
@@ -147,11 +147,11 @@ struct Identity end
 @inline (v::ParameterNode{I})(::Any, x, ::Nothing) where {I} = NaN
 @inline (v::ParameterNode{I})(::Identity, x, ::Nothing) where {I<:AbstractNode} = NaN
 
-@inline (v::ParSource)(i, x, θ) = i
-@inline (v::ParIndexed{I,n})(i, x, θ) where {I,n} = @inbounds getfield(getfield(v, :inner)(i, x, θ), n)
+@inline (v::DataSource)(i, x, θ) = i
+@inline (v::DataIndexed{I,n})(i, x, θ) where {I,n} = @inbounds getfield(getfield(v, :inner)(i, x, θ), n)
 
-(v::ParIndexed)(i::Identity, x, θ) = NaN # despecialized
-(v::ParSource)(i::Identity, x, θ) = NaN # despecialized
+(v::DataIndexed)(i::Identity, x, θ) = NaN # despecialized
+(v::DataSource)(i::Identity, x, θ) = NaN # despecialized
 
 """
     AdjointNode1{F, T, I}
