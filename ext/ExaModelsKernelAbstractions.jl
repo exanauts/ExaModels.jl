@@ -204,6 +204,14 @@ function _obj(backend, objbuffer, obj, x, θ)
 end
 function _obj(backend, objbuffer, f::ExaModels.ObjectiveNull, x, θ) end
 
+function ExaModels._eval_objbuffer!(
+        objbuffer, m::ExaModels.ExaModel{T, VT, E}, x
+    ) where {T, VT, E <: KAExtension}
+    return if !isempty(objbuffer)
+        _obj(m.ext.backend, objbuffer, m.objs, x, m.θ)
+    end
+end
+
 function ExaModels.cons_nln!(
     m::ExaModels.AbstractExaModel{T,VT,E},
     x::AbstractVector,

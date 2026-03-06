@@ -11,6 +11,7 @@ include("JuMPTest/JuMPTest.jl")
 include("UtilsTest/UtilsTest.jl")
 include("TwoStageTest/TwoStageTest.jl")
 include("LinAlgTest/LinAlgTest.jl")
+include("BatchTest/BatchTest.jl")
 
 @testset "ExaModels test" begin
     @info "Running AD Test"
@@ -30,4 +31,6 @@ include("LinAlgTest/LinAlgTest.jl")
 
     @info "Running LinAlg Test"
     LinAlgTest.runtests()
+    @info "Running Batch Test"
+    BatchTest.runtests()
 end
