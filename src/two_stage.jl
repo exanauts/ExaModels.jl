@@ -8,12 +8,12 @@ struct TwoStageExaModel{T, M <: ExaModel{T}}
 end
 
 function TwoStageExaModel(
-    build_fn::Function, nd::Int, nv::Int, ns::Int, θ_sets;
-    d_start = nothing, v_start = nothing,
-    d_lvar = -Inf, d_uvar = Inf,
-    v_lvar = -Inf, v_uvar = Inf,
-    backend = nothing,
-)
+        build_fn::Function, nd::Int, nv::Int, ns::Int, θ_sets;
+        d_start = nothing, v_start = nothing,
+        d_lvar = -Inf, d_uvar = Inf,
+        v_lvar = -Inf, v_uvar = Inf,
+        backend = nothing,
+    )
     nθ = length(first(θ_sets))
     core = TwoStageExaCore(; backend = backend)
 
@@ -40,24 +40,24 @@ function TwoStageExaModel(
 end
 
 # Index accessors
-recourse_var_indices(m::TwoStageExaModel, s::Int) = ((s-1)*m.nv+1):(s*m.nv)
-design_var_indices(m::TwoStageExaModel) = (m.ns*m.nv+1):(m.ns*m.nv+m.nd)
-cons_block_indices(m::TwoStageExaModel, s::Int) = ((s-1)*m.nc_per_s+1):(s*m.nc_per_s)
+recourse_var_indices(m::TwoStageExaModel, s::Int) = ((s - 1) * m.nv + 1):(s * m.nv)
+design_var_indices(m::TwoStageExaModel) = (m.ns * m.nv + 1):(m.ns * m.nv + m.nd)
+cons_block_indices(m::TwoStageExaModel, s::Int) = ((s - 1) * m.nc_per_s + 1):(s * m.nc_per_s)
 
-recourse_var_index(m::TwoStageExaModel, s::Int, j::Int) = (s-1)*m.nv + j
-design_var_index(m::TwoStageExaModel, j::Int) = m.ns*m.nv + j
-global_con_index(m::TwoStageExaModel, s::Int, j::Int) = (s-1)*m.nc_per_s + j
+recourse_var_index(m::TwoStageExaModel, s::Int, j::Int) = (s - 1) * m.nv + j
+design_var_index(m::TwoStageExaModel, j::Int) = m.ns * m.nv + j
+global_con_index(m::TwoStageExaModel, s::Int, j::Int) = (s - 1) * m.nc_per_s + j
 
 grad_recourse_indices(m::TwoStageExaModel, s::Int) = recourse_var_indices(m, s)
 grad_design_indices(m::TwoStageExaModel) = design_var_indices(m)
 
 # Extraction helpers
 function extract_recourse_vars!(vec, m::TwoStageExaModel, s::Int, x)
-    copyto!(vec, 1, x, (s-1)*m.nv+1, m.nv)
+    return copyto!(vec, 1, x, (s - 1) * m.nv + 1, m.nv)
 end
 
 function extract_design_vars!(vec, m::TwoStageExaModel, x)
-    copyto!(vec, 1, x, m.ns*m.nv+1, m.nd)
+    return copyto!(vec, 1, x, m.ns * m.nv + 1, m.nd)
 end
 
 # Dimension getters
@@ -66,14 +66,15 @@ total_cons(m::TwoStageExaModel) = NLPModels.get_ncon(m.model)
 
 # Parameter management
 function set_scenario_parameters!(m::TwoStageExaModel, s::Int, θ_vals)
-    offset = (s-1) * m.nθ
-    copyto!(m.model.θ, offset + 1, θ_vals, 1, m.nθ)
+    offset = (s - 1) * m.nθ
+    return copyto!(m.model.θ, offset + 1, θ_vals, 1, m.nθ)
 end
 
 function set_all_scenario_parameters!(m::TwoStageExaModel, θ_sets)
     for (s, θ_vals) in enumerate(θ_sets)
         set_scenario_parameters!(m, s, θ_vals)
     end
+    return
 end
 
 # NLPModels forwarding
