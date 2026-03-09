@@ -829,12 +829,12 @@ end
 
 # Helper to infer dimensions from iterator
 _infer_subexpr_dims(itr::AbstractRange) = (itr,)
-_infer_subexpr_dims(itr::AbstractArray) = (length(itr),)
+_infer_subexpr_dims(itr::AbstractArray) = size(itr)
 _infer_subexpr_dims(itr::Base.Iterators.ProductIterator) = itr.iterators
 _infer_subexpr_dims(itr) = (length(collect(itr)),)  # fallback
 
 """
-    subexpr(core, generator; reduced=false, parameter_only=false)
+    subexpr(core, generator; reduced=false, parameter_only=false, dims=nothing)
 
 Creates a subexpression that can be reused in objectives and constraints.
 
@@ -914,10 +914,36 @@ dx = subexpr(c, x[t, i] - x[t-1, i] for t in 1:T, i in 1:N)
 # Now dx[t, i] can be used in constraints
 constraint(c, dx[t, i] - something for t in 1:T, i in 1:N)
 ```
+
+## Tupled iterators
+
+When using a tupled iterator (e.g., a comprehension that produces an array of tuples),
+multi-dimensional shapes are automatically preserved. For 1-based indexing this works
+out of the box:
+
+```julia
+c = ExaCore()
+x = variable(c, 1:N, 1:K)
+itr = [(i, k) for i in 1:N, k in 1:K]
+s = subexpr(c, x[i, k]^2 for (i, k) in itr; reduced=true)
+# s[i, k] works correctly
+```
+
+For non-1-based indexing (e.g., `0:K`), or to embed parameter data in tuples, use the
+`dims` keyword to specify the index ranges explicitly:
+
+```julia
+c = ExaCore()
+x = variable(c, 1:N, 0:K)
+h = parameter(c, rand(N))
+itr = [(i, k, h[i]) for i in 1:N, k in 0:K]
+s = subexpr(c, hi * x[i, k]^2 for (i, k, hi) in itr; reduced=true, dims=(1:N, 0:K))
+# s[i, k] works correctly with 0-based second dimension
+```
 """
-function subexpr(c::C, gen::Base.Generator; reduced::Bool = false, parameter_only::Bool = false) where {T, C <: ExaCore{T}}
+function subexpr(c::C, gen::Base.Generator; reduced::Bool = false, parameter_only::Bool = false, dims = nothing) where {T, C <: ExaCore{T}}
     # Infer dimensions before adapting (which may collect the iterator)
-    ns = _infer_subexpr_dims(gen.iter)
+    ns = dims === nothing ? _infer_subexpr_dims(gen.iter) : (dims isa Tuple ? dims : (dims,))
 
     gen = _adapt_gen(gen)
     n = length(gen.iter)
