@@ -829,7 +829,7 @@ end
 
 # Helper to infer dimensions from iterator
 _infer_subexpr_dims(itr::AbstractRange) = (itr,)
-_infer_subexpr_dims(itr::AbstractArray) = size(itr)
+_infer_subexpr_dims(itr::AbstractArray) = Base.size(itr)
 _infer_subexpr_dims(itr::Base.Iterators.ProductIterator) = itr.iterators
 _infer_subexpr_dims(itr) = (length(collect(itr)),)  # fallback
 
@@ -929,16 +929,26 @@ s = subexpr(c, x[i, k]^2 for (i, k) in itr; reduced=true)
 # s[i, k] works correctly
 ```
 
-For non-1-based indexing (e.g., `0:K`), or to embed parameter data in tuples, use the
-`dims` keyword to specify the index ranges explicitly:
+For non-1-based indexing (e.g., `0:K`), use the `dims` keyword to specify the index
+ranges explicitly:
 
 ```julia
 c = ExaCore()
 x = variable(c, 1:N, 0:K)
-h = parameter(c, rand(N))
-itr = [(i, k, h[i]) for i in 1:N, k in 0:K]
-s = subexpr(c, hi * x[i, k]^2 for (i, k, hi) in itr; reduced=true, dims=(1:N, 0:K))
+itr = [(i, k) for i in 1:N, k in 0:K]
+s = subexpr(c, x[i, k]^2 for (i, k) in itr; reduced=true, dims=(1:N, 0:K))
 # s[i, k] works correctly with 0-based second dimension
+```
+
+To embed scalar data in tuples, use lifted (default) subexpressions:
+
+```julia
+c = ExaCore()
+x = variable(c, 1:N, 1:K)
+weights = [2.0*i for i in 1:N]
+itr = [(i, k, weights[i]) for i in 1:N, k in 1:K]
+s = subexpr(c, wi * x[i, k]^2 for (i, k, wi) in itr)
+# s[i, k] references auxiliary variables with embedded data
 ```
 """
 function subexpr(c::C, gen::Base.Generator; reduced::Bool = false, parameter_only::Bool = false, dims = nothing) where {T, C <: ExaCore{T}}
