@@ -255,10 +255,42 @@ function test_param_only()
     @test NLPModels.hess(em, xval, yval) ≈ spdiagm(0=>fill(-2 * sum(yval), (10,)))
 end
 
+"""
+Test constraint! with Pair{Tuple} key and multi-dimensional array iterator (issue #248).
+"""
+function test_constraint_aug_multidim_array()
+    V, N, K = 2, 4, 2
+
+    c = ExaModels.ExaCore()
+    x = ExaModels.variable(c, 1:V, 1:N, 0:K; start = 1.0)
+
+    # Original constraint with multi-dim array iterator
+    itrc = [(v, i, k) for v in 1:V, i in 1:(N-1), k in 1:K]
+    c1 = ExaModels.constraint(c, x[v, i, K] - x[v, i, k] for (v, i, k) in itrc; lcon = 0.0)
+
+    # Augment with Pair{Tuple} key — (v,i) maps to the first two dims
+    itrc1 = [(v, i, k) for v in 1:V, i in 1:(N-1), k in 1:K]
+    ExaModels.constraint!(c, c1,
+        (v, i) => -x[v, i, k]
+        for (v, i, k) in itrc1
+    )
+
+    ExaModels.objective(c, (x[1, i, 0] - 1)^2 for i in 1:N)
+    m = ExaModels.ExaModel(c)
+
+    # Should not error during model creation or solve
+    xval = rand(m.meta.nvar)
+    @test length(NLPModels.cons(m, xval)) == V * (N - 1) * K
+    @test length(NLPModels.jac(m, xval).nzval) > 0
+end
+
 function test_parametric_vs_nonparametric(backend)
     @testset "Basic parametric" begin
         test_real_only()
         test_param_only()
+    end
+    @testset "constraint! with multidim array iterator (issue #248)" begin
+        test_constraint_aug_multidim_array()
     end
     @testset "Parametric luksan" begin
         @testset "Metadata" begin

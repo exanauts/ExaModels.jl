@@ -12,7 +12,7 @@ include("UtilsTest/UtilsTest.jl")
 include("TwoStageTest/TwoStageTest.jl")
 include("LinAlgTest/LinAlgTest.jl")
 
-@testset "ExaModels test" begin
+@testset verbose = true "ExaModels test" begin
     @info "Running AD Test"
     ADTest.runtests()
 
