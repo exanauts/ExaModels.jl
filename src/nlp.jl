@@ -8,6 +8,9 @@ struct ParameterNull <: AbstractParameter end
 struct ObjectiveNull <: AbstractObjective end
 struct ConstraintNull <: AbstractConstraint end
 
+struct NaNSource{T} end
+Base.getindex(::NaNSource{T}, i) where {T} = T(NaN)
+
 struct Variable{S,O} <: AbstractVariable
     size::S
     length::O
@@ -637,9 +640,9 @@ Objective
   where |P| = 10
 ```
 """
-function objective(c::C, gen) where {C<:ExaCore}
+function objective(c::C, gen) where {T, C<:ExaCore{T}}
     gen = _adapt_gen(gen)
-    f = SIMDFunction(gen, c.nobj, c.nnzg, c.nnzh)
+    f = SIMDFunction(T, gen, c.nobj, c.nnzg, c.nnzh)
     pars = gen.iter
 
     _objective(c, f, pars)
@@ -650,8 +653,8 @@ end
 
 Adds objective terms specified by a `expr` and `pars` to `core`, and returns an `Objective` object.
 """
-function objective(c::C, expr::N, pars = 1:1) where {C<:ExaCore,N<:AbstractNode}
-    f = _simdfunction(expr, c.nobj, c.nnzg, c.nnzh)
+function objective(c::C, expr::N, pars = 1:1) where {T,C<:ExaCore{T},N<:AbstractNode}
+    f = _simdfunction(T, expr, c.nobj, c.nnzg, c.nnzh)
 
     _objective(c, f, pars)
 end
@@ -703,7 +706,7 @@ function constraint(
 ) where {T,C<:ExaCore{T}}
 
     gen = _adapt_gen(gen)
-    f = SIMDFunction(gen, c.ncon, c.nnzj, c.nnzh)
+    f = SIMDFunction(T, gen, c.ncon, c.nnzj, c.nnzh)
     pars = gen.iter
 
     _constraint(c, f, pars, start, lcon, ucon; kwargs...)
@@ -724,7 +727,7 @@ function constraint(
     kwargs...
 ) where {T,C<:ExaCore{T},N<:AbstractNode}
 
-    f = _simdfunction(expr, c.ncon, c.nnzj, c.nnzh)
+    f = _simdfunction(T,expr, c.ncon, c.nnzj, c.nnzh)
 
     _constraint(c, f, pars, start, lcon, ucon; kwargs...)
 end
@@ -743,7 +746,7 @@ function constraint(
     kwargs...
 ) where {T,C<:ExaCore{T}}
 
-    f = _simdfunction(Null(), c.ncon, c.nnzj, c.nnzh)
+    f = _simdfunction(T, Null(), c.ncon, c.nnzj, c.nnzh)
 
     _constraint(c, f, 1:n, start, lcon, ucon; kwargs...)
 end
@@ -795,10 +798,10 @@ Constraint Augmentation
   where |P| = 3
 ```
 """
-function constraint!(c::C, c1, gen::Base.Generator) where {C<:ExaCore}
+function constraint!(c::C, c1, gen::Base.Generator) where {T, C<:ExaCore{T}}
 
     gen = _adapt_gen(gen)
-    f = SIMDFunction(gen, offset0(c1, 0), c.nnzj, c.nnzh)
+    f = SIMDFunction(T, gen, offset0(c1, 0), c.nnzj, c.nnzh)
     pars = gen.iter
 
     _constraint!(c, f, pars)
@@ -809,8 +812,8 @@ end
 
 Expands the existing constraint `c1` in `c` by adding addtional constraints terms specified by `expr` and `pars`.
 """
-function constraint!(c::C, c1, expr, pars) where {C<:ExaCore}
-    f = _simdfunction(expr, offset0(c1, 0), c.nnzj, c.nnzh)
+function constraint!(c::C, c1, expr, pars) where {T, C<:ExaCore{T}}
+    f = _simdfunction(T, expr, offset0(c1, 0), c.nnzj, c.nnzh)
 
     _constraint!(c, f, pars)
 end
@@ -984,33 +987,33 @@ function subexpr(c::C, gen::Base.Generator; reduced::Bool = false, parameter_onl
 end
 
 
-function jac_structure!(m::AbstractExaModel, rows::AbstractVector, cols::AbstractVector)
-    _jac_structure!(m.cons, rows, cols)
+function jac_structure!(m::AbstractExaModel{T}, rows::AbstractVector, cols::AbstractVector) where T
+    _jac_structure!(T, m.cons, rows, cols)
     return rows, cols
 end
 
-_jac_structure!(cons::ConstraintNull, rows, cols) = nothing
-function _jac_structure!(cons, rows, cols)
-    _jac_structure!(cons.inner, rows, cols)
-    sjacobian!(rows, cols, cons, nothing, nothing, NaN)
+_jac_structure!(T, cons::ConstraintNull, rows, cols) = nothing
+function _jac_structure!(T, cons, rows, cols)
+    _jac_structure!(T, cons.inner, rows, cols)
+    sjacobian!(rows, cols, cons, NaNSource{T}(), nothing, T(NaN))
 end
 
-function hess_structure!(m::AbstractExaModel, rows::AbstractVector, cols::AbstractVector)
-    _obj_hess_structure!(m.objs, rows, cols)
-    _con_hess_structure!(m.cons, rows, cols)
+function hess_structure!(m::AbstractExaModel{T}, rows::AbstractVector, cols::AbstractVector) where T
+    _obj_hess_structure!(T, m.objs, rows, cols)
+    _con_hess_structure!(T, m.cons, rows, cols)
     return rows, cols
 end
 
-_obj_hess_structure!(objs::ObjectiveNull, rows, cols) = nothing
-function _obj_hess_structure!(objs, rows, cols)
-    _obj_hess_structure!(objs.inner, rows, cols)
-    shessian!(rows, cols, objs, nothing, nothing, NaN, NaN)
+_obj_hess_structure!(T, objs::ObjectiveNull, rows, cols) = nothing
+function _obj_hess_structure!(T, objs, rows, cols)
+    _obj_hess_structure!(T, objs.inner, rows, cols)
+    shessian!(rows, cols, objs, NaNSource{T}(), NaNSource{T}(), T(NaN), T(NaN))
 end
 
-_con_hess_structure!(cons::ConstraintNull, rows, cols) = nothing
-function _con_hess_structure!(cons, rows, cols)
-    _con_hess_structure!(cons.inner, rows, cols)
-    shessian!(rows, cols, cons, nothing, nothing, NaN, NaN)
+_con_hess_structure!(T, cons::ConstraintNull, rows, cols) = nothing
+function _con_hess_structure!(T, cons, rows, cols)
+    _con_hess_structure!(T, cons.inner, rows, cols)
+    shessian!(rows, cols, cons, NaNSource{T}(), nothing, T(NaN), T(NaN))
 end
 
 function obj(m::AbstractExaModel, x::AbstractVector)

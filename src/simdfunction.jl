@@ -38,14 +38,14 @@ Returns a `SIMDFunction` using the `gen`.
 - `o1`: offset for the derivative evalution
 - `o2`: offset for the second-order derivative evalution
 """
-function SIMDFunction(gen::Base.Generator, o0 = 0, o1 = 0, o2 = 0)
+function SIMDFunction(T, gen::Base.Generator, o0 = 0, o1 = 0, o2 = 0)
 
     f = gen.f(ParSource())
 
-    _simdfunction(f, o0, o1, o2)
+    _simdfunction(T, f, o0, o1, o2)
 end
 
-function _simdfunction(f::F, o0, o1, o2) where {F<:Real}
+function _simdfunction(T, f::F, o0, o1, o2) where {F<:Real}
     SIMDFunction(
         f,
         ExaModels.Compressor{Tuple{}}(()),
@@ -58,14 +58,14 @@ function _simdfunction(f::F, o0, o1, o2) where {F<:Real}
     )
 end
 
-function _simdfunction(f, o0, o1, o2)
+function _simdfunction(T, f, o0, o1, o2)
     d = f(Identity(), AdjointNodeSource(nothing), nothing)
     y1 = []
-    ExaModels.grpass(d, nothing, y1, nothing, 0, NaN)
+    ExaModels.grpass(d, nothing, y1, nothing, 0, T(NaN))
 
     t = f(Identity(), SecondAdjointNodeSource(nothing), nothing)
     y2 = []
-    ExaModels.hrpass0(t, nothing, y2, nothing, nothing, 0, NaN, NaN)
+    ExaModels.hrpass0(t, nothing, y2, nothing, nothing, 0, T(NaN), T(NaN))
 
     a1 = unique(y1)
     o1step = length(a1)

@@ -120,16 +120,16 @@ function ExaModels.build_extension(
     )
 end
 
-function _conaug_structure!(backend, cons, sparsity)
+function _conaug_structure!(T, backend, cons, sparsity)
     if !isempty(cons.itr)
         kers(backend)(sparsity, cons.f, cons.itr, cons.oa; ndrange = length(cons.itr))
     end
-    _conaug_structure!(backend, cons.inner, sparsity)
+    _conaug_structure!(T, backend, cons.inner, sparsity)
 end
-function _conaug_structure!(backend, cons::ExaModels.Constraint, sparsity)
-    _conaug_structure!(backend, cons.inner, sparsity)
+function _conaug_structure!(T, backend, cons::ExaModels.Constraint, sparsity)
+    _conaug_structure!(T, backend, cons.inner, sparsity)
 end
-function _conaug_structure!(backend, cons::ExaModels.ConstraintNull, sparsity) end
+function _conaug_structure!(T, backend, cons::ExaModels.ConstraintNull, sparsity) end
 @kernel function kers(sparsity, @Const(f), @Const(itr), @Const(oa))
     I = @index(Global)
     @inbounds sparsity[oa+I] = (ExaModels.offset0(f, itr, I), oa + I)
@@ -137,11 +137,11 @@ end
 
 
 
-function _grad_structure!(backend, objs, gsparsity)
-    ExaModels.sgradient!(backend, gsparsity, objs, nothing, nothing, NaN)
-    _grad_structure!(backend, objs.inner, gsparsity)
+function _grad_structure!(T, backend, objs, gsparsity)
+    ExaModels.sgradient!(backend, gsparsity, objs, ExaModels.NaNSource{T}(), nothing, T(NaN))
+    _grad_structure!(T, backend, objs.inner, gsparsity)
 end
-function _grad_structure!(backend, objs::ExaModels.ObjectiveNull, gsparsity) end
+function _grad_structure!(T, backend, objs::ExaModels.ObjectiveNull, gsparsity) end
 
 function ExaModels.jac_structure!(
     m::ExaModels.AbstractExaModel{T,VT,E},
@@ -149,15 +149,15 @@ function ExaModels.jac_structure!(
     cols::V,
 ) where {T,VT,E<:KAExtension,V<:AbstractVector}
     if !isempty(rows)
-        _jac_structure!(m.ext.backend, m.cons, rows, cols)
+        _jac_structure!(T, m.ext.backend, m.cons, rows, cols)
     end
     return rows, cols
 end
-function _jac_structure!(backend, cons, rows, cols)
-    ExaModels.sjacobian!(backend, rows, cols, cons, nothing, nothing, NaN)
-    _jac_structure!(backend, cons.inner, rows, cols)
+function _jac_structure!(T, backend, cons, rows, cols)
+    ExaModels.sjacobian!(backend, rows, cols, cons, ExaModels.NaNSource{T}(), nothing, T(NaN))
+    _jac_structure!(T, backend, cons.inner, rows, cols)
 end
-function _jac_structure!(backend, cons::ExaModels.ConstraintNull, rows, cols) end
+function _jac_structure!(T, backend, cons::ExaModels.ConstraintNull, rows, cols) end
 
 
 function ExaModels.hess_structure!(
@@ -166,22 +166,22 @@ function ExaModels.hess_structure!(
     cols::V,
 ) where {T,VT,E<:KAExtension,V<:AbstractVector}
     if !isempty(rows)
-        _obj_hess_structure!(m.ext.backend, m.objs, rows, cols)
-        _con_hess_structure!(m.ext.backend, m.cons, rows, cols)
+        _obj_hess_structure!(T, m.ext.backend, m.objs, rows, cols)
+        _con_hess_structure!(T, m.ext.backend, m.cons, rows, cols)
         end
     return rows, cols
 end
 
-function _obj_hess_structure!(backend, objs, rows, cols)
-    ExaModels.shessian!(backend, rows, cols, objs, nothing, nothing, NaN, NaN)
-    _obj_hess_structure!(backend, objs.inner, rows, cols)
+function _obj_hess_structure!(T, backend, objs, rows, cols)
+    ExaModels.shessian!(backend, rows, cols, objs, ExaModels.NaNSource{T}(), nothing, T(NaN), T(NaN))
+    _obj_hess_structure!(T, backend, objs.inner, rows, cols)
 end
-function _obj_hess_structure!(backend, objs::ExaModels.ObjectiveNull, rows, cols) end
-function _con_hess_structure!(backend, cons, rows, cols)
-    ExaModels.shessian!(backend, rows, cols, cons, nothing, nothing, NaN, NaN)
-    _con_hess_structure!(backend, cons.inner, rows, cols)
+function _obj_hess_structure!(T, backend, objs::ExaModels.ObjectiveNull, rows, cols) end
+function _con_hess_structure!(T, backend, cons, rows, cols)
+    ExaModels.shessian!(backend, rows, cols, cons, ExaModels.NaNSource{T}(), nothing, T(NaN), T(NaN))
+    _con_hess_structure!(T, backend, cons.inner, rows, cols)
 end
-function _con_hess_structure!(backend, cons::ExaModels.ConstraintNull, rows, cols) end
+function _con_hess_structure!(T, backend, cons::ExaModels.ConstraintNull, rows, cols) end
 
 
 function ExaModels.obj(
