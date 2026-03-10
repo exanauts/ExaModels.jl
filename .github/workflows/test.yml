@@ -22,6 +22,7 @@ jobs:
       - uses: julia-actions/setup-julia@latest
         with:
           version: ${{ matrix.julia-version }}
+      - uses: julia-actions/cache@v3
       - uses: julia-actions/julia-buildpkg@latest
       - name: Add OpenCL.jl to test environment
         run: |
