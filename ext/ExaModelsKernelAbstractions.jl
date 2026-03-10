@@ -37,7 +37,7 @@ function ExaModels.build_extension(
 
     gsparsity = similar(c.x0, Tuple{Int,Int}, c.nnzg)
 
-    _grad_structure!(c.backend, c.obj, gsparsity)
+    _grad_structure!(T, c.backend, c.obj, gsparsity)
 
     if !isempty(gsparsity)
         ExaModels.sort!(gsparsity; lt = ((i, j), (k, l)) -> i < k)
@@ -45,7 +45,7 @@ function ExaModels.build_extension(
     gptr = ExaModels.getptr(c.backend, gsparsity; cmp = (x, y) -> x[1] != y[1])
 
     conaugsparsity = similar(c.x0, Tuple{Int,Int}, c.nconaug)
-    _conaug_structure!(c.backend, c.con, conaugsparsity)
+    _conaug_structure!(T, c.backend, c.con, conaugsparsity)
     if !isempty(conaugsparsity)
         ExaModels.sort!(conaugsparsity; lt = ((i, j), (k, l)) -> i < k)
     end
@@ -58,11 +58,11 @@ function ExaModels.build_extension(
         jacsparsityi = similar(c.x0, Tuple{Tuple{Int,Int},Int}, c.nnzj)
         hesssparsityi = similar(c.x0, Tuple{Tuple{Int,Int},Int}, c.nnzh)
 
-        _jac_structure!(c.backend, c.con, jacsparsityi, nothing)
+        _jac_structure!(T, c.backend, c.con, jacsparsityi, nothing)
 
         jacsparsityj = copy(jacsparsityi)
-        _obj_hess_structure!(c.backend, c.obj, hesssparsityi, nothing)
-        _con_hess_structure!(c.backend, c.con, hesssparsityi, nothing)
+        _obj_hess_structure!(T, c.backend, c.obj, hesssparsityi, nothing)
+        _con_hess_structure!(T, c.backend, c.con, hesssparsityi, nothing)
         hesssparsityj = copy(hesssparsityi)
 
         if !isempty(jacsparsityi)

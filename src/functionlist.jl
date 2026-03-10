@@ -209,8 +209,8 @@ const _UNIVARIATES = [
     (:floor, x -> zero(x), x -> zero(x)),
     (:ceil, x -> zero(x), x -> zero(x)),
     # Manual entries (domain guards)
-    (:atanh, x -> abs(x) > one(x) ? oftype(x, NaN) : inv(1 - x^2), x -> abs(x) > one(x) ? oftype(x, NaN) : (-abs2(inv(1 - x^2))) * (-2x)),
-    (:acoth, x -> abs(x) < one(x) ? oftype(x, NaN) : inv(1 - x^2), x -> abs(x) < one(x) ? oftype(x, NaN) : (-abs2(inv(1 - x^2))) * (-2x)),
+    (:atanh, x -> abs(x) > one(x) ? oftype(x, eltype(x)(NaN)) : inv(1 - x^2), x -> abs(x) > one(x) ? oftype(x, eltype(x)(NaN)) : (-abs2(inv(1 - x^2))) * (-2x)),
+    (:acoth, x -> abs(x) < one(x) ? oftype(x, eltype(x)(NaN)) : inv(1 - x^2), x -> abs(x) < one(x) ? oftype(x, eltype(x)(NaN)) : (-abs2(inv(1 - x^2))) * (-2x)),
 ]
 
 for (fname, df, ddf) in _UNIVARIATES
