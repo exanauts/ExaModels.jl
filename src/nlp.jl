@@ -747,7 +747,7 @@ function constraint(
     kwargs...
 ) where {T,C<:ExaCore{T}}
 
-    f = _simdfunction(T, Null(), c.ncon, c.nnzj, c.nnzh)
+    f = _simdfunction(T, Null(nothing), c.ncon, c.nnzj, c.nnzh)
 
     _constraint(c, f, 1:n, start, lcon, ucon; kwargs...)
 end
@@ -996,7 +996,7 @@ end
 _jac_structure!(T, cons::ConstraintNull, rows, cols) = nothing
 function _jac_structure!(T, cons, rows, cols)
     _jac_structure!(T, cons.inner, rows, cols)
-    sjacobian!(rows, cols, cons, NaNSource{T}(), nothing, T(NaN))
+    sjacobian!(rows, cols, cons, NaNSource{T}(), NaNSource{T}(), T(NaN))
 end
 
 function hess_structure!(m::AbstractExaModel{T}, rows::AbstractVector, cols::AbstractVector) where T
@@ -1014,7 +1014,7 @@ end
 _con_hess_structure!(T, cons::ConstraintNull, rows, cols) = nothing
 function _con_hess_structure!(T, cons, rows, cols)
     _con_hess_structure!(T, cons.inner, rows, cols)
-    shessian!(rows, cols, cons, NaNSource{T}(), nothing, T(NaN), T(NaN))
+    shessian!(rows, cols, cons, NaNSource{T}(), NaNSource{T}(), T(NaN), T(NaN))
 end
 
 function obj(m::AbstractExaModel, x::AbstractVector)

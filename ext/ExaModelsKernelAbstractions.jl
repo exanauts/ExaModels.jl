@@ -136,7 +136,7 @@ end
 
 
 function _grad_structure!(T, backend, objs, gsparsity)
-    ExaModels.sgradient!(backend, gsparsity, objs, ExaModels.NaNSource{T}(), nothing, T(NaN))
+    ExaModels.sgradient!(backend, gsparsity, objs, ExaModels.NaNSource{T}(), ExaModels.NaNSource{T}(), T(NaN))
     _grad_structure!(T, backend, objs.inner, gsparsity)
 end
 function _grad_structure!(T, backend, objs::ExaModels.ObjectiveNull, gsparsity) end
@@ -152,7 +152,7 @@ function ExaModels.jac_structure!(
     return rows, cols
 end
 function _jac_structure!(T, backend, cons, rows, cols)
-    ExaModels.sjacobian!(backend, rows, cols, cons, ExaModels.NaNSource{T}(), nothing, T(NaN))
+    ExaModels.sjacobian!(backend, rows, cols, cons, ExaModels.NaNSource{T}(), ExaModels.NaNSource{T}(), T(NaN))
     _jac_structure!(T, backend, cons.inner, rows, cols)
 end
 function _jac_structure!(T, backend, cons::ExaModels.ConstraintNull, rows, cols) end
@@ -171,12 +171,12 @@ function ExaModels.hess_structure!(
 end
 
 function _obj_hess_structure!(T, backend, objs, rows, cols)
-    ExaModels.shessian!(backend, rows, cols, objs, ExaModels.NaNSource{T}(), nothing, T(NaN), T(NaN))
+    ExaModels.shessian!(backend, rows, cols, objs, ExaModels.NaNSource{T}(), ExaModels.NaNSource{T}(), T(NaN), T(NaN))
     _obj_hess_structure!(T, backend, objs.inner, rows, cols)
 end
 function _obj_hess_structure!(T, backend, objs::ExaModels.ObjectiveNull, rows, cols) end
 function _con_hess_structure!(T, backend, cons, rows, cols)
-    ExaModels.shessian!(backend, rows, cols, cons, ExaModels.NaNSource{T}(), nothing, T(NaN), T(NaN))
+    ExaModels.shessian!(backend, rows, cols, cons, ExaModels.NaNSource{T}(), ExaModels.NaNSource{T}(), T(NaN), T(NaN))
     _con_hess_structure!(T, backend, cons.inner, rows, cols)
 end
 function _con_hess_structure!(T, backend, cons::ExaModels.ConstraintNull, rows, cols) end

@@ -143,15 +143,15 @@ struct Identity end
 @inline (v::ParameterNode{I})(::Any, x, θ) where {I} = @inbounds θ[v.i]
 @inline (v::ParameterNode{I})(::Identity, x, θ) where {I<:AbstractNode} = @inbounds θ[v.i]
 
-@inline (v::ParameterNode{I})(i, x, ::Nothing) where {I<:AbstractNode} = eltype(x)(NaN)
-@inline (v::ParameterNode{I})(::Any, x, ::Nothing) where {I} = eltype(x)(NaN)
-@inline (v::ParameterNode{I})(::Identity, x, ::Nothing) where {I<:AbstractNode} = eltype(x)(NaN)
+# @inline (v::ParameterNode{I})(i, x, ::Nothing) where {I<:AbstractNode} = eltype(x)(NaN)
+# @inline (v::ParameterNode{I})(::Any, x, ::Nothing) where {I} = eltype(x)(NaN)
+# @inline (v::ParameterNode{I})(::Identity, x, ::Nothing) where {I<:AbstractNode} = eltype(x)(NaN)
 
 @inline (v::ParSource)(i, x, θ) = i
 @inline (v::ParIndexed{I,n})(i, x, θ) where {I,n} = @inbounds getfield(getfield(v, :inner)(i, x, θ), n)
 
-(v::ParIndexed)(i::Identity, x, θ) = eltype(x)(NaN) # despecialized
-(v::ParSource)(i::Identity, x, θ) = eltype(x)(NaN) # despecialized
+@inline (v::ParIndexed)(i::Identity, x, θ) = eltype(θ)(NaN) 
+@inline (v::ParSource)(i::Identity, x, θ) = eltype(θ)(NaN) 
 
 """
     AdjointNode1{F, T, I}

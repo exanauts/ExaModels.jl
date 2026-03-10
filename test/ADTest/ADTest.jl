@@ -138,9 +138,9 @@ function sgradient(f, x)
     T = eltype(x)
 
     ff = f(ExaModels.VarSource())
-    d = ff(ExaModels.Identity(), ExaModels.AdjointNodeSource(nothing), nothing)
+    d = ff(ExaModels.Identity(), ExaModels.AdjointNodeSource(ExaModels.NaNSource{T}()), ExaModels.NaNSource{T}())
     y1 = []
-    ExaModels.grpass(d, nothing, y1, nothing, 0, NaN)
+    ExaModels.grpass(d, nothing, y1, ExaModels.NaNSource{T}(), 0, T(NaN))
 
     a1 = unique(y1)
     comp = ExaModels.Compressor(Tuple(findfirst(isequal(i), a1) for i in y1))
@@ -149,7 +149,7 @@ function sgradient(f, x)
     buffer = fill!(similar(x, n), zero(T))
     buffer_I = similar(x, Tuple{Int,Int}, n)
 
-    ExaModels.sgradient!(buffer_I, ff, nothing, nothing, nothing, comp, 0, NaN)
+    ExaModels.sgradient!(buffer_I, ff, nothing, ExaModels.NaNSource{T}(), ExaModels.NaNSource{T}(), comp, 0, T(NaN))
     ExaModels.sgradient!(buffer, ff, nothing, x, nothing, comp, 0, one(T))
 
     y = zeros(length(x))
@@ -162,9 +162,9 @@ function sgradient_with_params(f, x, θ)
     T = eltype(x)
 
     ff = f(ExaModels.VarSource(), ExaModels.ParameterSource())
-    d = ff(ExaModels.Identity(), ExaModels.AdjointNodeSource(nothing), nothing)
+    d = ff(ExaModels.Identity(), ExaModels.AdjointNodeSource(ExaModels.NaNSource{T}()), ExaModels.NaNSource{T}())
     y1 = []
-    ExaModels.grpass(d, nothing, y1, nothing, 0, NaN)
+    ExaModels.grpass(d, nothing, y1, ExaModels.NaNSource{T}(), 0, T(NaN))
 
     a1 = unique(y1)
     comp = ExaModels.Compressor(Tuple(findfirst(isequal(i), a1) for i in y1))
@@ -173,7 +173,7 @@ function sgradient_with_params(f, x, θ)
     buffer = fill!(similar(x, n), zero(T))
     buffer_I = similar(x, Tuple{Int,Int}, n)
 
-    ExaModels.sgradient!(buffer_I, ff, nothing, nothing, θ, comp, 0, NaN)
+    ExaModels.sgradient!(buffer_I, ff, ExaModels.NaNSource{T}(), ExaModels.NaNSource{T}(), θ, comp, 0, T(NaN))
     ExaModels.sgradient!(buffer, ff, nothing, x, θ, comp, 0, one(T))
 
     y = zeros(length(x))
@@ -186,9 +186,9 @@ function sjacobian(f, x)
     T = eltype(x)
 
     ff = f(ExaModels.VarSource())
-    d = ff(ExaModels.Identity(), ExaModels.AdjointNodeSource(nothing), nothing)
+    d = ff(ExaModels.Identity(), ExaModels.AdjointNodeSource(ExaModels.NaNSource{T}()), ExaModels.NaNSource{T}())
     y1 = []
-    ExaModels.grpass(d, nothing, y1, nothing, 0, NaN)
+    ExaModels.grpass(d, nothing, y1, ExaModels.NaNSource{T}(), 0, T(NaN))
 
     a1 = unique(y1)
     comp = ExaModels.Compressor(Tuple(findfirst(isequal(i), a1) for i in y1))
@@ -198,7 +198,7 @@ function sjacobian(f, x)
     buffer_I = similar(x, Int, n)
     buffer_J = similar(x, Int, n)
 
-    ExaModels.sjacobian!(buffer_I, buffer_J, ff, nothing, nothing, nothing, comp, 0, 0, NaN)
+    ExaModels.sjacobian!(buffer_I, buffer_J, ff, nothing, ExaModels.NaNSource{T}(), ExaModels.NaNSource{T}(), comp, 0, 0, T(NaN))
     ExaModels.sjacobian!(buffer, nothing, ff, nothing, x, nothing, comp, 0, 0, one(T))
 
     y = zeros(length(x))
@@ -211,9 +211,9 @@ function sjacobian_with_params(f, x, θ)
     T = eltype(x)
 
     ff = f(ExaModels.VarSource(), ExaModels.ParameterSource())
-    d = ff(ExaModels.Identity(), ExaModels.AdjointNodeSource(nothing), nothing)
+    d = ff(ExaModels.Identity(), ExaModels.AdjointNodeSource(ExaModels.NaNSource{T}()), ExaModels.NaNSource{T}())
     y1 = []
-    ExaModels.grpass(d, nothing, y1, nothing, 0, NaN)
+    ExaModels.grpass(d, nothing, y1, nothing, 0, T(NaN))
 
     a1 = unique(y1)
     comp = ExaModels.Compressor(Tuple(findfirst(isequal(i), a1) for i in y1))
@@ -223,7 +223,7 @@ function sjacobian_with_params(f, x, θ)
     buffer_I = similar(x, Int, n)
     buffer_J = similar(x, Int, n)
 
-    ExaModels.sjacobian!(buffer_I, buffer_J, ff, nothing, nothing, θ, comp, 0, 0, NaN)
+    ExaModels.sjacobian!(buffer_I, buffer_J, ff, ExaModels.NaNSource{T}(), ExaModels.NaNSource{T}(), θ, comp, 0, 0, T(NaN))
     ExaModels.sjacobian!(buffer, nothing, ff, nothing, x, θ, comp, 0, 0, one(T))
 
     y = zeros(length(x))
@@ -236,9 +236,9 @@ function shessian(f, x)
     T = eltype(x)
 
     ff = f(ExaModels.VarSource())
-    t = ff(ExaModels.Identity(), ExaModels.SecondAdjointNodeSource(nothing), nothing)
+    t = ff(ExaModels.Identity(), ExaModels.SecondAdjointNodeSource(ExaModels.NaNSource{T}()), ExaModels.NaNSource{T}())
     y2 = []
-    ExaModels.hrpass0(t, nothing, y2, nothing, nothing, 0, NaN, NaN)
+    ExaModels.hrpass0(t, nothing, y2, ExaModels.NaNSource{T}(), ExaModels.NaNSource{T}(), 0, T(NaN), T(NaN))
 
     a2 = unique(y2)
     comp = ExaModels.Compressor(Tuple(findfirst(isequal(i), a2) for i in y2))
@@ -253,12 +253,12 @@ function shessian(f, x)
         buffer_J,
         ff,
         nothing,
-        nothing,
-        nothing,
+        ExaModels.NaNSource{T}(),
+        ExaModels.NaNSource{T}(),
         comp,
         0,
-        NaN,
-        NaN,
+        T(NaN),
+        T(NaN),
     )
     ExaModels.shessian!(buffer, nothing, ff, nothing, x, nothing, comp, 0, one(T), zero(T))
 
@@ -278,9 +278,9 @@ function shessian_with_params(f, x, θ)
     T = eltype(x)
 
     ff = f(ExaModels.VarSource(), ExaModels.ParameterSource())
-    t = ff(ExaModels.Identity(), ExaModels.SecondAdjointNodeSource(nothing), nothing)
+    t = ff(ExaModels.Identity(), ExaModels.SecondAdjointNodeSource(ExaModels.NaNSource{T}()), ExaModels.NaNSource{T}())
     y2 = []
-    ExaModels.hrpass0(t, nothing, y2, nothing, nothing, 0, NaN, NaN)
+    ExaModels.hrpass0(t, nothing, y2, ExaModels.NaNSource{T}(), ExaModels.NaNSource{T}(), 0, T(NaN), T(NaN))
 
     a2 = unique(y2)
     comp = ExaModels.Compressor(Tuple(findfirst(isequal(i), a2) for i in y2))
@@ -290,7 +290,7 @@ function shessian_with_params(f, x, θ)
     buffer_I = similar(x, Int, n)
     buffer_J = similar(x, Int, n)
 
-    ExaModels.shessian!(buffer_I, buffer_J, ff, nothing, nothing, θ, comp, 0, NaN, NaN)
+    ExaModels.shessian!(buffer_I, buffer_J, ff, ExaModels.NaNSource{T}(), ExaModels.NaNSource{T}(), θ, comp, 0, T(NaN), T(NaN))
     ExaModels.shessian!(buffer, nothing, ff, nothing, x, θ, comp, 0, one(T), zero(T))
 
     y = zeros(length(x), length(x))

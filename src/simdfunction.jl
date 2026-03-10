@@ -59,13 +59,13 @@ function _simdfunction(T, f::F, o0, o1, o2) where {F<:Real}
 end
 
 function _simdfunction(T, f, o0, o1, o2)
-    d = f(Identity(), AdjointNodeSource(nothing), nothing)
+    d = f(Identity(), AdjointNodeSource(NaNSource{T}()), NaNSource{T}())
     y1 = []
-    ExaModels.grpass(d, nothing, y1, nothing, 0, T(NaN))
+    ExaModels.grpass(d, nothing, y1, NaNSource{T}(), 0, T(NaN))
 
-    t = f(Identity(), SecondAdjointNodeSource(nothing), nothing)
+    t = f(Identity(), SecondAdjointNodeSource(NaNSource{T}()), NaNSource{T}())
     y2 = []
-    ExaModels.hrpass0(t, nothing, y2, nothing, nothing, 0, T(NaN), T(NaN))
+    ExaModels.hrpass0(t, nothing, y2, NaNSource{T}(), NaNSource{T}(), 0, T(NaN), T(NaN))
 
     a1 = unique(y1)
     o1step = length(a1)
