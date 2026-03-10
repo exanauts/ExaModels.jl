@@ -10,6 +10,7 @@ struct ConstraintNull <: AbstractConstraint end
 
 struct NaNSource{T} end
 Base.getindex(::NaNSource{T}, i) where {T} = T(NaN)
+Base.eltype(::NaNSource{T}) where {T} = T
 
 struct Variable{S,O} <: AbstractVariable
     size::S
