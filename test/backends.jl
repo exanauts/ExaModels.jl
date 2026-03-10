@@ -6,7 +6,7 @@ is_package_installed(name::String) = !isnothing(Base.find_package(name))
 const EXAMODELS_TEST_CUDA = is_package_installed("CUDA")
 if EXAMODELS_TEST_CUDA
     @eval using CUDA
-    @eval push!(BACKENDS, CUDABackend())
+    @eval push!(BACKENDS, ((Float64, Float32), CUDABackend()))
     @info "including CUDA"
 else
     @info "excluding CUDA"
@@ -15,7 +15,7 @@ end
 const EXAMODELS_TEST_AMDGPU = is_package_installed("AMDGPU")
 if EXAMODELS_TEST_AMDGPU
     @eval using AMDGPU
-    @eval push!(BACKENDS, ROCBackend())
+    @eval push!(BACKENDS, ((Float64, Float32), ROCBackend()))
     @info "including AMDGPU"
 else
     @info "excluding AMDGPU"
@@ -24,10 +24,19 @@ end
 const EXAMODELS_TEST_ONEAPI = is_package_installed("oneAPI")
 if EXAMODELS_TEST_ONEAPI
     @eval using oneAPI
-    @eval push!(BACKENDS, oneAPIBackend())
+    @eval push!(BACKENDS, ((Float64, Float32), oneAPIBackend()))
     @info "including oneAPI"
 else
     @info "excluding oneAPI"
+end
+
+const EXAMODELS_TEST_METAL = is_package_installed("Metal")
+if EXAMODELS_TEST_METAL
+    @eval using Metal
+    @eval push!(BACKENDS, ((Float32,), MetalBackend()))
+    @info "including Metal"
+else
+    @info "excluding Metal"
 end
 
 const EXAMODELS_TEST_OPENCL = is_package_installed("OpenCL")
@@ -35,7 +44,7 @@ if EXAMODELS_TEST_OPENCL
     @eval begin
         using OpenCL, pocl_jll
         if !(Sys.iswindows() && OpenCL.cl.is_high_integrity_level())
-            push!(BACKENDS, OpenCLBackend())
+            push!(BACKENDS, ((Float64, Float32), OpenCLBackend()))
             @info "including PoCL"
             OpenCL.versioninfo()
             @info "OpenCL Device:" OpenCL.cl.device()

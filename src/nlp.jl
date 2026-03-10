@@ -439,35 +439,39 @@ end
 
 
 function append!(backend, a, b::Base.Generator, lb)
-    b = _adapt_gen(b)
-
-    la = length(a)
-    resize!(a, la + lb)
-    map!(b.f, view(a, (la+1):(la+lb)), convert_array(b.iter, backend))
+    if lb != 0
+        b = _adapt_gen(b)
+        la = length(a)
+        resize!(a, la + lb)
+        map!(b.f, view(a, (la+1):(la+lb)), convert_array(b.iter, backend))
+    end
     return a
 end
 
 function append!(backend, a, b::Base.Generator{UnitRange{I}}, lb) where {I}
-
-    la = length(a)
-    resize!(a, la + lb)
-    map!(b.f, view(a, (la+1):(la+lb)), b.iter)
+    if lb != 0
+        la = length(a)
+        resize!(a, la + lb)
+        map!(b.f, view(a, (la+1):(la+lb)), b.iter)
+    end
     return a
 end
 
 function append!(backend, a, b::AbstractArray, lb)
-
-    la = length(a)
-    resize!(a, la + lb)
-    map!(identity, view(a, (la+1):(la+lb)), convert_array(b, backend))
+    if lb != 0
+        la = length(a)
+        resize!(a, la + lb)
+        map!(identity, view(a, (la+1):(la+lb)), convert_array(b, backend))
+    end
     return a
 end
 
 function append!(backend, a, b::Number, lb)
-
-    la = length(a)
-    resize!(a, la + lb)
-    fill!(view(a, (la+1):(la+lb)), b)
+    if lb != 0
+        la = length(a)
+        resize!(a, la + lb)
+        fill!(view(a, (la+1):(la+lb)), b)
+    end
     return a
 end
 
