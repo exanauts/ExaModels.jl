@@ -612,10 +612,10 @@ function test_subexpr_tupled_iterator(backend)
     @test m.meta.nvar == N * K
     @test m.meta.ncon == 0
 
-    # Verify model evaluates correctly
-    xval = ones(m.meta.nvar)
+    # Verify model evaluates correctly (use device-compatible array)
+    xval = fill!(similar(m.meta.x0), 1.0)
     @test NLPModels.obj(m, xval) ≈ 0.0 atol = 1e-10
-    return @test NLPModels.grad(m, xval) ≈ zeros(m.meta.nvar) atol = 1e-10
+    return @test Array(NLPModels.grad(m, xval)) ≈ zeros(m.meta.nvar) atol = 1e-10
 end
 
 """
@@ -641,8 +641,8 @@ function test_subexpr_tupled_iterator_with_dims(backend)
     m = ExaModel(c)
     @test m.meta.nvar == N * (K + 1)
 
-    # Verify model evaluates correctly
-    xval = ones(m.meta.nvar)
+    # Verify model evaluates correctly (use device-compatible array)
+    xval = fill!(similar(m.meta.x0), 1.0)
     @test NLPModels.obj(m, xval) ≈ 0.0 atol = 1e-10
     return
 end
@@ -672,8 +672,8 @@ function test_subexpr_tupled_iterator_with_data(backend)
     @test m.meta.nvar == 2 * N * K
     @test m.meta.ncon == N * K
 
-    # Verify model evaluates correctly (no solve needed)
-    xval = ones(m.meta.nvar)
+    # Verify model evaluates correctly (use device-compatible array)
+    xval = fill!(similar(m.meta.x0), 1.0)
     @test length(NLPModels.cons(m, xval)) == N * K
     return
 end
