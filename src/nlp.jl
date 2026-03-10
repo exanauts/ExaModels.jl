@@ -134,11 +134,12 @@ Constraint
 )
 
 
-struct ConstraintAug{R,F,I} <: AbstractConstraint
+struct ConstraintAug{R,F,I,D} <: AbstractConstraint
     inner::R
     f::F
     itr::I
     oa::Int
+    dims::D  # dimensions of the original constraint (for Pair{Tuple} offset computation)
 end
 
 Base.show(io::IO, v::ConstraintAug) = print(
@@ -801,7 +802,7 @@ function constraint!(c::C, c1, gen::Base.Generator) where {C<:ExaCore}
     f = SIMDFunction(gen, offset0(c1, 0), c.nnzj, c.nnzh)
     pars = gen.iter
 
-    _constraint!(c, f, pars)
+    _constraint!(c, f, pars, _constraint_dims(c1))
 end
 
 """
@@ -812,10 +813,14 @@ Expands the existing constraint `c1` in `c` by adding addtional constraints term
 function constraint!(c::C, c1, expr, pars) where {C<:ExaCore}
     f = _simdfunction(expr, offset0(c1, 0), c.nnzj, c.nnzh)
 
-    _constraint!(c, f, pars)
+    _constraint!(c, f, pars, _constraint_dims(c1))
 end
 
-function _constraint!(c, f, pars)
+# Extract the dimensions of the original constraint's iterator
+_constraint_dims(c::Constraint) = Base.size(c.itr)
+_constraint_dims(c::ConstraintAug) = c.dims
+
+function _constraint!(c, f, pars, dims)
     oa = c.nconaug
 
     nitr = length(pars)
@@ -824,7 +829,7 @@ function _constraint!(c, f, pars)
     c.nnzj += nitr * f.o1step
     c.nnzh += nitr * f.o2step
 
-    c.con = ConstraintAug(c.con, f, convert_array(pars, c.backend), oa)
+    c.con = ConstraintAug(c.con, f, convert_array(pars, c.backend), oa, dims)
 end
 
 # Helper to infer dimensions from iterator
@@ -1203,13 +1208,21 @@ end
 @inbounds @inline offset0(f::F, i) where {F<:SIMDFunction} = f.o0 + i
 @inbounds @inline offset1(f::F, i) where {F<:SIMDFunction} = f.o1 + f.o1step * (i - 1)
 @inbounds @inline offset2(f::F, i) where {F<:SIMDFunction} = f.o2 + f.o2step * (i - 1)
-@inbounds @inline offset0(a::C, i) where {C<:ConstraintAug} = offset0(a.f, a.itr, i)
+@inbounds @inline offset0(a::C, i) where {C<:ConstraintAug} = offset0(a.f, a.itr, i, a.dims)
 @inbounds @inline offset0(f::F, itr, i) where {P<:Pair,F<:SIMDFunction{P}} =
     f.o0 + f.f.first(itr[i], nothing, nothing)
 @inbounds @inline offset0(f::F, itr, i) where {I<:Integer,P<:Pair{I},F<:SIMDFunction{P}} =
     f.o0 + f.f.first
 @inbounds @inline offset0(f::F, itr, i) where {T<:Tuple,P<:Pair{T},F<:SIMDFunction{P}} =
     f.o0 + idxx(coord(itr, i, f.f.first), Base.size(itr))
+# 4-arg variant used by ConstraintAug to pass original constraint dims
+@inbounds @inline offset0(f, itr, i, dims) = offset0(f, i)
+@inbounds @inline offset0(f::F, itr, i, dims) where {P<:Pair,F<:SIMDFunction{P}} =
+    f.o0 + f.f.first(itr[i], nothing, nothing)
+@inbounds @inline offset0(f::F, itr, i, dims) where {I<:Integer,P<:Pair{I},F<:SIMDFunction{P}} =
+    f.o0 + f.f.first
+@inbounds @inline offset0(f::F, itr, i, dims) where {T<:Tuple,P<:Pair{T},F<:SIMDFunction{P}} =
+    f.o0 + idxx(coord(itr, i, f.f.first), dims)
 
 @inline idx(itr, I) = @inbounds itr[I]
 @inline idx(itr::Base.Iterators.ProductIterator{V}, I) where {V} =
@@ -1223,6 +1236,7 @@ end
 @inline idxx(coord, si) = _idxx(coord, si, 1) + 1
 @inline _idxx(coord, si, a) = a * (coord[1] - 1) + _idxx(coord[2:end], si[2:end], a * si[1])
 @inline _idxx(::Tuple{}, ::Tuple{}, a) = 0
+@inline _idxx(::Tuple{}, ::Tuple, a) = 0  # partial indexing: coord exhausted before dims
 
 @inline coord(itr, i, (f, fs...)) = (f(idx(itr, i), nothing, nothing), coord(itr, i, fs)...)
 @inline coord(itr, i, ::Tuple{}) = ()
