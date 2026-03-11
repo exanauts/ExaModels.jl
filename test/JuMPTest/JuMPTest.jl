@@ -3,6 +3,7 @@ module JuMPTest
 using Test, JuMP, ExaModels, PowerModels, NLPModelsIpopt, ..NLPTest
 
 import ..BACKENDS
+import ..ad_tolerance, ..sol_tolerance, ..solver_tolerance
 
 const JUMP_INTERFACE_INSTANCES = [
     (:jump_luksan_vlcek_model, [3, 10]),
@@ -312,15 +313,15 @@ function runtests()
                     optimize!(jm)
                     sol2 = value.(all_variables(jm))
                     dsol2 = dual.(all_constraints(jm, include_variable_in_set_constraints = true))
-                    @test sol ≈ sol2 atol = 1.0e-6
-                    @test dsol ≈ dsol2 atol = 1.0e-6
+                    @test sol ≈ sol2 atol = sol_tolerance(eltype(sol), eltype(sol2))
+                    @test dsol ≈ dsol2 atol = sol_tolerance(eltype(sol), eltype(sol2))
 
                     for backend in BACKENDS
                         @testset "$backend" begin
                             m = WrapperNLPModel(ExaModel(jm; backend = backend))
                             result = ipopt(m; print_level = 0)
 
-                            @test sol ≈ result.solution atol = 1e-6
+                            @test sol ≈ result.solution atol = sol_tolerance(eltype(m.inner.meta.x0))
                         end
                     end
                 end

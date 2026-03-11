@@ -35,12 +35,12 @@ function test_subexpr_basic(backend)
 
     # Solutions for original variables should match
     @test result1.status == result2.status
-    @test solution(result1, x1) ≈ solution(result2, x2) atol = 1.0e-4
+    @test solution(result1, x1) ≈ solution(result2, x2) atol = sol_tolerance(eltype(c1.x0))
 
     # Subexpression values should equal x^2
     subexpr_vals = solution(result2, s)
     x_vals = solution(result2, x2)
-    return @test subexpr_vals ≈ x_vals .^ 2 atol = 1.0e-6
+    return @test subexpr_vals ≈ x_vals .^ 2 atol = sol_tolerance(eltype(c1.x0))
 end
 
 """
@@ -78,7 +78,7 @@ function test_subexpr_multidim(backend)
 
     for t in 1:T, i in 1:N
         expected = x_sol[t + 1, i + 1] - x_sol[t, i + 1]  # +1 for 0-based to 1-based
-        @test dx_sol[t, i] ≈ expected atol = 1.0e-6
+        @test dx_sol[t, i] ≈ expected atol = sol_tolerance(eltype(c.x0))
     end
     return
 end
@@ -132,8 +132,8 @@ function test_subexpr_in_obj_and_con(backend)
     @test result.status == :first_order
 
     # sqrt(x) = 1 at optimum, so x = 1
-    @test solution(result, x) ≈ ones(5) atol = 1.0e-4
-    return @test solution(result, s) ≈ ones(5) atol = 1.0e-4
+    @test solution(result, x) ≈ ones(5) atol = sol_tolerance(eltype(c.x0))
+    return @test solution(result, s) ≈ ones(5) atol = sol_tolerance(eltype(c.x0))
 end
 
 """
@@ -206,7 +206,7 @@ function test_subexpr_reduced_basic(backend)
 
     # Solutions should match
     @test result1.status == result2.status
-    return @test solution(result1, x1) ≈ solution(result2, x2) atol = 1.0e-4
+    return @test solution(result1, x1) ≈ solution(result2, x2) atol = sol_tolerance(eltype(c1.x0))
 end
 
 """
@@ -240,7 +240,7 @@ function test_subexpr_lifted_vs_reduced(backend)
     # Both should converge to same solution
     @test result1.status == :first_order
     @test result2.status == :first_order
-    return @test solution(result1, x1) ≈ solution(result2, x2) atol = 1.0e-4
+    return @test solution(result1, x1) ≈ solution(result2, x2) atol = sol_tolerance(eltype(c1.x0))
 end
 
 """
@@ -301,7 +301,7 @@ function test_subexpr_reduced_nested(backend)
     @test result.status == :first_order
 
     # 2*x^2 = 2 => x = 1
-    return @test solution(result, x) ≈ ones(5) atol = 1.0e-4
+    return @test solution(result, x) ≈ ones(5) atol = sol_tolerance(eltype(c.x0))
 end
 
 """
@@ -330,7 +330,7 @@ function test_subexpr_mixed(backend)
     @test result.status == :first_order
 
     # 2*x^2 = 2 => x = 1
-    return @test solution(result, x) ≈ ones(5) atol = 1.0e-4
+    return @test solution(result, x) ≈ ones(5) atol = sol_tolerance(eltype(c.x0))
 end
 
 """
@@ -362,7 +362,7 @@ function test_subexpr_reduced_0based(backend)
     @test result.status == :first_order
 
     # V[t] = u[t]*2+1 = 3 => u[t] = 1
-    return @test solution(result, u) ≈ ones(T + 1) atol = 1.0e-4
+    return @test solution(result, u) ≈ ones(T + 1) atol = sol_tolerance(eltype(c.x0))
 end
 
 """
@@ -396,7 +396,7 @@ function test_subexpr_reduced_0based_nested(backend)
     @test result.status == :first_order
 
     # (x+1)*2 = 4 => x = 1
-    return @test solution(result, x) ≈ ones(T + 1, N + 1) atol = 1.0e-4
+    return @test solution(result, x) ≈ ones(T + 1, N + 1) atol = sol_tolerance(eltype(c.x0))
 end
 
 """
@@ -433,7 +433,7 @@ function test_subexpr_param_only_basic(backend)
     @test result.status == :first_order
 
     # Optimal solution should be x = 1 (minimizes weighted squares)
-    return @test solution(result, x) ≈ ones(5) atol = 1.0e-4
+    return @test solution(result, x) ≈ ones(5) atol = sol_tolerance(eltype(c.x0))
 end
 
 """
@@ -461,7 +461,7 @@ function test_subexpr_param_only_update(backend)
     @test result1.status == :first_order
 
     # With θ = [1,2,3], coeffs = [2,4,6], optimal x = [2,4,6]
-    @test solution(result1, x) ≈ [2.0, 4.0, 6.0] atol = 1.0e-4
+    @test solution(result1, x) ≈ [2.0, 4.0, 6.0] atol = sol_tolerance(eltype(c.x0))
 
     # Update parameters
     set_parameter!(c, θ, [10.0, 20.0, 30.0])
@@ -474,7 +474,7 @@ function test_subexpr_param_only_update(backend)
     @test result2.status == :first_order
 
     # With θ = [10,20,30], coeffs = [20,40,60], optimal x = [20,40,60]
-    return @test solution(result2, x) ≈ [20.0, 40.0, 60.0] atol = 1.0e-4
+    return @test solution(result2, x) ≈ [20.0, 40.0, 60.0] atol = sol_tolerance(eltype(c.x0))
 end
 
 """
@@ -512,7 +512,7 @@ function test_subexpr_param_only_multidim(backend)
     @test result.status == :first_order
 
     # x = 1 minimizes the objective
-    return @test solution(result, x) ≈ ones(T, N) atol = 1.0e-4
+    return @test solution(result, x) ≈ ones(T, N) atol = sol_tolerance(eltype(c.x0))
 end
 
 """
@@ -545,7 +545,7 @@ function test_subexpr_param_only_in_constraint(backend)
     @test result.status == :first_order
 
     # Optimal: x[1] = 1 (bound), x[2] = 2 (optimal), x[3] = 2 (optimal, bound at 3 not active)
-    return @test solution(result, x) ≈ [1.0, 2.0, 2.0] atol = 1.0e-4
+    return @test solution(result, x) ≈ [1.0, 2.0, 2.0] atol = sol_tolerance(eltype(c.x0))
 end
 
 """
@@ -583,7 +583,7 @@ function test_subexpr_param_only_mixed(backend)
     @test result.status == :first_order
 
     # With constraint x >= 1, optimal is x = 1
-    return @test solution(result, x) ≈ ones(5) atol = 1.0e-4
+    return @test solution(result, x) ≈ ones(5) atol = sol_tolerance(eltype(c.x0))
 end
 
 """

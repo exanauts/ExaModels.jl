@@ -152,12 +152,12 @@ function exa_ac_power_model_parametric(backend, filename; use_parameters = true)
     c7 = ExaModels.constraint(
         w,
         p[b.f_idx]^2 + q[b.f_idx]^2 - b.rate_a_sq for b in data.branch;
-        lcon = fill!(similar(data.branch, eltype(w.x0), length(data.branch)), -Inf),
+        lcon = fill!(similar(data.branch, eltype(w.x0), length(data.branch)), eltype(w.x0)(-Inf)),
     )
     c8 = ExaModels.constraint(
         w,
         p[b.t_idx]^2 + q[b.t_idx]^2 - b.rate_a_sq for b in data.branch;
-        lcon = fill!(similar(data.branch, eltype(w.x0), length(data.branch)), -Inf),
+        lcon = fill!(similar(data.branch, eltype(w.x0), length(data.branch)), eltype(w.x0)(-Inf)),
     )
 
     bs = parameter(w, map(b->b.bs, data.bus))

@@ -6,12 +6,7 @@ using NLPModels, NLPModelsJuMP, NLPModelsIpopt, NLPModelsTest
 using JuMP, PowerModels, MadNLP, Percival
 
 import ..BACKENDS
-
-ad_tolerance(m1,m2) = max(ad_tolerance(m1), ad_tolerance(m2))
-sol_tolerance(m1,m2) = max(sol_tolerance(m1), sol_tolerance(m2))
-ad_tolerance(::Type{T}) where T = 10^(log(eps(T))/4)
-sol_tolerance(::Type{T}) where T = 10^(log(eps(T))/8)
-solver_tolerance(::Type{T}) where T = Float64(sqrt(eps(T)))
+import ..ad_tolerance, ..sol_tolerance, ..solver_tolerance
 
 const NLP_TEST_ARGUMENTS = [
     ("luksan_struct", 3),
