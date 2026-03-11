@@ -9,8 +9,9 @@ import ..BACKENDS
 
 ad_tolerance(m1,m2) = max(ad_tolerance(m1), ad_tolerance(m2))
 sol_tolerance(m1,m2) = max(sol_tolerance(m1), sol_tolerance(m2))
-ad_tolerance(m::NLPModels.AbstractNLPModel{T}) where T = 10^(log(eps(T))/3)
-sol_tolerance(m::NLPModels.AbstractNLPModel{T}) where T = 10^(log(eps(T))/6)
+ad_tolerance(::Type{T}) where T = 10^(log(eps(T))/4)
+sol_tolerance(::Type{T}) where T = 10^(log(eps(T))/8)
+solver_tolerance(::Type{T}) where T = Float64(sqrt(eps(T)))
 
 const NLP_TEST_ARGUMENTS = [
     ("luksan_struct", 3),
@@ -23,9 +24,9 @@ const NLP_TEST_ARGUMENTS = [
 ]
 
 const SOLVERS = [
-    ("ipopt", nlp -> ipopt(nlp; print_level = 0)),
-    ("madnlp", nlp -> madnlp(nlp; print_level = MadNLP.ERROR)),
-    ("percival", nlp -> percival(nlp)),
+    ("ipopt", (nlp; kwargs...) -> ipopt(nlp; print_level = 0, kwargs...)),
+    ("madnlp", (nlp; kwargs...) -> madnlp(nlp; print_level = MadNLP.ERROR, kwargs...)),
+    ("percival", (nlp; kwargs...) -> percival(nlp, kwargs...)),
 ]
 
 const EXCLUDE1 = [("ac_power", "percival"), ("struct_ac_power", "percival"), ("trivialmax", "percival")]
@@ -47,7 +48,7 @@ include("parameter_test.jl")
 include("subexpr_test.jl")
 include("trivialmax.jl")
 
-function test_nlp(m1, m2; full = false, atol = 1e-6)
+function test_nlp(m1, m2; full = false, atol = sol_tolerance(eltype(m1.meta.x0), eltype(m2.meta.x0)))
     @testset "NLP meta tests" begin
         list = [:nvar, :ncon, :x0, :lvar, :uvar, :y0, :lcon, :ucon]
 
@@ -109,7 +110,7 @@ function test_nlp(m1, m2; full = false, atol = 1e-6)
     end
 end
 
-function test_nlp_solution(result1, result2; atol =1e-6)
+function test_nlp_solution(result1, result2; atol = sol_tolerance(eltype(result1.solution),eltype(result2.solution)))
 
     @testset "solution test" begin
         @test result1.status == result2.status
@@ -124,7 +125,7 @@ end
 dual_lb(x) = has_lower_bound(x) ? dual(LowerBoundRef(x)) : 0.0
 dual_ub(x) = has_upper_bound(x) ? dual(UpperBoundRef(x)) : 0.0
 
-function test_api(result1, vars1, cons1, vars2, cons2, minimize::Bool; atol = 1e-6)
+function test_api(result1, vars1, cons1, vars2, cons2, minimize::Bool; atol = sol_tolerance(eltype(result1.solution)))
     @testset "API test" begin
         for (var1, var2) in zip(vars1, vars2)
             @test solution(result1, var1) ≈ [value(var) for var in var2] atol = atol
@@ -165,17 +166,17 @@ function runtests()
                         m1 = WrapperNLPModel(m)
 
                         @testset "Backend test" begin
-                            test_nlp(m0, m1; full = true)
+                            test_nlp(m0, m1; full = true, atol = sol_tolerance(eltype(m0.meta.x0), eltype(m1.inner.meta.x0)))
                         end
                         @testset "Comparison to JuMP" begin
-                            test_nlp(m1, m2; full = false)
+                            test_nlp(m0, m2; full = false)
 
                             for (sname, solver) in SOLVERS
                                 if (name, sname) in EXCLUDE1 || (sname, backend) in EXCLUDE2
                                     continue
                                 end
 
-                                result1 = solver(m1)
+                                result1 = solver(m0)
                                 result2 = solver(m2)
 
                                 @testset "$sname" begin
@@ -183,8 +184,10 @@ function runtests()
                                 end
                             end
                         end
-                        result1 = madnlp(m1; print_level = MadNLP.ERROR)
-                        test_api(result1, vars1, cons1, vars2, cons2, m2.meta.minimize)
+                        @testset "API test" begin
+                            result1 = madnlp(m1; print_level = MadNLP.ERROR, tol = solver_tolerance(eltype(m1.inner.meta.x0)))
+                            test_api(result1, vars1, cons1, vars2, cons2, m2.meta.minimize; atol = sol_tolerance(eltype(m1.inner.meta.x0)))
+                        end
                     end
                 end
 

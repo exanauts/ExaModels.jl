@@ -39,9 +39,7 @@ Returns a `SIMDFunction` using the `gen`.
 - `o2`: offset for the second-order derivative evalution
 """
 function SIMDFunction(T, gen::Base.Generator, o0 = 0, o1 = 0, o2 = 0)
-
-    f = replace_T(T, gen.f(ParSource()))
-    _simdfunction(T, f, o0, o1, o2)
+    _simdfunction(T, gen.f(ParSource()), o0, o1, o2)
 end
 
 function _simdfunction(T, f::F, o0, o1, o2) where {F<:Real}
@@ -59,6 +57,8 @@ function _simdfunction(T, f::F, o0, o1, o2) where {F<:Real}
 end
 
 function _simdfunction(T, f, o0, o1, o2)
+    f = replace_T(T, f)
+    
     d = f(Identity(), AdjointNodeSource(NaNSource{T}()), NaNSource{T}())
     y1 = []
     ExaModels.grpass(d, nothing, y1, NaNSource{T}(), 0, T(NaN))
@@ -89,4 +89,5 @@ end
     i2 = replace_T(t, n.inner2)
     return Node2{F,typeof(i1),typeof(i2)}(i1, i2)
 end
+@inline replace_T(t, n::Null{T}) where T <: AbstractFloat = Null{t}(t(n.value))
 @inline replace_T(::Type{T1}, n::T2) where {T1, T2 <: AbstractFloat} = T1(n)

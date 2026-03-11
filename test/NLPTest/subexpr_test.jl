@@ -30,8 +30,8 @@ function test_subexpr_basic(backend)
     @test m2.meta.ncon == m1.meta.ncon + 10  # 10 defining constraints
 
     # Solve both models (wrap in WrapperNLPModel for GPU compatibility with Ipopt)
-    result1 = NLPModelsIpopt.ipopt(WrapperNLPModel(m1); print_level = 0)
-    result2 = NLPModelsIpopt.ipopt(WrapperNLPModel(m2); print_level = 0)
+    result1 = NLPModelsIpopt.ipopt(WrapperNLPModel(m1); print_level = 0, tol = solver_tolerance(eltype(c1.x0)))
+    result2 = NLPModelsIpopt.ipopt(WrapperNLPModel(m2); print_level = 0, tol = solver_tolerance(eltype(c2.x0)))
 
     # Solutions for original variables should match
     @test result1.status == result2.status
@@ -69,7 +69,7 @@ function test_subexpr_multidim(backend)
     m = ExaModel(c)
 
     # Wrap in WrapperNLPModel for GPU compatibility with Ipopt
-    result = NLPModelsIpopt.ipopt(WrapperNLPModel(m); print_level = 0)
+    result = NLPModelsIpopt.ipopt(WrapperNLPModel(m); print_level = 0, tol = solver_tolerance(eltype(c.x0)))
     @test result.status == :first_order
 
     # Check subexpression values match the definition
@@ -105,7 +105,7 @@ function test_subexpr_auto_dims(backend)
     m = ExaModel(c)
 
     # Wrap in WrapperNLPModel for GPU compatibility with Ipopt
-    result = NLPModelsIpopt.ipopt(WrapperNLPModel(m); print_level = 0)
+    result = NLPModelsIpopt.ipopt(WrapperNLPModel(m); print_level = 0, tol = solver_tolerance(eltype(c.x0)))
     return @test result.status == :first_order
 end
 
@@ -128,7 +128,7 @@ function test_subexpr_in_obj_and_con(backend)
     m = ExaModel(c)
 
     # Wrap in WrapperNLPModel for GPU compatibility with Ipopt
-    result = NLPModelsIpopt.ipopt(WrapperNLPModel(m); print_level = 0)
+    result = NLPModelsIpopt.ipopt(WrapperNLPModel(m); print_level = 0, tol = solver_tolerance(eltype(c.x0)))
     @test result.status == :first_order
 
     # sqrt(x) = 1 at optimum, so x = 1
@@ -173,7 +173,7 @@ function test_subexpr_lifted_start_values(backend)
     constraint(c2, x2[i] - 1 for i in 1:3; lcon = 0.0, ucon = Inf)
 
     m = ExaModel(c2)
-    result = NLPModelsIpopt.ipopt(WrapperNLPModel(m); print_level = 0)
+    result = NLPModelsIpopt.ipopt(WrapperNLPModel(m); print_level = 0, tol = solver_tolerance(eltype(c2.x0)))
     return @test result.status == :first_order
 end
 
@@ -201,8 +201,8 @@ function test_subexpr_reduced_basic(backend)
     @test m2.meta.ncon == m1.meta.ncon
 
     # Solve both models (wrap in WrapperNLPModel for GPU compatibility with Ipopt)
-    result1 = NLPModelsIpopt.ipopt(WrapperNLPModel(m1); print_level = 0)
-    result2 = NLPModelsIpopt.ipopt(WrapperNLPModel(m2); print_level = 0)
+    result1 = NLPModelsIpopt.ipopt(WrapperNLPModel(m1); print_level = 0, tol = solver_tolerance(eltype(c1.x0)))
+    result2 = NLPModelsIpopt.ipopt(WrapperNLPModel(m2); print_level = 0, tol = solver_tolerance(eltype(c2.x0)))
 
     # Solutions should match
     @test result1.status == result2.status
@@ -234,8 +234,8 @@ function test_subexpr_lifted_vs_reduced(backend)
     @test m1.meta.ncon > m2.meta.ncon
 
     # Solve both (wrap in WrapperNLPModel for GPU compatibility with Ipopt)
-    result1 = NLPModelsIpopt.ipopt(WrapperNLPModel(m1); print_level = 0)
-    result2 = NLPModelsIpopt.ipopt(WrapperNLPModel(m2); print_level = 0)
+    result1 = NLPModelsIpopt.ipopt(WrapperNLPModel(m1); print_level = 0, tol = solver_tolerance(eltype(c1.x0)))
+    result2 = NLPModelsIpopt.ipopt(WrapperNLPModel(m2); print_level = 0, tol = solver_tolerance(eltype(c2.x0)))
 
     # Both should converge to same solution
     @test result1.status == :first_order
@@ -273,7 +273,7 @@ function test_subexpr_reduced_multidim(backend)
     m = ExaModel(c)
 
     # Wrap in WrapperNLPModel for GPU compatibility with Ipopt
-    result = NLPModelsIpopt.ipopt(WrapperNLPModel(m); print_level = 0)
+    result = NLPModelsIpopt.ipopt(WrapperNLPModel(m); print_level = 0, tol = solver_tolerance(eltype(c.x0)))
     return @test result.status == :first_order
 end
 
@@ -297,7 +297,7 @@ function test_subexpr_reduced_nested(backend)
     @test m.meta.ncon == 0
 
     # Wrap in WrapperNLPModel for GPU compatibility with Ipopt
-    result = NLPModelsIpopt.ipopt(WrapperNLPModel(m); print_level = 0)
+    result = NLPModelsIpopt.ipopt(WrapperNLPModel(m); print_level = 0, tol = solver_tolerance(eltype(c.x0)))
     @test result.status == :first_order
 
     # 2*x^2 = 2 => x = 1
@@ -326,7 +326,7 @@ function test_subexpr_mixed(backend)
     @test m.meta.ncon == 5   # 5 defining constraints
 
     # Wrap in WrapperNLPModel for GPU compatibility with Ipopt
-    result = NLPModelsIpopt.ipopt(WrapperNLPModel(m); print_level = 0)
+    result = NLPModelsIpopt.ipopt(WrapperNLPModel(m); print_level = 0, tol = solver_tolerance(eltype(c.x0)))
     @test result.status == :first_order
 
     # 2*x^2 = 2 => x = 1
@@ -358,7 +358,7 @@ function test_subexpr_reduced_0based(backend)
     @test m.meta.ncon == 0
 
     # Wrap in WrapperNLPModel for GPU compatibility with Ipopt
-    result = NLPModelsIpopt.ipopt(WrapperNLPModel(m); print_level = 0)
+    result = NLPModelsIpopt.ipopt(WrapperNLPModel(m); print_level = 0, tol = solver_tolerance(eltype(c.x0)))
     @test result.status == :first_order
 
     # V[t] = u[t]*2+1 = 3 => u[t] = 1
@@ -392,7 +392,7 @@ function test_subexpr_reduced_0based_nested(backend)
     @test m.meta.ncon == 0
 
     # Wrap in WrapperNLPModel for GPU compatibility with Ipopt
-    result = NLPModelsIpopt.ipopt(WrapperNLPModel(m); print_level = 0)
+    result = NLPModelsIpopt.ipopt(WrapperNLPModel(m); print_level = 0, tol = solver_tolerance(eltype(c.x0)))
     @test result.status == :first_order
 
     # (x+1)*2 = 4 => x = 1
@@ -429,7 +429,7 @@ function test_subexpr_param_only_basic(backend)
     @test m.meta.ncon == 0
 
     # Solve (wrap in WrapperNLPModel for GPU compatibility with Ipopt)
-    result = NLPModelsIpopt.ipopt(WrapperNLPModel(m); print_level = 0)
+    result = NLPModelsIpopt.ipopt(WrapperNLPModel(m); print_level = 0, tol = solver_tolerance(eltype(c.x0)))
     @test result.status == :first_order
 
     # Optimal solution should be x = 1 (minimizes weighted squares)
@@ -457,7 +457,7 @@ function test_subexpr_param_only_update(backend)
     m = ExaModel(c)
 
     # Solve with initial parameters
-    result1 = NLPModelsIpopt.ipopt(WrapperNLPModel(m); print_level = 0)
+    result1 = NLPModelsIpopt.ipopt(WrapperNLPModel(m); print_level = 0, tol = solver_tolerance(eltype(c.x0)))
     @test result1.status == :first_order
 
     # With θ = [1,2,3], coeffs = [2,4,6], optimal x = [2,4,6]
@@ -470,7 +470,7 @@ function test_subexpr_param_only_update(backend)
     m2 = ExaModel(c)
 
     # Solve with updated parameters
-    result2 = NLPModelsIpopt.ipopt(WrapperNLPModel(m2); print_level = 0)
+    result2 = NLPModelsIpopt.ipopt(WrapperNLPModel(m2); print_level = 0, tol = solver_tolerance(eltype(c.x0)))
     @test result2.status == :first_order
 
     # With θ = [10,20,30], coeffs = [20,40,60], optimal x = [20,40,60]
@@ -508,7 +508,7 @@ function test_subexpr_param_only_multidim(backend)
     @test m.meta.ncon == 0
 
     # Solve (wrap in WrapperNLPModel for GPU compatibility with Ipopt)
-    result = NLPModelsIpopt.ipopt(WrapperNLPModel(m); print_level = 0)
+    result = NLPModelsIpopt.ipopt(WrapperNLPModel(m); print_level = 0, tol = solver_tolerance(eltype(c.x0)))
     @test result.status == :first_order
 
     # x = 1 minimizes the objective
@@ -541,7 +541,7 @@ function test_subexpr_param_only_in_constraint(backend)
     m = ExaModel(c)
 
     # Solve (wrap in WrapperNLPModel for GPU compatibility with Ipopt)
-    result = NLPModelsIpopt.ipopt(WrapperNLPModel(m); print_level = 0)
+    result = NLPModelsIpopt.ipopt(WrapperNLPModel(m); print_level = 0, tol = solver_tolerance(eltype(c.x0)))
     @test result.status == :first_order
 
     # Optimal: x[1] = 1 (bound), x[2] = 2 (optimal), x[3] = 2 (optimal, bound at 3 not active)
@@ -579,7 +579,7 @@ function test_subexpr_param_only_mixed(backend)
     @test m.meta.ncon == 10  # 5 lifted defining + 5 user constraints
 
     # Solve (wrap in WrapperNLPModel for GPU compatibility with Ipopt)
-    result = NLPModelsIpopt.ipopt(WrapperNLPModel(m); print_level = 0)
+    result = NLPModelsIpopt.ipopt(WrapperNLPModel(m); print_level = 0, tol = solver_tolerance(eltype(c.x0)))
     @test result.status == :first_order
 
     # With constraint x >= 1, optimal is x = 1

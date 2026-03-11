@@ -78,3 +78,36 @@ jobs:
     - name: Run tests
       run: |
         julia --color=yes --project=./test -e 'include("test/runtests.jl")'
+
+  metal:
+    strategy:
+      matrix:
+        julia-version: ['lts', '1']
+
+    runs-on: macos-latest-xlarge
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Julia
+        uses: julia-actions/setup-julia@latest
+        with:
+          version: ${{ matrix.julia-version }}
+      - name: Setup tests
+        run: |
+          julia --color=yes --project=./test -e '
+            using Pkg
+            Pkg.Registry.update()
+            Pkg.develop(path=".")
+            Pkg.instantiate()'
+      - name: Add Metal.jl to test environment
+        run: |
+          julia --project=test -e 'using Pkg; Pkg.add("Metal")'
+      - name: Show platform info
+        run: |
+          uname -a
+          julia -e 'println(Sys.ARCH); println(Sys.KERNEL)'
+      - name: Run tests
+        run: |
+          julia --color=yes --project=./test -e 'include("test/runtests.jl")'

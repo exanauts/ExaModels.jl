@@ -180,7 +180,7 @@ function exa_ac_power_model_parametric(backend, filename; use_parameters = true)
 
 end
 
-function test_function_evaluations(model1, core1, model2; atol = 1e-12)
+function test_function_evaluations(model1, core1, model2; atol = sol_tolerance(eltype(model1.meta.x0),eltype(model2.meta.x0)))
     x_test = ExaModels.convert_array(randn(core1.nvar), core1.backend)
 
     model1 = WrapperNLPModel(model1)
