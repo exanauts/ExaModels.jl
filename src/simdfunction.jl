@@ -42,7 +42,6 @@ function SIMDFunction(gen::Base.Generator, o0 = 0, o1 = 0, o2 = 0)
 
     f = gen.f(ParSource())
 
-    @code_warntype _simdfunction(f, o0, o1, o2)
     _simdfunction(f, o0, o1, o2)
 end
 
@@ -84,7 +83,7 @@ end
 
 function update_snoc(ddup::Tuple{S, T1}, inds, x::T2, ind) where {S,T1,T2}
     (new_ddup, new_inds) = update_snoc(ddup[1], inds, x, ind+1)
-    return ((ddup, ddup[2]), new_inds)
+    return ((new_ddup, ddup[2]), new_inds)
 end
 function update_snoc(ddup::Tuple{S, T}, inds, x::T, ind) where {S,T}
     return (ddup, (inds..., ind))

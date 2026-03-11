@@ -4,7 +4,6 @@ authors = ["Sungho Shin <sushin@mit.edu>"]
 version = "0.9.6"
 
 [deps]
-InteractiveUtils = "b77e0a4c-d291-57a0-90e8-8db25a27a240"
 NLPModels = "a4795742-8479-5a88-8948-cc11e1c8c1a6"
 Printf = "de0858da-6303-5e67-8744-51eddeeeb8d7"
 SolverCore = "ff4d7338-4cf1-434d-91df-b86cb86fb843"
@@ -39,7 +38,6 @@ ExaModelsSpecialFunctions = "SpecialFunctions"
 [compat]
 AMDGPU = "2"
 CUDA = "5"
-InteractiveUtils = "1.11.0"
 Ipopt = "1.11"
 JuMP = "1"
 KernelAbstractions = "0.9"

@@ -779,7 +779,6 @@ function constraint(
 
     f = _simdfunction(expr, c.ncon, c.nnzj, c.nnzh)
 
-    # @code_warntype _constraint(c, f, pars, start, lcon, ucon; kwargs...)
     _constraint(c, f, pars, start, lcon, ucon; kwargs...)
 end
 
