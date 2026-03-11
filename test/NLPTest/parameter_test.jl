@@ -88,7 +88,7 @@ function exa_ac_power_model_parametric(backend, filename; use_parameters = true)
     vm = ExaModels.variable(
         w,
         length(data.bus);
-        start = fill!(similar(data.bus, eltype(w.x0)), 1.0),
+        start = fill!(similar(data.bus, eltype(w.x0)), one(eltype(w.x0))),
         lvar = data.vmin,
         uvar = data.vmax,
     )

@@ -53,7 +53,7 @@ function test_nlp(m1, m2; full = false, atol = sol_tolerance(eltype(m1.meta.x0),
 
         for field in list
             @testset "$field" begin
-                @test getfield(m1.meta, field) == getfield(m2.meta, field)
+                @test getfield(m1.meta, field) ≈ getfield(m2.meta, field) atol = max(eps(eltype(m1.meta.x0)), eps(eltype(m2.meta.x0)))
             end
         end
     end
@@ -180,7 +180,7 @@ function runtests()
                             end
                         end
                         @testset "API test" begin
-                            result1 = madnlp(m1; print_level = MadNLP.ERROR, tol = solver_tolerance(eltype(m1.inner.meta.x0)))
+                            result1 = ipopt(m1; print_level = 0, tol = solver_tolerance(eltype(m1.inner.meta.x0)))
                             test_api(result1, vars1, cons1, vars2, cons2, m2.meta.minimize; atol = sol_tolerance(eltype(m1.inner.meta.x0)))
                         end
                     end

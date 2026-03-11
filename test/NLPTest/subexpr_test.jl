@@ -42,7 +42,7 @@ function test_subexpr_basic(backend)
     x_vals = solution(result2, x2)
     return @test subexpr_vals ≈ x_vals .^ 2 atol = sol_tolerance(eltype(c1.x0))
 end
-
+ 
 """
 Test multi-dimensional subexpressions with automatic dimension inference.
 """

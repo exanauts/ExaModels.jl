@@ -319,7 +319,7 @@ function runtests()
                     for backend in BACKENDS
                         @testset "$backend" begin
                             m = WrapperNLPModel(ExaModel(jm; backend = backend))
-                            result = ipopt(m; print_level = 0)
+                            result = ipopt(m; print_level = 0, tol = solver_tolerance(eltype(m.inner.meta.x0)))
 
                             @test sol ≈ result.solution atol = sol_tolerance(eltype(m.inner.meta.x0))
                         end
