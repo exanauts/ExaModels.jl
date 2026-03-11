@@ -14,6 +14,7 @@ if !(@isdefined _PAGES)
             "gpu.md",
             "parameters.md",
             "two_stage.md",
+            "batch.md",
             "develop.md",
             "quad.md",
             "distillation.md",
@@ -36,6 +37,7 @@ if !(@isdefined _JL_FILENAMES)
         "performance.jl",
         "parameters.jl",
         "two_stage.jl",
+        "batch.jl",
     ]
 end
 

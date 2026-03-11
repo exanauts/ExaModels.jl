@@ -11,6 +11,7 @@ import Adapt: adapt
 import NLPModels:
     NLPModels,
     obj,
+    obj!,
     cons!,
     grad!,
     jac_coord!,
@@ -38,6 +39,7 @@ include("hessian.jl")
 include("nlp.jl")
 include("tags.jl")
 include("utils.jl")
+include("batch.jl")
 
 export ExaModel,
     ExaCore,
@@ -58,6 +60,7 @@ export ExaModel,
     multipliers_L,
     multipliers_U,
     @register_univariate,
-    @register_bivariate
+    @register_bivariate,
+    BatchExaModel
 
 end # module ExaModels
