@@ -60,20 +60,65 @@ end
 
 function _simdfunction(f, o0, o1, o2)
     d = f(Identity(), AdjointNodeSource(nothing), nothing)
+    # ((((), 1), 2), 3)
+    snoc_dup1 = ExaModels.grpass(d, nothing, nothing, nothing, (), NaN)
+    snoc_ddup1 = ddup_snoc(snoc_dup1)
+    (o1step, c1) = unsnoc(snoc_ddup1, snoc_ddup1)
     y1 = []
-    ExaModels.grpass(d, nothing, y1, nothing, 0, NaN)
+    ExaModels.grpass(d, nothing, y1, nothing, (), NaN)
+    a1 = unique(y1)
+    old_o1step = length(a1)
+    old_c1 = Compressor(Tuple(findfirst(isequal(i), a1) for i in y1))
+    @info a1
+    @info old_o1step
+    @info old_c1
+    @info (old_o1step == o1step)
+    @info (old_c1 == c1)
+    @info snoc_dup1
+    @info snoc_ddup1
+    @info o1step
+    @info c1
 
     t = f(Identity(), SecondAdjointNodeSource(nothing), nothing)
-    y2 = []
-    ExaModels.hrpass0(t, nothing, y2, nothing, nothing, 0, NaN, NaN)
-
-    a1 = unique(y1)
-    o1step = length(a1)
-    c1 = Compressor(Tuple(findfirst(isequal(i), a1) for i in y1))
-
-    a2 = unique(y2)
-    o2step = length(a2)
-    c2 = Compressor(Tuple(findfirst(isequal(i), a2) for i in y2))
+    snoc_dup2 = ExaModels.hrpass0(t, nothing, nothing, nothing, nothing, (), NaN, NaN)
+    snoc_ddup2 = ddup_snoc(snoc_dup2)
+    (o2step, c2) = unsnoc(snoc_ddup2, snoc_ddup2)
+    @info snoc_dup2
+    @info snoc_ddup2
+    @info o2step
+    @info c2
 
     SIMDFunction(f, c1, c2, o0, o1, o2, o1step, o2step)
+end
+
+function unsnoc(ddup, snoc::Tuple{})
+    (0, ())
+end
+function unsnoc(ddup, snoc::Tuple{T1,T2}) where {T1<:Tuple,T2}
+    (step, comp) = unsnoc(ddup, snoc[1])
+    (step+1, (comp..., find_snoc(ddup, snoc[2])))
+end
+
+function find_snoc(ddup::Tuple{}, x)
+    @error "failed to find x in dduped compressor"
+end
+function find_snoc(ddup, x)
+    ddup[2] == x ? 1 : 1 + find_snoc(ddup[1], x)
+end
+
+function ddup_snoc(snoc::Tuple{})
+    return ()
+end
+function ddup_snoc(snoc::Tuple{T1, T2}) where {T1<:Tuple,T2}
+    return snoc_insert(ddup_snoc(snoc[1]), snoc[2])
+end
+
+function snoc_insert(snoc::Tuple{S, T}, x::T) where {S,T}
+    return snoc
+end
+function snoc_insert(snoc::Tuple{S, T1}, x::T2) where {S,T1,T2}
+    return (snoc_insert(snoc[1], x), snoc[2])
+end
+function snoc_insert(snoc::Tuple{}, x::T) where {T}
+    return ((), x)
 end

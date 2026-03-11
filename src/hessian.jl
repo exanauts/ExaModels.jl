@@ -504,17 +504,13 @@ function hdrpass(
     y1,
     y2,
     o2,
-    cnt,
+    ret,
     adj,
 )
-    cnt += 1
-    push!(y1, (t1.i, t2.i))
-    cnt
+    return (ret, (t1.i, t2.i))
 end
-function hrpass(t::SecondAdjointNodeVar, comp::Nothing, y1, y2, o2, cnt, adj, adj2)
-    cnt += 1
-    push!(y1, (t.i, t.i))
-    cnt
+function hrpass(t::SecondAdjointNodeVar, comp::Nothing, y1, y2, o2, ret, adj, adj2)
+    return (ret, (t.i, t.i))
 end
 
 @inline function hrpass(

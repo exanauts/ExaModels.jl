@@ -58,7 +58,7 @@ Performs dsparse gradient evaluation via the reverse pass on the computation (su
 - `comp`: a `Compressor`, which helps map counter to sparse vector index
 - `y`: result vector
 - `o1`: index offset
-- `cnt`: counter
+- `cnt` / `ret`: counter, or the snoc'd compressor
 - `adj`: adjoint propagated up to the current node
     """
 @inline function grpass(
@@ -71,22 +71,25 @@ Performs dsparse gradient evaluation via the reverse pass on the computation (su
 ) where {D<:Union{AdjointNull,ParIndexed,Real}}
     return cnt
 end
-@inline function grpass(d::D, comp, y, o1, cnt, adj) where {D<:AdjointNode1}
-    cnt = grpass(d.inner, comp, y, o1, cnt, adj * d.y)
-    return cnt
+@inline function grpass(d::D, comp, y, o1, ret, adj) where {D<:AdjointNode1}
+    ret = grpass(d.inner, comp, y, o1, ret, adj * d.y)
+    return ret
 end
-@inline function grpass(d::D, comp, y, o1, cnt, adj) where {D<:AdjointNode2}
-    cnt = grpass(d.inner1, comp, y, o1, cnt, adj * d.y1)
-    cnt = grpass(d.inner2, comp, y, o1, cnt, adj * d.y2)
-    return cnt
+@inline function grpass(d::D, comp, y, o1, ret, adj) where {D<:AdjointNode2}
+    ret = grpass(d.inner1, comp, y, o1, ret, adj * d.y1)
+    ret = grpass(d.inner2, comp, y, o1, ret, adj * d.y2)
+    return ret
 end
 @inline function grpass(d::D, comp, y, o1, cnt, adj) where {D<:AdjointNodeVar}
     @inbounds y[o1+comp(cnt+=1)] += adj
     return cnt
 end
+@inline function grpass(d::AdjointNodeVar, comp::Nothing, y::Nothing, o1, ret, adj) # despecialization
+    return (ret, d.i)
+end
 @inline function grpass(d::AdjointNodeVar, comp::Nothing, y, o1, cnt, adj) # despecialization
-    push!(y, d.i)
-    return (cnt += 1)
+    push!(y, (d.i))
+    return cnt
 end
 @inline function grpass(
     d::D,
