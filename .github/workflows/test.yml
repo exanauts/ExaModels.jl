@@ -84,7 +84,7 @@ jobs:
     strategy:
       matrix:
         julia-version: ['lts', '1']
-        os: [macos-latest]
+        os: [macos-14]
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
