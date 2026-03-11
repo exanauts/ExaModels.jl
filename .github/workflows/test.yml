@@ -80,12 +80,11 @@ jobs:
         julia --color=yes --project=./test -e 'include("test/runtests.jl")'
 
   metal:
+    runs-on: ${{ matrix.os }}
     strategy:
       matrix:
         julia-version: ['lts', '1']
-
-    runs-on: macos-latest-xlarge
-
+        os: [macos-latest]
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
