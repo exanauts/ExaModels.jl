@@ -6,9 +6,13 @@ Random.seed!(0)
 
 ad_tolerance(m1,m2) = max(ad_tolerance(m1), ad_tolerance(m2))
 sol_tolerance(m1,m2) = max(sol_tolerance(m1), sol_tolerance(m2))
-ad_tolerance(::Type{T}) where T = 10^(log(eps(T))/4)
-sol_tolerance(::Type{T}) where T = 10^(log(eps(T))/8)
-solver_tolerance(::Type{T}) where T = Float64(sqrt(eps(T))/100)
+ad_tolerance(::Type{Float64}) = 1e-10
+sol_tolerance(::Type{Float64}) = 1e-5
+solver_tolerance(::Type{Float64}) = 1e-8
+
+ad_tolerance(::Type{Float32}) = 1e-5
+sol_tolerance(::Type{Float32}) = 1e-2
+solver_tolerance(::Type{Float32}) = 1e-4
 
 include("backends.jl")
 include("NLPTest/NLPTest.jl")

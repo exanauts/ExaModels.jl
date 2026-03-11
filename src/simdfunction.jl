@@ -79,7 +79,8 @@ function _simdfunction(T, f, o0, o1, o2)
 end
 
 
-@inline replace_T(t, n) = n
+@inline replace_T(t, n::Union{AbstractNode,Real}) = n
+@inline replace_T(t, (a,b)::Pair) = a => replace_T(t, b)
 @inline function replace_T(t, n::Node1{F,I}) where {F, I}
     i = replace_T(t, n.inner)
     return Node1{F,typeof(i)}(i)
