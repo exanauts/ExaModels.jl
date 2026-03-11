@@ -507,10 +507,10 @@ function hdrpass(
     ret,
     adj,
 )
-    return (ret, (t1.i, t2.i))
+    return update_snoc(ret[1], ret[2], (t1.i, t2.i))
 end
 function hrpass(t::SecondAdjointNodeVar, comp::Nothing, y1, y2, o2, ret, adj, adj2)
-    return (ret, (t.i, t.i))
+    return update_snoc(ret[1], ret[2], (t.i, t.i))
 end
 
 @inline function hrpass(

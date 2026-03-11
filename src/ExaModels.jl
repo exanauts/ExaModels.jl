@@ -23,6 +23,7 @@ import NLPModels:
     jtprod_nln!,
     jprod_nln!
 import SolverCore
+import InteractiveUtils: @code_warntype
 import Printf
 
 include("templates.jl")

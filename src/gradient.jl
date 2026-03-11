@@ -71,7 +71,21 @@ Performs dsparse gradient evaluation via the reverse pass on the computation (su
 ) where {D<:Union{AdjointNull,ParIndexed,Real}}
     return cnt
 end
+@inline function grpass(
+    d::Union{AdjointNull,ParIndexed,Real},
+    comp::Nothing,
+    y,
+    o1,
+    cnt,
+    adj,
+)
+    return cnt
+end
 @inline function grpass(d::D, comp, y, o1, ret, adj) where {D<:AdjointNode1}
+    ret = grpass(d.inner, comp, y, o1, ret, adj * d.y)
+    return ret
+end
+@inline function grpass(d::AdjointNode1, comp::Nothing, y, o1, ret, adj) # despecialized
     ret = grpass(d.inner, comp, y, o1, ret, adj * d.y)
     return ret
 end
@@ -80,16 +94,17 @@ end
     ret = grpass(d.inner2, comp, y, o1, ret, adj * d.y2)
     return ret
 end
+@inline function grpass(d::AdjointNode2, comp::Nothing, y, o1, ret, adj) # despecialized
+    ret = grpass(d.inner1, comp, y, o1, ret, adj * d.y1)
+    ret = grpass(d.inner2, comp, y, o1, ret, adj * d.y2)
+    return ret
+end
 @inline function grpass(d::D, comp, y, o1, cnt, adj) where {D<:AdjointNodeVar}
     @inbounds y[o1+comp(cnt+=1)] += adj
     return cnt
 end
-@inline function grpass(d::AdjointNodeVar, comp::Nothing, y::Nothing, o1, ret, adj) # despecialization
-    return (ret, d.i)
-end
-@inline function grpass(d::AdjointNodeVar, comp::Nothing, y, o1, cnt, adj) # despecialization
-    push!(y, (d.i))
-    return cnt
+@inline function grpass(d::AdjointNodeVar, comp::Nothing, y, o1, ret, adj) # despecialization
+    return update_snoc(ret[1], ret[2], d.i)
 end
 @inline function grpass(
     d::D,

@@ -779,6 +779,7 @@ function constraint(
 
     f = _simdfunction(expr, c.ncon, c.nnzj, c.nnzh)
 
+    # @code_warntype _constraint(c, f, pars, start, lcon, ucon; kwargs...)
     _constraint(c, f, pars, start, lcon, ucon; kwargs...)
 end
 
@@ -802,7 +803,7 @@ function constraint(
 end
 
 
-function _constraint(c::C, f, pars, start, lcon, ucon; kwargs...) where {C<:ExaCore}
+function _constraint(c::C, f, pars, start, lcon, ucon) where {C<:ExaCore}
     nitr = length(pars)
     o = c.ncon
     ncon = c.ncon + nitr
@@ -812,7 +813,7 @@ function _constraint(c::C, f, pars, start, lcon, ucon; kwargs...) where {C<:ExaC
     y0 = append!(c.backend, c.y0, start, nitr)
     lcon = append!(c.backend, c.lcon, lcon, nitr)
     ucon = append!(c.backend, c.ucon, ucon, nitr)
-    append_con_tags(c.tags, c.backend, nitr; kwargs...)
+    append_con_tags(c.tags, c.backend, nitr)
 
     con = Constraint(c.con, f, convert_array(pars, c.backend), o)
 

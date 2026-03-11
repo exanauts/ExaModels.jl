@@ -42,6 +42,7 @@ function SIMDFunction(gen::Base.Generator, o0 = 0, o1 = 0, o2 = 0)
 
     f = gen.f(ParSource())
 
+    @code_warntype _simdfunction(f, o0, o1, o2)
     _simdfunction(f, o0, o1, o2)
 end
 
@@ -60,65 +61,34 @@ end
 
 function _simdfunction(f, o0, o1, o2)
     d = f(Identity(), AdjointNodeSource(nothing), nothing)
-    # ((((), 1), 2), 3)
-    snoc_dup1 = ExaModels.grpass(d, nothing, nothing, nothing, (), NaN)
-    snoc_ddup1 = ddup_snoc(snoc_dup1)
-    (o1step, c1) = unsnoc(snoc_ddup1, snoc_ddup1)
-    y1 = []
-    ExaModels.grpass(d, nothing, y1, nothing, (), NaN)
-    a1 = unique(y1)
-    old_o1step = length(a1)
-    old_c1 = Compressor(Tuple(findfirst(isequal(i), a1) for i in y1))
-    @info a1
-    @info old_o1step
-    @info old_c1
-    @info (old_o1step == o1step)
-    @info (old_c1 == c1)
-    @info snoc_dup1
-    @info snoc_ddup1
-    @info o1step
-    @info c1
+    (ddup1, c1) = ExaModels.grpass(d, nothing, nothing, nothing, ((), ()), NaN)
+    o1step = snoc_len(ddup1)
 
     t = f(Identity(), SecondAdjointNodeSource(nothing), nothing)
-    snoc_dup2 = ExaModels.hrpass0(t, nothing, nothing, nothing, nothing, (), NaN, NaN)
-    snoc_ddup2 = ddup_snoc(snoc_dup2)
-    (o2step, c2) = unsnoc(snoc_ddup2, snoc_ddup2)
-    @info snoc_dup2
-    @info snoc_ddup2
-    @info o2step
-    @info c2
+    (ddup2, c2) = ExaModels.hrpass0(t, nothing, nothing, nothing, nothing, ((), ()), NaN, NaN)
+    o2step = snoc_len(ddup2)
 
     SIMDFunction(f, c1, c2, o0, o1, o2, o1step, o2step)
 end
 
-function unsnoc(ddup, snoc::Tuple{})
-    (0, ())
+function snoc_len(snoc::Tuple{})
+    0
 end
-function unsnoc(ddup, snoc::Tuple{T1,T2}) where {T1<:Tuple,T2}
-    (step, comp) = unsnoc(ddup, snoc[1])
-    (step+1, (comp..., find_snoc(ddup, snoc[2])))
-end
-
-function find_snoc(ddup::Tuple{}, x)
-    @error "failed to find x in dduped compressor"
-end
-function find_snoc(ddup, x)
-    ddup[2] == x ? 1 : 1 + find_snoc(ddup[1], x)
+function snoc_len(snoc::Tuple{T1,T2}) where {T1<:Tuple,T2}
+    1+snoc_len(snoc[1])
 end
 
-function ddup_snoc(snoc::Tuple{})
-    return ()
-end
-function ddup_snoc(snoc::Tuple{T1, T2}) where {T1<:Tuple,T2}
-    return snoc_insert(ddup_snoc(snoc[1]), snoc[2])
+function update_snoc(ddup, inds, x)
+    return update_snoc(ddup, inds, x, 1)
 end
 
-function snoc_insert(snoc::Tuple{S, T}, x::T) where {S,T}
-    return snoc
+function update_snoc(ddup::Tuple{S, T1}, inds, x::T2, ind) where {S,T1,T2}
+    (new_ddup, new_inds) = update_snoc(ddup[1], inds, x, ind+1)
+    return ((ddup, ddup[2]), new_inds)
 end
-function snoc_insert(snoc::Tuple{S, T1}, x::T2) where {S,T1,T2}
-    return (snoc_insert(snoc[1], x), snoc[2])
+function update_snoc(ddup::Tuple{S, T}, inds, x::T, ind) where {S,T}
+    return (ddup, (inds..., ind))
 end
-function snoc_insert(snoc::Tuple{}, x::T) where {T}
-    return ((), x)
+function update_snoc(ddup::Tuple{}, inds, x::T, ind) where {T}
+    return (((), x), (inds..., ind))
 end
