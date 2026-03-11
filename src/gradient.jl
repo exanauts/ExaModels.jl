@@ -103,8 +103,12 @@ end
     @inbounds y[o1+comp(cnt+=1)] += adj
     return cnt
 end
-@inline function grpass(d::AdjointNodeVar, comp::Nothing, y, o1, ret, adj) # despecialization
+@inline function grpass(d::AdjointNodeVar, comp::Nothing, y::Nothing, o1, ret, adj) # despecialization
     return update_snoc(ret[1], ret[2], d.i)
+end
+@inline function grpass(d::AdjointNodeVar, comp::Nothing, y, o1, cnt, adj) # despecialization
+    push!(y, d.i)
+    return (cnt += 1)
 end
 @inline function grpass(
     d::D,

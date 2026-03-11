@@ -223,60 +223,11 @@ Base.@kwdef struct ExaCore{T, VT<:AbstractVector{T}, B, S, O, C}
     tags::S = nothing
 end
 
-function mutate_core(
-    core::ExaCore{T, VT, B, S, O, C}; 
-    backend=nothing,
-    obj=nothing,
-    con=nothing,
-    nvar=nothing,
-    npar=nothing,
-    ncon=nothing,
-    nconaug=nothing,
-    nobj=nothing,
-    nnzc=nothing,
-    nnzg=nothing,
-    nnzj=nothing,
-    nnzh=nothing,
-    x0=nothing,
-    θ=nothing,
-    lvar=nothing,
-    uvar=nothing,
-    y0=nothing,
-    lcon=nothing,
-    ucon=nothing,
-    minimize=nothing,
-    nparam_subexpr=nothing,
-    param_subexpr_values=nothing,
-    param_subexpr_fns=nothing,
-    tags=nothing,
-) where {T, VT, B, S, O, C}
-    ExaCore(
-        isnothing(backend) ? core.backend : backend,
-        isnothing(obj) ? core.obj : obj,
-        isnothing(con) ? core.con : con,
-        isnothing(nvar) ? core.nvar : nvar,
-        isnothing(npar) ? core.npar : npar,
-        isnothing(ncon) ? core.ncon : ncon,
-        isnothing(nconaug) ? core.nconaug : nconaug,
-        isnothing(nobj) ? core.nobj : nobj,
-        isnothing(nnzc) ? core.nnzc : nnzc,
-        isnothing(nnzg) ? core.nnzg : nnzg,
-        isnothing(nnzj) ? core.nnzj : nnzj,
-        isnothing(nnzh) ? core.nnzh : nnzh,
-        isnothing(x0) ? core.x0 : x0,
-        isnothing(θ,) ? core.θ : θ,
-        isnothing(lvar) ? core.lvar : lvar,
-        isnothing(uvar) ? core.uvar : uvar,
-        isnothing(y0) ? core.y0 : y0,
-        isnothing(lcon) ? core.lcon : lcon,
-        isnothing(ucon) ? core.ucon : ucon,
-        isnothing(minimize) ? core.minimize : minimize,
-        isnothing(nparam_subexpr) ? core.nparam_subexpr : nparam_subexpr,
-        isnothing(param_subexpr_values) ? core.param_subexpr_values : param_subexpr_values,
-        isnothing(param_subexpr_fns) ? core.param_subexpr_fns : param_subexpr_fns,
-        isnothing(tags) ? core.tags : tags,
-    )
-end
+ExaCore(c::C; kwargs...) where C <: ExaCore = ExaCore(
+    ;
+    zip(fieldnames(C), ntuple(i -> getfield(c, i), Val(fieldcount(C))))...,
+    kwargs...,
+)
 
 append_var_tags(::Nothing, backend, len) = nothing
 append_con_tags(::Nothing, backend, len) = nothing
@@ -576,7 +527,7 @@ function variable(
 
     append_var_tags(c.tags, c.backend, total(ns); kwargs...)
 
-    (mutate_core(c; nvar=nvar, x0=x0, lvar=lvar, uvar=uvar), Variable(ns, len, o))
+    (ExaCore(c; nvar=nvar, x0=x0, lvar=lvar, uvar=uvar), Variable(ns, len, o))
 end
 
 """
@@ -603,7 +554,7 @@ function parameter(c::C, start::AbstractArray;) where {T,C<:ExaCore{T}}
     len = total(ns)
     npar = c.npar + len
     θ = append!(c.backend, c.θ, start, len)
-    (mutate_core(c; θ=θ, npar=npar), Parameter(ns, len, o))
+    (ExaCore(c; θ=θ, npar=npar), Parameter(ns, len, o))
 end
 
 """
@@ -716,7 +667,7 @@ function _objective(c, f, pars)
     nnzh = c.nnzh + nitr * f.o2step
 
     obj = Objective(c.obj, f, convert_array(pars, c.backend))
-    (mutate_core(c; nobj=nobj, nnzg=nnzg, nnzh=nnzh, obj=obj), obj)
+    (ExaCore(c; nobj=nobj, nnzg=nnzg, nnzh=nnzh, obj=obj), obj)
 end
 
 """
@@ -816,7 +767,7 @@ function _constraint(c::C, f, pars, start, lcon, ucon) where {C<:ExaCore}
 
     con = Constraint(c.con, f, convert_array(pars, c.backend), o)
 
-    (mutate_core(c; ncon=ncon, nnzj=nnzj, nnzh=nnzh, y0=y0, lcon=lcon, ucon=ucon, con=con), con)
+    (ExaCore(c; ncon=ncon, nnzj=nnzj, nnzh=nnzh, y0=y0, lcon=lcon, ucon=ucon, con=con), con)
 end
 
 
@@ -880,7 +831,7 @@ function _constraint!(c, f, pars)
     nnzh = c.nnzh + nitr * f.o2step
 
     con = ConstraintAug(c.con, f, convert_array(pars, c.backend), oa)
-    (mutate_core(c; nconaug=nconaug, nnzj=nnzj, nnzh=nnzh), con)
+    (ExaCore(c; nconaug=nconaug, nnzj=nnzj, nnzh=nnzh), con)
 end
 
 # Helper to infer dimensions from iterator

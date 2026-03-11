@@ -41,6 +41,7 @@ Returns a `SIMDFunction` using the `gen`.
 function SIMDFunction(gen::Base.Generator, o0 = 0, o1 = 0, o2 = 0)
 
     f = gen.f(ParSource())
+    @info f
 
     _simdfunction(f, o0, o1, o2)
 end
@@ -60,12 +61,39 @@ end
 
 function _simdfunction(f, o0, o1, o2)
     d = f(Identity(), AdjointNodeSource(nothing), nothing)
+    @info d
+
+    y1 = []
+    ExaModels.grpass(d, nothing, y1, nothing, 0, NaN)
+    a1 = unique(y1)
+    old_o1step = length(a1)
+    old_c1 = Compressor(Tuple(findfirst(isequal(i), a1) for i in y1))
+
     (ddup1, c1) = ExaModels.grpass(d, nothing, nothing, nothing, ((), ()), NaN)
+    c1 = Compressor(c1)
     o1step = snoc_len(ddup1)
 
     t = f(Identity(), SecondAdjointNodeSource(nothing), nothing)
+
+    y2 = []
+    ExaModels.hrpass0(t, nothing, y2, nothing, nothing, 0, NaN, NaN)
+    a2 = unique(y2)
+    old_o2step = length(a2)
+    old_c2 = Compressor(Tuple(findfirst(isequal(i), a2) for i in y2))
+
     (ddup2, c2) = ExaModels.hrpass0(t, nothing, nothing, nothing, nothing, ((), ()), NaN, NaN)
+    c2 = Compressor(c2)
     o2step = snoc_len(ddup2)
+
+    @info old_o1step == o1step
+    @info old_c1 == c1
+    @info old_o2step == o2step
+    @info old_c2 == c2
+
+    @info old_c1
+    @info old_c2
+    @info c1
+    @info c2
 
     SIMDFunction(f, c1, c2, o0, o1, o2, o1step, o2step)
 end

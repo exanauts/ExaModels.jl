@@ -135,6 +135,8 @@ end
 
 struct Identity end
 
+(v::Val{y})(i, x, theta) where {y} = y
+
 @inline (v::Var{I})(i, x, θ) where {I<:AbstractNode} = @inbounds x[v.i(i, x, θ)]
 @inline (v::Var{I})(i, x, θ) where {I} = @inbounds x[v.i]
 @inline (v::Var{I})(i::Identity, x, θ) where {I<:AbstractNode} = @inbounds x[v.i]

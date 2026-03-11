@@ -97,7 +97,7 @@ macro register_bivariate(f, df1, df2, ddf11, ddf12, ddf22)
                     d1::D1,
                     d2::D2,
                 ) where {D1<:ExaModels.AbstractNode,D2<:Real}
-                    ExaModels.Node2($f, d1, d2)
+                    ExaModels.Node2($f, d1, Val{d2}())
                 end
             end
 
@@ -106,7 +106,7 @@ macro register_bivariate(f, df1, df2, ddf11, ddf12, ddf22)
                     d1::D1,
                     d2::D2,
                 ) where {D1<:Real,D2<:ExaModels.AbstractNode}
-                    ExaModels.Node2($f, d1, d2)
+                    ExaModels.Node2($f, Val{d1}(), d2)
                 end
             end
 

@@ -496,12 +496,11 @@ end
     cnt
 end
 
-
 function hdrpass(
     t1::SecondAdjointNodeVar,
     t2::SecondAdjointNodeVar,
     comp::Nothing,
-    y1,
+    y1::Nothing,
     y2,
     o2,
     ret,
@@ -509,8 +508,26 @@ function hdrpass(
 )
     return update_snoc(ret[1], ret[2], (t1.i, t2.i))
 end
-function hrpass(t::SecondAdjointNodeVar, comp::Nothing, y1, y2, o2, ret, adj, adj2)
+# REMOVE WHEN DONE TESTING
+function hdrpass(
+    t1::SecondAdjointNodeVar,
+    t2::SecondAdjointNodeVar,
+    comp::Nothing,
+    y1,
+    y2,
+    o2,
+    cnt,
+    adj,
+)
+    push!(y1, (t1.i, t2.i))
+end
+
+function hrpass(t::SecondAdjointNodeVar, comp::Nothing, y1::Nothing, y2, o2, ret, adj, adj2)
     return update_snoc(ret[1], ret[2], (t.i, t.i))
+end
+# REMOVE WHEN DONE TESTING
+function hrpass(t::SecondAdjointNodeVar, comp::Nothing, y1, y2, o2, ret, adj, adj2)
+    push!(y1, (t.i, t.i))
 end
 
 @inline function hrpass(
