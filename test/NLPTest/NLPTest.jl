@@ -53,7 +53,13 @@ function test_nlp(m1, m2; full = false, atol = sol_tolerance(eltype(m1.meta.x0),
 
         for field in list
             @testset "$field" begin
-                @test getfield(m1.meta, field) ≈ getfield(m2.meta, field) atol = sol_tolerance(eltype(getfield(m1.meta, field)), eltype(getfield(m2.meta, field)))
+                A = getfield(m1.meta, field)
+                B = getfield(m2.meta, field)
+                if eltype(A) isa AbstractFloat
+                    @test A ≈ B atol = sol_tolerance(eltype(A), eltype(B))
+                else
+                    @test A == B
+                end
             end
         end
     end
