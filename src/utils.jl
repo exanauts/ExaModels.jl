@@ -247,7 +247,7 @@ function NLPModels.hprod!(
         m.y_buffer,
         m.grad_buffer,
         m.v_buffer;
-        obj_weight = obj_weight,
+        obj_weight = eltype(m.x_buffer)(obj_weight),
     )
 
     buffered_copyto!(Hv, m.x_result, m.v_buffer)

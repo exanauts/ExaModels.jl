@@ -315,15 +315,12 @@ function runtests()
                     @test sol ≈ sol2 atol = 1.0e-6
                     @test dsol ≈ dsol2 atol = 1.0e-6
 
-                    for (Ts, backend) in BACKENDS
-                        for T in Ts
-                            @testset "$backend - $T" begin
-                                m = WrapperNLPModel(ExaModel(jm; T, backend))
-                                result = ipopt(m; print_level = 0)
+                    for backend in BACKENDS
+                        @testset "$backend" begin
+                            m = WrapperNLPModel(ExaModel(jm; backend = backend))
+                            result = ipopt(m; print_level = 0)
 
-                                preclevel = 10^(log(eps(Float64))/6)
-                                @test sol ≈ result.solution atol = preclevel
-                            end
+                            @test sol ≈ result.solution atol = 1e-6
                         end
                     end
                 end

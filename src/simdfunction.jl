@@ -40,12 +40,12 @@ Returns a `SIMDFunction` using the `gen`.
 """
 function SIMDFunction(T, gen::Base.Generator, o0 = 0, o1 = 0, o2 = 0)
 
-    f = gen.f(ParSource())
-
+    f = replace_T(T, gen.f(ParSource()))
     _simdfunction(T, f, o0, o1, o2)
 end
 
 function _simdfunction(T, f::F, o0, o1, o2) where {F<:Real}
+    f = replace_T(T, f)
     SIMDFunction(
         f,
         ExaModels.Compressor{Tuple{}}(()),
@@ -77,3 +77,16 @@ function _simdfunction(T, f, o0, o1, o2)
 
     SIMDFunction(f, c1, c2, o0, o1, o2, o1step, o2step)
 end
+
+
+@inline replace_T(t, n) = n
+@inline function replace_T(t, n::Node1{F,I}) where {F, I}
+    i = replace_T(t, n.inner)
+    return Node1{F,typeof(i)}(i)
+end
+@inline function replace_T(t, n::Node2{F,I1,I2}) where {F, I1, I2}
+    i1 = replace_T(t, n.inner1)
+    i2 = replace_T(t, n.inner2)
+    return Node2{F,typeof(i1),typeof(i2)}(i1, i2)
+end
+@inline replace_T(::Type{T1}, n::T2) where {T1, T2 <: AbstractFloat} = T1(n)

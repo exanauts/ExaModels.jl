@@ -213,7 +213,7 @@ Base.@kwdef mutable struct ExaCore{T,VT<:AbstractVector{T}, B, S}
     nnzg::Int = 0
     nnzj::Int = 0
     nnzh::Int = 0
-    x0::VT = convert_array(zeros(0), backend)
+    x0::VT = convert_array(zeros(default_T(backend), 0), backend)
     θ::VT = similar(x0, 0)
     lvar::VT = similar(x0)
     uvar::VT = similar(x0)
@@ -228,6 +228,7 @@ Base.@kwdef mutable struct ExaCore{T,VT<:AbstractVector{T}, B, S}
     tags::S = nothing
 end
 
+default_T(backend) = Float64
 append_var_tags(::Nothing, backend, len) = nothing
 append_con_tags(::Nothing, backend, len) = nothing
 
@@ -470,7 +471,7 @@ function append!(backend, a, b::Number, lb)
     if lb != 0
         la = length(a)
         resize!(a, la + lb)
-        fill!(view(a, (la+1):(la+lb)), b)
+        fill!(view(a, (la+1):(la+lb)), eltype(a)(b))
     end
     return a
 end

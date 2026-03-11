@@ -7,6 +7,11 @@ using JuMP, PowerModels, MadNLP, Percival
 
 import ..BACKENDS
 
+ad_tolerance(m1,m2) = max(ad_tolerance(m1), ad_tolerance(m2))
+sol_tolerance(m1,m2) = max(sol_tolerance(m1), sol_tolerance(m2))
+ad_tolerance(m::NLPModels.AbstractNLPModel{T}) where T = 10^(log(eps(T))/3)
+sol_tolerance(m::NLPModels.AbstractNLPModel{T}) where T = 10^(log(eps(T))/6)
+
 const NLP_TEST_ARGUMENTS = [
     ("luksan_struct", 3),
     ("luksan_struct", 20),
@@ -42,7 +47,7 @@ include("parameter_test.jl")
 include("subexpr_test.jl")
 include("trivialmax.jl")
 
-function test_nlp(m1, m2; full = false)
+function test_nlp(m1, m2; full = false, atol = 1e-6)
     @testset "NLP meta tests" begin
         list = [:nvar, :ncon, :x0, :lvar, :uvar, :y0, :lcon, :ucon]
 
@@ -63,12 +68,12 @@ function test_nlp(m1, m2; full = false)
         u = randn(eltype(m2.meta.x0), m2.meta.nvar)
         v = randn(eltype(m2.meta.x0), m2.meta.ncon)
 
-        @test NLPModels.obj(m1, x0) ≈ NLPModels.obj(m2, x0) atol = 1e-6
-        @test NLPModels.cons(m1, x0) ≈ NLPModels.cons(m2, x0) atol = 1e-6
-        @test NLPModels.grad(m1, x0) ≈ NLPModels.grad(m2, x0) atol = 1e-6
-        @test NLPModels.jprod(m1, x0, u) ≈ NLPModels.jprod(m2, x0, u) atol = 1e-6
-        @test NLPModels.jtprod(m1, x0, v) ≈ NLPModels.jtprod(m2, x0, v) atol = 1e-6
-        @test NLPModels.hprod(m1, x0, y0, u) ≈ NLPModels.hprod(m2, x0, y0, u) atol = 1e-6
+        @test NLPModels.obj(m1, x0) ≈ NLPModels.obj(m2, x0) atol = atol
+        @test NLPModels.cons(m1, x0) ≈ NLPModels.cons(m2, x0) atol = atol
+        @test NLPModels.grad(m1, x0) ≈ NLPModels.grad(m2, x0) atol = atol
+        @test NLPModels.jprod(m1, x0, u) ≈ NLPModels.jprod(m2, x0, u) atol = atol
+        @test NLPModels.jtprod(m1, x0, v) ≈ NLPModels.jtprod(m2, x0, v) atol = atol
+        @test NLPModels.hprod(m1, x0, y0, u) ≈ NLPModels.hprod(m2, x0, y0, u) atol = atol
 
         if full
             jac_buffer1 = zeros(m1.meta.nnzj)
@@ -94,8 +99,8 @@ function test_nlp(m1, m2; full = false)
             NLPModels.hess_structure!(m1, hess_I_buffer1, hess_J_buffer1)
             NLPModels.hess_structure!(m2, hess_I_buffer2, hess_J_buffer2)
 
-            @test jac_buffer1 ≈ jac_buffer2 atol = 1e-6
-            @test hess_buffer1 ≈ hess_buffer2 atol = 1e-6
+            @test jac_buffer1 ≈ jac_buffer2 atol = atol
+            @test hess_buffer1 ≈ hess_buffer2 atol = atol
             @test jac_I_buffer1 == jac_I_buffer2
             @test jac_J_buffer1 == jac_J_buffer2
             @test hess_I_buffer1 == hess_I_buffer2
@@ -104,13 +109,13 @@ function test_nlp(m1, m2; full = false)
     end
 end
 
-function test_nlp_solution(result1, result2)
+function test_nlp_solution(result1, result2; atol =1e-6)
 
     @testset "solution test" begin
         @test result1.status == result2.status
         for field in [:solution, :multipliers, :multipliers_L, :multipliers_U]
             @testset "$field" begin
-                @test getfield(result1, field) ≈ getfield(result2, field) atol = 1e-6
+                @test getfield(result1, field) ≈ getfield(result2, field) atol = atol
             end
         end
     end
@@ -119,18 +124,18 @@ end
 dual_lb(x) = has_lower_bound(x) ? dual(LowerBoundRef(x)) : 0.0
 dual_ub(x) = has_upper_bound(x) ? dual(UpperBoundRef(x)) : 0.0
 
-function test_api(result1, vars1, cons1, vars2, cons2, minimize::Bool)
+function test_api(result1, vars1, cons1, vars2, cons2, minimize::Bool; atol = 1e-6)
     @testset "API test" begin
         for (var1, var2) in zip(vars1, vars2)
-            @test solution(result1, var1) ≈ [value(var) for var in var2] atol = 1e-6
-            @test multipliers_L(result1, var1) ≈ [dual_lb(var) for var in var2] atol = 1e-6
-            @test multipliers_U(result1, var1) ≈ [-dual_ub(var) for var in var2] atol = 1e-6
+            @test solution(result1, var1) ≈ [value(var) for var in var2] atol = atol
+            @test multipliers_L(result1, var1) ≈ [dual_lb(var) for var in var2] atol = atol
+            @test multipliers_U(result1, var1) ≈ [-dual_ub(var) for var in var2] atol = atol
         end
         for (con1, con2) in zip(cons1, cons2)
             if minimize
-                @test multipliers(result1, con1) ≈ [-dual.(con) for con in con2] atol = 1.0e-6
+                @test multipliers(result1, con1) ≈ [-dual.(con) for con in con2] atol = atol
             else
-                @test multipliers(result1, con1) ≈ [dual.(con) for con in con2] atol = 1.0e-6
+                @test multipliers(result1, con1) ≈ [dual.(con) for con in con2] atol = atol
             end
         end
     end

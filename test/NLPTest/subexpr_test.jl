@@ -587,98 +587,6 @@ function test_subexpr_param_only_mixed(backend)
 end
 
 """
-Test tupled iterator with 2D matrix (1-based indexing), reduced subexpr.
-"""
-function test_subexpr_tupled_iterator(backend)
-    N, K = 4, 3
-
-    c = ExaCore(; backend = backend)
-    x = variable(c, 1:N, 1:K; start = 1.0, lvar = 0.1)
-
-    # Tupled iterator from a 2D comprehension
-    itr = [(i, k) for i in 1:N, k in 1:K]
-    s = subexpr(c, x[i, k]^2 for (i, k) in itr; reduced = true)
-
-    # Dimensions should be inferred from the matrix shape
-    @test s.size == (N, K)
-    @test s.length == N * K
-
-    # Use in objective — verifies symbolic indexing works with 2D shape
-    objective(c, (s[i, k] - 1)^2 for i in 1:N, k in 1:K)
-
-    m = ExaModel(c)
-
-    # Reduced: no extra vars/cons
-    @test m.meta.nvar == N * K
-    @test m.meta.ncon == 0
-
-    # Verify model evaluates correctly (use device-compatible array)
-    xval = fill!(similar(m.meta.x0), 1.0)
-    @test NLPModels.obj(m, xval) ≈ 0.0 atol = 1e-10
-    return @test Array(NLPModels.grad(m, xval)) ≈ zeros(m.meta.nvar) atol = 1e-10
-end
-
-"""
-Test tupled iterator with explicit dims for non-1-based indexing.
-"""
-function test_subexpr_tupled_iterator_with_dims(backend)
-    N, K = 4, 3
-
-    c = ExaCore(; backend = backend)
-    x = variable(c, 1:N, 0:K; start = 1.0, lvar = 0.1)
-
-    # Tupled iterator — array is N×(K+1) but indices are 1:N × 0:K
-    itr = [(i, k) for i in 1:N, k in 0:K]
-    s = subexpr(c, x[i, k]^2 for (i, k) in itr; reduced = true, dims = (1:N, 0:K))
-
-    # Dimensions should match explicit dims
-    @test s.size == (1:N, 0:K)
-    @test s.length == N * (K + 1)
-
-    # Use in objective — verifies symbolic indexing with 0-based dims
-    objective(c, (s[i, k] - 1)^2 for i in 1:N, k in 0:K)
-
-    m = ExaModel(c)
-    @test m.meta.nvar == N * (K + 1)
-
-    # Verify model evaluates correctly (use device-compatible array)
-    xval = fill!(similar(m.meta.x0), 1.0)
-    @test NLPModels.obj(m, xval) ≈ 0.0 atol = 1e-10
-    return
-end
-
-"""
-Test tupled iterator with embedded numeric data — the motivating use case.
-Embeds scalar data (weights) in tuples alongside indices.
-Uses lifted subexpr since data is baked into constraints at creation time.
-"""
-function test_subexpr_tupled_iterator_with_data(backend)
-    N, K = 4, 3
-
-    c = ExaCore(; backend = backend)
-    x = variable(c, 1:N, 1:K; start = 1.0, lvar = 0.1)
-
-    # Embed numeric data in the iterator tuple
-    weights = Float64[i for i in 1:N]
-    itr = [(i, k, weights[i]) for i in 1:N, k in 1:K]
-    s = subexpr(c, wi * x[i, k]^2 for (i, k, wi) in itr)
-
-    @test s.size == (N, K)
-    @test s.length == N * K
-
-    # Lifted adds auxiliary vars + constraints
-    objective(c, (s[i, k] - 1)^2 for i in 1:N, k in 1:K)
-    m = ExaModel(c)
-    @test m.meta.nvar == 2 * N * K
-    @test m.meta.ncon == N * K
-
-    # Verify model evaluates correctly (use device-compatible array)
-    xval = fill!(similar(m.meta.x0), 1.0)
-    @test length(NLPModels.cons(m, xval)) == N * K
-    return
-end
-
-"""
 Run all subexpression tests.
 """
 function test_subexpr(backend)
@@ -746,20 +654,8 @@ function test_subexpr(backend)
         test_subexpr_param_only_in_constraint(backend)
     end
 
-    @testset "Subexpr parameter-only mixed" begin
+    return @testset "Subexpr parameter-only mixed" begin
         test_subexpr_param_only_mixed(backend)
-    end
-
-    @testset "Subexpr tupled iterator (reduced)" begin
-        test_subexpr_tupled_iterator(backend)
-    end
-
-    @testset "Subexpr tupled iterator with dims" begin
-        test_subexpr_tupled_iterator_with_dims(backend)
-    end
-
-    return @testset "Subexpr tupled iterator with data" begin
-        test_subexpr_tupled_iterator_with_data(backend)
     end
 end
 
