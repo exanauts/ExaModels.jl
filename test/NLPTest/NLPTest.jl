@@ -43,7 +43,7 @@ include("parameter_test.jl")
 include("subexpr_test.jl")
 include("trivialmax.jl")
 
-function test_nlp(m1, m2; full = false, atol = sol_tolerance(eltype(m1.meta.x0), eltype(m2.meta.x0)))
+function test_nlp(m1, m2; full = false, tol = sol_tolerance(eltype(m1.meta.x0), eltype(m2.meta.x0)))
     @testset "NLP meta tests" begin
         list = [:nvar, :ncon, :x0, :lvar, :uvar, :y0, :lcon, :ucon]
 
@@ -55,8 +55,8 @@ function test_nlp(m1, m2; full = false, atol = sol_tolerance(eltype(m1.meta.x0),
             @testset "$field" begin
                 A = getfield(m1.meta, field)
                 B = getfield(m2.meta, field)
-                if eltype(A) isa AbstractFloat
-                    @test A ≈ B atol = sol_tolerance(eltype(A), eltype(B))
+                if eltype(A) <: AbstractFloat
+                    @test A ≈ B atol = sol_tolerance(eltype(A), eltype(B)) rtol = sol_tolerance(eltype(A), eltype(B))
                 else
                     @test A == B
                 end
@@ -70,12 +70,12 @@ function test_nlp(m1, m2; full = false, atol = sol_tolerance(eltype(m1.meta.x0),
         u = randn(eltype(m2.meta.x0), m2.meta.nvar)
         v = randn(eltype(m2.meta.x0), m2.meta.ncon)
 
-        @test NLPModels.obj(m1, x0) ≈ NLPModels.obj(m2, x0) atol = atol
-        @test NLPModels.cons(m1, x0) ≈ NLPModels.cons(m2, x0) atol = atol
-        @test NLPModels.grad(m1, x0) ≈ NLPModels.grad(m2, x0) atol = atol
-        @test NLPModels.jprod(m1, x0, u) ≈ NLPModels.jprod(m2, x0, u) atol = atol
-        @test NLPModels.jtprod(m1, x0, v) ≈ NLPModels.jtprod(m2, x0, v) atol = atol
-        @test NLPModels.hprod(m1, x0, y0, u) ≈ NLPModels.hprod(m2, x0, y0, u) atol = atol
+        @test NLPModels.obj(m1, x0) ≈ NLPModels.obj(m2, x0) atol = tol rtol = tol
+        @test NLPModels.cons(m1, x0) ≈ NLPModels.cons(m2, x0) atol = tol rtol = tol
+        @test NLPModels.grad(m1, x0) ≈ NLPModels.grad(m2, x0) atol = tol rtol = tol
+        @test NLPModels.jprod(m1, x0, u) ≈ NLPModels.jprod(m2, x0, u) atol = tol rtol = tol
+        @test NLPModels.jtprod(m1, x0, v) ≈ NLPModels.jtprod(m2, x0, v) atol = tol rtol = tol
+        @test NLPModels.hprod(m1, x0, y0, u) ≈ NLPModels.hprod(m2, x0, y0, u) atol = tol rtol = tol
 
         if full
             jac_buffer1 = zeros(m1.meta.nnzj)
@@ -101,8 +101,8 @@ function test_nlp(m1, m2; full = false, atol = sol_tolerance(eltype(m1.meta.x0),
             NLPModels.hess_structure!(m1, hess_I_buffer1, hess_J_buffer1)
             NLPModels.hess_structure!(m2, hess_I_buffer2, hess_J_buffer2)
 
-            @test jac_buffer1 ≈ jac_buffer2 atol = atol
-            @test hess_buffer1 ≈ hess_buffer2 atol = atol
+            @test jac_buffer1 ≈ jac_buffer2 atol = tol rtol = tol
+            @test hess_buffer1 ≈ hess_buffer2 atol = tol rtol = tol
             @test jac_I_buffer1 == jac_I_buffer2
             @test jac_J_buffer1 == jac_J_buffer2
             @test hess_I_buffer1 == hess_I_buffer2
@@ -111,13 +111,13 @@ function test_nlp(m1, m2; full = false, atol = sol_tolerance(eltype(m1.meta.x0),
     end
 end
 
-function test_nlp_solution(result1, result2; atol = sol_tolerance(eltype(result1.solution),eltype(result2.solution)))
+function test_nlp_solution(result1, result2; tol = sol_tolerance(eltype(result1.solution),eltype(result2.solution)))
 
     @testset "solution test" begin
         @test result1.status == result2.status
         for field in [:solution, :multipliers, :multipliers_L, :multipliers_U]
             @testset "$field" begin
-                @test getfield(result1, field) ≈ getfield(result2, field) atol = atol
+                @test getfield(result1, field) ≈ getfield(result2, field) atol = tol rtol = tol
             end
         end
     end
@@ -126,18 +126,18 @@ end
 dual_lb(x) = has_lower_bound(x) ? dual(LowerBoundRef(x)) : 0.0
 dual_ub(x) = has_upper_bound(x) ? dual(UpperBoundRef(x)) : 0.0
 
-function test_api(result1, vars1, cons1, vars2, cons2, minimize::Bool; atol = sol_tolerance(eltype(result1.solution)))
+function test_api(result1, vars1, cons1, vars2, cons2, minimize::Bool; tol = sol_tolerance(eltype(result1.solution)))
     @testset "API test" begin
         for (var1, var2) in zip(vars1, vars2)
-            @test solution(result1, var1) ≈ [value(var) for var in var2] atol = atol
-            @test multipliers_L(result1, var1) ≈ [dual_lb(var) for var in var2] atol = atol
-            @test multipliers_U(result1, var1) ≈ [-dual_ub(var) for var in var2] atol = atol
+            @test solution(result1, var1) ≈ [value(var) for var in var2] atol = tol rtol = tol
+            @test multipliers_L(result1, var1) ≈ [dual_lb(var) for var in var2] atol = tol rtol = tol
+            @test multipliers_U(result1, var1) ≈ [-dual_ub(var) for var in var2] atol = tol rtol = tol
         end
         for (con1, con2) in zip(cons1, cons2)
             if minimize
-                @test multipliers(result1, con1) ≈ [-dual.(con) for con in con2] atol = atol
+                @test multipliers(result1, con1) ≈ [-dual.(con) for con in con2] atol = tol rtol = tol
             else
-                @test multipliers(result1, con1) ≈ [dual.(con) for con in con2] atol = atol
+                @test multipliers(result1, con1) ≈ [dual.(con) for con in con2] atol = tol rtol = tol
             end
         end
     end
@@ -167,7 +167,7 @@ function runtests()
                         m1 = WrapperNLPModel(m)
 
                         @testset "Backend test" begin
-                            test_nlp(m0, m1; full = true, atol = sol_tolerance(eltype(m0.meta.x0), eltype(m1.inner.meta.x0)))
+                            test_nlp(m0, m1; full = true, tol = sol_tolerance(eltype(m0.meta.x0), eltype(m1.inner.meta.x0)))
                         end
                         @testset "Comparison to JuMP" begin
                             test_nlp(m0, m2; full = false)
@@ -187,7 +187,7 @@ function runtests()
                         end
                         @testset "API test" begin
                             result1 = madnlp(m1; print_level = MadNLP.ERROR, tol = solver_tolerance(eltype(m1.inner.meta.x0)))
-                            test_api(result1, vars1, cons1, vars2, cons2, m2.meta.minimize; atol = sol_tolerance(eltype(m1.inner.meta.x0)))
+                            test_api(result1, vars1, cons1, vars2, cons2, m2.meta.minimize; tol = sol_tolerance(eltype(m1.inner.meta.x0)))
                         end
                     end
                 end

@@ -180,7 +180,7 @@ function exa_ac_power_model_parametric(backend, filename; use_parameters = true)
 
 end
 
-function test_function_evaluations(model1, core1, model2; atol = sol_tolerance(eltype(model1.meta.x0),eltype(model2.meta.x0)))
+function test_function_evaluations(model1, core1, model2; tol = sol_tolerance(eltype(model1.meta.x0),eltype(model2.meta.x0)))
     x_test = ExaModels.convert_array(randn(core1.nvar), core1.backend)
 
     model1 = WrapperNLPModel(model1)
@@ -188,32 +188,32 @@ function test_function_evaluations(model1, core1, model2; atol = sol_tolerance(e
 
     obj1 = NLPModels.obj(model1, x_test)
     obj2 = NLPModels.obj(model2, x_test)
-    @test obj1 ≈ obj2 atol=atol
+    @test obj1 ≈ obj2 atol=tol rtol=tol
 
     if core1.ncon > 0
         con1 = NLPModels.cons(model1, x_test)
         con2 = NLPModels.cons(model2, x_test)
-        @test con1 ≈ con2 atol=atol
+        @test con1 ≈ con2 atol=tol rtol=tol
     end
 
     grad1 = NLPModels.grad(model1, x_test)
     grad2 = NLPModels.grad(model2, x_test)
-    @test grad1 ≈ grad2 atol=atol
+    @test grad1 ≈ grad2 atol=tol rtol=tol
 
     u = ExaModels.convert_array(randn(core1.nvar), core1.backend)
     v = ExaModels.convert_array(randn(core1.ncon), core1.backend)
     jprod_param = NLPModels.jprod(model2, x_test, u)
     jprod_orig = NLPModels.jprod(model1, x_test, u)
-    @test jprod_param ≈ jprod_orig atol=atol
+    @test jprod_param ≈ jprod_orig atol=tol rtol=tol
 
     jtprod_param = NLPModels.jtprod(model2, x_test, v)
     jtprod_orig = NLPModels.jtprod(model1, x_test, v)
-    @test jtprod_param ≈ jtprod_orig atol=atol
+    @test jtprod_param ≈ jtprod_orig atol=tol rtol=tol
 
     y_test = ExaModels.convert_array(randn(core1.ncon), core1.backend)
     hprod_param = NLPModels.hprod(model2, x_test, y_test, u)
     hprod_orig = NLPModels.hprod(model1, x_test, y_test, u)
-    @test hprod_param ≈ hprod_orig atol=atol
+    @test hprod_param ≈ hprod_orig atol=tol rtol=tol
 end
 
 function test_real_only()
