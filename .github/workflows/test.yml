@@ -36,6 +36,7 @@ jobs:
         if: matrix.julia-version == '1' && matrix.os == 'ubuntu-latest'
         with:
           files: lcov.info
+          token: ${{ secrets.CODECOV_TOKEN }}
 
   gpu:
     strategy:
