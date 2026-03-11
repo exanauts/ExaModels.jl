@@ -195,10 +195,10 @@ An ExaCore
   number of constraint patterns: ... 0
 ```
 """
-Base.@kwdef mutable struct ExaCore{T,VT<:AbstractVector{T}, B, S}
+Base.@kwdef struct ExaCore{T, VT<:AbstractVector{T}, B, S, O, C}
     backend::B = nothing
-    obj::AbstractObjective = ObjectiveNull()
-    con::AbstractConstraint = ConstraintNull()
+    obj::O = ObjectiveNull()
+    con::C = ConstraintNull()
     nvar::Int = 0
     npar::Int = 0
     ncon::Int = 0
@@ -221,6 +221,61 @@ Base.@kwdef mutable struct ExaCore{T,VT<:AbstractVector{T}, B, S}
     param_subexpr_values::VT = similar(x0, 0)
     param_subexpr_fns::Vector{Any} = Any[]
     tags::S = nothing
+end
+
+function mutate_core(
+    core::ExaCore{T, VT, B, S, O, C}; 
+    backend=nothing,
+    obj=nothing,
+    con=nothing,
+    nvar=nothing,
+    npar=nothing,
+    ncon=nothing,
+    nconaug=nothing,
+    nobj=nothing,
+    nnzc=nothing,
+    nnzg=nothing,
+    nnzj=nothing,
+    nnzh=nothing,
+    x0=nothing,
+    θ=nothing,
+    lvar=nothing,
+    uvar=nothing,
+    y0=nothing,
+    lcon=nothing,
+    ucon=nothing,
+    minimize=nothing,
+    nparam_subexpr=nothing,
+    param_subexpr_values=nothing,
+    param_subexpr_fns=nothing,
+    tags=nothing,
+) where {T, VT, B, S, O, C}
+    ExaCore(
+        isnothing(backend) ? core.backend : backend,
+        isnothing(obj) ? core.obj : obj,
+        isnothing(con) ? core.con : con,
+        isnothing(nvar) ? core.nvar : nvar,
+        isnothing(npar) ? core.npar : npar,
+        isnothing(ncon) ? core.ncon : ncon,
+        isnothing(nconaug) ? core.nconaug : nconaug,
+        isnothing(nobj) ? core.nobj : nobj,
+        isnothing(nnzc) ? core.nnzc : nnzc,
+        isnothing(nnzg) ? core.nnzg : nnzg,
+        isnothing(nnzj) ? core.nnzj : nnzj,
+        isnothing(nnzh) ? core.nnzh : nnzh,
+        isnothing(x0) ? core.x0 : x0,
+        isnothing(θ,) ? core.θ : θ,
+        isnothing(lvar) ? core.lvar : lvar,
+        isnothing(uvar) ? core.uvar : uvar,
+        isnothing(y0) ? core.y0 : y0,
+        isnothing(lcon) ? core.lcon : lcon,
+        isnothing(ucon) ? core.ucon : ucon,
+        isnothing(minimize) ? core.minimize : minimize,
+        isnothing(nparam_subexpr) ? core.nparam_subexpr : nparam_subexpr,
+        isnothing(param_subexpr_values) ? core.param_subexpr_values : param_subexpr_values,
+        isnothing(param_subexpr_fns) ? core.param_subexpr_fns : param_subexpr_fns,
+        isnothing(tags) ? core.tags : tags,
+    )
 end
 
 append_var_tags(::Nothing, backend, len) = nothing
@@ -514,15 +569,14 @@ function variable(
 
     o = c.nvar
     len = total(ns)
-    c.nvar += len
-    c.x0 = append!(c.backend, c.x0, start, total(ns))
-    c.lvar = append!(c.backend, c.lvar, lvar, total(ns))
-    c.uvar = append!(c.backend, c.uvar, uvar, total(ns))
+    nvar = c.nvar + len
+    x0 = append!(c.backend, c.x0, start, total(ns))
+    lvar = append!(c.backend, c.lvar, lvar, total(ns))
+    uvar = append!(c.backend, c.uvar, uvar, total(ns))
 
     append_var_tags(c.tags, c.backend, total(ns); kwargs...)
 
-    return Variable(ns, len, o)
-
+    (mutate_core(c; nvar=nvar, x0=x0, lvar=lvar, uvar=uvar), Variable(ns, len, o))
 end
 
 """
@@ -547,10 +601,9 @@ function parameter(c::C, start::AbstractArray;) where {T,C<:ExaCore{T}}
     ns = Base.size(start)
     o = c.npar
     len = total(ns)
-    c.npar += len
-    c.θ = append!(c.backend, c.θ, start, len)
-    return Parameter(ns, len, o)
-
+    npar = c.npar + len
+    θ = append!(c.backend, c.θ, start, len)
+    (mutate_core(c; θ=θ, npar=npar), Parameter(ns, len, o))
 end
 
 """
@@ -658,11 +711,12 @@ end
 
 function _objective(c, f, pars)
     nitr = length(pars)
-    c.nobj += nitr
-    c.nnzg += nitr * f.o1step
-    c.nnzh += nitr * f.o2step
+    nobj = c.nobj + nitr
+    nnzg = c.nnzg + nitr * f.o1step
+    nnzh = c.nnzh + nitr * f.o2step
 
-    c.obj = Objective(c.obj, f, convert_array(pars, c.backend))
+    obj = Objective(c.obj, f, convert_array(pars, c.backend))
+    (mutate_core(c; nobj=nobj, nnzg=nnzg, nnzh=nnzh, obj=obj), obj)
 end
 
 """
@@ -695,18 +749,17 @@ Constraint
 """
 function constraint(
     c::C,
-    gen::Base.Generator;
+    gen::Base.Generator{I,F},
     start = zero(T),
     lcon = zero(T),
     ucon = zero(T),
     kwargs...
-) where {T,C<:ExaCore{T}}
-
+) where {T,C<:ExaCore{T},I,F}
     gen = _adapt_gen(gen)
     f = SIMDFunction(gen, c.ncon, c.nnzj, c.nnzh)
     pars = gen.iter
 
-    _constraint(c, f, pars, start, lcon, ucon; kwargs...)
+    _constraint(c, f, pars, start, lcon, ucon)
 end
 
 """
@@ -752,16 +805,18 @@ end
 function _constraint(c::C, f, pars, start, lcon, ucon; kwargs...) where {C<:ExaCore}
     nitr = length(pars)
     o = c.ncon
-    c.ncon += nitr
-    c.nnzj += nitr * f.o1step
-    c.nnzh += nitr * f.o2step
+    ncon = c.ncon + nitr
+    nnzj = c.nnzj + nitr * f.o1step
+    nnzh = c.nnzh + nitr * f.o2step
 
-    c.y0 = append!(c.backend, c.y0, start, nitr)
-    c.lcon = append!(c.backend, c.lcon, lcon, nitr)
-    c.ucon = append!(c.backend, c.ucon, ucon, nitr)
+    y0 = append!(c.backend, c.y0, start, nitr)
+    lcon = append!(c.backend, c.lcon, lcon, nitr)
+    ucon = append!(c.backend, c.ucon, ucon, nitr)
     append_con_tags(c.tags, c.backend, nitr; kwargs...)
 
-    c.con = Constraint(c.con, f, convert_array(pars, c.backend), o)
+    con = Constraint(c.con, f, convert_array(pars, c.backend), o)
+
+    (mutate_core(c; ncon=ncon, nnzj=nnzj, nnzh=nnzh, y0=y0, lcon=lcon, ucon=ucon, con=con), con)
 end
 
 
@@ -820,11 +875,12 @@ function _constraint!(c, f, pars)
 
     nitr = length(pars)
 
-    c.nconaug += nitr
-    c.nnzj += nitr * f.o1step
-    c.nnzh += nitr * f.o2step
+    nconaug = c.nconaug + nitr
+    nnzj = c.nnzj + nitr * f.o1step
+    nnzh = c.nnzh + nitr * f.o2step
 
-    c.con = ConstraintAug(c.con, f, convert_array(pars, c.backend), oa)
+    con = ConstraintAug(c.con, f, convert_array(pars, c.backend), oa)
+    (mutate_core(c; nconaug=nconaug, nnzj=nnzj, nnzh=nnzh), con)
 end
 
 # Helper to infer dimensions from iterator

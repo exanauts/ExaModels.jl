@@ -73,25 +73,24 @@ end
 
 # Integer × AbstractNode zero/one elimination (more specific than core's Real × AbstractNode)
 # Fixes: 0 * x → Null(0), 1 * x → x, 0 + x → x, etc.
+# TODO: ExaModels.Null will probably break AOT
 @inline function Base.:*(a::Integer, b::ExaModels.AbstractNode)
-    return iszero(a) ? ExaModels.Null(zero(a)) :
-        isone(a) ? b : ExaModels.Node2(*, a, b)
+    return iszero(a) ? ExaModels.Null(zero(a)) : ExaModels.Node2(*, a, b)
 end
 @inline function Base.:*(a::ExaModels.AbstractNode, b::Integer)
-    return iszero(b) ? ExaModels.Null(zero(b)) :
-        isone(b) ? a : ExaModels.Node2(*, a, b)
+    return iszero(b) ? ExaModels.Null(zero(b)) : ExaModels.Node2(*, a, b)
 end
 @inline function Base.:+(a::Integer, b::ExaModels.AbstractNode)
-    return iszero(a) ? b : ExaModels.Node2(+, a, b)
+    return ExaModels.Node2(+, a, b)
 end
 @inline function Base.:+(a::ExaModels.AbstractNode, b::Integer)
-    return iszero(b) ? a : ExaModels.Node2(+, a, b)
+    return ExaModels.Node2(+, a, b)
 end
 @inline function Base.:-(a::Integer, b::ExaModels.AbstractNode)
-    return iszero(a) ? ExaModels.Node1(-, b) : ExaModels.Node2(-, a, b)
+    return ExaModels.Node2(-, a, b)
 end
 @inline function Base.:-(a::ExaModels.AbstractNode, b::Integer)
-    return iszero(b) ? a : ExaModels.Node2(-, a, b)
+    return ExaModels.Node2(-, a, b)
 end
 
 # ============================================================================
