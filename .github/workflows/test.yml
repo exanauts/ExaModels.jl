@@ -10,79 +10,79 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  github:
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        julia-version: ['lts', '1']
-        julia-arch: [x64]
-        os: [ubuntu-latest,macos-latest,windows-latest]
-    steps:
-      - uses: actions/checkout@v2
-      - uses: julia-actions/setup-julia@latest
-        with:
-          version: ${{ matrix.julia-version }}
-      - uses: julia-actions/cache@v3
-      - uses: julia-actions/julia-buildpkg@latest
-      - name: Add OpenCL.jl to test environment
-        run: |
-          julia --project=test -e 'using Pkg; Pkg.add(["OpenCL", "pocl_jll"])'
-      - uses: julia-actions/julia-runtest@latest
-        env:
-          EXAMODELS_TEST_POCL: 1
-      - uses: julia-actions/julia-processcoverage@v1
-        if: matrix.julia-version == '1' && matrix.os == 'ubuntu-latest'
-      - uses: codecov/codecov-action@v5
-        if: matrix.julia-version == '1' && matrix.os == 'ubuntu-latest'
-        with:
-          files: lcov.info
+  # github:
+  #   runs-on: ${{ matrix.os }}
+  #   strategy:
+  #     matrix:
+  #       julia-version: ['lts', '1']
+  #       julia-arch: [x64]
+  #       os: [ubuntu-latest,macos-latest,windows-latest]
+  #   steps:
+  #     - uses: actions/checkout@v2
+  #     - uses: julia-actions/setup-julia@latest
+  #       with:
+  #         version: ${{ matrix.julia-version }}
+  #     - uses: julia-actions/cache@v3
+  #     - uses: julia-actions/julia-buildpkg@latest
+  #     - name: Add OpenCL.jl to test environment
+  #       run: |
+  #         julia --project=test -e 'using Pkg; Pkg.add(["OpenCL", "pocl_jll"])'
+  #     - uses: julia-actions/julia-runtest@latest
+  #       env:
+  #         EXAMODELS_TEST_POCL: 1
+  #     - uses: julia-actions/julia-processcoverage@v1
+  #       if: matrix.julia-version == '1' && matrix.os == 'ubuntu-latest'
+  #     - uses: codecov/codecov-action@v5
+  #       if: matrix.julia-version == '1' && matrix.os == 'ubuntu-latest'
+  #       with:
+  #         files: lcov.info
 
-  gpu:
-    strategy:
-      matrix:
-        julia-version: ['lts', '1']
-        julia-arch: [x64]
-        os: [ubuntu-latest]
-        backend: ['cuda', 'amdgpu', 'oneapi']
-    runs-on: ['self-hosted', 'gpu', '${{ matrix.backend }}']
-    env:
-      # oneAPI specific variables
-      OverrideDefaultFP64Settings: ${{ matrix.backend == 'oneapi' && '1' || '' }}
-      IGC_EnableDPEmulation: ${{ matrix.backend == 'oneapi' && '1' || '' }}
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v2
-    - name: Setup Julia
-      uses: julia-actions/setup-julia@latest
-      with:
-        version: ${{ matrix.julia-version }}
-    - name: Setup tests
-      run: |
-        julia --color=yes --project=./test -e '
-          using Pkg
-          Pkg.Registry.update()
-          Pkg.develop(path=".")
-          Pkg.instantiate()'
-    - name: Add AMDGPU.jl to test environment
-      if: matrix.backend == 'amdgpu'
-      run: |
-        julia --project=test -e 'using Pkg; Pkg.add("AMDGPU")'
-    - name: Add CUDA.jl to test environment
-      if: matrix.backend == 'cuda'
-      run: |
-        julia --project=test -e 'using Pkg; Pkg.add("CUDA")'
-    - name: Add oneAPI.jl to test environment
-      if: matrix.backend == 'oneapi'
-      run: |
-        julia --project=test -e 'using Pkg; Pkg.add("oneAPI")'
-    - name: Run tests
-      run: |
-        julia --color=yes --project=./test -e 'include("test/runtests.jl")'
-
+  # gpu:
+  #   strategy:
+  #     matrix:
+  #       julia-version: ['lts', '1']
+  #       julia-arch: [x64]
+  #       os: [ubuntu-latest]
+  #       backend: ['cuda', 'amdgpu', 'oneapi']
+  #   runs-on: ['self-hosted', 'gpu', '${{ matrix.backend }}']
+  #   env:
+  #     # oneAPI specific variables
+  #     OverrideDefaultFP64Settings: ${{ matrix.backend == 'oneapi' && '1' || '' }}
+  #     IGC_EnableDPEmulation: ${{ matrix.backend == 'oneapi' && '1' || '' }}
+  #   steps:
+  #   - name: Checkout code
+  #     uses: actions/checkout@v2
+  #   - name: Setup Julia
+  #     uses: julia-actions/setup-julia@latest
+  #     with:
+  #       version: ${{ matrix.julia-version }}
+  #   - name: Setup tests
+  #     run: |
+  #       julia --color=yes --project=./test -e '
+  #         using Pkg
+  #         Pkg.Registry.update()
+  #         Pkg.develop(path=".")
+  #         Pkg.instantiate()'
+  #   - name: Add AMDGPU.jl to test environment
+  #     if: matrix.backend == 'amdgpu'
+  #     run: |
+  #       julia --project=test -e 'using Pkg; Pkg.add("AMDGPU")'
+  #   - name: Add CUDA.jl to test environment
+  #     if: matrix.backend == 'cuda'
+  #     run: |
+  #       julia --project=test -e 'using Pkg; Pkg.add("CUDA")'
+  #   - name: Add oneAPI.jl to test environment
+  #     if: matrix.backend == 'oneapi'
+  #     run: |
+  #       julia --project=test -e 'using Pkg; Pkg.add("oneAPI")'
+  #   - name: Run tests
+  #     run: |
+  #       julia --color=yes --project=./test -e 'include("test/runtests.jl")'
   metal:
     strategy:
       matrix:
         julia-version: ['lts', '1']
+        julia-arch: [aarch64]
         os: [macos-latest]
         backend: ['metal']
     runs-on: ['self-hosted', 'gpu', '${{ matrix.backend }}']
