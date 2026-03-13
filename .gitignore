@@ -42,3 +42,4 @@ pglib*.m
 *.cb
 *.cb2
 .*.lb
+*/.CondaPkg/*
