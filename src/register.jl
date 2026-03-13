@@ -1,4 +1,21 @@
 """
+    _needs_overload(f, types)
+
+Return `true` when ExaModels should add a method for `f` with the given
+argument `types`.
+
+Plain `hasmethod` is too conservative for Base generics such as
+`max(x,y) = ifelse(isless(x,y),y,x)`: those definitions match any
+`AbstractNode` argument, so `hasmethod` returns `true` and would prevent the
+ExaModels-specific overload from being added.  We instead check the *owner
+module* of the matching method and only skip when ExaModels already owns it.
+"""
+function _needs_overload(f, types)
+    hasmethod(f, types) || return true
+    return which(f, types).module !== @__MODULE__
+end
+
+"""
     @register_univariate(f, df, ddf)
 
 Register a univariate function `f` to `ExaModels`, so that it can be used within objective and constraint expressions
@@ -6,7 +23,7 @@ Register a univariate function `f` to `ExaModels`, so that it can be used within
 # Arguments:
 - `f`: function
 - `df`: derivative function
-- `ddf`: second-order derivative funciton
+- `ddf`: second-order derivative function
 
 ## Example
 ```jldoctest
@@ -27,7 +44,7 @@ julia> @register_univariate(relu3, drelu3, ddrelu3)
 macro register_univariate(f, df, ddf)
     return esc(
         quote
-            if !hasmethod($f, Tuple{ExaModels.AbstractNode})
+            if ExaModels._needs_overload($f, Tuple{ExaModels.AbstractNode})
                 @inline $f(n::N) where {N<:ExaModels.AbstractNode} = ExaModels.Node1($f, n)
             end
 
@@ -51,9 +68,9 @@ Register a bivariate function `f` to `ExaModels`, so that it can be used within 
 - `f`: function
 - `df1`: derivative function (w.r.t. first argument)
 - `df2`: derivative function (w.r.t. second argument)
-- `ddf11`: second-order derivative funciton (w.r.t. first argument)
-- `ddf12`: second-order derivative funciton (w.r.t. first and second argument)
-- `ddf22`: second-order derivative funciton (w.r.t. second argument)
+- `ddf11`: second-order derivative function (w.r.t. first argument)
+- `ddf12`: second-order derivative function (w.r.t. first and second argument)
+- `ddf22`: second-order derivative function (w.r.t. second argument)
 
 ## Example
 ```jldoctest
@@ -83,7 +100,7 @@ julia> @register_bivariate(relu23, drelu231, drelu232, ddrelu2311, ddrelu2312, d
 macro register_bivariate(f, df1, df2, ddf11, ddf12, ddf22)
     return esc(
         quote
-            if !hasmethod($f, Tuple{ExaModels.AbstractNode,ExaModels.AbstractNode})
+            if ExaModels._needs_overload($f, Tuple{ExaModels.AbstractNode,ExaModels.AbstractNode})
                 @inline function $f(
                     d1::D1,
                     d2::D2,
@@ -92,7 +109,7 @@ macro register_bivariate(f, df1, df2, ddf11, ddf12, ddf22)
                 end
             end
 
-            if !hasmethod($f, Tuple{ExaModels.AbstractNode,Real})
+            if ExaModels._needs_overload($f, Tuple{ExaModels.AbstractNode,Real})
                 @inline function $f(
                     d1::D1,
                     d2::D2,
@@ -101,7 +118,7 @@ macro register_bivariate(f, df1, df2, ddf11, ddf12, ddf22)
                 end
             end
 
-            if !hasmethod($f, Tuple{Real,ExaModels.AbstractNode})
+            if ExaModels._needs_overload($f, Tuple{Real,ExaModels.AbstractNode})
                 @inline function $f(
                     d1::D1,
                     d2::D2,
@@ -213,3 +230,26 @@ macro register_bivariate(f, df1, df2, ddf11, ddf12, ddf22)
         end,
     )
 end
+
+@inline _mone(x) = -one(x)
+@inline _one(x1, x2) = one(x1)
+@inline _zero(x1, x2) = zero(x1)
+@inline _mone(x1, x2) = -one(x1)
+@inline _x1(x1, x2) = x1
+@inline _x2(x1, x2) = x2
+@inline _and(x::Bool, y::Bool) = x && y
+@inline _or(x::Bool, y::Bool) = x || y
+@inline _and(x, y::Bool) = x == 1 && y
+@inline _or(x, y::Bool) = x == 1 || y
+@inline _and(x::Bool, y) = x && y == 1
+@inline _or(x::Bool, y) = x || y == 1
+@inline _and(x, y) = x == 1 && y == 1
+@inline _or(x, y) = x == 1 || y == 1
+
+# Type-generic constant helpers (avoid Float64 literals for Float32 compatibility)
+@inline _clog2(x) = oftype(x, log(2))
+@inline _clog10(x) = oftype(x, log(10))
+@inline _cpi(x) = oftype(x, π)
+@inline _cd2r(x) = oftype(x, π / 180)
+@inline _cr2d(x) = oftype(x, 180 / π)
+

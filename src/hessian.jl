@@ -26,7 +26,7 @@ Performs sparse hessian evaluation (`(df1/dx)(df2/dx)'` portion) via the reverse
     cnt = hdrpass(t1.inner, t2.inner, comp, y1, y2, o2, cnt, adj * t1.y * t2.y)
     cnt
 end
-function hdrpass(
+@inline function hdrpass(
     t1::SecondAdjointNode1,
     t2::SecondAdjointNode1,
     comp::Nothing,
@@ -54,7 +54,7 @@ end
     cnt = hdrpass(t1, t2.inner, comp, y1, y2, o2, cnt, adj * t2.y)
     cnt
 end
-function hdrpass(
+@inline function hdrpass(
     t1::SecondAdjointNodeVar,
     t2::SecondAdjointNode1,
     comp::Nothing,
@@ -82,7 +82,7 @@ end
     cnt = hdrpass(t1.inner, t2, comp, y1, y2, o2, cnt, adj * t1.y)
     cnt
 end
-function hdrpass(
+@inline function hdrpass(
     t1::SecondAdjointNode1,
     t2::SecondAdjointNodeVar,
     comp::Nothing,
@@ -113,7 +113,7 @@ end
     cnt = hdrpass(t1.inner2, t2.inner2, comp, y1, y2, o2, cnt, adj * t1.y2 * t2.y2)
     cnt
 end
-function hdrpass(
+@inline function hdrpass(
     t1::SecondAdjointNode2,
     t2::SecondAdjointNode2,
     comp::Nothing,
@@ -145,7 +145,7 @@ end
     cnt = hdrpass(t1.inner, t2.inner2, comp, y1, y2, o2, cnt, adj * t1.y * t2.y2)
     cnt
 end
-function hdrpass(
+@inline function hdrpass(
     t1::SecondAdjointNode1,
     t2::SecondAdjointNode2,
     comp::Nothing,
@@ -203,7 +203,7 @@ end
     cnt = hdrpass(t1, t2.inner2, comp, y1, y2, o2, cnt, adj * t2.y2)
     cnt
 end
-function hdrpass(
+@inline function hdrpass(
     t1::SecondAdjointNodeVar,
     t2::SecondAdjointNode2,
     comp::Nothing,
@@ -232,7 +232,7 @@ end
     cnt = hdrpass(t1.inner2, t2, comp, y1, y2, o2, cnt, adj * t1.y2)
     cnt
 end
-function hdrpass(
+@inline function hdrpass(
     t1::SecondAdjointNode2,
     t2::SecondAdjointNodeVar,
     comp::Nothing,
@@ -265,6 +265,26 @@ end
         y1[o2+comp(cnt+=1)] += adj
     end
     cnt
+end
+
+@inline function hdrpass(
+    t1::T1,
+    t2::T2,
+    comp::Nothing,
+    y1,
+    y2,
+    o2,
+    cnt::Tuple{<:Tuple,<:Tuple},
+    adj,
+) where {T1<:SecondAdjointNodeVar,T2<:SecondAdjointNodeVar}
+    pair = (t1.i, t2.i)
+    mapping, uniques = cnt
+    idx = _hpass_find_pair(pair, uniques, 1)
+    if idx === 0
+        return ((mapping..., length(uniques) + 1), (uniques..., pair))
+    else
+        return ((mapping..., idx), uniques)
+    end
 end
 
 
@@ -497,24 +517,50 @@ end
 end
 
 
-function hdrpass(
+@inline function hdrpass(
     t1::SecondAdjointNodeVar,
     t2::SecondAdjointNodeVar,
     comp::Nothing,
     y1,
     y2,
     o2,
-    cnt,
+    cnt::Vector,
     adj,
 )
-    cnt += 1
-    push!(y1, (t1.i, t2.i))
-    cnt
+    push!(cnt, (t1.i, t2.i))
+    return cnt
 end
-function hrpass(t::SecondAdjointNodeVar, comp::Nothing, y1, y2, o2, cnt, adj, adj2)
-    cnt += 1
-    push!(y1, (t.i, t.i))
-    cnt
+function hrpass(t::SecondAdjointNodeVar, comp::Nothing, y1, y2, o2, cnt::Vector, adj, adj2)
+    push!(cnt, (t.i, t.i))
+    return cnt
+end
+
+# Tuple-based sparsity detection for Hessian: cnt = (mapping_acc::Tuple, unique_acc::Tuple)
+# Unique elements are (i,j) pairs (lower-triangular: i >= j).
+@inline _hpass_find_pair(x, ::Tuple{}, i) = 0
+@inline function _hpass_find_pair(x, t::Tuple, i)
+    t[1] === x && return i
+    return _hpass_find_pair(x, Base.tail(t), i + 1)
+end
+
+@inline function hrpass(
+    t::T,
+    comp::Nothing,
+    y1,
+    y2,
+    o2,
+    cnt::Tuple{<:Tuple,<:Tuple},
+    adj,
+    adj2,
+) where {T<:SecondAdjointNodeVar}
+    pair = (t.i, t.i)
+    mapping, uniques = cnt
+    idx = _hpass_find_pair(pair, uniques, 1)
+    if idx === 0
+        return ((mapping..., length(uniques) + 1), (uniques..., pair))
+    else
+        return ((mapping..., idx), uniques)
+    end
 end
 
 @inline function hrpass(

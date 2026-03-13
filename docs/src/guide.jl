@@ -1,5 +1,5 @@
 # # [Getting Started](@id guide)
-# ExaModels can create nonlinear prgogramming models and allows solving the created models using NLP solvers (in particular, those that are interfaced with `NLPModels`, such as [NLPModelsIpopt](https://github.com/JuliaSmoothOptimizers/NLPModelsIpopt.jl) and [MadNLP](https://github.com/MadNLP/MadNLP.jl). This documentation page will describe how to use `ExaModels` to model and solve nonlinear optimization problems.
+# ExaModels can create nonlinear programming models and allows solving the created models using NLP solvers (in particular, those that are interfaced with `NLPModels`, such as [NLPModelsIpopt](https://github.com/JuliaSmoothOptimizers/NLPModelsIpopt.jl) and [MadNLP](https://github.com/MadNLP/MadNLP.jl). This documentation page will describe how to use `ExaModels` to model and solve nonlinear optimization problems.
 
 # We will first consider the following simple nonlinear program [lukvsan1998indefinitely](@cite):
 # ```math
@@ -11,9 +11,9 @@
 # We will follow the following Steps to create the model/solve this optimization problem.
 # - Step 0: import ExaModels.jl
 # - Step 1: create a [`ExaCore`](@ref) object, wherein we can progressively build an optimization model.
-# - Step 2: create optimization variables with [`variable`](@ref), while attaching it to previously created `ExaCore`.
-# - Step 3 (interchangable with Step 3): create objective function with [`objective`](@ref), while attaching it to previously created `ExaCore`.
-# - Step 4 (interchangable with Step 2): create constraints with [`constraint`](@ref), while attaching it to previously created `ExaCore`.
+# - Step 2: create optimization variables with [`@var`](@ref) (or [`add_var`](@ref)), while attaching it to previously created `ExaCore`.
+# - Step 3 (interchangable with Step 3): create objective function with [`@obj`](@ref) (or [`add_obj`](@ref)), while attaching it to previously created `ExaCore`.
+# - Step 4 (interchangable with Step 2): create constraints with [`@con`](@ref) (or [`add_con`](@ref)), while attaching it to previously created `ExaCore`.
 # - Step 5: create an [`ExaModel`](@ref) based on the `ExaCore`.
 
 # Now, let's jump right in. We import ExaModels via (Step 0):
@@ -24,26 +24,26 @@ using ExaModels
 # ## ExaCore
 # An `ExaCore` object can be created simply by (Step 1):
 c = ExaCore()
-# This is where our optimziation model information will be progressively stored. This object is not yet an `NLPModel`, but it will essentially store all the necessary information.
+# This is where our optimization model information will be progressively stored. This object is not yet an `NLPModel`, but it will essentially store all the necessary information.
 
 # ## Variables
-# Now, let's create the optimziation variables. From the problem definition, we can see that we will need $N$ scalar variables. We will choose $N=10$, and create the variable $x\in\mathbb{R}^{N}$ with the follwoing command:
+# Now, let's create the optimization variables. From the problem definition, we can see that we will need $N$ scalar variables. We will choose $N=10$, and create the variable $x\in\mathbb{R}^{N}$ with the following command:
 N = 10
-x = variable(c, N; start = (mod(i, 2) == 1 ? -1.2 : 1.0 for i = 1:N))
+@var(c, x, N; start = (mod(i, 2) == 1 ? -1.2 : 1.0 for i = 1:N))
 # This creates the variable `x`, which we will be able to refer to when we create constraints/objective constraints. Also, this modifies the information in the `ExaCore` object properly so that later an optimization model can be properly created with the necessary information. Observe that we have used the keyword argument `start` to specify the initial guess for the solution. The variable upper and lower bounds can be specified in a similar manner. For example, if we wanted to set the lower bound of the variable `x` to 0.0 and the upper bound to 10.0, we could do it as follows:
 # ```julia
-# x = variable(c, N; start = (mod(i, 2) == 1 ? -1.2 : 1.0 for i = 1:N), lvar = 0.0, uvar = 10.0)
+# @var(c, x, N; start = (mod(i, 2) == 1 ? -1.2 : 1.0 for i = 1:N), lvar = 0.0, uvar = 10.0)
 # ```
 
 # ## Objective
 # The objective can be set as follows:
-objective(c, 100 * (x[i-1]^2 - x[i])^2 + (x[i-1] - 1)^2 for i = 2:N)
+@obj(c, 100 * (x[i-1]^2 - x[i])^2 + (x[i-1] - 1)^2 for i = 2:N)
 # !!! note
 #     Note that the terms here are summed, without explicitly using `sum( ... )` syntax.
 
 # ## Constraints
 # The constraints can be set as follows:
-constraint(
+@con(
     c,
     3x[i+1]^3 + 2 * x[i+2] - 5 + sin(x[i+1] - x[i+2])sin(x[i+1] + x[i+2]) + 4x[i+1] -
     x[i]exp(x[i] - x[i+1]) - 3 for i = 1:(N-2)
@@ -56,7 +56,7 @@ constraint(
 # where `g^\flat` and `g^\sharp` are the lower and upper bounds of the constraint, respectively. In this case, both bounds are zero, i.e., `g^\flat = g^\sharp = 0`.
 #
 # You can use the keyword arguments `lcon` and `ucon` to specify the lower and upper bounds of the constraints, respectively. For example, if we wanted to set the lower bound of the constraint to -1 and the upper bound to 1, we could do it as follows:
-constraint(
+@con(
     c,
     3x[i+1]^3 + 2 * x[i+2] - 5 + sin(x[i+1] - x[i+2])sin(x[i+1] + x[i+2]) + 4x[i+1] -
     x[i]exp(x[i] - x[i+1]) - 3 for i = 1:(N-2);
@@ -64,7 +64,7 @@ constraint(
 )
 
 # If you want to create a single-bounded constraint, you can set `lcon` to `-Inf` or `ucon` to `Inf`. For example, if we wanted to set the lower bound of the constraint to -1 and the upper bound to infinity, we could do it as follows:
-constraint(
+@con(
     c,
     3x[i+1]^3 + 2 * x[i+2] - 5 + sin(x[i+1] - x[i+2])sin(x[i+1] + x[i+2]) + 4x[i+1] -
     x[i]exp(x[i] - x[i+1]) - 3 for i = 1:(N-2);
@@ -72,27 +72,24 @@ constraint(
 )
 
 # ## Subexpressions
-# When complex expressions are reused across multiple objectives or constraints, you can define them as subexpressions using [`subexpr`](@ref). This improves code readability and can help with derivative computation efficiency.
+# When complex expressions are reused across multiple objectives or constraints, you can define them as subexpressions using [`@expr`](@ref) (or [`add_expr`](@ref)). This improves code readability and avoids duplicating the expression tree.
 #
-# Subexpressions are "lifted" to auxiliary variables with defining equality constraints. This means:
-# - Each subexpression creates new auxiliary variables
-# - Equality constraints define the relationship between the subexpression and its value
-# - Derivative code is generated once per subexpression pattern
+# Subexpressions are **inlined**: when you index `s[i]`, the original expression is substituted directly — no auxiliary variables or equality constraints are created. Derivative code is shared across all uses of the same subexpression pattern.
 #
 # Here's a simple example:
 c2 = ExaCore()
-y = variable(c2, N; start = 1.0)
+@var(c2, y, N; start = 1.0)
 # Define a subexpression for y[i]^2
-s = subexpr(c2, y[i]^2 for i in 1:N)
+@expr(c2, s, y[i]^2 for i in 1:N)
 # Now s[i] can be used in objectives and constraints
-objective(c2, (s[i] - 1)^2 for i in 1:N)
-constraint(c2, s[i] + s[i + 1] for i in 1:(N - 1); lcon = 0.0)
+@obj(c2, (s[i] - 1)^2 for i in 1:N)
+@con(c2, s[i] + s[i + 1] for i in 1:(N - 1); lcon = 0.0)
 
 # Multi-dimensional subexpressions are also supported with automatic dimension inference:
 # ```julia
-# dx = subexpr(c, x[t, i] - x[t-1, i] for t in 1:T, i in 1:N)
+# @expr(c, dx, x[t, i] - x[t-1, i] for t in 1:T, i in 1:N)
 # # dx[t, i] can now be used in constraints
-# constraint(c, dx[t, i] - something for t in 1:T, i in 1:N)
+# @con(c, dx[t, i] - something for t in 1:T, i in 1:N)
 # ```
 #
 # For a comprehensive example using subexpressions, see the [Distillation Column example](@ref distillation).
