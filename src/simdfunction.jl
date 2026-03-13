@@ -70,6 +70,9 @@ function _simdfunction(f, o0, o1, o2)
     old_c1 = Compressor(Tuple(findfirst(isequal(i), a1) for i in y1))
 
     (ddup1, c1) = ExaModels.grpass(d, nothing, nothing, nothing, ((), ()), NaN)
+
+    Main.a = ddup1
+    
     c1 = Compressor(c1)
     o1step = snoc_len(ddup1)
 
