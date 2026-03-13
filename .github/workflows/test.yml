@@ -26,7 +26,7 @@ jobs:
       - uses: julia-actions/julia-buildpkg@latest
       - name: Add OpenCL.jl to test environment
         run: |
-          julia --project=test -e 'using Pkg; Pkg.add(["OpenCL", "pocl_jll"])'
+          julia --startup-file=no --project=test -e 'using Pkg; Pkg.add(["OpenCL", "pocl_jll"])'
       - uses: julia-actions/julia-runtest@latest
         env:
           EXAMODELS_TEST_POCL: 1
@@ -36,7 +36,6 @@ jobs:
         if: matrix.julia-version == '1' && matrix.os == 'ubuntu-latest'
         with:
           files: lcov.info
-          token: ${{ secrets.CODECOV_TOKEN }}
 
   gpu:
     strategy:
@@ -59,7 +58,7 @@ jobs:
         version: ${{ matrix.julia-version }}
     - name: Setup tests
       run: |
-        julia --color=yes --project=./test -e '
+        julia --startup-file=no --color=yes --project=./test -e '
           using Pkg
           Pkg.Registry.update()
           Pkg.develop(path=".")
@@ -67,15 +66,49 @@ jobs:
     - name: Add AMDGPU.jl to test environment
       if: matrix.backend == 'amdgpu'
       run: |
-        julia --project=test -e 'using Pkg; Pkg.add("AMDGPU")'
+        julia --startup-file=no --project=test -e 'using Pkg; Pkg.add("AMDGPU")'
     - name: Add CUDA.jl to test environment
       if: matrix.backend == 'cuda'
       run: |
-        julia --project=test -e 'using Pkg; Pkg.add("CUDA")'
+        julia --startup-file=no --project=test -e 'using Pkg; Pkg.add("CUDA")'
     - name: Add oneAPI.jl to test environment
       if: matrix.backend == 'oneapi'
       run: |
-        julia --project=test -e 'using Pkg; Pkg.add("oneAPI")'
+        julia --startup-file=no --project=test -e 'using Pkg; Pkg.add("oneAPI")'
     - name: Run tests
       run: |
-        julia --color=yes --project=./test -e 'include("test/runtests.jl")'
+        julia --startup-file=no --color=yes --project=./test -e 'include("test/runtests.jl")'
+
+  metal:
+    strategy:
+      matrix:
+        julia-version: ['lts', '1']
+        julia-arch: [aarch64]
+        os: [macos-latest]
+        backend: ['metal']
+    runs-on: ['self-hosted', 'gpu', '${{ matrix.backend }}']
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Setup Julia
+        uses: julia-actions/setup-julia@latest
+        with:
+          version: ${{ matrix.julia-version }}
+      - name: Setup tests
+        run: |
+          julia --startup-file=no --color=yes --project=./test -e '
+            using Pkg
+            Pkg.Registry.update()
+            Pkg.develop(path=".")
+            Pkg.instantiate()'
+      - name: Add Metal.jl to test environment
+        run: |
+          julia --startup-file=no --project=test -e 'using Pkg; Pkg.add("Metal")'
+      - name: Show platform info
+        run: |
+          uname -a
+          julia --startup-file=no -e 'println(Sys.ARCH); println(Sys.KERNEL)'
+      - name: Run tests
+        run: |
+          julia --startup-file=no --color=yes --project=./test -e 'include("test/runtests.jl")'
+        

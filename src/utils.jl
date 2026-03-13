@@ -187,7 +187,7 @@ function NLPModels.hess_coord!(
         m.x_buffer,
         m.y_buffer,
         m.hess_buffer;
-        obj_weight = obj_weight,
+        obj_weight = eltype(m.hess_buffer)(obj_weight),
     )
     copyto!(m.hess_buffer2, m.hess_buffer)
     copyto!(hess, m.hess_buffer2)
@@ -247,7 +247,7 @@ function NLPModels.hprod!(
         m.y_buffer,
         m.grad_buffer,
         m.v_buffer;
-        obj_weight = obj_weight,
+        obj_weight = eltype(m.x_buffer)(obj_weight),
     )
 
     buffered_copyto!(Hv, m.x_result, m.v_buffer)
@@ -483,7 +483,7 @@ function NLPModels.hess_coord!(
     x::AbstractVector,
     y::AbstractVector,
     h::AbstractVector;
-    obj_weight = 1.0,
+    obj_weight = one(eltype(x)),
 )
     NLPModels.hess_coord!(m.inner, x, y, m.buffer; obj_weight = obj_weight)
     _compress!(h, m.buffer, m.hptr, m.hsparsity, m.backend)

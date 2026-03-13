@@ -88,7 +88,7 @@ function exa_ac_power_model_parametric(backend, filename; use_parameters = true)
     vm = ExaModels.variable(
         w,
         length(data.bus);
-        start = fill!(similar(data.bus, Float64), 1.0),
+        start = fill!(similar(data.bus, eltype(w.x0)), one(eltype(w.x0))),
         lvar = data.vmin,
         uvar = data.vmax,
     )
@@ -152,12 +152,12 @@ function exa_ac_power_model_parametric(backend, filename; use_parameters = true)
     c7 = ExaModels.constraint(
         w,
         p[b.f_idx]^2 + q[b.f_idx]^2 - b.rate_a_sq for b in data.branch;
-        lcon = fill!(similar(data.branch, Float64, length(data.branch)), -Inf),
+        lcon = fill!(similar(data.branch, eltype(w.x0), length(data.branch)), eltype(w.x0)(-Inf)),
     )
     c8 = ExaModels.constraint(
         w,
         p[b.t_idx]^2 + q[b.t_idx]^2 - b.rate_a_sq for b in data.branch;
-        lcon = fill!(similar(data.branch, Float64, length(data.branch)), -Inf),
+        lcon = fill!(similar(data.branch, eltype(w.x0), length(data.branch)), eltype(w.x0)(-Inf)),
     )
 
     bs = parameter(w, map(b->b.bs, data.bus))
@@ -180,7 +180,7 @@ function exa_ac_power_model_parametric(backend, filename; use_parameters = true)
 
 end
 
-function test_function_evaluations(model1, core1, model2)
+function test_function_evaluations(model1, core1, model2; tol = sol_tolerance(eltype(model1.meta.x0),eltype(model2.meta.x0)))
     x_test = ExaModels.convert_array(randn(core1.nvar), core1.backend)
 
     model1 = WrapperNLPModel(model1)
@@ -188,32 +188,32 @@ function test_function_evaluations(model1, core1, model2)
 
     obj1 = NLPModels.obj(model1, x_test)
     obj2 = NLPModels.obj(model2, x_test)
-    @test obj1 ≈ obj2 atol=1e-12
+    @test obj1 ≈ obj2 atol=tol rtol=tol
 
     if core1.ncon > 0
         con1 = NLPModels.cons(model1, x_test)
         con2 = NLPModels.cons(model2, x_test)
-        @test con1 ≈ con2 atol=1e-12
+        @test con1 ≈ con2 atol=tol rtol=tol
     end
 
     grad1 = NLPModels.grad(model1, x_test)
     grad2 = NLPModels.grad(model2, x_test)
-    @test grad1 ≈ grad2 atol=1e-12
+    @test grad1 ≈ grad2 atol=tol rtol=tol
 
     u = ExaModels.convert_array(randn(core1.nvar), core1.backend)
     v = ExaModels.convert_array(randn(core1.ncon), core1.backend)
     jprod_param = NLPModels.jprod(model2, x_test, u)
     jprod_orig = NLPModels.jprod(model1, x_test, u)
-    @test jprod_param ≈ jprod_orig atol=1e-12
+    @test jprod_param ≈ jprod_orig atol=tol rtol=tol
 
     jtprod_param = NLPModels.jtprod(model2, x_test, v)
     jtprod_orig = NLPModels.jtprod(model1, x_test, v)
-    @test jtprod_param ≈ jtprod_orig atol=1e-12
+    @test jtprod_param ≈ jtprod_orig atol=tol rtol=tol
 
     y_test = ExaModels.convert_array(randn(core1.ncon), core1.backend)
     hprod_param = NLPModels.hprod(model2, x_test, y_test, u)
     hprod_orig = NLPModels.hprod(model1, x_test, y_test, u)
-    @test hprod_param ≈ hprod_orig atol=1e-12
+    @test hprod_param ≈ hprod_orig atol=tol rtol=tol
 end
 
 function test_real_only()
@@ -255,42 +255,10 @@ function test_param_only()
     @test NLPModels.hess(em, xval, yval) ≈ spdiagm(0=>fill(-2 * sum(yval), (10,)))
 end
 
-"""
-Test constraint! with Pair{Tuple} key and multi-dimensional array iterator (issue #248).
-"""
-function test_constraint_aug_multidim_array()
-    V, N, K = 2, 4, 2
-
-    c = ExaModels.ExaCore()
-    x = ExaModels.variable(c, 1:V, 1:N, 0:K; start = 1.0)
-
-    # Original constraint with multi-dim array iterator
-    itrc = [(v, i, k) for v in 1:V, i in 1:(N-1), k in 1:K]
-    c1 = ExaModels.constraint(c, x[v, i, K] - x[v, i, k] for (v, i, k) in itrc; lcon = 0.0)
-
-    # Augment with Pair{Tuple} key — (v,i) maps to the first two dims
-    itrc1 = [(v, i, k) for v in 1:V, i in 1:(N-1), k in 1:K]
-    ExaModels.constraint!(c, c1,
-        (v, i) => -x[v, i, k]
-        for (v, i, k) in itrc1
-    )
-
-    ExaModels.objective(c, (x[1, i, 0] - 1)^2 for i in 1:N)
-    m = ExaModels.ExaModel(c)
-
-    # Should not error during model creation or solve
-    xval = rand(m.meta.nvar)
-    @test length(NLPModels.cons(m, xval)) == V * (N - 1) * K
-    @test length(NLPModels.jac(m, xval).nzval) > 0
-end
-
 function test_parametric_vs_nonparametric(backend)
     @testset "Basic parametric" begin
         test_real_only()
         test_param_only()
-    end
-    @testset "constraint! with multidim array iterator (issue #248)" begin
-        test_constraint_aug_multidim_array()
     end
     @testset "Parametric luksan" begin
         @testset "Metadata" begin

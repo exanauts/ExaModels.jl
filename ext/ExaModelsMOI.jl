@@ -84,7 +84,7 @@ function ExaModels.ExaModel(
     moim::MOI.ModelLike;
     backend = nothing,
     prod = false,
-    T = Float64,
+    T = ExaModels.default_T(backend),
     )
 
     c, _ = to_exacore(moim; backend = backend, T = T)

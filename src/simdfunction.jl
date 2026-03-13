@@ -38,14 +38,12 @@ Returns a `SIMDFunction` using the `gen`.
 - `o1`: offset for the derivative evalution
 - `o2`: offset for the second-order derivative evalution
 """
-function SIMDFunction(gen::Base.Generator, o0 = 0, o1 = 0, o2 = 0)
-
-    f = gen.f(ParSource())
-
-    _simdfunction(f, o0, o1, o2)
+function SIMDFunction(T, gen::Base.Generator, o0 = 0, o1 = 0, o2 = 0)
+    _simdfunction(T, gen.f(ParSource()), o0, o1, o2)
 end
 
-function _simdfunction(f::F, o0, o1, o2) where {F<:Real}
+function _simdfunction(T, f::F, o0, o1, o2) where {F<:Real}
+    f = replace_T(T, f)
     SIMDFunction(
         f,
         ExaModels.Compressor{Tuple{}}(()),
@@ -58,14 +56,16 @@ function _simdfunction(f::F, o0, o1, o2) where {F<:Real}
     )
 end
 
-function _simdfunction(f, o0, o1, o2)
-    d = f(Identity(), AdjointNodeSource(nothing), nothing)
+function _simdfunction(T, f, o0, o1, o2)
+    f = replace_T(T, f)
+    
+    d = f(Identity(), AdjointNodeSource(NaNSource{T}()), NaNSource{T}())
     y1 = []
-    ExaModels.grpass(d, nothing, y1, nothing, 0, NaN)
+    ExaModels.grpass(d, nothing, y1, NaNSource{T}(), 0, T(NaN))
 
-    t = f(Identity(), SecondAdjointNodeSource(nothing), nothing)
+    t = f(Identity(), SecondAdjointNodeSource(NaNSource{T}()), NaNSource{T}())
     y2 = []
-    ExaModels.hrpass0(t, nothing, y2, nothing, nothing, 0, NaN, NaN)
+    ExaModels.hrpass0(t, nothing, y2, NaNSource{T}(), NaNSource{T}(), 0, T(NaN), T(NaN))
 
     a1 = unique(y1)
     o1step = length(a1)
@@ -77,3 +77,18 @@ function _simdfunction(f, o0, o1, o2)
 
     SIMDFunction(f, c1, c2, o0, o1, o2, o1step, o2step)
 end
+
+
+@inline replace_T(t, n::Union{AbstractNode,Real}) = n
+@inline replace_T(t, (a,b)::Pair) = a => replace_T(t, b)
+@inline function replace_T(t, n::Node1{F,I}) where {F, I}
+    i = replace_T(t, n.inner)
+    return Node1{F,typeof(i)}(i)
+end
+@inline function replace_T(t, n::Node2{F,I1,I2}) where {F, I1, I2}
+    i1 = replace_T(t, n.inner1)
+    i2 = replace_T(t, n.inner2)
+    return Node2{F,typeof(i1),typeof(i2)}(i1, i2)
+end
+@inline replace_T(t, n::Null{T}) where T <: AbstractFloat = Null{t}(t(n.value))
+@inline replace_T(::Type{T1}, n::T2) where {T1, T2 <: AbstractFloat} = T1(n)

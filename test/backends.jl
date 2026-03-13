@@ -30,6 +30,15 @@ else
     @info "excluding oneAPI"
 end
 
+const EXAMODELS_TEST_METAL = is_package_installed("Metal")
+if EXAMODELS_TEST_METAL
+    @eval using Metal
+    @eval push!(BACKENDS, MetalBackend())
+    @info "including Metal"
+else
+    @info "excluding Metal"
+end
+
 const EXAMODELS_TEST_OPENCL = is_package_installed("OpenCL")
 if EXAMODELS_TEST_OPENCL
     @eval begin

@@ -129,7 +129,7 @@ function __exa_ac_power_model(backend, data)
     vm = ExaModels.variable(
         w,
         length(data.bus);
-        start = fill!(similar(data.bus, Float64), 1.0),
+        start = fill!(similar(data.bus, eltype(w.x0)), one(eltype(w.x0))),
         lvar = data.vmin,
         uvar = data.vmax,
     )
@@ -191,12 +191,12 @@ function __exa_ac_power_model(backend, data)
     c7 = ExaModels.constraint(
         w,
         p[b.f_idx]^2 + q[b.f_idx]^2 - b.rate_a_sq for b in data.branch;
-        lcon = fill!(similar(data.branch, Float64, length(data.branch)), -Inf),
+        lcon = fill!(similar(data.branch, eltype(w.x0), length(data.branch)), eltype(w.x0)(-Inf)),
     )
     c8 = ExaModels.constraint(
         w,
         p[b.t_idx]^2 + q[b.t_idx]^2 - b.rate_a_sq for b in data.branch;
-        lcon = fill!(similar(data.branch, Float64, length(data.branch)), -Inf),
+        lcon = fill!(similar(data.branch, eltype(w.x0), length(data.branch)), eltype(w.x0)(-Inf)),
     )
 
     c9 = ExaModels.constraint(w, b.pd + b.gs * vm[b.i]^2 for b in data.bus)

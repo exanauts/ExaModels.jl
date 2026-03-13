@@ -143,15 +143,15 @@ struct Identity end
 @inline (v::ParameterNode{I})(::Any, x, θ) where {I} = @inbounds θ[v.i]
 @inline (v::ParameterNode{I})(::Identity, x, θ) where {I<:AbstractNode} = @inbounds θ[v.i]
 
-@inline (v::ParameterNode{I})(i, x, ::Nothing) where {I<:AbstractNode} = NaN
-@inline (v::ParameterNode{I})(::Any, x, ::Nothing) where {I} = NaN
-@inline (v::ParameterNode{I})(::Identity, x, ::Nothing) where {I<:AbstractNode} = NaN
+# @inline (v::ParameterNode{I})(i, x, ::Nothing) where {I<:AbstractNode} = eltype(x)(NaN)
+# @inline (v::ParameterNode{I})(::Any, x, ::Nothing) where {I} = eltype(x)(NaN)
+# @inline (v::ParameterNode{I})(::Identity, x, ::Nothing) where {I<:AbstractNode} = eltype(x)(NaN)
 
 @inline (v::ParSource)(i, x, θ) = i
 @inline (v::ParIndexed{I,n})(i, x, θ) where {I,n} = @inbounds getfield(getfield(v, :inner)(i, x, θ), n)
 
-(v::ParIndexed)(i::Identity, x, θ) = NaN # despecialized
-(v::ParSource)(i::Identity, x, θ) = NaN # despecialized
+@inline (v::ParIndexed)(i::Identity, x, θ) = eltype(θ)(NaN) 
+@inline (v::ParSource)(i::Identity, x, θ) = eltype(θ)(NaN) 
 
 """
     AdjointNode1{F, T, I}
@@ -219,7 +219,7 @@ end
     AdjointNode2{F,T,I1,I2}(x, y1, y2, inner1, inner2)
 
 @inline Base.getindex(x::I, i) where {I<:AdjointNodeSource{Nothing}} =
-    AdjointNodeVar(i, NaN)
+    AdjointNodeVar(i, 0)
 @inline Base.getindex(x::I, i) where {I<:AdjointNodeSource} =
     @inbounds AdjointNodeVar(i, x.inner[i])
 
@@ -309,14 +309,14 @@ end
     SecondAdjointNode2{F,T,I1,I2}(x, y1, y2, h11, h12, h22, inner1, inner2)
 
 @inline Base.getindex(x::I, i) where {I<:SecondAdjointNodeSource{Nothing}} =
-    SecondAdjointNodeVar(i, NaN)
+    SecondAdjointNodeVar(i, 0)
 @inline Base.getindex(x::I, i) where {I<:SecondAdjointNodeSource} =
     @inbounds SecondAdjointNodeVar(i, x.inner[i])
 
 
 @inline (v::Null{Nothing})(i, x::V, θ) where {T,V<:AbstractVector{T}} = zero(T)
 @inline (v::Null{N})(i, x::V, θ) where {N,T,V<:AbstractVector{T}} = T(v.value)
-@inline (v::Null{Nothing})(i, x::AdjointNodeSource{T}, θ) where {T} = AdjointNull(0.0)
+@inline (v::Null{Nothing})(i, x::AdjointNodeSource{T}, θ) where {T} = AdjointNull(0)
 @inline (v::Null{N})(i, x::AdjointNodeSource{T}, θ) where {N, T} = AdjointNull(v.value)
-@inline (v::Null{Nothing})(i, x::SecondAdjointNodeSource{T}, θ) where {T} = SecondAdjointNull(0.0)
+@inline (v::Null{Nothing})(i, x::SecondAdjointNodeSource{T}, θ) where {T} = SecondAdjointNull(0)
 @inline (v::Null{N})(i, x::SecondAdjointNodeSource{T}, θ) where {N, T} = SecondAdjointNull(v.value)
