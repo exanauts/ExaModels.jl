@@ -212,12 +212,8 @@ function runtests()
 end
 
 function __init__()
-    if haskey(ENV, "EXA_MODELS_DEPOT")
-        global TMPDIR = ENV["EXA_MODELS_DEPOT"]
-    else
-        global TMPDIR = tempname()
-        mkdir(TMPDIR)
-    end
+    global TMPDIR = tempname()
+    mkdir(TMPDIR)
     PowerModels.silence()
 end
 
