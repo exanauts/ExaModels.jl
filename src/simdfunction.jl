@@ -60,7 +60,7 @@ function _simdfunction(T, f, o0, o1, o2)
     f = replace_T(T, f)
     
     d = f(Identity(), AdjointNodeSource(NaNSource{T}()), NaNSource{T}())
-    a1, y1 = ExaModels.grpass(d, nothing, nothing, NaNSource{T}(), ((),()), NaN)
+    a1, y1 = ExaModels.grpass(d, nothing, nothing, NaNSource{T}(), ((),()), T(NaN))
 
     t = f(Identity(), SecondAdjointNodeSource(NaNSource{T}()), NaNSource{T}())
     a2, y2 = ExaModels.hrpass0(t, nothing, nothing, NaNSource{T}(), NaNSource{T}(), ((),()), T(NaN), T(NaN))
