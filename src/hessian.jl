@@ -507,13 +507,16 @@ function hdrpass(
     cnt,
     adj,
 )
-    cnt += 1
-    push!(y1, (t1.i, t2.i))
-    cnt
+    list, cidx = cnt
+    idx, cidx = update_sparsity(0, (t1.i, t2.i), cidx...)
+
+    return (list..., idx), cidx
 end
 function hrpass(t::SecondAdjointNodeVar, comp::Nothing, y1, y2, o2, cnt, adj, adj2)
-    cnt += 1
-    push!(y1, (t.i, t.i))
+    list, cidx = cnt
+    idx, cidx = update_sparsity(0, (t.i, t.i), cidx...)
+
+    return (list..., idx), cidx
     cnt
 end
 

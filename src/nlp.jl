@@ -12,10 +12,11 @@ struct NaNSource{T} end
 Base.getindex(::NaNSource{T}, i) where {T} = T(NaN)
 Base.eltype(::NaNSource{T}) where {T} = T
 
-struct Variable{S,O} <: AbstractVariable
+struct Variable{I,S,O} <: AbstractVariable
+    inner::I
     size::S
     length::O
-    offset::O
+    offset::O    
 end
 Base.show(io::IO, v::Variable) = print(
     io,
@@ -89,7 +90,8 @@ Base.show(io::IO, s::ParameterSubexpr) = print(
     """,
 )
 
-struct Parameter{S,O} <: AbstractParameter
+struct Parameter{I,S,O} <: AbstractParameter
+    inner::I
     size::S
     length::O
     offset::O
@@ -200,10 +202,12 @@ An ExaCore
   number of constraint patterns: ... 0
 ```
 """
-Base.@kwdef mutable struct ExaCore{T,VT<:AbstractVector{T}, B, S}
+Base.@kwdef struct ExaCore{T,VT<:AbstractVector{T}, B, S, V, P, O, C}
     backend::B = nothing
-    obj::AbstractObjective = ObjectiveNull()
-    con::AbstractConstraint = ConstraintNull()
+    var::V = VariableNull()
+    par::P = ParameterNull()
+    obj::O = ObjectiveNull()
+    con::C = ConstraintNull()
     nvar::Int = 0
     npar::Int = 0
     ncon::Int = 0
@@ -222,11 +226,18 @@ Base.@kwdef mutable struct ExaCore{T,VT<:AbstractVector{T}, B, S}
     ucon::VT = similar(x0)
     minimize::Bool = true
     # Parameter subexpression support
-    nparam_subexpr::Int = 0
-    param_subexpr_values::VT = similar(x0, 0)
-    param_subexpr_fns::Vector{Any} = Any[]
+    # nparam_subexpr::Int = 0
+    # param_subexpr_values::VT = similar(x0, 0)
+    # param_subexpr_fns::Vector{Any} = Any[]
     tags::S = nothing
 end
+
+ExaCore(c::C; kwargs...) where C <: ExaCore = ExaCore(
+    ;
+    zip(fieldnames(C), ntuple(i -> getfield(c, i), Val(fieldcount(C))))...,
+    kwargs...,
+)
+
 
 default_T(backend) = Float64
 append_var_tags(::Nothing, backend, len) = nothing
@@ -236,8 +247,7 @@ ExaCore(::Type{T}; backend = nothing, kwargs...) where {T<:AbstractFloat} =
     ExaCore(x0 = convert_array(zeros(T, 0), backend); backend, kwargs...)
 
 depth(a) = depth(a.inner) + 1
-depth(a::ObjectiveNull) = 0
-depth(a::ConstraintNull) = 0
+depth(a::Union{ObjectiveNull,ConstraintNull,ParameterNull,VariableNull}) = 0
 
 Base.show(io::IO, c::ExaCore{T,VT,B}) where {T,VT,B} = print(
     io,
@@ -260,7 +270,9 @@ An abstract type for ExaModel, which is a subtype of `NLPModels.AbstractNLPModel
 """
 abstract type AbstractExaModel{T,VT,E} <: NLPModels.AbstractNLPModel{T,VT} end
 
-struct ExaModel{T,VT,E,O,C,S} <: AbstractExaModel{T,VT,E}
+struct ExaModel{T,VT,E,V,P,O,C,S} <: AbstractExaModel{T,VT,E}
+    vars::V
+    pars::P
     objs::O
     cons::C
     θ::VT
@@ -317,6 +329,8 @@ julia> result = ipopt(m; print_level=0)    # solve the problem
 ```
 """
 ExaModel(c::C; kwargs...) where {C<:ExaCore} = ExaModel(
+    c.var,
+    c.par,
     c.obj,
     c.con,
     c.θ,
@@ -342,7 +356,7 @@ build_extension(c::ExaCore; kwargs...) = nothing
 
 @inline function Base.getindex(v::V, i) where {V<:Variable}
     _bound_check(v.size, i)
-    Var(i + (v.offset - _start(v.size[1]) + 1))
+    Var(i + (v.offset - _start(v.size[1]) + 1), (depth(v),i))
 end
 @inline function Base.getindex(v::V, is...) where {V<:Variable}
     @assert(length(is) == length(v.size), "Variable index dimension error")
@@ -524,16 +538,17 @@ function variable(
 
     o = c.nvar
     len = total(ns)
-    c.nvar += len
-    c.x0 = append!(c.backend, c.x0, start, total(ns))
-    c.lvar = append!(c.backend, c.lvar, lvar, total(ns))
-    c.uvar = append!(c.backend, c.uvar, uvar, total(ns))
+    nvar = c.nvar + len
+    x0 = append!(c.backend, c.x0, start, total(ns))
+    lvar = append!(c.backend, c.lvar, lvar, total(ns))
+    uvar = append!(c.backend, c.uvar, uvar, total(ns))
 
     append_var_tags(c.tags, c.backend, total(ns); kwargs...)
-
-    return Variable(ns, len, o)
-
+    v = Variable(c.var, ns, len, o)
+    
+    (ExaCore(c; var = v, nvar=nvar, x0=x0, lvar=lvar, uvar=uvar), v)
 end
+
 
 """
     parameter(core, start::AbstractArray)
@@ -557,10 +572,10 @@ function parameter(c::C, start::AbstractArray;) where {T,C<:ExaCore{T}}
     ns = Base.size(start)
     o = c.npar
     len = total(ns)
-    c.npar += len
-    c.θ = append!(c.backend, c.θ, start, len)
-    return Parameter(ns, len, o)
-
+    npar = c.npar + len
+    θ = append!(c.backend, c.θ, start, len)
+    p = Parameter(c.par, ns, len, o)
+    (ExaCore(c; par = p, θ=θ, npar=npar), p)
 end
 
 """
@@ -668,12 +683,14 @@ end
 
 function _objective(c, f, pars)
     nitr = length(pars)
-    c.nobj += nitr
-    c.nnzg += nitr * f.o1step
-    c.nnzh += nitr * f.o2step
+    nobj = c.nobj + nitr
+    nnzg = c.nnzg + nitr * f.o1step
+    nnzh = c.nnzh + nitr * f.o2step
 
-    c.obj = Objective(c.obj, f, convert_array(pars, c.backend))
+    obj = Objective(c.obj, f, convert_array(pars, c.backend))
+    (ExaCore(c; nobj=nobj, nnzg=nnzg, nnzh=nnzh, obj=obj), obj)
 end
+
 
 """
     constraint(core, generator; start = 0, lcon = 0, ucon = 0, kwargs...)
@@ -759,20 +776,23 @@ function constraint(
 end
 
 
-function _constraint(c::C, f, pars, start, lcon, ucon; kwargs...) where {C<:ExaCore}
+function _constraint(c::C, f, pars, start, lcon, ucon) where {C<:ExaCore}
     nitr = length(pars)
     o = c.ncon
-    c.ncon += nitr
-    c.nnzj += nitr * f.o1step
-    c.nnzh += nitr * f.o2step
+    ncon = c.ncon + nitr
+    nnzj = c.nnzj + nitr * f.o1step
+    nnzh = c.nnzh + nitr * f.o2step
 
-    c.y0 = append!(c.backend, c.y0, start, nitr)
-    c.lcon = append!(c.backend, c.lcon, lcon, nitr)
-    c.ucon = append!(c.backend, c.ucon, ucon, nitr)
-    append_con_tags(c.tags, c.backend, nitr; kwargs...)
+    y0 = append!(c.backend, c.y0, start, nitr)
+    lcon = append!(c.backend, c.lcon, lcon, nitr)
+    ucon = append!(c.backend, c.ucon, ucon, nitr)
+    append_con_tags(c.tags, c.backend, nitr)
 
-    c.con = Constraint(c.con, f, convert_array(pars, c.backend), o)
+    con = Constraint(c.con, f, convert_array(pars, c.backend), o)
+
+    (ExaCore(c; ncon=ncon, nnzj=nnzj, nnzh=nnzh, y0=y0, lcon=lcon, ucon=ucon, con=con), con)
 end
+
 
 
 
@@ -1287,8 +1307,7 @@ for (thing, val) in [(:solution, 1), (:multipliers_L, 0), (:multipliers_U, 2)]
     end
 end
 
-solution(result::SolverCore.AbstractExecutionStats, x::Var{I}) where {I} =
-    return result.solution[x.i]
+solution(result::SolverCore.AbstractExecutionStats, x::Var) = result.solution[x.i]
 
 
 """
