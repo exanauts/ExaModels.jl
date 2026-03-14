@@ -2,9 +2,9 @@
 
 function _exa_trivialmax_model(backend, n)
     c = ExaCore(; minimize=false, backend=backend)
-    x = variable(c, n)
-    s = constraint(c, x[1]; lcon=0, ucon=1)
-    objective(c, x[1]^2)
+    @var(c, x, n)
+    @con(c, s, x[1]; lcon=0, ucon=1)
+    @obj(c, x[1]^2)
     return ExaModel(c; prod=true), (x,), (s,)
 end
 exa_trivialmax_model(backend, n) = _exa_trivialmax_model(backend, n)[1]

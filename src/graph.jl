@@ -137,15 +137,12 @@ struct Identity end
 
 @inline (v::Var{I})(i, x, θ) where {I<:AbstractNode} = @inbounds x[v.i(i, x, θ)]
 @inline (v::Var{I})(i, x, θ) where {I} = @inbounds x[v.i]
-@inline (v::Var{I})(i::Identity, x, θ) where {I<:AbstractNode} = @inbounds x[v.i]
+@inline (v::Var{I})(i::Identity, x, θ) where {I <: AbstractNode} = x[v]
+@inline (v::Var{I})(i::Identity, x, θ) where {I <: Real} = x[v]
 
 @inline (v::ParameterNode{I})(i, x, θ) where {I<:AbstractNode} = @inbounds θ[v.i(i, x, θ)]
 @inline (v::ParameterNode{I})(::Any, x, θ) where {I} = @inbounds θ[v.i]
 @inline (v::ParameterNode{I})(::Identity, x, θ) where {I<:AbstractNode} = @inbounds θ[v.i]
-
-# @inline (v::ParameterNode{I})(i, x, ::Nothing) where {I<:AbstractNode} = eltype(x)(NaN)
-# @inline (v::ParameterNode{I})(::Any, x, ::Nothing) where {I} = eltype(x)(NaN)
-# @inline (v::ParameterNode{I})(::Identity, x, ::Nothing) where {I<:AbstractNode} = eltype(x)(NaN)
 
 @inline (v::ParSource)(i, x, θ) = i
 @inline (v::ParIndexed{I,n})(i, x, θ) where {I,n} = @inbounds getfield(getfield(v, :inner)(i, x, θ), n)
@@ -227,13 +224,13 @@ end
 """
     SecondAdjointNode1{F, T, I}
 
-A node with one child for second-order forward pass tree
+A node with one child for the second-order reverse-pass computation tree.
 
 # Fields:
 - `x::T`: function value
 - `y::T`: first-order sensitivity
 - `h::T`: second-order sensitivity
-- `inner::I`: DESCRIPTION
+- `inner::I`: child node in the computation graph
 """
 struct SecondAdjointNode1{F,T,I} <: AbstractSecondAdjointNode
     x::T
@@ -244,17 +241,17 @@ end
 """
     SecondAdjointNode2{F, T, I1, I2}
 
-A node with one child for second-order forward pass tree
+A node with two children for the second-order reverse-pass computation tree.
 
 # Fields:
 - `x::T`: function value
 - `y1::T`: first-order sensitivity w.r.t. first argument
-- `y2::T`: first-order sensitivity w.r.t. first argument
+- `y2::T`: first-order sensitivity w.r.t. second argument
 - `h11::T`: second-order sensitivity w.r.t. first argument
 - `h12::T`: second-order sensitivity w.r.t. first and second argument
 - `h22::T`: second-order sensitivity w.r.t. second argument
-- `inner1::I1`: children #1
-- `inner2::I2`: children #2
+- `inner1::I1`: first child node in the computation graph
+- `inner2::I2`: second child node in the computation graph
 """
 struct SecondAdjointNode2{F,T,I1,I2} <: AbstractSecondAdjointNode
     x::T
@@ -316,7 +313,7 @@ end
 
 @inline (v::Null{Nothing})(i, x::V, θ) where {T,V<:AbstractVector{T}} = zero(T)
 @inline (v::Null{N})(i, x::V, θ) where {N,T,V<:AbstractVector{T}} = T(v.value)
-@inline (v::Null{Nothing})(i, x::AdjointNodeSource{T}, θ) where {T} = AdjointNull(0)
-@inline (v::Null{N})(i, x::AdjointNodeSource{T}, θ) where {N, T} = AdjointNull(v.value)
-@inline (v::Null{Nothing})(i, x::SecondAdjointNodeSource{T}, θ) where {T} = SecondAdjointNull(0)
-@inline (v::Null{N})(i, x::SecondAdjointNodeSource{T}, θ) where {N, T} = SecondAdjointNull(v.value)
+@inline (v::Null{Nothing})(i, x::AdjointNodeSource{T}, θ) where {T} = AdjointNull(zero(eltype(T)))
+@inline (v::Null{N})(i, x::AdjointNodeSource{T}, θ) where {N, T} = AdjointNull(eltype(T)(v.value))
+@inline (v::Null{Nothing})(i, x::SecondAdjointNodeSource{T}, θ) where {T} = SecondAdjointNull(zero(eltype(T)))
+@inline (v::Null{N})(i, x::SecondAdjointNodeSource{T}, θ) where {N, T} = SecondAdjointNull(eltype(T)(v.value))

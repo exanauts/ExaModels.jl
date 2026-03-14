@@ -39,7 +39,7 @@ else
     @info "excluding Metal"
 end
 
-const EXAMODELS_TEST_OPENCL = is_package_installed("OpenCL")
+const EXAMODELS_TEST_OPENCL = is_package_installed("OpenCL") && is_package_installed("pocl_jll")
 if EXAMODELS_TEST_OPENCL
     @eval begin
         using OpenCL, pocl_jll

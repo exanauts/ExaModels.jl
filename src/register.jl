@@ -6,7 +6,7 @@ Register a univariate function `f` to `ExaModels`, so that it can be used within
 # Arguments:
 - `f`: function
 - `df`: derivative function
-- `ddf`: second-order derivative funciton
+- `ddf`: second-order derivative function
 
 ## Example
 ```jldoctest
@@ -51,9 +51,9 @@ Register a bivariate function `f` to `ExaModels`, so that it can be used within 
 - `f`: function
 - `df1`: derivative function (w.r.t. first argument)
 - `df2`: derivative function (w.r.t. second argument)
-- `ddf11`: second-order derivative funciton (w.r.t. first argument)
-- `ddf12`: second-order derivative funciton (w.r.t. first and second argument)
-- `ddf22`: second-order derivative funciton (w.r.t. second argument)
+- `ddf11`: second-order derivative function (w.r.t. first argument)
+- `ddf12`: second-order derivative function (w.r.t. first and second argument)
+- `ddf22`: second-order derivative function (w.r.t. second argument)
 
 ## Example
 ```jldoctest

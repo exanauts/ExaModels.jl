@@ -42,6 +42,7 @@ include("luksan_struct.jl")
 include("parameter_test.jl")
 include("subexpr_test.jl")
 include("trivialmax.jl")
+include("feature_test.jl")
 
 function test_nlp(m1, m2; full = false, tol = sol_tolerance(eltype(m1.meta.x0), eltype(m2.meta.x0)))
     @testset "NLP meta tests" begin
@@ -205,6 +206,10 @@ function runtests()
 
                 @testset "Subexpr Test" begin
                     test_subexpr(backend)
+                end
+
+                @testset "Feature Test" begin
+                    test_features(backend)
                 end
             end
         end

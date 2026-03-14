@@ -61,7 +61,7 @@ function _register_biv(fname::Symbol, df1, df2, ddf11, ddf12, ddf22)
                 d1::D1,
                 d2::D2,
             ) where {D1 <: AbstractNode, D2 <: Real}
-            return Node2(Base.$fname, d1, d2)
+            return Node2(Base.$fname, d1, Val(d2))
         end
     end
     if _needs_overload(f, Tuple{Real, AbstractNode})
@@ -69,7 +69,7 @@ function _register_biv(fname::Symbol, df1, df2, ddf11, ddf12, ddf22)
                 d1::D1,
                 d2::D2,
             ) where {D1 <: Real, D2 <: AbstractNode}
-            return Node2(Base.$fname, d1, d2)
+            return Node2(Base.$fname, Val(d1), d2)
         end
     end
     return @eval begin
@@ -149,6 +149,10 @@ function _register_biv(fname::Symbol, df1, df2, ddf11, ddf12, ddf22)
             Base.$fname(n.inner1, n.inner2(i, x, θ))
         @inline (n::Node2{typeof(Base.$fname), I1, I2})(i, x, θ) where {I1, I2 <: Real} =
             Base.$fname(n.inner1(i, x, θ), n.inner2)
+        @inline (n::Node2{typeof(Base.$fname), I1, I2})(i, x, θ) where {V, I1 <: Val{V}, I2} =
+            Base.$fname(V, n.inner2(i, x, θ))
+        @inline (n::Node2{typeof(Base.$fname), I1, I2})(i, x, θ) where {V, I1, I2 <: Val{V}} =
+            Base.$fname(n.inner1(i, x, θ), V)
     end
 end
 
