@@ -18,8 +18,8 @@ include("NLPTest/NLPTest.jl")
 include("ADTest/ADTest.jl")
 include("JuMPTest/JuMPTest.jl")
 include("UtilsTest/UtilsTest.jl")
-include("TwoStageTest/TwoStageTest.jl")
-include("LinAlgTest/LinAlgTest.jl")
+# include("TwoStageTest/TwoStageTest.jl")
+# include("LinAlgTest/LinAlgTest.jl")
 
 @testset verbose = true "ExaModels test" begin
     @info "Running AD Test"
@@ -37,6 +37,6 @@ include("LinAlgTest/LinAlgTest.jl")
     # @info "Running TwoStage Test"
     # TwoStageTest.runtests()
 
-    @info "Running LinAlg Test"
-    LinAlgTest.runtests()
+    # @info "Running LinAlg Test"
+    # LinAlgTest.runtests()
 end

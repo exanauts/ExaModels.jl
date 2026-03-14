@@ -160,6 +160,8 @@ Constraint Augmentation
 """,
 )
 
+abstract type AbstractExaCore{T,VT,B,S} end
+
 """
     ExaCore([array_eltype::Type; backend = backend, minimize = true])
 
@@ -202,7 +204,7 @@ An ExaCore
   number of constraint patterns: ... 0
 ```
 """
-Base.@kwdef struct ExaCore{T,VT<:AbstractVector{T}, B, S, V, P, O, C}
+Base.@kwdef struct ExaCore{T,VT<:AbstractVector{T}, B, S, V, P, O, C} <: AbstractExaCore{T,VT,B,S}
     backend::B = nothing
     var::V = VariableNull()
     par::P = ParameterNull()
@@ -226,9 +228,9 @@ Base.@kwdef struct ExaCore{T,VT<:AbstractVector{T}, B, S, V, P, O, C}
     ucon::VT = similar(x0)
     minimize::Bool = true
     # Parameter subexpression support
-    # nparam_subexpr::Int = 0
-    # param_subexpr_values::VT = similar(x0, 0)
-    # param_subexpr_fns::Vector{Any} = Any[]
+    nparam_subexpr::Int = 0
+    param_subexpr_values::VT = similar(x0, 0)
+    param_subexpr_fns::Vector{Any} = Any[]
     tags::S = nothing
 end
 

@@ -79,12 +79,7 @@ function update_sparsity(cnt, new, y0, ys...)
     return cnt, (y0, ys...)
 end
 function update_sparsity(cnt, new::A, y0::A, ys...) where A
-    # if new == y0 
-        return cnt+1, (y0, ys...)
-    # else
-    #     cnt, ys = update_sparsity(cnt += 1, new, ys...)
-    #     return cnt, (y0, ys...)
-    # end
+    return cnt+1, (y0, ys...)
 end
 update_sparsity(cnt, new) = cnt+1, (new,)
 
