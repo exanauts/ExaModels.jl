@@ -1350,6 +1350,8 @@ end
 _adapt_gen(gen) = Base.Generator(gen.f, collect(gen.iter))
 _adapt_gen(gen::Base.Generator{P}) where {P<:Union{AbstractArray,AbstractRange}} = gen
 
+
+@inline parse_args(core::ExaCore) = core, ()
 for (var, vars, variable, Spec, spec) in (
     (:var, :vars, :variable, :VarSpec, :varspec),
     (:par, :pars, :parameter, :ParSpec, :parspec),
@@ -1362,33 +1364,23 @@ for (var, vars, variable, Spec, spec) in (
             kwargs::K
         end
         $spec(args...; kwargs...) = $Spec(args, kwargs)
+        @inline function parse_args(core::ExaCore, arg::S, args...) where S <: $Spec
+            core, outs = parse_args(core, args...)
+            core, $var = $variable(core, arg.args...; arg.kwargs...)
+            return core, ($var, outs...)
+        end
         export $spec
     end
 end
 
-function ExaCore(args...; kwargs...)
-    core = ExaCore()
-
-    core, vars, args = parse_args(core, args...; kwargs...)
+ExaCore(args...; kwargs...) = ExaCore(Float64, args...; kwargs...)
+function ExaCore(::Type{T}, args...; kwargs...) where {T <: AbstractFloat}
+    core = ExaCore(T; kwargs...)
+    core, outs = parse_args(core, args...)
+    return core, outs...
 end
-
-# function $variables(core::ExaCore; kwargs...)
-#     core, $vars, $pars, args = parse_args(core, kwargs...)
-#     return core, $vars, $pars
-# end
-
-@inline function parse_args(core::ExaCore, arg::Pair{Symbol,S}, args...) where S <: $Spec
-    name, spec = arg
-    core, vars, args = parse_args(core, args...)
-    core, var = variable(core, spec.args...; spec.kwargs...)
-    return core, (;name => var, vars...), args
-end
-
-@inline function parse_args(core::ExaCore, arg, args...)
-    core, vars, args = parse_args(core, args...)
-    return core, vars, (arg, args...)
-end
-
-@inline function parse_args(core::ExaCore)
-    return core, (), ()
+function ExaModel(core::ExaCore, args...; kwargs...)
+    core, outs = parse_args(core, args...)
+    model = ExaModel(core; kwargs...)
+    return model, outs...
 end
