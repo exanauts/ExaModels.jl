@@ -17,6 +17,16 @@ jobs:
         julia-version: ['lts', '1']
         julia-arch: [x64]
         os: [ubuntu-latest,macos-latest,windows-latest]
+        exclude:
+          - os: macos-latest
+            julia-arch: x64
+        include:
+          - os: macos-latest
+            julia-version: 'lts'
+            julia-arch: aarch64
+          - os: macos-latest
+            julia-version: '1'
+            julia-arch: aarch64
     steps:
       - uses: actions/checkout@v2
       - uses: julia-actions/setup-julia@latest
@@ -57,6 +67,7 @@ jobs:
       with:
         version: ${{ matrix.julia-version }}
     - name: Setup tests
+      timeout-minutes: 30
       run: |
         julia --startup-file=no --color=yes --project=./test -e '
           using Pkg
@@ -73,6 +84,9 @@ jobs:
         julia --startup-file=no --project=test -e 'using Pkg; Pkg.add("CUDA")'
     - name: Add oneAPI.jl to test environment
       if: matrix.backend == 'oneapi'
+      timeout-minutes: 30
+      env:
+        JULIA_NUM_PRECOMPILE_TASKS: 1
       run: |
         julia --startup-file=no --project=test -e 'using Pkg; Pkg.add("oneAPI")'
     - name: Run tests
@@ -111,4 +125,4 @@ jobs:
       - name: Run tests
         run: |
           julia --startup-file=no --color=yes --project=./test -e 'include("test/runtests.jl")'
-        
+
