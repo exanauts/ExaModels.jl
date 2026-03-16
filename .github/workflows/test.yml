@@ -17,6 +17,16 @@ jobs:
         julia-version: ['lts', '1']
         julia-arch: [x64]
         os: [ubuntu-latest,macos-latest,windows-latest]
+        exclude:
+          - os: macos-latest
+            julia-arch: x64
+        include:
+          - os: macos-latest
+            julia-version: 'lts'
+            julia-arch: aarch64
+          - os: macos-latest
+            julia-version: '1'
+            julia-arch: aarch64
     steps:
       - uses: actions/checkout@v2
       - uses: julia-actions/setup-julia@latest
@@ -56,13 +66,6 @@ jobs:
       uses: julia-actions/setup-julia@latest
       with:
         version: ${{ matrix.julia-version }}
-    - name: Clean Julia depot caches
-      run: |
-        JULIA_VER=$(julia -e 'print("v$(VERSION.major).$(VERSION.minor)")')
-        DEPOT="${JULIA_DEPOT_PATH:-$HOME/.julia}"
-        echo "Cleaning compiled cache for $JULIA_VER in $DEPOT"
-        rm -rf "$DEPOT/compiled/$JULIA_VER"
-        rm -f "$DEPOT/.pkg/"*.lock
     - name: Setup tests
       timeout-minutes: 30
       run: |
@@ -84,7 +87,6 @@ jobs:
       timeout-minutes: 30
       env:
         JULIA_NUM_PRECOMPILE_TASKS: 1
-        JULIA_DEBUG: loading
       run: |
         julia --startup-file=no --project=test -e 'using Pkg; Pkg.add("oneAPI")'
     - name: Run tests
