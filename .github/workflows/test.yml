@@ -56,7 +56,15 @@ jobs:
       uses: julia-actions/setup-julia@latest
       with:
         version: ${{ matrix.julia-version }}
+    - name: Clean Julia depot caches
+      run: |
+        JULIA_VER=$(julia -e 'print("v$(VERSION.major).$(VERSION.minor)")')
+        DEPOT="${JULIA_DEPOT_PATH:-$HOME/.julia}"
+        echo "Cleaning compiled cache for $JULIA_VER in $DEPOT"
+        rm -rf "$DEPOT/compiled/$JULIA_VER"
+        rm -f "$DEPOT/.pkg/"*.lock
     - name: Setup tests
+      timeout-minutes: 30
       run: |
         julia --startup-file=no --color=yes --project=./test -e '
           using Pkg
@@ -73,6 +81,10 @@ jobs:
         julia --startup-file=no --project=test -e 'using Pkg; Pkg.add("CUDA")'
     - name: Add oneAPI.jl to test environment
       if: matrix.backend == 'oneapi'
+      timeout-minutes: 30
+      env:
+        JULIA_NUM_PRECOMPILE_TASKS: 1
+        JULIA_DEBUG: loading
       run: |
         julia --startup-file=no --project=test -e 'using Pkg; Pkg.add("oneAPI")'
     - name: Run tests
@@ -111,4 +123,4 @@ jobs:
       - name: Run tests
         run: |
           julia --startup-file=no --color=yes --project=./test -e 'include("test/runtests.jl")'
-        
+
