@@ -69,7 +69,7 @@ function _register_biv(fname::Symbol, df1, df2, ddf11, ddf12, ddf22)
                 d1::D1,
                 d2::D2,
             ) where {D1 <: Real, D2 <: AbstractNode}
-            return Node2(Base.$fname, d1, d2)
+            return Node2(Base.$fname, Val(d1), d2)
         end
     end
     if _needs_overload(f, Tuple{AbstractNode, Val{Real}})
@@ -77,7 +77,7 @@ function _register_biv(fname::Symbol, df1, df2, ddf11, ddf12, ddf22)
                 d1::D1,
                 d2::D2,
             ) where {D1 <: AbstractNode, V, D2 <: Val{V}}
-            return Node2(Base.$fname, d1, d2)
+            return Node2(Base.$fname, d1, Val(d2))
         end
     end
     if _needs_overload(f, Tuple{Val{Real}, AbstractNode})
