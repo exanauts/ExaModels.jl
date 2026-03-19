@@ -61,10 +61,12 @@ end
 function _simdfunction(f, o0, o1, o2)
     d = f(Identity(), AdjointNodeSource(nothing), nothing)
     (ddup1, c1) = ExaModels.grpass(d, nothing, nothing, nothing, ((), ()), NaN)
+    c1 = Compressor(c1)
     o1step = snoc_len(ddup1)
 
     t = f(Identity(), SecondAdjointNodeSource(nothing), nothing)
     (ddup2, c2) = ExaModels.hrpass0(t, nothing, nothing, nothing, nothing, ((), ()), NaN, NaN)
+    c2 = Compressor(c2)
     o2step = snoc_len(ddup2)
 
     SIMDFunction(f, c1, c2, o0, o1, o2, o1step, o2step)

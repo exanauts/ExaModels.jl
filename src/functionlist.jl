@@ -72,6 +72,22 @@ function _register_biv(fname::Symbol, df1, df2, ddf11, ddf12, ddf22)
             return Node2(Base.$fname, d1, d2)
         end
     end
+    if _needs_overload(f, Tuple{AbstractNode, Val{Real}})
+        @eval @inline function Base.$fname(
+                d1::D1,
+                d2::D2,
+            ) where {D1 <: AbstractNode, V, D2 <: Val{V}}
+            return Node2(Base.$fname, d1, d2)
+        end
+    end
+    if _needs_overload(f, Tuple{Val{Real}, AbstractNode})
+        @eval @inline function Base.$fname(
+                d1::D1,
+                d2::D2,
+            ) where {V, D1 <: Val{V}, D2 <: AbstractNode}
+            return Node2(Base.$fname, d1, d2)
+        end
+    end
     return @eval begin
         @inline function Base.$fname(
                 d1::D1,
@@ -94,6 +110,22 @@ function _register_biv(fname::Symbol, df1, df2, ddf11, ddf12, ddf22)
                 d2::D2,
             ) where {D1 <: Union{Real, ParameterNode}, D2 <: AbstractAdjointNode}
             x1 = d1
+            x2 = d2.x
+            return AdjointNode1(Base.$fname, Base.$fname(x1, x2), ($df2)(x1, x2), d2)
+        end
+        @inline function Base.$fname(
+                d1::D1,
+                d2::D2,
+            ) where {V, D1 <: AbstractAdjointNode, D2 <: Val{V}}
+            x1 = d1.x
+            x2 = V
+            return AdjointNode1(Base.$fname, Base.$fname(x1, x2), ($df1)(x1, x2), d1)
+        end
+        @inline function Base.$fname(
+                d1::D1,
+                d2::D2,
+            ) where {V, D1 <: Val{V}, D2 <: AbstractAdjointNode}
+            x1 = V
             x2 = d2.x
             return AdjointNode1(Base.$fname, Base.$fname(x1, x2), ($df2)(x1, x2), d2)
         end
@@ -143,12 +175,44 @@ function _register_biv(fname::Symbol, df1, df2, ddf11, ddf12, ddf22)
                 t2,
             )
         end
+        @inline function Base.$fname(
+                t1::T1,
+                t2::T2,
+            ) where {T1 <: AbstractSecondAdjointNode, V, T2 <: Val{V}}
+            x1 = t1.x
+            x2 = t2
+            return SecondAdjointNode1(
+                SecondFixed(Base.$fname),
+                Base.$fname(x1, x2),
+                ($df1)(x1, x2),
+                ($ddf11)(x1, x2),
+                t1,
+            )
+        end
+        @inline function Base.$fname(
+                t1::T1,
+                t2::T2,
+            ) where {V, T1 <: Val{V}, T2 <: AbstractSecondAdjointNode}
+            x1 = t1
+            x2 = t2.x
+            return SecondAdjointNode1(
+                FirstFixed(Base.$fname),
+                Base.$fname(x1, x2),
+                ($df2)(x1, x2),
+                ($ddf22)(x1, x2),
+                t2,
+            )
+        end
         @inline (n::Node2{typeof(Base.$fname), I1, I2})(i, x, θ) where {I1, I2} =
             Base.$fname(n.inner1(i, x, θ), n.inner2(i, x, θ))
         @inline (n::Node2{typeof(Base.$fname), I1, I2})(i, x, θ) where {I1 <: Real, I2} =
             Base.$fname(n.inner1, n.inner2(i, x, θ))
         @inline (n::Node2{typeof(Base.$fname), I1, I2})(i, x, θ) where {I1, I2 <: Real} =
             Base.$fname(n.inner1(i, x, θ), n.inner2)
+        @inline (n::Node2{typeof(Base.$fname), I1, I2})(i, x, θ) where {V, I1 <: Val{V}, I2} =
+            Base.$fname(V, n.inner2(i, x, θ))
+        @inline (n::Node2{typeof(Base.$fname), I1, I2})(i, x, θ) where {I1, V, I2 <: Val{V}} =
+            Base.$fname(n.inner1(i, x, θ), V)
     end
 end
 
