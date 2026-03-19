@@ -19,6 +19,7 @@ if !(@isdefined _PAGES)
             "distillation.md",
             "opf.md",
         ],
+        "Oracle Constraints" => "oracle.md",
         "JuMP Interface (experimental)" => "jump.md",
         "API Manual" => "core.md",
         "References" => "ref.md",
@@ -36,6 +37,7 @@ if !(@isdefined _JL_FILENAMES)
         "performance.jl",
         "parameters.jl",
         "two_stage.jl",
+        "oracle.jl",
     ]
 end
 
