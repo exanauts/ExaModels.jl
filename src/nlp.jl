@@ -224,7 +224,7 @@ Base.@kwdef struct ExaCore{T, VT<:AbstractVector{T}, B, S, O, C}
     tags::S = nothing
 end
 
-ExaCore(c::C; kwargs...) where C <: ExaCore = ExaCore(
+mutate_core(c::C; kwargs...) where C <: ExaCore = ExaCore(
     ;
     zip(fieldnames(C), ntuple(i -> getfield(c, i), Val(fieldcount(C))))...,
     kwargs...,
