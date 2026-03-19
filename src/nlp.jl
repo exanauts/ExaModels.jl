@@ -153,6 +153,42 @@ Constraint Augmentation
 """,
 )
 
+
+mutable struct MutableExaCore
+    core::ExaCore
+end
+
+function variable(c::MutableExaCore, args...; kwargs...)
+    new_core, var = variable(c.core, args...; kwargs...)
+    c.core = new_core
+    return var
+end
+
+function constraint(c::MutableExaCore, args...; kwargs...)
+    new_core, con = constraint(c.core, args...; kwargs...)
+    c.core = new_core
+    return con
+end
+
+function constraint!(c::MutableExaCore, args...; kwargs...)
+    new_core, augcon = constraint!(c.core, args...; kwargs...)
+    c.core = new_core
+    return augcon
+end
+
+function objective(c::MutableExaCore, args...; kwargs...)
+    new_core, obj = objective(c.core, args...; kwargs...)
+    c.core = new_core
+    return obj
+end
+
+function parameter(c::MutableExaCore, args...; kwargs...)
+    new_core, par = parameter(c.core, args...; kwargs...)
+    c.core = new_core
+    return par
+end
+
+
 """
     ExaCore([array_eltype::Type; backend = backend, minimize = true])
 
