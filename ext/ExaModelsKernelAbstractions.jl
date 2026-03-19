@@ -1,5 +1,6 @@
 module ExaModelsKernelAbstractions
 
+import Adapt
 import ExaModels: ExaModels, NLPModels
 import KernelAbstractions: KernelAbstractions, @kernel, @index, @Const, synchronize, CPU
 
@@ -796,7 +797,9 @@ function ExaModels.cons_nln!(
         xin = ExaModels._oracle_input(oracle, x)
         cv = similar(xin, oracle.ncon)
         oracle.f!(cv, xin)
-        y[cache.con_idx] .= cv
+        # cache.buf_ncon lives on device; copy CPU result there, then scatter.
+        copyto!(cache.buf_ncon, cv)
+        y[cache.con_idx] .= cache.buf_ncon
     end
     return y
 end
@@ -816,9 +819,10 @@ function ExaModels.jac_coord!(
             xin = ExaModels._oracle_input(oracle, x)
             jv = similar(xin, oracle.nnzj)
             oracle.jac!(jv, xin)
-            jac[cache.jac_idx] .= jv
+            copyto!(cache.buf_nnzj, jv)
+            jac[cache.jac_idx] .= cache.buf_nnzj
         else
-            ExaModels._jac_reconstruct_via_jvp!(oracle, x, jac, cache)
+            ExaModels._jac_reconstruct_via_jvp!(oracle, x, jac, cache, m.ext.backend)
         end
     end
     return jac
@@ -842,9 +846,10 @@ function ExaModels.hess_coord!(
             win = ExaModels._oracle_input(oracle, y[cache.con_idx])
             hv = similar(xin, oracle.nnzh)
             oracle.hess!(hv, xin, win)
-            hess[cache.hess_idx] .= hv
+            copyto!(cache.buf_nnzh, hv)
+            hess[cache.hess_idx] .= cache.buf_nnzh
         else
-            ExaModels._hess_reconstruct_via_hvp!(oracle, x, y, hess, cache)
+            ExaModels._hess_reconstruct_via_hvp!(oracle, x, y, hess, cache, m.ext.backend)
         end
     end
     return hess
@@ -932,7 +937,8 @@ function ExaModels.jprod_nln!(
         if ExaModels.has_matfree_jac(oracle)
             Jv_oracle = similar(xin, oracle.ncon)
             oracle.jvp!(Jv_oracle, xin, vin)
-            Jv[cache.con_idx] .+= Jv_oracle
+            copyto!(cache.buf_ncon, Jv_oracle)
+            Jv[cache.con_idx] .+= cache.buf_ncon
         elseif oracle.gpu
             off_j = m.oracle_jac_offsets[i]
             prod_cache = m.ext.prodhelper.oracle_prod[i]
@@ -987,7 +993,8 @@ function ExaModels.jtprod_nln!(
             w = ExaModels._oracle_input(oracle, v[cache.con_idx])
             Jtv_oracle = similar(xin, oracle.nvar)
             oracle.vjp!(Jtv_oracle, xin, w)
-            Jtv .+= Jtv_oracle
+            copyto!(cache.buf_nvar, Jtv_oracle)
+            Jtv .+= cache.buf_nvar
         elseif oracle.gpu
             off_j = m.oracle_jac_offsets[i]
             prod_cache = m.ext.prodhelper.oracle_prod[i]
@@ -1057,7 +1064,8 @@ function ExaModels.hprod!(
         if ExaModels.has_matfree_hess(oracle)
             Hv_oracle = similar(xin, oracle.nvar)
             oracle.hvp!(Hv_oracle, xin, win, vin)
-            Hv .+= Hv_oracle
+            copyto!(cache.buf_nvar, Hv_oracle)
+            Hv .+= cache.buf_nvar
         elseif oracle.gpu
             prod_cache = m.ext.prodhelper.oracle_prod[i]
             hess_buf = similar(xin, oracle.nnzh)

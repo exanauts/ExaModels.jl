@@ -234,6 +234,10 @@ struct OracleIndexCache{VI <: AbstractVector{Int}, VF <: AbstractVector}
     buf_nvar2::VF           # length nvar — second nvar buffer (for hess reconstruct)
     buf_nnzj::VF            # length nnzj — for jac! results
     buf_nnzh::VF            # length nnzh — for hess! results
+    # CPU-side buffers for gpu=false callbacks on GPU backends
+    cpu_ncon::Vector{Float64}
+    cpu_nvar::Vector{Float64}
+    cpu_nvar2::Vector{Float64}
 end
 
 function _build_oracle_index_cache(oracle, con_off, jac_off, hess_off)
@@ -284,6 +288,9 @@ function _build_oracle_index_cache(oracle, con_off, jac_off, hess_off)
         zeros(oracle.nvar),   # buf_nvar2
         zeros(oracle.nnzj),   # buf_nnzj
         zeros(oracle.nnzh),   # buf_nnzh
+        zeros(oracle.ncon),   # cpu_ncon
+        zeros(oracle.nvar),   # cpu_nvar
+        zeros(oracle.nvar),   # cpu_nvar2
     )
 end
 
@@ -303,6 +310,7 @@ function _adapt_cache(c::OracleIndexCache, backend)
         c.hess_recon_pos_idx,
         cv(c.buf_ncon), cv(c.buf_nvar), cv(c.buf_nvar2),
         cv(c.buf_nnzj), cv(c.buf_nnzh),
+        c.cpu_ncon, c.cpu_nvar, c.cpu_nvar2,  # stay on CPU
     )
 end
 
@@ -482,20 +490,29 @@ function jac_coord!(m::ExaModelWithOracle, x::AbstractVector, jac::AbstractVecto
 end
 
 """
-    _jac_reconstruct_via_jvp!(oracle, x, jac, cache)
+    _jac_reconstruct_via_jvp!(oracle, x, jac, cache, backend=nothing)
 
 Reconstruct the Jacobian coordinate values using `nvar` calls to `oracle.jvp!`.
-Uses precomputed index arrays and buffers from `cache` for zero-allocation.
+All buffers are preallocated in `cache`. For `gpu=false` on a GPU backend,
+CPU scratch arrays are used for the callback and results are copied to device.
 """
-function _jac_reconstruct_via_jvp!(oracle, x, jac, cache::OracleIndexCache)
+function _jac_reconstruct_via_jvp!(oracle, x, jac, cache::OracleIndexCache, backend=nothing)
     T = eltype(x)
-    v = cache.buf_nvar
-    Jv = cache.buf_ncon
+    xin = _oracle_input(oracle, x)
+    # Pick buffers: device buffers if gpu=true or CPU backend, else CPU scratch.
+    use_cpu = !oracle.gpu && backend !== nothing
+    v  = use_cpu ? cache.cpu_nvar : cache.buf_nvar
+    Jv = use_cpu ? cache.cpu_ncon : cache.buf_ncon
     for (ci, col) in enumerate(cache.jac_recon_cols)
         fill!(v, zero(T))
         v[col:col] .= one(T)
-        oracle.jvp!(Jv, x, v)
-        jac[cache.jac_recon_pos_idx[ci]] .= Jv[cache.jac_recon_row_idx[ci]]
+        oracle.jvp!(Jv, xin, v)
+        if use_cpu
+            copyto!(cache.buf_ncon, Jv)
+            jac[cache.jac_recon_pos_idx[ci]] .= cache.buf_ncon[cache.jac_recon_row_idx[ci]]
+        else
+            jac[cache.jac_recon_pos_idx[ci]] .= Jv[cache.jac_recon_row_idx[ci]]
+        end
     end
     return nothing
 end
@@ -614,21 +631,28 @@ function hess_coord!(
 end
 
 """
-    _hess_reconstruct_via_hvp!(oracle, x, y, hess, cache)
+    _hess_reconstruct_via_hvp!(oracle, x, y, hess, cache, backend=nothing)
 
 Reconstruct the lower-triangular Hessian coordinate values using `nvar` calls
-to `oracle.hvp!`. Uses precomputed index arrays and buffers from `cache`.
+to `oracle.hvp!`. All buffers are preallocated in `cache`.
 """
-function _hess_reconstruct_via_hvp!(oracle, x, y, hess, cache::OracleIndexCache)
+function _hess_reconstruct_via_hvp!(oracle, x, y, hess, cache::OracleIndexCache, backend=nothing)
     T = eltype(x)
-    win = y[cache.con_idx]
-    v = cache.buf_nvar
-    Hv = cache.buf_nvar2
+    xin = _oracle_input(oracle, x)
+    win = _oracle_input(oracle, y[cache.con_idx])
+    use_cpu = !oracle.gpu && backend !== nothing
+    v  = use_cpu ? cache.cpu_nvar  : cache.buf_nvar
+    Hv = use_cpu ? cache.cpu_nvar2 : cache.buf_nvar2
     for (ci, col) in enumerate(cache.hess_recon_cols)
         fill!(v, zero(T))
         v[col:col] .= one(T)
-        oracle.hvp!(Hv, x, win, v)
-        hess[cache.hess_recon_pos_idx[ci]] .= Hv[cache.hess_recon_row_idx[ci]]
+        oracle.hvp!(Hv, xin, win, v)
+        if use_cpu
+            copyto!(cache.buf_nvar2, Hv)
+            hess[cache.hess_recon_pos_idx[ci]] .= cache.buf_nvar2[cache.hess_recon_row_idx[ci]]
+        else
+            hess[cache.hess_recon_pos_idx[ci]] .= Hv[cache.hess_recon_row_idx[ci]]
+        end
     end
     return nothing
 end
