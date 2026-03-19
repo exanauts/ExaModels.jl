@@ -223,60 +223,11 @@ Base.@kwdef struct ExaCore{T, VT<:AbstractVector{T}, B, S, O, C}
     tags::S = nothing
 end
 
-function mutate_core(
-    core::ExaCore{T, VT, B, S, O, C}; 
-    backend=nothing,
-    obj=nothing,
-    con=nothing,
-    nvar=nothing,
-    npar=nothing,
-    ncon=nothing,
-    nconaug=nothing,
-    nobj=nothing,
-    nnzc=nothing,
-    nnzg=nothing,
-    nnzj=nothing,
-    nnzh=nothing,
-    x0=nothing,
-    θ=nothing,
-    lvar=nothing,
-    uvar=nothing,
-    y0=nothing,
-    lcon=nothing,
-    ucon=nothing,
-    minimize=nothing,
-    nparam_subexpr=nothing,
-    param_subexpr_values=nothing,
-    param_subexpr_fns=nothing,
-    tags=nothing,
-) where {T, VT, B, S, O, C}
-    ExaCore(
-        isnothing(backend) ? core.backend : backend,
-        isnothing(obj) ? core.obj : obj,
-        isnothing(con) ? core.con : con,
-        isnothing(nvar) ? core.nvar : nvar,
-        isnothing(npar) ? core.npar : npar,
-        isnothing(ncon) ? core.ncon : ncon,
-        isnothing(nconaug) ? core.nconaug : nconaug,
-        isnothing(nobj) ? core.nobj : nobj,
-        isnothing(nnzc) ? core.nnzc : nnzc,
-        isnothing(nnzg) ? core.nnzg : nnzg,
-        isnothing(nnzj) ? core.nnzj : nnzj,
-        isnothing(nnzh) ? core.nnzh : nnzh,
-        isnothing(x0) ? core.x0 : x0,
-        isnothing(θ,) ? core.θ : θ,
-        isnothing(lvar) ? core.lvar : lvar,
-        isnothing(uvar) ? core.uvar : uvar,
-        isnothing(y0) ? core.y0 : y0,
-        isnothing(lcon) ? core.lcon : lcon,
-        isnothing(ucon) ? core.ucon : ucon,
-        isnothing(minimize) ? core.minimize : minimize,
-        isnothing(nparam_subexpr) ? core.nparam_subexpr : nparam_subexpr,
-        isnothing(param_subexpr_values) ? core.param_subexpr_values : param_subexpr_values,
-        isnothing(param_subexpr_fns) ? core.param_subexpr_fns : param_subexpr_fns,
-        isnothing(tags) ? core.tags : tags,
-    )
-end
+function ExaCore(c::C; kwargs...) where C <: ExaCore = ExaCore(
+    ;
+    zip(fieldnames(C), ntuple(i -> getfield(c, i), Val(fieldcount(C))))...,
+    kwargs...,
+)
 
 append_var_tags(::Nothing, backend, len) = nothing
 append_con_tags(::Nothing, backend, len) = nothing
