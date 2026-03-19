@@ -64,6 +64,8 @@ function _simdfunction(f, o0, o1, o2)
     c1 = Compressor(c1)
     o1step = snoc_len(ddup1)
 
+    Main.a = ddup1
+
     t = f(Identity(), SecondAdjointNodeSource(nothing), nothing)
     (ddup2, c2) = ExaModels.hrpass0(t, nothing, nothing, nothing, nothing, ((), ()), NaN, NaN)
     c2 = Compressor(c2)
