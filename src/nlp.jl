@@ -318,7 +318,7 @@ julia> result = ipopt(m; print_level=0)    # solve the problem
 
 ```
 """
-function ExaModel(c::C; kwargs...) where {C<:ExaCore}
+function ExaModel(c::C; kwargs...) where {C <: ExaCore}
     isempty(c.oracles) || return _build_with_oracle(c; kwargs...)
     return ExaModel(
         c.obj,

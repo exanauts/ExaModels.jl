@@ -61,6 +61,9 @@ export ExaModel,
     @register_univariate,
     @register_bivariate,
     VectorNonlinearOracle,
-    ExaModelWithOracle
+    ExaModelWithOracle,
+    has_matfree_jac,
+    has_matfree_hess,
+    embed_oracle
 
 end # module ExaModels
