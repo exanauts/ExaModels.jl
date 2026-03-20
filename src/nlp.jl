@@ -1,22 +1,22 @@
+# TODO
+# - subex support
+# - constraint augmentation support
+# - named vars/cons/objs support
+
 abstract type AbstractVariable end
 abstract type AbstractParameter end
 abstract type AbstractConstraint end
 abstract type AbstractObjective end
 
-struct VariableNull <: AbstractVariable end
-struct ParameterNull <: AbstractParameter end
-struct ObjectiveNull <: AbstractObjective end
-struct ConstraintNull <: AbstractConstraint end
-
 struct NaNSource{T} end
 Base.getindex(::NaNSource{T}, i) where {T} = T(NaN)
 Base.eltype(::NaNSource{T}) where {T} = T
 
-struct Variable{I,S,O} <: AbstractVariable
-    inner::I
+struct Variable{D,S,O} <: AbstractVariable
     size::S
     length::O
-    offset::O    
+    offset::O
+    Variable(size::S, length::O, offset::O, D) where {S, O} = new{D,S,O}(size, length, offset)
 end
 Base.show(io::IO, v::Variable) = print(
     io,
@@ -90,8 +90,7 @@ Base.show(io::IO, s::ParameterSubexpr) = print(
     """,
 )
 
-struct Parameter{I,S,O} <: AbstractParameter
-    inner::I
+struct Parameter{S,O} <: AbstractParameter
     size::S
     length::O
     offset::O
@@ -104,8 +103,7 @@ Parameter
   θ ∈ R^{$(join(size(v.size)," × "))}
 """,
 )
-struct Objective{R,F,I} <: AbstractObjective
-    inner::R
+struct Objective{F,I} <: AbstractObjective
     f::F
     itr::I
 end
@@ -121,8 +119,7 @@ Objective
 )
 
 
-struct Constraint{R,F,I,O} <: AbstractConstraint
-    inner::R
+struct Constraint{F,I,O} <: AbstractConstraint
     f::F
     itr::I
     offset::O
@@ -140,8 +137,7 @@ Constraint
 )
 
 
-struct ConstraintAug{R,F,I,D} <: AbstractConstraint
-    inner::R
+struct ConstraintAug{F,I,D} <: AbstractConstraint
     f::F
     itr::I
     oa::Int
@@ -204,52 +200,127 @@ An ExaCore
   number of constraint patterns: ... 0
 ```
 """
-Base.@kwdef struct ExaCore{T,VT<:AbstractVector{T}, B, S, V, P, O, C} <: AbstractExaCore{T,VT,B,S}
-    backend::B = nothing
-    var::V = VariableNull()
-    par::P = ParameterNull()
-    obj::O = ObjectiveNull()
-    con::C = ConstraintNull()
-    nvar::Int = 0
-    npar::Int = 0
-    ncon::Int = 0
-    nconaug::Int = 0
-    nobj::Int = 0
-    nnzc::Int = 0
-    nnzg::Int = 0
-    nnzj::Int = 0
-    nnzh::Int = 0
-    x0::VT = convert_array(zeros(default_T(backend), 0), backend)
-    θ::VT = similar(x0, 0)
-    lvar::VT = similar(x0)
-    uvar::VT = similar(x0)
-    y0::VT = similar(x0)
-    lcon::VT = similar(x0)
-    ucon::VT = similar(x0)
-    minimize::Bool = true
+struct ExaCore{T,VT<:AbstractVector{T}, B, S, V, P, O, C, R} <: AbstractExaCore{T,VT,B,S}
+    name::Symbol
+    backend::B
+    var::V
+    par::P
+    obj::O
+    con::C
+    nvar::Int
+    npar::Int
+    ncon::Int
+    nconaug::Int
+    nobj::Int
+    nnzc::Int
+    nnzg::Int
+    nnzj::Int
+    nnzh::Int
+    x0::VT
+    θ::VT
+    lvar::VT
+    uvar::VT
+    y0::VT
+    lcon::VT
+    ucon::VT
+    minimize::Bool
     # Parameter subexpression support
-    nparam_subexpr::Int = 0
-    param_subexpr_values::VT = similar(x0, 0)
-    param_subexpr_fns::Vector{Any} = Any[]
-    tags::S = nothing
+    nparam_subexpr::Int
+    param_subexpr_values::VT  # Cached values of parameter subexpressions, stored in θ for convenience
+    param_subexpr_fns::Vector{Any}  # Store the functions to recompute param subexprs when parameters change
+    tags::S  # For storing variable/constraint tags (e.g., scenario tags for two-stage models)
+    refs::R
 end
 
-ExaCore(c::C; kwargs...) where C <: ExaCore = ExaCore(
+function _exa_core(
     ;
-    zip(fieldnames(C), ntuple(i -> getfield(c, i), Val(fieldcount(C))))...,
-    kwargs...,
-)
+    name = :Generic,
+    backend = nothing,
+    var = (),
+    par = (),
+    obj = (),
+    con = (),
+    nvar = 0,
+    npar = 0,
+    ncon = 0,
+    nconaug = 0,
+    nobj = 0,
+    nnzc = 0,
+    nnzg = 0,
+    nnzj = 0,
+    nnzh = 0,
+    x0 = convert_array(zeros(default_T(backend), 0), backend),
+    θ = similar(x0, 0),
+    lvar = similar(x0),
+    uvar = similar(x0),
+    y0 = similar(x0),
+    lcon = similar(x0),
+    ucon = similar(x0),
+    minimize = true,
+    # Parameter subexpression support,
+    nparam_subexpr = 0,
+    param_subexpr_values = similar(x0, 0),
+    param_subexpr_fns = Any[],
+    tags = nothing,
+    refs = (;),
+    kwargs...
+    )
+
+    return ExaCore(
+        name,
+        backend,
+        var,
+        par,
+        obj,
+        con,
+        nvar,
+        npar,
+        ncon,
+        nconaug,
+        nobj,
+        nnzc,
+        nnzg,
+        nnzj,
+        nnzh,
+        x0,
+        θ,
+        lvar,
+        uvar,
+        y0,
+        lcon,
+        ucon,
+        minimize,
+        nparam_subexpr,
+        param_subexpr_values,
+        param_subexpr_fns,
+        tags,
+        refs
+    ), kwargs
+end
+
+function ExaCore(::Type{T}; backend = nothing, kwargs...) where {T<:AbstractFloat} 
+    core, kwargs = _exa_core(; x0 = convert_array(zeros(T, 0), backend), backend, kwargs...)
+    core
+    # add(core; kwargs...)
+end
+ExaCore(; backend = nothing, kwargs...) = ExaCore(default_T(backend); kwargs...)
+function ExaCore(c::C; kwargs...) where C <: ExaCore
+    core, _ = _exa_core(
+        ;
+        zip(fieldnames(C), ntuple(i -> getfield(c, i), Val(fieldcount(C))))...,
+        kwargs...,
+    )
+    return core
+end
 
 
 default_T(backend) = Float64
 append_var_tags(::Nothing, backend, len) = nothing
 append_con_tags(::Nothing, backend, len) = nothing
 
-ExaCore(::Type{T}; backend = nothing, kwargs...) where {T<:AbstractFloat} =
-    ExaCore(x0 = convert_array(zeros(T, 0), backend); backend, kwargs...)
 
-depth(a) = depth(a.inner) + 1
-depth(a::Union{ObjectiveNull,ConstraintNull,ParameterNull,VariableNull}) = 0
+depth(a::Tuple) = length(a)
+# depth(a) = length(a)
 
 Base.show(io::IO, c::ExaCore{T,VT,B}) where {T,VT,B} = print(
     io,
@@ -272,7 +343,8 @@ An abstract type for ExaModel, which is a subtype of `NLPModels.AbstractNLPModel
 """
 abstract type AbstractExaModel{T,VT,E} <: NLPModels.AbstractNLPModel{T,VT} end
 
-struct ExaModel{T,VT,E,V,P,O,C,S} <: AbstractExaModel{T,VT,E}
+struct ExaModel{T,VT,E,V,P,O,C,S,R} <: AbstractExaModel{T,VT,E}
+    name::Symbol
     vars::V
     pars::P
     objs::O
@@ -282,6 +354,7 @@ struct ExaModel{T,VT,E,V,P,O,C,S} <: AbstractExaModel{T,VT,E}
     counters::NLPModels.Counters
     ext::E
     tags::S
+    refs::R
 end
 
 function Base.show(io::IO, c::AbstractExaModel{T,VT}) where {T,VT}
@@ -302,7 +375,7 @@ julia> using ExaModels
 
 julia> c = ExaCore();                      # create an ExaCore object
 
-julia> x = variable(c, 1:10);              # create variables
+julia> x = add_variable(c, 1:10);              # create variables
 
 julia> objective(c, x[i]^2 for i in 1:10); # set objective function
 
@@ -330,35 +403,40 @@ julia> result = ipopt(m; print_level=0)    # solve the problem
 
 ```
 """
-ExaModel(c::C; kwargs...) where {C<:ExaCore} = ExaModel(
-    c.var,
-    c.par,
-    c.obj,
-    c.con,
-    c.θ,
-    NLPModels.NLPModelMeta(
-        c.nvar,
-        ncon = c.ncon,
-        nnzj = c.nnzj,
-        nnzh = c.nnzh,
-        x0 = c.x0,
-        lvar = c.lvar,
-        uvar = c.uvar,
-        y0 = c.y0,
-        lcon = c.lcon,
-        ucon = c.ucon,
-        minimize = c.minimize,
-    ),
-    NLPModels.Counters(),
-    build_extension(c; kwargs...),
-    c.tags
-)
+function ExaModel(c::C; prod = false, kwargs...) where {C<:ExaCore}
+    # c = add(c; kwargs...)
+    return ExaModel(
+        c.name,
+        c.var,
+        c.par,
+        c.obj,
+        c.con,
+        c.θ,
+        NLPModels.NLPModelMeta(
+            c.nvar,
+            ncon = c.ncon,
+            nnzj = c.nnzj,
+            nnzh = c.nnzh,
+            x0 = c.x0,
+            lvar = c.lvar,
+            uvar = c.uvar,
+            y0 = c.y0,
+            lcon = c.lcon,
+            ucon = c.ucon,
+            minimize = c.minimize,
+        ),
+        NLPModels.Counters(),
+        build_extension(c; prod),
+        c.tags,
+        c.refs
+    )
+end
 
 build_extension(c::ExaCore; kwargs...) = nothing
 
-@inline function Base.getindex(v::V, i) where {V<:Variable}
+@inline function Base.getindex(v::V, i) where {D, V<:Variable{D}}
     _bound_check(v.size, i)
-    Var(i + (v.offset - _start(v.size[1]) + 1), (depth(v),i))
+    Var(i + (v.offset - _start(v.size[1]) + 1), (D,i))
 end
 @inline function Base.getindex(v::V, is...) where {V<:Variable}
     @assert(length(is) == length(v.size), "Variable index dimension error")
@@ -500,7 +578,7 @@ _start(n::Int) = 1
 _start(n::UnitRange) = n.start
 
 """
-    variable(core, dims...; start = 0, lvar = -Inf, uvar = Inf, kwargs...)
+    add_variable(core, dims...; start = 0, lvar = -Inf, uvar = Inf, kwargs...)
 
 Adds variables with dimensions specified by `dims` to `core`, and returns `Variable` object. `dims` can be either `Integer` or `UnitRange`.
 
@@ -516,21 +594,22 @@ julia> using ExaModels
 
 julia> c = ExaCore();
 
-julia> x = variable(c, 10; start = (sin(i) for i=1:10))
+julia> x = add_variable(c, 10; start = (sin(i) for i=1:10))
 Variable
 
   x ∈ R^{10}
 
-julia> y = variable(c, 2:10, 3:5; lvar = zeros(9,3), uvar = ones(9,3))
+julia> y = add_variable(c, 2:10, 3:5; lvar = zeros(9,3), uvar = ones(9,3))
 Variable
 
   x ∈ R^{9 × 3}
 
 ```
 """
-function variable(
+function add_variable(
     c::C,
     ns...;
+    name = nothing,
     start = zero(T),
     lvar = T(-Inf),
     uvar = T(Inf),
@@ -546,9 +625,9 @@ function variable(
     uvar = append!(c.backend, c.uvar, uvar, total(ns))
 
     append_var_tags(c.tags, c.backend, total(ns); kwargs...)
-    v = Variable(c.var, ns, len, o)
+    v = Variable(ns, len, o, length(c.var) + 1)
     
-    (ExaCore(c; var = v, nvar=nvar, x0=x0, lvar=lvar, uvar=uvar), v)
+    (ExaCore(c; var = (v, c.var...), nvar=nvar, x0=x0, lvar=lvar, uvar=uvar), v)
 end
 
 
@@ -576,7 +655,7 @@ function parameter(c::C, start::AbstractArray;) where {T,C<:ExaCore{T}}
     len = total(ns)
     npar = c.npar + len
     θ = append!(c.backend, c.θ, start, len)
-    p = Parameter(c.par, ns, len, o)
+    p = Parameter(ns, len, o)
     (ExaCore(c; par = p, θ=θ, npar=npar), p)
 end
 
@@ -638,9 +717,9 @@ function _recompute_param_subexprs!(c::ExaCore)
     return nothing
 end
 
-function variable(c::C; kwargs...) where {T,C<:ExaCore{T}}
+function add_variable(c::C; kwargs...) where {T,C<:ExaCore{T}}
 
-    return variable(c, 1; kwargs...)[1]
+    return add_variable(c, 1; kwargs...)[1]
 end
 
 """
@@ -654,7 +733,7 @@ julia> using ExaModels
 
 julia> c = ExaCore();
 
-julia> x = variable(c, 10);
+julia> x = add_variable(c, 10);
 
 julia> objective(c, x[i]^2 for i=1:10)
 Objective
@@ -689,8 +768,8 @@ function _objective(c, f, pars)
     nnzg = c.nnzg + nitr * f.o1step
     nnzh = c.nnzh + nitr * f.o2step
 
-    obj = Objective(c.obj, f, convert_array(pars, c.backend))
-    (ExaCore(c; nobj=nobj, nnzg=nnzg, nnzh=nnzh, obj=obj), obj)
+    obj = Objective(f, convert_array(pars, c.backend))
+    (ExaCore(c; nobj=nobj, nnzg=nnzg, nnzh=nnzh, obj=(obj, c.obj...)), obj)
 end
 
 
@@ -711,7 +790,7 @@ julia> using ExaModels
 
 julia> c = ExaCore();
 
-julia> x = variable(c, 10);
+julia> x = add_variable(c, 10);
 
 julia> constraint(c, x[i] + x[i+1] for i=1:9; lcon = -1, ucon = (1+i for i=1:9))
 Constraint
@@ -724,7 +803,8 @@ Constraint
 """
 function constraint(
     c::C,
-    gen::Base.Generator;
+    gen::Base.Generator,
+    args...;
     start = zero(T),
     lcon = zero(T),
     ucon = zero(T),
@@ -765,7 +845,8 @@ Adds empty constraints of dimension n, so that later the terms can be added with
 """
 function constraint(
     c::C,
-    n;
+    n,
+    args...;
     start = zero(T),
     lcon = zero(T),
     ucon = zero(T),
@@ -778,7 +859,7 @@ function constraint(
 end
 
 
-function _constraint(c::C, f, pars, start, lcon, ucon) where {C<:ExaCore}
+function _constraint(c::C, f, pars, start, lcon, ucon; kwargs...) where {C<:ExaCore}
     nitr = length(pars)
     o = c.ncon
     ncon = c.ncon + nitr
@@ -788,11 +869,11 @@ function _constraint(c::C, f, pars, start, lcon, ucon) where {C<:ExaCore}
     y0 = append!(c.backend, c.y0, start, nitr)
     lcon = append!(c.backend, c.lcon, lcon, nitr)
     ucon = append!(c.backend, c.ucon, ucon, nitr)
-    append_con_tags(c.tags, c.backend, nitr)
+    append_con_tags(c.tags, c.backend, nitr; kwargs...)
 
-    con = Constraint(c.con, f, convert_array(pars, c.backend), o)
+    con = Constraint(f, convert_array(pars, c.backend), o)
 
-    (ExaCore(c; ncon=ncon, nnzj=nnzj, nnzh=nnzh, y0=y0, lcon=lcon, ucon=ucon, con=con), con)
+    (ExaCore(c; ncon=ncon, nnzj=nnzj, nnzh=nnzh, y0=y0, lcon=lcon, ucon=ucon, con=(con, c.con...)), con)
 end
 
 
@@ -814,7 +895,7 @@ julia> using ExaModels
 
 julia> c = ExaCore();
 
-julia> x = variable(c, 10);
+julia> x = add_variable(c, 10);
 
 julia> c1 = constraint(c, x[i] + x[i+1] for i=1:9; lcon = -1, ucon = (1+i for i=1:9));
 
@@ -836,16 +917,16 @@ function constraint!(c::C, c1, gen::Base.Generator) where {T, C<:ExaCore{T}}
     _constraint!(c, f, pars, _constraint_dims(c1))
 end
 
-"""
-    constraint!(c, c1, expr, pars)
+# """
+#     constraint!(c, c1, expr, pars)
 
-Expands the existing constraint `c1` in `c` by adding addtional constraints terms specified by `expr` and `pars`.
-"""
-function constraint!(c::C, c1, expr, pars) where {T, C<:ExaCore{T}}
-    f = _simdfunction(T, expr, offset0(c1, 0), c.nnzj, c.nnzh)
+# Expands the existing constraint `c1` in `c` by adding addtional constraints terms specified by `expr` and `pars`.
+# """
+# function constraint!(c::C, c1, expr, pars) where {T, C<:ExaCore{T}}
+#     f = _simdfunction(T, expr, offset0(c1, 0), c.nnzj, c.nnzh)
 
-    _constraint!(c, f, pars, _constraint_dims(c1))
-end
+#     _constraint!(c, f, pars, _constraint_dims(c1))
+# end
 
 # Extract the dimensions of the original constraint's iterator
 _constraint_dims(c::Constraint) = Base.size(c.itr)
@@ -860,7 +941,7 @@ function _constraint!(c, f, pars, dims)
     c.nnzj += nitr * f.o1step
     c.nnzh += nitr * f.o2step
 
-    c.con = ConstraintAug(c.con, f, convert_array(pars, c.backend), oa, dims)
+    c.con = ConstraintAug(f, convert_array(pars, c.backend), oa, dims)
 end
 
 # Helper to infer dimensions from iterator
@@ -895,7 +976,7 @@ julia> using ExaModels
 
 julia> c = ExaCore();
 
-julia> x = variable(c, 10);
+julia> x = add_variable(c, 10);
 
 julia> s = subexpr(c, x[i]^2 for i in 1:10)
 Subexpression (lifted)
@@ -913,7 +994,7 @@ julia> objective(c, s[i] + s[i+1] for i in 1:9);
 
 ```julia
 c = ExaCore()
-x = variable(c, 10)
+x = add_variable(c, 10)
 
 # Reduced form - no extra variables/constraints
 s = subexpr(c, x[i]^2 for i in 1:10; reduced=true)
@@ -930,7 +1011,7 @@ once when parameters change, rather than at every optimization iteration:
 ```julia
 c = ExaCore()
 θ = parameter(c, ones(10))
-x = variable(c, 10)
+x = add_variable(c, 10)
 
 # Parameter-only subexpression - computed once per parameter update
 weights = subexpr(c, θ[i]^2 + θ[i+1] for i in 1:9; parameter_only=true)
@@ -942,7 +1023,7 @@ objective(c, weights[i] * x[i]^2 for i in 1:9)
 ## Multi-dimensional example
 ```julia
 c = ExaCore()
-x = variable(c, 0:T, 0:N)
+x = add_variable(c, 0:T, 0:N)
 
 # Automatically infers 2D structure from Cartesian product
 dx = subexpr(c, x[t, i] - x[t-1, i] for t in 1:T, i in 1:N)
@@ -959,7 +1040,7 @@ out of the box:
 
 ```julia
 c = ExaCore()
-x = variable(c, 1:N, 1:K)
+x = add_variable(c, 1:N, 1:K)
 itr = [(i, k) for i in 1:N, k in 1:K]
 s = subexpr(c, x[i, k]^2 for (i, k) in itr; reduced=true)
 # s[i, k] works correctly
@@ -970,7 +1051,7 @@ ranges explicitly:
 
 ```julia
 c = ExaCore()
-x = variable(c, 1:N, 0:K)
+x = add_variable(c, 1:N, 0:K)
 itr = [(i, k) for i in 1:N, k in 0:K]
 s = subexpr(c, x[i, k]^2 for (i, k) in itr; reduced=true, dims=(1:N, 0:K))
 # s[i, k] works correctly with 0-based second dimension
@@ -980,7 +1061,7 @@ To embed scalar data in tuples, use lifted (default) subexpressions:
 
 ```julia
 c = ExaCore()
-x = variable(c, 1:N, 1:K)
+x = add_variable(c, 1:N, 1:K)
 weights = [2.0*i for i in 1:N]
 itr = [(i, k, weights[i]) for i in 1:N, k in 1:K]
 s = subexpr(c, wi * x[i, k]^2 for (i, k, wi) in itr)
@@ -1036,7 +1117,7 @@ function subexpr(c::C, gen::Base.Generator; reduced::Bool = false, parameter_onl
     start_values = T[gen.f(p)(Identity(), x0_cpu, θ_cpu) for p in iter_collected]
 
     # Create auxiliary variables for subexpression values with computed start values
-    v = variable(c, ns...; start = start_values)
+    v = add_variable(c, ns...; start = start_values)
 
     # Create defining constraints: v[k] - expr(itr[k]) = 0 for k = 1:n
     # We pair each element with its linear index for proper variable indexing
@@ -1061,10 +1142,10 @@ function jac_structure!(m::AbstractExaModel{T}, rows::AbstractVector, cols::Abst
     return rows, cols
 end
 
-_jac_structure!(T, cons::ConstraintNull, rows, cols) = nothing
-function _jac_structure!(T, cons, rows, cols)
-    _jac_structure!(T, cons.inner, rows, cols)
-    sjacobian!(rows, cols, cons, NaNSource{T}(), NaNSource{T}(), T(NaN))
+_jac_structure!(T, cons::Tuple{}, rows, cols) = nothing
+function _jac_structure!(T, (con, cons...), rows, cols)
+    _jac_structure!(T, cons, rows, cols)
+    sjacobian!(rows, cols, con, NaNSource{T}(), NaNSource{T}(), T(NaN))
 end
 
 function hess_structure!(m::AbstractExaModel{T}, rows::AbstractVector, cols::AbstractVector) where T
@@ -1073,26 +1154,26 @@ function hess_structure!(m::AbstractExaModel{T}, rows::AbstractVector, cols::Abs
     return rows, cols
 end
 
-_obj_hess_structure!(T, objs::ObjectiveNull, rows, cols) = nothing
-function _obj_hess_structure!(T, objs, rows, cols)
-    _obj_hess_structure!(T, objs.inner, rows, cols)
-    shessian!(rows, cols, objs, NaNSource{T}(), NaNSource{T}(), T(NaN), T(NaN))
+_obj_hess_structure!(T, objs::Tuple{}, rows, cols) = nothing
+function _obj_hess_structure!(T, (obj, objs...), rows, cols)
+    _obj_hess_structure!(T, objs, rows, cols)
+    shessian!(rows, cols, obj, NaNSource{T}(), NaNSource{T}(), T(NaN), T(NaN))
 end
 
-_con_hess_structure!(T, cons::ConstraintNull, rows, cols) = nothing
-function _con_hess_structure!(T, cons, rows, cols)
-    _con_hess_structure!(T, cons.inner, rows, cols)
-    shessian!(rows, cols, cons, NaNSource{T}(), NaNSource{T}(), T(NaN), T(NaN))
+_con_hess_structure!(T, cons::Tuple{}, rows, cols) = nothing
+function _con_hess_structure!(T, (con, cons...), rows, cols)
+    _con_hess_structure!(T, cons, rows, cols)
+    shessian!(rows, cols, con, NaNSource{T}(), NaNSource{T}(), T(NaN), T(NaN))
 end
 
 function obj(m::AbstractExaModel, x::AbstractVector)
     return _obj(m.objs, x, m.θ)
 end
 
-_obj(objs, x, θ) =
-    _obj(objs.inner, x, θ) +
-    (isempty(objs.itr) ? zero(eltype(x)) : sum(objs.f(k, x, θ) for k in objs.itr))
-_obj(objs::ObjectiveNull, x, θ) = zero(eltype(x))
+_obj((obj,objs...), x, θ) =
+    _obj(objs, x, θ) +
+    (isempty(obj.itr) ? zero(eltype(x)) : sum(obj.f(k, x, θ) for k in obj.itr))
+_obj(obj::Tuple{}, x, θ) = zero(eltype(x))
 
 function cons_nln!(m::AbstractExaModel, x::AbstractVector, g::AbstractVector)
     fill!(g, zero(eltype(g)))
@@ -1100,13 +1181,13 @@ function cons_nln!(m::AbstractExaModel, x::AbstractVector, g::AbstractVector)
     return g
 end
 
-function _cons_nln!(cons, x, θ, g)
-    _cons_nln!(cons.inner, x, θ, g)
-    @simd for i in eachindex(cons.itr)
-        g[offset0(cons, i)] += cons.f(cons.itr[i], x, θ)
+function _cons_nln!((con,cons...), x, θ, g)
+    _cons_nln!(cons, x, θ, g)
+    @simd for i in eachindex(con.itr)
+        g[offset0(con, i)] += con.f(con.itr[i], x, θ)
     end
 end
-_cons_nln!(cons::ConstraintNull, x, θ, g) = nothing
+_cons_nln!(cons::Tuple{}, x, θ, g) = nothing
 
 
 
@@ -1116,11 +1197,11 @@ function grad!(m::AbstractExaModel, x::AbstractVector, f::AbstractVector)
     return f
 end
 
-function _grad!(objs, x, θ, f)
-    _grad!(objs.inner, x, θ, f)
-    gradient!(f, objs, x, θ, one(eltype(f)))
+function _grad!((obj,objs...), x, θ, f)
+    _grad!(objs, x, θ, f)
+    gradient!(f, obj, x, θ, one(eltype(f)))
 end
-_grad!(objs::ObjectiveNull, x, θ, f) = nothing
+_grad!(objs::Tuple{}, x, θ, f) = nothing
 
 function jac_coord!(m::AbstractExaModel, x::AbstractVector, jac::AbstractVector)
     fill!(jac, zero(eltype(jac)))
@@ -1128,10 +1209,10 @@ function jac_coord!(m::AbstractExaModel, x::AbstractVector, jac::AbstractVector)
     return jac
 end
 
-_jac_coord!(cons::ConstraintNull, x, θ, jac) = nothing
-function _jac_coord!(cons, x, θ, jac)
-    _jac_coord!(cons.inner, x, θ, jac)
-    sjacobian!(jac, nothing, cons, x, θ, one(eltype(jac)))
+_jac_coord!(cons::Tuple{}, x, θ, jac) = nothing
+function _jac_coord!((con,cons...), x, θ, jac)
+    _jac_coord!(cons, x, θ, jac)
+    sjacobian!(jac, nothing, con, x, θ, one(eltype(jac)))
 end
 
 function jprod_nln!(m::AbstractExaModel, x::AbstractVector, v::AbstractVector, Jv::AbstractVector)
@@ -1140,10 +1221,10 @@ function jprod_nln!(m::AbstractExaModel, x::AbstractVector, v::AbstractVector, J
     return Jv
 end
 
-_jprod_nln!(cons::ConstraintNull, x, θ, v, Jv) = nothing
-function _jprod_nln!(cons, x, θ, v, Jv)
-    _jprod_nln!(cons.inner, x, θ, v, Jv)
-    sjacobian!((Jv, v), nothing, cons, x, θ, one(eltype(Jv)))
+_jprod_nln!(cons::Tuple{}, x, θ, v, Jv) = nothing
+function _jprod_nln!((con,cons...), x, θ, v, Jv)
+    _jprod_nln!(cons, x, θ, v, Jv)
+    sjacobian!((Jv, v), nothing, con, x, θ, one(eltype(Jv)))
 end
 
 function jtprod_nln!(m::AbstractExaModel, x::AbstractVector, v::AbstractVector, Jtv::AbstractVector)
@@ -1152,10 +1233,10 @@ function jtprod_nln!(m::AbstractExaModel, x::AbstractVector, v::AbstractVector, 
     return Jtv
 end
 
-_jtprod_nln!(cons::ConstraintNull, x, θ, v, Jtv) = nothing
-function _jtprod_nln!(cons, x, θ, v, Jtv)
-    _jtprod_nln!(cons.inner, x, θ, v, Jtv)
-    sjacobian!(nothing, (Jtv, v), cons, x, θ, one(eltype(Jtv)))
+_jtprod_nln!(cons::Tuple{}, x, θ, v, Jtv) = nothing
+function _jtprod_nln!((con,cons...), x, θ, v, Jtv)
+    _jtprod_nln!(cons, x, θ, v, Jtv)
+    sjacobian!(nothing, (Jtv, v), con, x, θ, one(eltype(Jtv)))
 end
 
 function hess_coord!(
@@ -1182,16 +1263,16 @@ function hess_coord!(
     return hess
 end
 
-_obj_hess_coord!(objs::ObjectiveNull, x, θ, hess, obj_weight) = nothing
-function _obj_hess_coord!(objs, x, θ, hess, obj_weight)
-    _obj_hess_coord!(objs.inner, x, θ, hess, obj_weight)
-    shessian!(hess, nothing, objs, x, θ, obj_weight, zero(eltype(hess)))
+_obj_hess_coord!(objs::Tuple{}, x, θ, hess, obj_weight) = nothing
+function _obj_hess_coord!((obj,objs...), x, θ, hess, obj_weight)
+    _obj_hess_coord!(objs, x, θ, hess, obj_weight)
+    shessian!(hess, nothing, obj, x, θ, obj_weight, zero(eltype(hess)))
 end
 
-_con_hess_coord!(cons::ConstraintNull, x, θ, y, hess, obj_weight) = nothing
-function _con_hess_coord!(cons, x, θ, y, hess, obj_weight)
-    _con_hess_coord!(cons.inner, x, θ, y, hess, obj_weight)
-    shessian!(hess, nothing, cons, x, θ, y, zero(eltype(hess)))
+_con_hess_coord!(cons::Tuple{}, x, θ, y, hess, obj_weight) = nothing
+function _con_hess_coord!((con,cons...), x, θ, y, hess, obj_weight)
+    _con_hess_coord!(cons, x, θ, y, hess, obj_weight)
+    shessian!(hess, nothing, con, x, θ, y, zero(eltype(hess)))
 end
 
 function hprod!(
@@ -1220,16 +1301,16 @@ function hprod!(
     return Hv
 end
 
-_obj_hprod!(objs::ObjectiveNull, x, θ, v, Hv, obj_weight) = nothing
-function _obj_hprod!(objs, x, θ, v, Hv, obj_weight)
-    _obj_hprod!(objs.inner, x, θ, v, Hv, obj_weight)
-    shessian!((Hv, v), nothing, objs, x, θ, obj_weight, zero(eltype(Hv)))
+_obj_hprod!(objs::Tuple{}, x, θ, v, Hv, obj_weight) = nothing
+function _obj_hprod!((obj,objs...), x, θ, v, Hv, obj_weight)
+    _obj_hprod!(objs, x, θ, v, Hv, obj_weight)
+    shessian!((Hv, v), nothing, obj, x, θ, obj_weight, zero(eltype(Hv)))
 end
 
-_con_hprod!(cons::ConstraintNull, x, θ, y, v, Hv, obj_weight) = nothing
-function _con_hprod!(cons, x, θ, y, v, Hv, obj_weight)
-    _con_hprod!(cons.inner, x, θ, y, v, Hv, obj_weight)
-    shessian!((Hv, v), nothing, cons, x, θ, y, zero(eltype(Hv)))
+_con_hprod!(cons::Tuple{}, x, θ, y, v, Hv, obj_weight) = nothing
+function _con_hprod!((con,cons), x, θ, y, v, Hv, obj_weight)
+    _con_hprod!(cons, x, θ, y, v, Hv, obj_weight)
+    shessian!((Hv, v), nothing, con, x, θ, y, zero(eltype(Hv)))
 end
 
 @inbounds @inline offset0(a, i) = offset0(a.f, i)
@@ -1285,7 +1366,7 @@ for (thing, val) in [(:solution, 1), (:multipliers_L, 0), (:multipliers_U, 2)]
 
         julia> c = ExaCore();
 
-        julia> x = variable(c, 1:10, lvar = -1, uvar = 1);
+        julia> x = add_variable(c, 1:10, lvar = -1, uvar = 1);
 
         julia> objective(c, (x[i]-2)^2 for i in 1:10);
 
@@ -1323,7 +1404,7 @@ julia> using ExaModels, NLPModelsIpopt
 
 julia> c = ExaCore();
 
-julia> x = variable(c, 1:10, lvar = -1, uvar = 1);
+julia> x = add_variable(c, 1:10, lvar = -1, uvar = 1);
 
 julia> objective(c, (x[i]-2)^2 for i in 1:10);
 
@@ -1346,41 +1427,121 @@ function multipliers(result::SolverCore.AbstractExecutionStats, y::Constraint)
     return view(result.multipliers, (o+1):(o+len))
 end
 
-
 _adapt_gen(gen) = Base.Generator(gen.f, collect(gen.iter))
 _adapt_gen(gen::Base.Generator{P}) where {P<:Union{AbstractArray,AbstractRange}} = gen
 
 
-@inline parse_args(core::ExaCore) = core, ()
-for (var, vars, variable, Spec, spec) in (
-    (:var, :vars, :variable, :VarSpec, :varspec),
-    (:par, :pars, :parameter, :ParSpec, :parspec),
-    (:con, :cons, :constraint, :ConSpec, :conspec),
-    (:obj, :objs, :objective, :ObjSpec, :objspec),
-    )
-    @eval begin
-        struct $Spec{A,K}
-            args::A
-            kwargs::K
-        end
-        $spec(args...; kwargs...) = $Spec(args, kwargs)
-        @inline function parse_args(core::ExaCore, arg::S, args...) where S <: $Spec
-            core, outs = parse_args(core, args...)
-            core, $var = $variable(core, arg.args...; arg.kwargs...)
-            return core, ($var, outs...)
-        end
-        export $spec
+# @inline function add(core::ExaCore, args...; kwargs...)
+#     core, outs = _add(core, args...)
+#     core, kwouts = _add(core, Tuple(kwargs)...)
+#     return truncate(ExaCore(core; refs = (;core.refs..., kwouts...)), outs)
+# end 
+# @inline _add(core::ExaCore) = core, (;)
+# truncate(core, outs) = core, outs
+# truncate(core, outs::NamedTuple{}) = core
+
+# for (var, vars, variable, Spec, spec) in (
+#     (:var, :vars, :variable, :VarSpec, :varspec),
+#     (:par, :pars, :parameter, :ParSpec, :parspec),
+#     (:con, :cons, :constraint, :ConSpec, :conspec),
+#     (:obj, :objs, :objective, :ObjSpec, :objspec),
+#     )
+#     @eval begin
+#         struct $Spec{A,K}
+#             args::A
+#             kwargs::K
+#         end
+#         $spec(args...; kwargs...) = $Spec(args, kwargs)
+#         # @inline function _add(core::ExaCore, arg::S, args...) where S <: $Spec
+#         #     core, outs = _add(core, args...)
+#         #     core, $var = $add_variable(core, arg.args...; arg.kwargs...)
+#         #     return core, ($var, outs...)
+#         # end
+#         # @inline function _add(core::ExaCore, arg::P, args...) where {P <: Pair{Symbol,S}}
+#         #     name, arg = arg
+#         #     core, outs = _add(core, args...)
+#         #     core, $var = $add_variable(core, arg.args...; arg.kwargs...)
+#         #     return core, (;name => $var, outs...)
+#         # end
+#         export $spec
+#     end
+# end
+
+# @inline function _add(core::ExaCore, arg::P, args...) where {S <: VarSpec, P <: Pair{Symbol,S}}
+#     name, arg = arg
+#     core, outs = _add(core, args...)
+#     core, var = add_variable(core, arg.args...; arg.kwargs...)
+#     return core, (;name => var, outs...)
+# end
+# @inline function _add(core::ExaCore, arg::P, args...) where {S <: ParSpec, P <: Pair{Symbol,S}}
+#     name, arg = arg
+#     core, outs = _add(core, args...)
+#     core, par = parameter(core, arg.args...; arg.kwargs...)
+#     return core, (;name => par, outs...)
+# end
+
+# export add
+
+function Base.getproperty(core::ExaCore, name::Symbol)
+    if hasfield(ExaCore, name)
+        getfield(core,name)
+    elseif hasfield(typeof(core.refs), name)
+        getfield(core.refs, name)
+    else
+        getfield(core, name)
     end
 end
 
-ExaCore(args...; kwargs...) = ExaCore(Float64, args...; kwargs...)
-function ExaCore(::Type{T}, args...; kwargs...) where {T <: AbstractFloat}
-    core = ExaCore(T; kwargs...)
-    core, outs = parse_args(core, args...)
-    return core, outs...
+macro variable(exs...)
+    isempty(exs) && error("@variable requires at least a core argument")
+
+    # Split positional and keyword parts
+    parts = Any[]
+    kwargs = Expr(:parameters)
+    for ex in exs
+        if ex isa Expr && ex.head == :parameters
+            append!(kwargs.args, ex.args)
+        else
+            push!(parts, ex)
+        end
+    end
+
+    core = parts[1]
+    xs = parts[2:end]
+
+    if !isempty(xs) && xs[1] isa Symbol
+        # Named variable: @variable(core, x, args...; kwargs...)
+        name = xs[1]
+        args = xs[2:end]
+
+        return quote
+            local _var
+            $(esc(core)), _var = add_variable(
+                $(esc(core)),
+                $(map(esc, args)...);
+                $(map(esc, kwargs.args)...),
+                name = $(QuoteNode(name)),
+            )
+            $(esc(name)) = _var
+            _var
+        end
+    else
+        # Anonymous variable: @variable(core, args...; kwargs...)
+        var = gensym(:var)
+
+        return quote
+            local $var
+            $(esc(core)), $var = add_variable(
+                $(esc(core)),
+                $(map(esc, xs)...);
+                $(map(esc, kwargs.args)...),
+            )
+            $var
+        end
+    end
 end
-function ExaModel(core::ExaCore, args...; kwargs...)
-    core, outs = parse_args(core, args...)
-    model = ExaModel(core; kwargs...)
-    return model, outs...
-end
+export @variable
+# function ExaModel(core::ExaCore; kwargs...)
+#     core = add(core; kwargs...)
+#     return ExaModel(core)
+# end
