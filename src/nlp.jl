@@ -230,7 +230,7 @@ struct ExaCore{T,VT<:AbstractVector{T}, B, S, V, P, O, C, R} <: AbstractExaCore{
     refs::R
 end
 
-function _exa_core(
+@inline function _exa_core(
     ;
     name = :Generic,
     backend = nothing,
@@ -260,8 +260,7 @@ function _exa_core(
     param_subexpr_values = similar(x0, 0),
     param_subexpr_fns = Any[],
     tags = nothing,
-    refs = (;),
-    kwargs...
+    refs = (;)
     )
 
     return ExaCore(
@@ -293,31 +292,22 @@ function _exa_core(
         param_subexpr_fns,
         tags,
         refs
-    ), kwargs
-end
-
-function ExaCore(::Type{T}; backend = nothing, kwargs...) where {T<:AbstractFloat} 
-    core, kwargs = _exa_core(; x0 = convert_array(zeros(T, 0), backend), backend, kwargs...)
-    core
-    # add(core; kwargs...)
-end
-ExaCore(; backend = nothing, kwargs...) = ExaCore(default_T(backend); kwargs...)
-function ExaCore(c::C; kwargs...) where C <: ExaCore
-    core, _ = _exa_core(
-        ;
-        zip(fieldnames(C), ntuple(i -> getfield(c, i), Val(fieldcount(C))))...,
-        kwargs...,
     )
-    return core
 end
 
+@inline ExaCore(::Type{T}; backend = nothing, kwargs...) where {T<:AbstractFloat} = _exa_core(; x0 = convert_array(zeros(T, 0), backend), backend, kwargs...)
+@inline ExaCore(; backend = nothing, kwargs...) = ExaCore(default_T(backend); kwargs...)
+@inline ExaCore(c::C; kwargs...) where C <: ExaCore = _exa_core(
+    ;
+    zip(fieldnames(C), ntuple(i -> getfield(c, i), Val(fieldcount(C))))...,
+    kwargs...,
+)
+@inline default_T(backend) = Float64
+@inline append_var_tags(::Nothing, backend, len) = nothing
+@inline append_con_tags(::Nothing, backend, len) = nothing
 
-default_T(backend) = Float64
-append_var_tags(::Nothing, backend, len) = nothing
-append_con_tags(::Nothing, backend, len) = nothing
 
-
-depth(a::Tuple) = length(a)
+@inline depth(a::Tuple) = length(a)
 # depth(a) = length(a)
 
 Base.show(io::IO, c::ExaCore{T,VT,B}) where {T,VT,B} = print(
@@ -871,18 +861,17 @@ function _add_constraint(c::C, f, pars, start, lcon, ucon, name = nothing; kwarg
     nitr = length(pars)
     o = c.ncon
     ncon = c.ncon + nitr
-    # nnzj = c.nnzj + nitr * f.o1step
-    # nnzh = c.nnzh + nitr * f.o2step
+    nnzj = c.nnzj + nitr * f.o1step
+    nnzh = c.nnzh + nitr * f.o2step
 
-    # y0 = append!(c.backend, c.y0, start, nitr)
-    # lcon = append!(c.backend, c.lcon, lcon, nitr)
-    # ucon = append!(c.backend, c.ucon, ucon, nitr)
-    # append_con_tags(c.tags, c.backend, nitr; kwargs...)
+    y0 = append!(c.backend, c.y0, start, nitr)
+    lcon = append!(c.backend, c.lcon, lcon, nitr)
+    ucon = append!(c.backend, c.ucon, ucon, nitr)
+    append_con_tags(c.tags, c.backend, nitr; kwargs...)
 
-    # con = Constraint(f, convert_array(pars, c.backend), o)
+    con = Constraint(f, convert_array(pars, c.backend), o)
 
-    # (ExaCore(c; ncon=ncon, nnzj=nnzj, nnzh=nnzh, y0=y0, lcon=lcon, ucon=ucon, con=(con, c.con...), refs = add_refs(c.refs, name, con)), con)
-    c, nothing
+    (ExaCore(c; ncon=ncon, nnzj=nnzj, nnzh=nnzh, y0=y0, lcon=lcon, ucon=ucon, con=(con, c.con...), refs = add_refs(c.refs, name, con)), con)
 end
 
 
