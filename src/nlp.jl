@@ -628,8 +628,9 @@ function add_variable(
     (ExaCore(c; var = (v, c.var...), nvar=nvar, x0=x0, lvar=lvar, uvar=uvar, refs = add_refs(c.refs, name, v)), v)
 end
 
-add_refs(refs, name::Nothing, var) = refs
-add_refs(refs, name::Symbol, var) = (; refs..., name => var)
+@inline add_refs(refs, ::Nothing, var) = refs
+@inline add_refs(refs, ::Val{N}, var) where {N} = (; refs..., N => var)
+# @inline add_refs(refs, name::Symbol, var) = add_refs(refs, Val(name), var)  # interactive fallback
 
 
 """
@@ -723,10 +724,10 @@ function add_variable(c::C; kwargs...) where {T,C<:ExaCore{T}}
     return add_variable(c, 1; kwargs...)[1]
 end
 
-# function add_variable(c::C, name::Symbol, args...; kwargs...) where {T,C<:ExaCore{T}}
-#     c, v= add_variable(c, args...; name, kwargs...)
-#     return c
-# end
+function add_variable(c::C, name::Symbol, args...; kwargs...) where {T,C<:ExaCore{T}}
+    c, v= add_variable(c, args...; name, kwargs...)
+    return c
+end
 
 """
     objective(core::ExaCore, generator)
@@ -870,17 +871,18 @@ function _add_constraint(c::C, f, pars, start, lcon, ucon, name = nothing; kwarg
     nitr = length(pars)
     o = c.ncon
     ncon = c.ncon + nitr
-    nnzj = c.nnzj + nitr * f.o1step
-    nnzh = c.nnzh + nitr * f.o2step
+    # nnzj = c.nnzj + nitr * f.o1step
+    # nnzh = c.nnzh + nitr * f.o2step
 
-    y0 = append!(c.backend, c.y0, start, nitr)
-    lcon = append!(c.backend, c.lcon, lcon, nitr)
-    ucon = append!(c.backend, c.ucon, ucon, nitr)
-    append_con_tags(c.tags, c.backend, nitr; kwargs...)
+    # y0 = append!(c.backend, c.y0, start, nitr)
+    # lcon = append!(c.backend, c.lcon, lcon, nitr)
+    # ucon = append!(c.backend, c.ucon, ucon, nitr)
+    # append_con_tags(c.tags, c.backend, nitr; kwargs...)
 
-    con = Constraint(f, convert_array(pars, c.backend), o)
+    # con = Constraint(f, convert_array(pars, c.backend), o)
 
-    (ExaCore(c; ncon=ncon, nnzj=nnzj, nnzh=nnzh, y0=y0, lcon=lcon, ucon=ucon, con=(con, c.con...), refs = add_refs(c.refs, name, con)), con)
+    # (ExaCore(c; ncon=ncon, nnzj=nnzj, nnzh=nnzh, y0=y0, lcon=lcon, ucon=ucon, con=(con, c.con...), refs = add_refs(c.refs, name, con)), con)
+    c, nothing
 end
 
 
@@ -1526,7 +1528,7 @@ macro variable(exs...)
                 $(esc(core)),
                 $(map(esc, args)...);
                 $(map(esc, kwargs.args)...),
-                name = $(QuoteNode(name)),
+                name = $(Val(name)),
             )
             $(esc(name)) = _var
             _var
@@ -1573,7 +1575,7 @@ macro parameter(exs...)
                 $(esc(core)),
                 $(map(esc, args)...);
                 $(map(esc, kwargs.args)...),
-                name = $(QuoteNode(name)),
+                name = $(Val(name)),
             )
             $(esc(name)) = _par
             _par
@@ -1618,7 +1620,7 @@ macro objective(exs...)
                 $(esc(core)),
                 $(map(esc, args)...);
                 $(map(esc, kwargs.args)...),
-                name = $(QuoteNode(name)),
+                name = $(Val(name)),
             )
             $(esc(name)) = _obj
             _obj
@@ -1663,7 +1665,7 @@ macro constraint(exs...)
                 $(esc(core)),
                 $(map(esc, args)...);
                 $(map(esc, kwargs.args)...),
-                name = $(QuoteNode(name)),
+                name = $(Val(name)),
             )
             $(esc(name)) = _con
             _con
@@ -1739,7 +1741,7 @@ macro subexpr(exs...)
                 $(esc(core)),
                 $(map(esc, args)...);
                 $(map(esc, kwargs.args)...),
-                name = $(QuoteNode(name)),
+                name = $(Val(name)),
             )
             $(esc(name)) = _sub
             _sub
