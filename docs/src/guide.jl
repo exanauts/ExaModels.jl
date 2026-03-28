@@ -29,21 +29,21 @@ c = ExaCore()
 # ## Variables
 # Now, let's create the optimziation variables. From the problem definition, we can see that we will need $N$ scalar variables. We will choose $N=10$, and create the variable $x\in\mathbb{R}^{N}$ with the follwoing command:
 N = 10
-x = variable(c, N; start = (mod(i, 2) == 1 ? -1.2 : 1.0 for i = 1:N))
+@var(c, x, N; start = (mod(i, 2) == 1 ? -1.2 : 1.0 for i = 1:N))
 # This creates the variable `x`, which we will be able to refer to when we create constraints/objective constraints. Also, this modifies the information in the `ExaCore` object properly so that later an optimization model can be properly created with the necessary information. Observe that we have used the keyword argument `start` to specify the initial guess for the solution. The variable upper and lower bounds can be specified in a similar manner. For example, if we wanted to set the lower bound of the variable `x` to 0.0 and the upper bound to 10.0, we could do it as follows:
 # ```julia
-# x = variable(c, N; start = (mod(i, 2) == 1 ? -1.2 : 1.0 for i = 1:N), lvar = 0.0, uvar = 10.0)
+# @var(c, x, N; start = (mod(i, 2) == 1 ? -1.2 : 1.0 for i = 1:N), lvar = 0.0, uvar = 10.0)
 # ```
 
 # ## Objective
 # The objective can be set as follows:
-objective(c, 100 * (x[i-1]^2 - x[i])^2 + (x[i-1] - 1)^2 for i = 2:N)
+@obj(c, 100 * (x[i-1]^2 - x[i])^2 + (x[i-1] - 1)^2 for i = 2:N)
 # !!! note
 #     Note that the terms here are summed, without explicitly using `sum( ... )` syntax.
 
 # ## Constraints
 # The constraints can be set as follows:
-constraint(
+@con(
     c,
     3x[i+1]^3 + 2 * x[i+2] - 5 + sin(x[i+1] - x[i+2])sin(x[i+1] + x[i+2]) + 4x[i+1] -
     x[i]exp(x[i] - x[i+1]) - 3 for i = 1:(N-2)
@@ -56,7 +56,7 @@ constraint(
 # where `g^\flat` and `g^\sharp` are the lower and upper bounds of the constraint, respectively. In this case, both bounds are zero, i.e., `g^\flat = g^\sharp = 0`.
 #
 # You can use the keyword arguments `lcon` and `ucon` to specify the lower and upper bounds of the constraints, respectively. For example, if we wanted to set the lower bound of the constraint to -1 and the upper bound to 1, we could do it as follows:
-constraint(
+@con(
     c,
     3x[i+1]^3 + 2 * x[i+2] - 5 + sin(x[i+1] - x[i+2])sin(x[i+1] + x[i+2]) + 4x[i+1] -
     x[i]exp(x[i] - x[i+1]) - 3 for i = 1:(N-2);
@@ -64,7 +64,7 @@ constraint(
 )
 
 # If you want to create a single-bounded constraint, you can set `lcon` to `-Inf` or `ucon` to `Inf`. For example, if we wanted to set the lower bound of the constraint to -1 and the upper bound to infinity, we could do it as follows:
-constraint(
+@con(
     c,
     3x[i+1]^3 + 2 * x[i+2] - 5 + sin(x[i+1] - x[i+2])sin(x[i+1] + x[i+2]) + 4x[i+1] -
     x[i]exp(x[i] - x[i+1]) - 3 for i = 1:(N-2);
@@ -81,18 +81,18 @@ constraint(
 #
 # Here's a simple example:
 c2 = ExaCore()
-y = variable(c2, N; start = 1.0)
+@var(c2, y, N; start = 1.0)
 # Define a subexpression for y[i]^2
-s = subexpr(c2, y[i]^2 for i in 1:N)
+@expr(c2, s, y[i]^2 for i in 1:N)
 # Now s[i] can be used in objectives and constraints
-objective(c2, (s[i] - 1)^2 for i in 1:N)
-constraint(c2, s[i] + s[i + 1] for i in 1:(N - 1); lcon = 0.0)
+@obj(c2, (s[i] - 1)^2 for i in 1:N)
+@con(c2, s[i] + s[i + 1] for i in 1:(N - 1); lcon = 0.0)
 
 # Multi-dimensional subexpressions are also supported with automatic dimension inference:
 # ```julia
-# dx = subexpr(c, x[t, i] - x[t-1, i] for t in 1:T, i in 1:N)
+# @expr(c, dx, x[t, i] - x[t-1, i] for t in 1:T, i in 1:N)
 # # dx[t, i] can now be used in constraints
-# constraint(c, dx[t, i] - something for t in 1:T, i in 1:N)
+# @con(c, dx[t, i] - something for t in 1:T, i in 1:N)
 # ```
 #
 # For a comprehensive example using subexpressions, see the [Distillation Column example](@ref distillation).

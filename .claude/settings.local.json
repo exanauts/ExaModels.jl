@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(julia --project=test -e 'using Pkg; Pkg.instantiate\\(\\)')",
+      "Bash(julia:*)",
+      "Bash(perl:*)",
+      "Bash(git checkout:*)",
+      "Bash(perl -pe 's/\\(?<!JuMP\\\\.\\)\\\\@variable\\\\b/\\\\@var/g')",
+      "Bash(perl -pe 's/\\(?<!JuMP\\\\.\\)\\\\@constraint\\\\b/\\\\@con/g')",
+      "Bash(/tmp/convert_test_files.pl:*)",
+      "Bash(perl -pe 's/\\(?<!@\\)\\\\bobjective\\\\\\(/\\\\@obj\\(/g')",
+      "Bash(perl -0pe 's/\\(?<!@\\)\\\\bobjective\\\\\\(/\\\\@obj\\(/g')",
+      "Bash(echo \"Exit: $?\")",
+      "Bash(git stash:*)",
+      "Bash(grep:*)"
+    ]
+  }
+}

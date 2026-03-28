@@ -17,13 +17,13 @@ function runtests()
 
             model = TwoStageExaModel(nd, nv, ns, θ_sets) do c, d, v, θ, ns, nv, nθ
                 obj_data = [(i, j, (i - 1) * nv + j, (i - 1) * nθ) for i in 1:ns for j in 1:nv]
-                objective(
+                @obj(
                     c, θ[θ_off + 1] * v[v_idx]^2 + θ[θ_off + 2] * d[1] * v[v_idx]
                         for (i, j, v_idx, θ_off) in obj_data
                 )
 
                 con_data = [(i, j, (i - 1) * nv + j) for i in 1:ns for j in 1:nv]
-                constraint(c, v[v_idx] + d[1] for (i, j, v_idx) in con_data)
+                @con(c, v[v_idx] + d[1] for (i, j, v_idx) in con_data)
             end
         end
 
@@ -34,10 +34,10 @@ function runtests()
 
             model = TwoStageExaModel(nd, nv, ns, θ_sets) do c, d, v, θ, ns, nv, nθ
                 obj_data = [(i, j, (i - 1) * nv + j) for i in 1:ns for j in 1:nv]
-                objective(c, v[v_idx]^2 for (i, j, v_idx) in obj_data)
+                @obj(c, v[v_idx]^2 for (i, j, v_idx) in obj_data)
 
                 con_data = [(i, j, (i - 1) * nv + j) for i in 1:ns for j in 1:nv]
-                constraint(c, v[v_idx] + d[1] for (i, j, v_idx) in con_data)
+                @con(c, v[v_idx] + d[1] for (i, j, v_idx) in con_data)
             end
 
             # Global: [v1_1, v1_2, v1_3, v2_1, v2_2, v2_3, d1, d2]
@@ -77,10 +77,10 @@ function runtests()
 
             model = TwoStageExaModel(nd, nv, ns, θ_sets) do c, d, v, θ, ns, nv, nθ
                 obj_data = [(i, j, (i - 1) * nv + j, (i - 1) * nθ) for i in 1:ns for j in 1:nv]
-                objective(c, θ[θ_off + 1] * v[v_idx]^2 for (i, j, v_idx, θ_off) in obj_data)
+                @obj(c, θ[θ_off + 1] * v[v_idx]^2 for (i, j, v_idx, θ_off) in obj_data)
 
                 con_data = [(i, j, (i - 1) * nv + j) for i in 1:ns for j in 1:nv]
-                constraint(c, v[v_idx] + d[1] for (i, j, v_idx) in con_data)
+                @con(c, v[v_idx] + d[1] for (i, j, v_idx) in con_data)
             end
 
             # Test recourse_var_index
@@ -111,10 +111,10 @@ function runtests()
 
             model = TwoStageExaModel(nd, nv, ns, θ_sets) do c, d, v, θ, ns, nv, nθ
                 obj_data = [(i, j, (i - 1) * nv + j, (i - 1) * nθ) for i in 1:ns for j in 1:nv]
-                objective(c, θ[θ_off + 1] * v[v_idx]^2 for (i, j, v_idx, θ_off) in obj_data)
+                @obj(c, θ[θ_off + 1] * v[v_idx]^2 for (i, j, v_idx, θ_off) in obj_data)
 
                 con_data = [(i, j, (i - 1) * nv + j) for i in 1:ns for j in 1:nv]
-                constraint(c, v[v_idx] for (i, j, v_idx) in con_data)
+                @con(c, v[v_idx] for (i, j, v_idx) in con_data)
             end
 
             # Global: [v1_1, v1_2, v2_1, v2_2, d1]
@@ -135,10 +135,10 @@ function runtests()
 
             model = TwoStageExaModel(nd, nv, ns, θ_sets) do c, d, v, θ, ns, nv, nθ
                 obj_data = [(i, j, (i - 1) * nv + j) for i in 1:ns for j in 1:nv]
-                objective(c, v[v_idx]^2 for (i, j, v_idx) in obj_data)
+                @obj(c, v[v_idx]^2 for (i, j, v_idx) in obj_data)
 
                 con_data = [(i, j, (i - 1) * nv + j, (i - 1) * nθ) for i in 1:ns for j in 1:nv]
-                constraint(c, v[v_idx] + d[1] - θ[θ_off + 1] for (i, j, v_idx, θ_off) in con_data)
+                @con(c, v[v_idx] + d[1] - θ[θ_off + 1] for (i, j, v_idx, θ_off) in con_data)
             end
 
             # Global: [v1_1, v1_2, v2_1, v2_2, d1]
@@ -164,10 +164,10 @@ function runtests()
 
             model = TwoStageExaModel(nd, nv, ns, θ_sets) do c, d, v, θ, ns, nv, nθ
                 obj_data = [(i, j, (i - 1) * nv + j, (i - 1) * nθ) for i in 1:ns for j in 1:nv]
-                objective(c, θ[θ_off + 1] * v[v_idx]^2 for (i, j, v_idx, θ_off) in obj_data)
+                @obj(c, θ[θ_off + 1] * v[v_idx]^2 for (i, j, v_idx, θ_off) in obj_data)
 
                 con_data = [(i, j, (i - 1) * nv + j) for i in 1:ns for j in 1:nv]
-                constraint(c, v[v_idx] for (i, j, v_idx) in con_data)
+                @con(c, v[v_idx] for (i, j, v_idx) in con_data)
             end
 
             # Global: [v1_1, v1_2, v2_1, v2_2, d]
@@ -195,10 +195,10 @@ function runtests()
 
             model = TwoStageExaModel(nd, nv, ns, θ_sets) do c, d, v, θ, ns, nv, nθ
                 obj_data = [(i, j, (i - 1) * nv + j) for i in 1:ns for j in 1:nv]
-                objective(c, v[v_idx]^2 for (i, j, v_idx) in obj_data)
+                @obj(c, v[v_idx]^2 for (i, j, v_idx) in obj_data)
 
                 con_data = [(i, j, (i - 1) * nv + j) for i in 1:ns for j in 1:nv]
-                constraint(c, v[v_idx] + d[1] for (i, j, v_idx) in con_data)
+                @con(c, v[v_idx] + d[1] for (i, j, v_idx) in con_data)
             end
 
             nnzj = NLPModels.get_nnzj(model)
@@ -228,10 +228,10 @@ function runtests()
 
             model = TwoStageExaModel(nd, nv, ns, θ_sets) do c, d, v, θ, ns, nv, nθ
                 obj_data = [(i, j, (i - 1) * nv + j, (i - 1) * nθ) for i in 1:ns for j in 1:nv]
-                objective(c, θ[θ_off + 1] * v[v_idx]^2 for (i, j, v_idx, θ_off) in obj_data)
+                @obj(c, θ[θ_off + 1] * v[v_idx]^2 for (i, j, v_idx, θ_off) in obj_data)
 
                 con_data = [(i, j, (i - 1) * nv + j) for i in 1:ns for j in 1:nv]
-                constraint(c, v[v_idx] + d[1] for (i, j, v_idx) in con_data)
+                @con(c, v[v_idx] + d[1] for (i, j, v_idx) in con_data)
             end
 
             nnzh = NLPModels.get_nnzh(model)
@@ -263,10 +263,10 @@ function runtests()
 
             model = TwoStageExaModel(nd, nv, ns, θ_sets) do c, d, v, θ, ns, nv, nθ
                 obj_data = [(i, j, (i - 1) * nv + j, (i - 1) * nθ) for i in 1:ns for j in 1:nv]
-                objective(c, θ[θ_off + 1] * v[v_idx]^2 for (i, j, v_idx, θ_off) in obj_data)
+                @obj(c, θ[θ_off + 1] * v[v_idx]^2 for (i, j, v_idx, θ_off) in obj_data)
 
                 con_data = [(i, j, (i - 1) * nv + j) for i in 1:ns for j in 1:nv]
-                constraint(c, v[v_idx] for (i, j, v_idx) in con_data)
+                @con(c, v[v_idx] for (i, j, v_idx) in con_data)
             end
 
             x_global = ones(total_vars(model))
@@ -290,10 +290,10 @@ function runtests()
 
             model = TwoStageExaModel(nd, nv, ns, θ_sets) do c, d, v, θ, ns, nv, nθ
                 obj_data = [(i, j, (i - 1) * nv + j) for i in 1:ns for j in 1:nv]
-                objective(c, v[v_idx]^2 for (i, j, v_idx) in obj_data)
+                @obj(c, v[v_idx]^2 for (i, j, v_idx) in obj_data)
 
                 con_data = [(i, j, (i - 1) * nv + j) for i in 1:ns for j in 1:nv]
-                constraint(c, v[v_idx] + d[1] for (i, j, v_idx) in con_data)
+                @con(c, v[v_idx] + d[1] for (i, j, v_idx) in con_data)
             end
 
             @test NLPModels.get_nvar(model) == total_vars(model)
@@ -309,10 +309,10 @@ function runtests()
 
             model = TwoStageExaModel(nd, nv, ns, θ_sets) do c, d, v, θ, ns, nv, nθ
                 obj_data = [(i, j, (i - 1) * nv + j, (i - 1) * nθ) for i in 1:ns for j in 1:nv]
-                objective(c, θ[θ_off + 1] * v[v_idx]^2 for (i, j, v_idx, θ_off) in obj_data)
+                @obj(c, θ[θ_off + 1] * v[v_idx]^2 for (i, j, v_idx, θ_off) in obj_data)
 
                 con_data = [(i, j, (i - 1) * nv + j) for i in 1:ns for j in 1:nv]
-                constraint(c, v[v_idx] for (i, j, v_idx) in con_data)
+                @con(c, v[v_idx] for (i, j, v_idx) in con_data)
             end
 
             x_global = ones(total_vars(model))
@@ -356,13 +356,13 @@ function runtests()
 
             model = TwoStageExaModel(nd, nv, ns, θ_sets) do c, d, v, θ, ns, nv, nθ
                 # Objective: d^2 + weight * Σᵢ (vᵢ - θᵢ)^2
-                objective(c, d[1]^2)
+                @obj(c, d[1]^2)
                 obj_data = [(i, i, (i - 1) * nθ) for i in 1:ns]
-                objective(c, weight * (v[v_idx] - θ[θ_off + 1])^2 for (i, v_idx, θ_off) in obj_data)
+                @obj(c, weight * (v[v_idx] - θ[θ_off + 1])^2 for (i, v_idx, θ_off) in obj_data)
 
                 # Constraints: vᵢ - d ≥ 0 (i.e., vᵢ ≥ d)
                 con_data = [(i, i) for i in 1:ns]
-                constraint(c, v[v_idx] - d[1] for (i, v_idx) in con_data; lcon = 0.0)
+                @con(c, v[v_idx] - d[1] for (i, v_idx) in con_data; lcon = 0.0)
             end
 
             # Solve with Ipopt
@@ -409,15 +409,15 @@ function runtests()
 
             model = TwoStageExaModel(nd, nv, ns, θ_sets) do c, d, v, θ, ns, nv, nθ
                 # Design objective: d₁^2 + d₂^2
-                objective(c, d[1]^2 + d[2]^2)
+                @obj(c, d[1]^2 + d[2]^2)
 
                 # Recourse objective: Σᵢ Σⱼ (vᵢⱼ - θᵢⱼ)^2
                 obj_data = [(i, j, (i - 1) * nv + j, (i - 1) * nθ + j) for i in 1:ns for j in 1:nv]
-                objective(c, (v[v_idx] - θ[θ_idx])^2 for (i, j, v_idx, θ_idx) in obj_data)
+                @obj(c, (v[v_idx] - θ[θ_idx])^2 for (i, j, v_idx, θ_idx) in obj_data)
 
                 # Coupling constraint: vᵢ₁ + vᵢ₂ = d₁ + d₂ for each scenario
                 con_data = [(i, (i - 1) * nv + 1, (i - 1) * nv + 2) for i in 1:ns]
-                constraint(c, v[v1] + v[v2] - d[1] - d[2] for (i, v1, v2) in con_data;
+                @con(c, v[v1] + v[v2] - d[1] - d[2] for (i, v1, v2) in con_data;
                            lcon = 0.0, ucon = 0.0)
             end
 
@@ -457,13 +457,13 @@ function runtests()
 
             model = TwoStageExaModel(nd, nv, ns, θ_sets) do c, d, v, θ, ns, nv, nθ
                 # Objective: (d - 3)^2 + Σᵢ (vᵢ - θᵢ - d)^2
-                objective(c, (d[1] - 3)^2)
+                @obj(c, (d[1] - 3)^2)
                 obj_data = [(i, i, (i - 1) * nθ) for i in 1:ns]
-                objective(c, (v[v_idx] - θ[θ_off + 1] - d[1])^2 for (i, v_idx, θ_off) in obj_data)
+                @obj(c, (v[v_idx] - θ[θ_off + 1] - d[1])^2 for (i, v_idx, θ_off) in obj_data)
 
                 # Dummy constraints (bounds only, effectively unconstrained)
                 con_data = [(i, i) for i in 1:ns]
-                constraint(c, v[v_idx] for (i, v_idx) in con_data; lcon = -1e6, ucon = 1e6)
+                @con(c, v[v_idx] for (i, v_idx) in con_data; lcon = -1e6, ucon = 1e6)
             end
 
             result = ipopt(model.model; print_level = 0)
@@ -514,13 +514,13 @@ function runtests()
 
             model = TwoStageExaModel(nd, nv, ns, θ_sets) do c, d, v, θ, ns, nv, nθ
                 # Objective: d² + Σᵢ vᵢ²
-                objective(c, d[1]^2)
+                @obj(c, d[1]^2)
                 obj_data = [(i, i) for i in 1:ns]
-                objective(c, v[v_idx]^2 for (i, v_idx) in obj_data)
+                @obj(c, v[v_idx]^2 for (i, v_idx) in obj_data)
 
                 # Coupled constraint: 2*vᵢ + d = θᵢ (equality)
                 con_data = [(i, i, (i - 1) * nθ) for i in 1:ns]
-                constraint(c, 2 * v[v_idx] + d[1] - θ[θ_off + 1] for (i, v_idx, θ_off) in con_data;
+                @con(c, 2 * v[v_idx] + d[1] - θ[θ_off + 1] for (i, v_idx, θ_off) in con_data;
                            lcon = 0.0, ucon = 0.0)
             end
 
@@ -578,13 +578,13 @@ function runtests()
 
             model = TwoStageExaModel(nd, nv, ns, θ_sets) do c, d, v, θ, ns, nv, nθ
                 # Objective: d² + Σᵢ (vᵢ - θᵢ)²
-                objective(c, d[1]^2)
+                @obj(c, d[1]^2)
                 obj_data = [(i, i, (i - 1) * nθ) for i in 1:ns]
-                objective(c, (v[v_idx] - θ[θ_off + 1])^2 for (i, v_idx, θ_off) in obj_data)
+                @obj(c, (v[v_idx] - θ[θ_off + 1])^2 for (i, v_idx, θ_off) in obj_data)
 
                 # Linear coupled constraint: vᵢ + d = θᵢ + 1 (equality)
                 con_data = [(i, i, (i - 1) * nθ) for i in 1:ns]
-                constraint(c, v[v_idx] + d[1] - θ[θ_off + 1] - 1 for (i, v_idx, θ_off) in con_data;
+                @con(c, v[v_idx] + d[1] - θ[θ_off + 1] - 1 for (i, v_idx, θ_off) in con_data;
                            lcon = 0.0, ucon = 0.0)
             end
 
@@ -626,12 +626,12 @@ function runtests()
 
             # First solve: build model with default start values
             model1 = TwoStageExaModel(nd, nv, ns, θ_sets) do c, d, v, θ, ns, nv, nθ
-                objective(c, d[1]^2)
+                @obj(c, d[1]^2)
                 obj_data = [(i, i) for i in 1:ns]
-                objective(c, v[v_idx]^2 for (i, v_idx) in obj_data)
+                @obj(c, v[v_idx]^2 for (i, v_idx) in obj_data)
 
                 con_data = [(i, i, (i - 1) * nθ) for i in 1:ns]
-                constraint(c, 2 * v[v_idx] + d[1] - θ[θ_off + 1] for (i, v_idx, θ_off) in con_data;
+                @con(c, 2 * v[v_idx] + d[1] - θ[θ_off + 1] for (i, v_idx, θ_off) in con_data;
                            lcon = 0.0, ucon = 0.0)
             end
 
@@ -648,12 +648,12 @@ function runtests()
                 d_start = d_sol,
                 v_start = v_sol
             ) do c, d, v, θ, ns, nv, nθ
-                objective(c, d[1]^2)
+                @obj(c, d[1]^2)
                 obj_data = [(i, i) for i in 1:ns]
-                objective(c, v[v_idx]^2 for (i, v_idx) in obj_data)
+                @obj(c, v[v_idx]^2 for (i, v_idx) in obj_data)
 
                 con_data = [(i, i, (i - 1) * nθ) for i in 1:ns]
-                constraint(c, 2 * v[v_idx] + d[1] - θ[θ_off + 1] for (i, v_idx, θ_off) in con_data;
+                @con(c, 2 * v[v_idx] + d[1] - θ[θ_off + 1] for (i, v_idx, θ_off) in con_data;
                            lcon = 0.0, ucon = 0.0)
             end
 
@@ -685,10 +685,10 @@ function runtests()
                 v_uvar = 10.0
             ) do c, d, v, θ, ns, nv, nθ
                 obj_data = [(i, j, (i - 1) * nv + j) for i in 1:ns for j in 1:nv]
-                objective(c, v[v_idx]^2 + d[1]^2 + d[2]^2 for (i, j, v_idx) in obj_data)
+                @obj(c, v[v_idx]^2 + d[1]^2 + d[2]^2 for (i, j, v_idx) in obj_data)
 
                 con_data = [(i, j, (i - 1) * nv + j) for i in 1:ns for j in 1:nv]
-                constraint(c, v[v_idx] + d[1] for (i, j, v_idx) in con_data; lcon = 0.0, ucon = 100.0)
+                @con(c, v[v_idx] + d[1] for (i, j, v_idx) in con_data; lcon = 0.0, ucon = 100.0)
             end
 
             # Check that initial values are set correctly

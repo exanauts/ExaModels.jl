@@ -99,37 +99,40 @@ function ac_power_model(filename; backend = nothing, T = Float64)
 
     w = ExaCore(T; backend = backend)
 
-    va = variable(w, length(data.bus);)
+    @var(w, va, length(data.bus);)
 
-    vm = variable(
+    @var(
         w,
+        vm,
         length(data.bus);
         start = fill!(similar(data.bus, Float64), 1.0),
         lvar = data.vmin,
         uvar = data.vmax,
     )
-    pg = variable(w, length(data.gen); lvar = data.pmin, uvar = data.pmax)
+    @var(w, pg, length(data.gen); lvar = data.pmin, uvar = data.pmax)
 
-    qg = variable(w, length(data.gen); lvar = data.qmin, uvar = data.qmax)
+    @var(w, qg, length(data.gen); lvar = data.qmin, uvar = data.qmax)
 
-    p = variable(w, length(data.arc); lvar = -data.rate_a, uvar = data.rate_a)
+    @var(w, p, length(data.arc); lvar = -data.rate_a, uvar = data.rate_a)
 
-    q = variable(w, length(data.arc); lvar = -data.rate_a, uvar = data.rate_a)
+    @var(w, q, length(data.arc); lvar = -data.rate_a, uvar = data.rate_a)
 
-    o = objective(w, g.cost1 * pg[g.i]^2 + g.cost2 * pg[g.i] + g.cost3 for g in data.gen)
+    o = @obj(w, g.cost1 * pg[g.i]^2 + g.cost2 * pg[g.i] + g.cost3 for g in data.gen)
 
-    c1 = constraint(w, va[i] for i in data.ref_buses)
+    @con(w, c1, va[i] for i in data.ref_buses)
 
-    c2 = constraint(
+    @con(
         w,
+        c2,
         p[b.f_idx] - b.c5 * vm[b.f_bus]^2 -
         b.c3 * (vm[b.f_bus] * vm[b.t_bus] * cos(va[b.f_bus] - va[b.t_bus])) -
         b.c4 * (vm[b.f_bus] * vm[b.t_bus] * sin(va[b.f_bus] - va[b.t_bus])) for
         b in data.branch
     )
 
-    c3 = constraint(
+    @con(
         w,
+        c3,
         q[b.f_idx] +
         b.c6 * vm[b.f_bus]^2 +
         b.c4 * (vm[b.f_bus] * vm[b.t_bus] * cos(va[b.f_bus] - va[b.t_bus])) -
@@ -137,16 +140,18 @@ function ac_power_model(filename; backend = nothing, T = Float64)
         b in data.branch
     )
 
-    c4 = constraint(
+    @con(
         w,
+        c4,
         p[b.t_idx] - b.c7 * vm[b.t_bus]^2 -
         b.c1 * (vm[b.t_bus] * vm[b.f_bus] * cos(va[b.t_bus] - va[b.f_bus])) -
         b.c2 * (vm[b.t_bus] * vm[b.f_bus] * sin(va[b.t_bus] - va[b.f_bus])) for
         b in data.branch
     )
 
-    c5 = constraint(
+    @con(
         w,
+        c5,
         q[b.t_idx] +
         b.c8 * vm[b.t_bus]^2 +
         b.c2 * (vm[b.t_bus] * vm[b.f_bus] * cos(va[b.t_bus] - va[b.f_bus])) -
@@ -154,32 +159,35 @@ function ac_power_model(filename; backend = nothing, T = Float64)
         b in data.branch
     )
 
-    c6 = constraint(
+    @con(
         w,
+        c6,
         va[b.f_bus] - va[b.t_bus] for b in data.branch;
         lcon = data.angmin,
         ucon = data.angmax,
     )
-    c7 = constraint(
+    @con(
         w,
+        c7,
         p[b.f_idx]^2 + q[b.f_idx]^2 - b.rate_a_sq for b in data.branch;
         lcon = fill!(similar(data.branch, Float64, length(data.branch)), -Inf),
     )
-    c8 = constraint(
+    @con(
         w,
+        c8,
         p[b.t_idx]^2 + q[b.t_idx]^2 - b.rate_a_sq for b in data.branch;
         lcon = fill!(similar(data.branch, Float64, length(data.branch)), -Inf),
     )
 
-    c9 = constraint(w, b.pd + b.gs * vm[b.i]^2 for b in data.bus)
+    @con(w, c9, b.pd + b.gs * vm[b.i]^2 for b in data.bus)
 
-    c10 = constraint(w, b.qd - b.bs * vm[b.i]^2 for b in data.bus)
+    @con(w, c10, b.qd - b.bs * vm[b.i]^2 for b in data.bus)
 
-    c11 = constraint!(w, c9, a.bus => p[a.i] for a in data.arc)
-    c12 = constraint!(w, c10, a.bus => q[a.i] for a in data.arc)
+    c11 = @con!(w, c9, a.bus => p[a.i] for a in data.arc)
+    c12 = @con!(w, c10, a.bus => q[a.i] for a in data.arc)
 
-    c13 = constraint!(w, c9, g.bus => -pg[g.i] for g in data.gen)
-    c14 = constraint!(w, c10, g.bus => -qg[g.i] for g in data.gen)
+    c13 = @con!(w, c9, g.bus => -pg[g.i] for g in data.gen)
+    c14 = @con!(w, c10, g.bus => -qg[g.i] for g in data.gen)
 
     return ExaModel(w)
 

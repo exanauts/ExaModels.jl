@@ -1,6 +1,3 @@
-# TODO
-# - named vars/cons/objs support
-
 abstract type AbstractVariable end
 abstract type AbstractParameter end
 abstract type AbstractConstraint end
@@ -26,63 +23,21 @@ Variable
 )
 
 """
-    Subexpr
-
-A subexpression that has been lifted to auxiliary variables with defining equality constraints.
-Can be indexed like a Variable to get `Var` nodes for use in objectives and constraints.
-"""
-struct Subexpr{S, O, C} <: AbstractVariable
-    size::S
-    length::O
-    offset::O
-    constraint::C
-end
-Base.show(io::IO, s::Subexpr) = print(
-    io,
-    """
-    Subexpression (lifted)
-
-      s ∈ R^{$(join(size(s.size), " × "))}
-    """,
-)
-
-"""
-    ReducedSubexpr
+    Expression
 
 A reduced-form subexpression that substitutes the expression directly when indexed.
 No auxiliary variables or constraints are created - the expression is inlined.
 """
-struct ReducedSubexpr{S, F, I}
+struct Expression{S, F, I}
     size::S
     length::Int
     f::F           # The generator function
     iter::I        # The collected iterator (for indexing)
 end
-Base.show(io::IO, s::ReducedSubexpr) = print(
+Base.show(io::IO, s::Expression) = print(
     io,
     """
     Subexpression (reduced)
-
-      s ∈ R^{$(join(size(s.size), " × "))}
-    """,
-)
-
-"""
-    ParameterSubexpr
-
-A parameter-only subexpression whose values are computed once when parameters are set,
-not at every function evaluation. Use this for expressions that depend only on parameters
-(θ), not on variables (x). Values are automatically recomputed when `set_parameter!` is called.
-"""
-struct ParameterSubexpr{S, O}
-    size::S
-    length::O
-    offset::O  # Index into ExaCore.param_subexpr_values
-end
-Base.show(io::IO, s::ParameterSubexpr) = print(
-    io,
-    """
-    Subexpression (parameter-only)
 
       s ∈ R^{$(join(size(s.size), " × "))}
     """,
@@ -222,10 +177,6 @@ struct ExaCore{T,VT<:AbstractVector{T}, B, S, V, P, O, C, R} <: AbstractExaCore{
     lcon::VT
     ucon::VT
     minimize::Bool
-    # Parameter subexpression support
-    nparam_subexpr::Int
-    param_subexpr_values::VT  # Cached values of parameter subexpressions, stored in θ for convenience
-    param_subexpr_fns::Vector{Any}  # Store the functions to recompute param subexprs when parameters change
     tags::S  # For storing variable/constraint tags (e.g., scenario tags for two-stage models)
     refs::R
 end
@@ -255,10 +206,6 @@ end
     lcon = similar(x0),
     ucon = similar(x0),
     minimize = true,
-    # Parameter subexpression support,
-    nparam_subexpr = 0,
-    param_subexpr_values = similar(x0, 0),
-    param_subexpr_fns = Any[],
     tags = nothing,
     refs = (;)
     )
@@ -287,9 +234,6 @@ end
         lcon,
         ucon,
         minimize,
-        nparam_subexpr,
-        param_subexpr_values,
-        param_subexpr_fns,
         tags,
         refs
     )
@@ -308,7 +252,6 @@ end
 
 
 @inline depth(a::Tuple) = length(a)
-# depth(a) = length(a)
 
 Base.show(io::IO, c::ExaCore{T,VT,B}) where {T,VT,B} = print(
     io,
@@ -363,9 +306,9 @@ julia> using ExaModels
 
 julia> c = ExaCore();                      # create an ExaCore object
 
-julia> x = add_variable(c, 1:10);              # create variables
+julia> x = variable(c, 1:10);              # create variables
 
-julia> add_objective(c, x[i]^2 for i in 1:10); # set objective function
+julia> objective(c, x[i]^2 for i in 1:10); # set objective function
 
 julia> m = ExaModel(c)                     # create an ExaModel object
 An ExaModel{Float64, Vector{Float64}, ...}
@@ -426,70 +369,36 @@ build_extension(c::ExaCore; kwargs...) = nothing
     _bound_check(v.size, i)
     Var(i + (v.offset - _start(v.size[1]) + 1), (D,i))
 end
-@inline function Base.getindex(v::V, is...) where {V<:Variable}
+@inline function Base.getindex(v::V, is...) where {D, V<:Variable{D}}
     @assert(length(is) == length(v.size), "Variable index dimension error")
     _bound_check(v.size, is)
-    Var(v.offset + idxx(is .- (_start.(v.size) .- 1), _length.(v.size)))
+    Var(v.offset + idxx(is .- (_start.(v.size) .- 1), _length.(v.size)), (D,is))
 end
 
-# Subexpr indexing - delegates to same logic as Variable
-@inline function Base.getindex(s::Subexpr, i)
-    _bound_check(s.size, i)
-    return Var(i + (s.offset - _start(s.size[1]) + 1))
-end
-@inline function Base.getindex(s::Subexpr, is...)
-    @assert(length(is) == length(s.size), "Subexpression index dimension error")
-    _bound_check(s.size, is)
-    return Var(s.offset + idxx(is .- (_start.(s.size) .- 1), _length.(s.size)))
-end
-
-# ReducedSubexpr indexing - evaluates the expression directly
+# Expression indexing - evaluates the expression directly
 # For concrete indices, look up the iterator element and apply f
 # For symbolic indices (during expression building), create symbolic iterator elements
-@inline function Base.getindex(s::ReducedSubexpr, i::I) where {I <: Integer}
+@inline function Base.getindex(s::Expression, i::I) where {I <: Integer}
     _bound_check(s.size, i)
     idx = i - _start(s.size[1]) + 1
     return s.f(s.iter[idx])
 end
-@inline function Base.getindex(s::ReducedSubexpr, i)
+@inline function Base.getindex(s::Expression, i)
     # Symbolic index case - the symbolic index IS the iterator element
     # No adjustment needed; the index is used directly in expression building
     return s.f(i)
 end
-@inline function Base.getindex(s::ReducedSubexpr, is::Vararg{I, N}) where {I <: Integer, N}
-    @assert(length(is) == length(s.size), "ReducedSubexpr index dimension error")
+@inline function Base.getindex(s::Expression, is::Vararg{I, N}) where {I <: Integer, N}
+    @assert(length(is) == length(s.size), "Expression index dimension error")
     _bound_check(s.size, is)
     idx = idxx(is .- (_start.(s.size) .- 1), _length.(s.size))
     return s.f(s.iter[idx])
 end
-@inline function Base.getindex(s::ReducedSubexpr, is...)
+@inline function Base.getindex(s::Expression, is...)
     # Symbolic indices case - the symbolic indices ARE the iterator elements
     # No adjustment needed; the indices are used directly in expression building
-    @assert(length(is) == length(s.size), "ReducedSubexpr index dimension error")
+    @assert(length(is) == length(s.size), "Expression index dimension error")
     return s.f(is)
-end
-
-# ParameterSubexpr indexing - returns ParameterNode pointing to cached values in θ
-@inline function Base.getindex(s::ParameterSubexpr, i::I) where {I <: Integer}
-    _bound_check(s.size, i)
-    idx = i - _start(s.size[1]) + 1
-    return ParameterNode(s.offset + idx)
-end
-@inline function Base.getindex(s::ParameterSubexpr, i)
-    # Symbolic index case - compute offset symbolically
-    return ParameterNode(s.offset + (i - _start(s.size[1]) + 1))
-end
-@inline function Base.getindex(s::ParameterSubexpr, is::Vararg{I, N}) where {I <: Integer, N}
-    @assert(length(is) == length(s.size), "ParameterSubexpr index dimension error")
-    _bound_check(s.size, is)
-    idx = idxx(is .- (_start.(s.size) .- 1), _length.(s.size))
-    return ParameterNode(s.offset + idx)
-end
-@inline function Base.getindex(s::ParameterSubexpr, is...)
-    # Symbolic indices case - compute offset symbolically
-    @assert(length(is) == length(s.size), "ParameterSubexpr index dimension error")
-    idx = idxx(is .- (_start.(s.size) .- 1), _length.(s.size))
-    return ParameterNode(s.offset + idx)
 end
 
 @inline function Base.getindex(p::P, i) where {P<:Parameter}
@@ -566,7 +475,7 @@ _start(n::Int) = 1
 _start(n::UnitRange) = n.start
 
 """
-    add_variable(core, dims...; start = 0, lvar = -Inf, uvar = Inf, kwargs...)
+    variable(core, dims...; start = 0, lvar = -Inf, uvar = Inf, kwargs...)
 
 Adds variables with dimensions specified by `dims` to `core`, and returns `Variable` object. `dims` can be either `Integer` or `UnitRange`.
 
@@ -582,19 +491,19 @@ julia> using ExaModels
 
 julia> c = ExaCore();
 
-julia> x = add_variable(c, 10; start = (sin(i) for i=1:10))
+julia> x = variable(c, 10; start = (sin(i) for i=1:10))
 Variable
 
   x ∈ R^{10}
 
-julia> y = add_variable(c, 2:10, 3:5; lvar = zeros(9,3), uvar = ones(9,3))
+julia> y = variable(c, 2:10, 3:5; lvar = zeros(9,3), uvar = ones(9,3))
 Variable
 
   x ∈ R^{9 × 3}
 
 ```
 """
-function add_variable(
+function variable(
     c::C,
     ns...;
     name = nothing,
@@ -634,13 +543,13 @@ julia> using ExaModels
 
 julia> c = ExaCore();
 
-julia> θ = add_parameter(c, ones(10))
+julia> θ = parameter(c, ones(10))
 Parameter
 
   θ ∈ R^{10}
 ```
 """
-function add_parameter(c::C, start::AbstractArray; name = nothing) where {T,C<:ExaCore{T}}
+function parameter(c::C, start::AbstractArray; name = nothing) where {T,C<:ExaCore{T}}
 
     ns = Base.size(start)
     o = c.npar
@@ -662,7 +571,7 @@ julia> using ExaModels
 
 julia> c = ExaCore();
 
-julia> p = add_parameter(c, ones(5))
+julia> p = parameter(c, ones(5))
 Parameter
 
   θ ∈ R^{5}
@@ -709,13 +618,13 @@ function _recompute_param_subexprs!(c::ExaCore)
     return nothing
 end
 
-function add_variable(c::C; kwargs...) where {T,C<:ExaCore{T}}
+function variable(c::C; kwargs...) where {T,C<:ExaCore{T}}
 
-    return add_variable(c, 1; kwargs...)[1]
+    return variable(c, 1; kwargs...)[1]
 end
 
-function add_variable(c::C, name::Symbol, args...; kwargs...) where {T,C<:ExaCore{T}}
-    c, v= add_variable(c, args...; name, kwargs...)
+function variable(c::C, name::Symbol, args...; kwargs...) where {T,C<:ExaCore{T}}
+    c, v= variable(c, args...; name, kwargs...)
     return c
 end
 
@@ -730,9 +639,9 @@ julia> using ExaModels
 
 julia> c = ExaCore();
 
-julia> x = add_variable(c, 10);
+julia> x = variable(c, 10);
 
-julia> add_objective(c, x[i]^2 for i=1:10)
+julia> objective(c, x[i]^2 for i=1:10)
 Objective
 
   min (...) + ∑_{p ∈ P} f(x,θ,p)
@@ -740,7 +649,7 @@ Objective
   where |P| = 10
 ```
 """
-function add_objective(c::C, gen; name = nothing) where {T, C<:ExaCore{T}}
+function objective(c::C, gen; name = nothing) where {T, C<:ExaCore{T}}
     gen = _adapt_gen(gen)
     f = SIMDFunction(T, gen, c.nobj, c.nnzg, c.nnzh)
     pars = gen.iter
@@ -753,7 +662,7 @@ end
 
 Adds objective terms specified by a `expr` and `pars` to `core`, and returns an `Objective` object.
 """
-function add_objective(c::C, expr::N, pars = 1:1; name = nothing) where {T,C<:ExaCore{T},N<:AbstractNode}
+function objective(c::C, expr::N, pars = 1:1; name = nothing) where {T,C<:ExaCore{T},N<:AbstractNode}
     f = _simdfunction(T, expr, c.nobj, c.nnzg, c.nnzh)
 
       _add_objective(c, f, pars, name)
@@ -787,9 +696,9 @@ julia> using ExaModels
 
 julia> c = ExaCore();
 
-julia> x = add_variable(c, 10);
+julia> x = variable(c, 10);
 
-julia> add_constraint(c, x[i] + x[i+1] for i=1:9; lcon = -1, ucon = (1+i for i=1:9))
+julia> constraint(c, x[i] + x[i+1] for i=1:9; lcon = -1, ucon = (1+i for i=1:9))
 Constraint
 
   s.t. (...)
@@ -798,7 +707,7 @@ Constraint
   where |P| = 9
 ```
 """
-function add_constraint(
+function constraint(
     c::C,
     gen::Base.Generator;
     name = nothing,
@@ -820,7 +729,7 @@ end
 
 Adds constraints specified by a `expr` and `pars` to `core`, and returns an `Constraint` object.
 """
-function add_constraint(
+function constraint(
     c::C,
     expr::N,
     pars = 1:1;
@@ -841,7 +750,7 @@ end
 
 Adds empty constraints of dimension n, so that later the terms can be added with `constraint!`.
 """
-function add_constraint(
+function constraint(
     c::C,
     n;
     name = nothing,
@@ -893,11 +802,11 @@ julia> using ExaModels
 
 julia> c = ExaCore();
 
-julia> x = add_variable(c, 10);
+julia> x = variable(c, 10);
 
-julia> c, c1 = add_constraint(c, x[i] + x[i+1] for i=1:9; lcon = -1, ucon = (1+i for i=1:9));
+julia> c, c1 = constraint(c, x[i] + x[i+1] for i=1:9; lcon = -1, ucon = (1+i for i=1:9));
 
-julia> add_constraint!(c, c1, i => sin(x[i+1]) for i=4:6)
+julia> constraint!(c, c1, i => sin(x[i+1]) for i=4:6)
 Constraint Augmentation
 
   s.t. (...)
@@ -906,7 +815,7 @@ Constraint Augmentation
   where |P| = 3
 ```
 """
-function add_constraint!(c::C, c1, gen::Base.Generator) where {T, C<:ExaCore{T}}
+function constraint!(c::C, c1, gen::Base.Generator) where {T, C<:ExaCore{T}}
 
     gen = _adapt_gen(gen)
     f = SIMDFunction(T, gen, offset0(c1, 0), c.nnzj, c.nnzh)
@@ -916,11 +825,11 @@ function add_constraint!(c::C, c1, gen::Base.Generator) where {T, C<:ExaCore{T}}
 end
 
 # """
-#     add_constraint!(c, c1, expr, pars)
+#     constraint!(c, c1, expr, pars)
 
 # Expands the existing constraint `c1` in `c` by adding addtional constraints terms specified by `expr` and `pars`.
 # """
-# function add_constraint!(c::C, c1, expr, pars) where {T, C<:ExaCore{T}}
+# function constraint!(c::C, c1, expr, pars) where {T, C<:ExaCore{T}}
 #     f = _simdfunction(T, expr, offset0(c1, 0), c.nnzj, c.nnzh)
 
 #     _add_constraint!(c, f, pars, _constraint_dims(c1))
@@ -947,7 +856,7 @@ _infer_subexpr_dims(itr::Base.Iterators.ProductIterator) = itr.iterators
 _infer_subexpr_dims(itr) = (length(collect(itr)),)  # fallback
 
 """
-    subexpr(core, generator; reduced=false, parameter_only=false, dims=nothing)
+    expr(core, generator; reduced=false, parameter_only=false, dims=nothing)
 
 Creates a subexpression that can be reused in objectives and constraints.
 
@@ -972,14 +881,14 @@ julia> using ExaModels
 
 julia> c = ExaCore();
 
-julia> x = add_variable(c, 10);
+julia> x = variable(c, 10);
 
-julia> s = add_subexpr(c, x[i]^2 for i in 1:10)
+julia> s = expr(c, x[i]^2 for i in 1:10)
 Subexpression (lifted)
 
   s ∈ R^{10}
 
-julia> add_objective(c, s[i] + s[i+1] for i in 1:9);
+julia> objective(c, s[i] + s[i+1] for i in 1:9);
 ```
 
 ## Reduced form (experimental)
@@ -990,13 +899,13 @@ julia> add_objective(c, s[i] + s[i+1] for i in 1:9);
 
 ```julia
 c = ExaCore()
-x = add_variable(c, 10)
+x = variable(c, 10)
 
 # Reduced form - no extra variables/constraints
-s = add_subexpr(c, x[i]^2 for i in 1:10; reduced=true)
+s = expr(c, x[i]^2 for i in 1:10; reduced=true)
 
 # s[i] substitutes x[i]^2 directly into the expression
-add_objective(c, s[i] + s[i+1] for i in 1:9)
+objective(c, s[i] + s[i+1] for i in 1:9)
 ```
 
 ## Parameter-only form
@@ -1006,26 +915,26 @@ once when parameters change, rather than at every optimization iteration:
 
 ```julia
 c = ExaCore()
-θ = add_parameter(c, ones(10))
-x = add_variable(c, 10)
+θ = parameter(c, ones(10))
+x = variable(c, 10)
 
 # Parameter-only subexpression - computed once per parameter update
-weights = add_subexpr(c, θ[i]^2 + θ[i+1] for i in 1:9; parameter_only=true)
+weights = expr(c, θ[i]^2 + θ[i+1] for i in 1:9; parameter_only=true)
 
 # Use in objective - weights[i] returns cached value, not re-computed
-add_objective(c, weights[i] * x[i]^2 for i in 1:9)
+objective(c, weights[i] * x[i]^2 for i in 1:9)
 ```
 
 ## Multi-dimensional example
 ```julia
 c = ExaCore()
-x = add_variable(c, 0:T, 0:N)
+x = variable(c, 0:T, 0:N)
 
 # Automatically infers 2D structure from Cartesian product
-dx = add_subexpr(c, x[t, i] - x[t-1, i] for t in 1:T, i in 1:N)
+dx = expr(c, x[t, i] - x[t-1, i] for t in 1:T, i in 1:N)
 
 # Now dx[t, i] can be used in constraints
-add_constraint(c, dx[t, i] - something for t in 1:T, i in 1:N)
+constraint(c, dx[t, i] - something for t in 1:T, i in 1:N)
 ```
 
 ## Tupled iterators
@@ -1036,9 +945,9 @@ out of the box:
 
 ```julia
 c = ExaCore()
-x = add_variable(c, 1:N, 1:K)
+x = variable(c, 1:N, 1:K)
 itr = [(i, k) for i in 1:N, k in 1:K]
-s = add_subexpr(c, x[i, k]^2 for (i, k) in itr; reduced=true)
+s = expr(c, x[i, k]^2 for (i, k) in itr; reduced=true)
 # s[i, k] works correctly
 ```
 
@@ -1047,9 +956,9 @@ ranges explicitly:
 
 ```julia
 c = ExaCore()
-x = add_variable(c, 1:N, 0:K)
+x = variable(c, 1:N, 0:K)
 itr = [(i, k) for i in 1:N, k in 0:K]
-s = add_subexpr(c, x[i, k]^2 for (i, k) in itr; reduced=true, dims=(1:N, 0:K))
+s = expr(c, x[i, k]^2 for (i, k) in itr; reduced=true, dims=(1:N, 0:K))
 # s[i, k] works correctly with 0-based second dimension
 ```
 
@@ -1057,80 +966,21 @@ To embed scalar data in tuples, use lifted (default) subexpressions:
 
 ```julia
 c = ExaCore()
-x = add_variable(c, 1:N, 1:K)
+x = variable(c, 1:N, 1:K)
 weights = [2.0*i for i in 1:N]
 itr = [(i, k, weights[i]) for i in 1:N, k in 1:K]
-s = add_subexpr(c, wi * x[i, k]^2 for (i, k, wi) in itr)
+s = expr(c, wi * x[i, k]^2 for (i, k, wi) in itr)
 # s[i, k] references auxiliary variables with embedded data
 ```
 """
-function add_subexpr(c::C, gen::Base.Generator; reduced::Bool = false, parameter_only::Bool = false, dims = nothing) where {T, C <: ExaCore{T}}
-    # Infer dimensions before adapting (which may collect the iterator)
-    ns = dims === nothing ? _infer_subexpr_dims(gen.iter) : (dims isa Tuple ? dims : (dims,))
+function expr(c::C, gen::Base.Generator; name = nothing) where {T, C <: ExaCore{T}}
+    ns = _infer_subexpr_dims(gen.iter)
 
     gen = _adapt_gen(gen)
     n = length(gen.iter)
 
-    if parameter_only
-        # Parameter-only form: evaluate once, cache values in θ, re-evaluate on parameter update
-        # Store values at the end of θ (after user parameters)
-        o = c.npar  # Offset into θ
-        npar = c.npar + n
-        nparam_subexpr = c.nparam_subexpr + n
-
-        # Store the evaluation function for re-computation on parameter updates
-        # This evaluation happens on CPU to avoid GPU scalar indexing issues,
-        # but the results are stored in θ which may be on GPU.
-        # This is acceptable since parameter updates are infrequent (not in optimization hot path).
-        iter_collected = collect(gen.iter)
-        eval_fn = function(θ_vec)
-            # Convert to CPU for expression evaluation (handles GPU arrays)
-            θ_cpu = θ_vec isa Array ? θ_vec : Array(θ_vec)
-            dummy_x = T[]
-            return T[gen.f(p)(Identity(), dummy_x, θ_cpu) for p in iter_collected]
-        end
-        param_subexpr_fns = [c.param_subexpr_fns..., (offset = o, length = n, fn = eval_fn)]
-
-        # Evaluate immediately with current parameter values and append to θ
-        # eval_fn returns CPU array, append! handles GPU conversion
-        values = eval_fn(c.θ)
-        θ = append!(c.backend, c.θ, values, n)
-
-        ps = ParameterSubexpr(ns, n, o)
-        return (ExaCore(c; npar=npar, nparam_subexpr=nparam_subexpr, param_subexpr_fns=param_subexpr_fns, θ=θ), ps)
-    end
-
-    if reduced
-        # Reduced form: store the function and iterator for direct substitution
-        return (c, ReducedSubexpr(ns, n, gen.f, collect(gen.iter)))
-    end
-
-    # Lifted form: create auxiliary variables and defining constraints
-    # Compute start values from expression evaluated at variable start values
-    # Uses CPU evaluation to handle GPU arrays (same approach as parameter_only)
-    iter_collected = collect(gen.iter)
-    x0_cpu = c.x0 isa Array ? c.x0 : Array(c.x0)
-    θ_cpu = c.θ isa Array ? c.θ : Array(c.θ)
-    start_values = T[gen.f(p)(Identity(), x0_cpu, θ_cpu) for p in iter_collected]
-
-    # Create auxiliary variables for subexpression values with computed start values
-    c, v = add_variable(c, ns...; start = start_values)
-
-    # Create defining constraints: v[k] - expr(itr[k]) = 0 for k = 1:n
-    # We pair each element with its linear index for proper variable indexing
-    paired_iter = collect(enumerate(iter_collected))
-    orig_f = gen.f
-    def_f = function (kp)
-        k = kp[1]
-        p = kp[2]
-        # Use direct Var construction with linear index for robustness
-        return Var(v.offset + k) - orig_f(p)
-    end
-    def_gen = Base.Generator(def_f, paired_iter)
-
-    c, con = add_constraint(c, def_gen; lcon = zero(T), ucon = zero(T))
-
-    return (c, Subexpr(ns, n, v.offset, con))
+    expr = Expression(ns, n, gen.f, collect(gen.iter))
+    return (ExaCore(c; refs = add_refs(c.refs, name, expr)), expr)
 end
 
 
@@ -1305,7 +1155,7 @@ function _obj_hprod!((obj,objs...), x, θ, v, Hv, obj_weight)
 end
 
 _con_hprod!(cons::Tuple{}, x, θ, y, v, Hv, obj_weight) = nothing
-function _con_hprod!((con,cons), x, θ, y, v, Hv, obj_weight)
+function _con_hprod!((con,cons...), x, θ, y, v, Hv, obj_weight)
     _con_hprod!(cons, x, θ, y, v, Hv, obj_weight)
     shessian!((Hv, v), nothing, con, x, θ, y, zero(eltype(Hv)))
 end
@@ -1363,9 +1213,9 @@ for (thing, val) in [(:solution, 1), (:multipliers_L, 0), (:multipliers_U, 2)]
 
         julia> c = ExaCore();
 
-        julia> x = add_variable(c, 1:10, lvar = -1, uvar = 1);
+        julia> x = variable(c, 1:10, lvar = -1, uvar = 1);
 
-        julia> add_objective(c, (x[i]-2)^2 for i in 1:10);
+        julia> objective(c, (x[i]-2)^2 for i in 1:10);
 
         julia> m = ExaModel(c);
 
@@ -1401,11 +1251,11 @@ julia> using ExaModels, NLPModelsIpopt
 
 julia> c = ExaCore();
 
-julia> x = add_variable(c, 1:10, lvar = -1, uvar = 1);
+julia> x = variable(c, 1:10, lvar = -1, uvar = 1);
 
-julia> add_objective(c, (x[i]-2)^2 for i in 1:10);
+julia> objective(c, (x[i]-2)^2 for i in 1:10);
 
-julia> y = add_constraint(c, x[i] + x[i+1] for i=1:9; lcon = -1, ucon = (1+i for i=1:9));
+julia> y = constraint(c, x[i] + x[i+1] for i=1:9; lcon = -1, ucon = (1+i for i=1:9));
 
 julia> m = ExaModel(c);
 
@@ -1427,60 +1277,8 @@ end
 _adapt_gen(gen) = Base.Generator(gen.f, collect(gen.iter))
 _adapt_gen(gen::Base.Generator{P}) where {P<:Union{AbstractArray,AbstractRange}} = gen
 
-
-# @inline function add(core::ExaCore, args...; kwargs...)
-#     core, outs = _add(core, args...)
-#     core, kwouts = _add(core, Tuple(kwargs)...)
-#     return truncate(ExaCore(core; refs = (;core.refs..., kwouts...)), outs)
-# end 
-# @inline _add(core::ExaCore) = core, (;)
-# truncate(core, outs) = core, outs
-# truncate(core, outs::NamedTuple{}) = core
-
-# for (var, vars, variable, Spec, spec) in (
-#     (:var, :vars, :variable, :VarSpec, :varspec),
-#     (:par, :pars, :parameter, :ParSpec, :parspec),
-#     (:con, :cons, :constraint, :ConSpec, :conspec),
-#     (:obj, :objs, :objective, :ObjSpec, :objspec),
-#     )
-#     @eval begin
-#         struct $Spec{A,K}
-#             args::A
-#             kwargs::K
-#         end
-#         $spec(args...; kwargs...) = $Spec(args, kwargs)
-#         # @inline function _add(core::ExaCore, arg::S, args...) where S <: $Spec
-#         #     core, outs = _add(core, args...)
-#         #     core, $var = $add_variable(core, arg.args...; arg.kwargs...)
-#         #     return core, ($var, outs...)
-#         # end
-#         # @inline function _add(core::ExaCore, arg::P, args...) where {P <: Pair{Symbol,S}}
-#         #     name, arg = arg
-#         #     core, outs = _add(core, args...)
-#         #     core, $var = $add_variable(core, arg.args...; arg.kwargs...)
-#         #     return core, (;name => $var, outs...)
-#         # end
-#         export $spec
-#     end
-# end
-
-# @inline function _add(core::ExaCore, arg::P, args...) where {S <: VarSpec, P <: Pair{Symbol,S}}
-#     name, arg = arg
-#     core, outs = _add(core, args...)
-#     core, var = add_variable(core, arg.args...; arg.kwargs...)
-#     return core, (;name => var, outs...)
-# end
-# @inline function _add(core::ExaCore, arg::P, args...) where {S <: ParSpec, P <: Pair{Symbol,S}}
-#     name, arg = arg
-#     core, outs = _add(core, args...)
-#     core, par = parameter(core, arg.args...; arg.kwargs...)
-#     return core, (;name => par, outs...)
-# end
-
-# export add
-
-function Base.getproperty(core::ExaCore, name::Symbol)
-    if hasfield(ExaCore, name)
+function Base.getproperty(core::E, name::Symbol) where {E <: Union{ExaCore, ExaModel}}
+    if hasfield(E, name)
         getfield(core,name)
     elseif hasfield(typeof(core.refs), name)
         getfield(core.refs, name)
@@ -1489,7 +1287,7 @@ function Base.getproperty(core::ExaCore, name::Symbol)
     end
 end
 
-macro variable(exs...)
+macro var(exs...)
     isempty(exs) && error("@variable requires at least a core argument")
 
     # Split positional and keyword parts
@@ -1513,7 +1311,7 @@ macro variable(exs...)
 
         return quote
             local _var
-            $(esc(core)), _var = add_variable(
+            $(esc(core)), _var = variable(
                 $(esc(core)),
                 $(map(esc, args)...);
                 $(map(esc, kwargs.args)...),
@@ -1528,7 +1326,7 @@ macro variable(exs...)
 
         return quote
             local $var
-            $(esc(core)), $var = add_variable(
+            $(esc(core)), $var = variable(
                 $(esc(core)),
                 $(map(esc, xs)...);
                 $(map(esc, kwargs.args)...),
@@ -1537,9 +1335,8 @@ macro variable(exs...)
         end
     end
 end
-export @variable
 
-macro parameter(exs...)
+macro par(exs...)
     isempty(exs) && error("@parameter requires at least a core and start argument")
 
     parts = Any[]
@@ -1560,7 +1357,7 @@ macro parameter(exs...)
         args = xs[2:end]
         return quote
             local _par
-            $(esc(core)), _par = add_parameter(
+            $(esc(core)), _par = parameter(
                 $(esc(core)),
                 $(map(esc, args)...);
                 $(map(esc, kwargs.args)...),
@@ -1573,7 +1370,7 @@ macro parameter(exs...)
         par = gensym(:par)
         return quote
             local $par
-            $(esc(core)), $par = add_parameter(
+            $(esc(core)), $par = parameter(
                 $(esc(core)),
                 $(map(esc, xs)...);
                 $(map(esc, kwargs.args)...),
@@ -1582,9 +1379,8 @@ macro parameter(exs...)
         end
     end
 end
-export @parameter
 
-macro objective(exs...)
+macro obj(exs...)
     isempty(exs) && error("@objective requires at least a core and generator argument")
 
     parts = Any[]
@@ -1605,7 +1401,7 @@ macro objective(exs...)
         args = xs[2:end]
         return quote
             local _obj
-            $(esc(core)), _obj = add_objective(
+            $(esc(core)), _obj = objective(
                 $(esc(core)),
                 $(map(esc, args)...);
                 $(map(esc, kwargs.args)...),
@@ -1618,7 +1414,7 @@ macro objective(exs...)
         obj = gensym(:obj)
         return quote
             local $obj
-            $(esc(core)), $obj = add_objective(
+            $(esc(core)), $obj = objective(
                 $(esc(core)),
                 $(map(esc, xs)...);
                 $(map(esc, kwargs.args)...),
@@ -1627,9 +1423,8 @@ macro objective(exs...)
         end
     end
 end
-export @objective
 
-macro constraint(exs...)
+macro con(exs...)
     isempty(exs) && error("@constraint requires at least a core and generator argument")
 
     parts = Any[]
@@ -1650,7 +1445,7 @@ macro constraint(exs...)
         args = xs[2:end]
         return quote
             local _con
-            $(esc(core)), _con = add_constraint(
+            $(esc(core)), _con = constraint(
                 $(esc(core)),
                 $(map(esc, args)...);
                 $(map(esc, kwargs.args)...),
@@ -1663,7 +1458,7 @@ macro constraint(exs...)
         con = gensym(:con)
         return quote
             local $con
-            $(esc(core)), $con = add_constraint(
+            $(esc(core)), $con = constraint(
                 $(esc(core)),
                 $(map(esc, xs)...);
                 $(map(esc, kwargs.args)...),
@@ -1672,9 +1467,8 @@ macro constraint(exs...)
         end
     end
 end
-export @constraint
 
-macro constraint!(exs...)
+macro con!(exs...)
     isempty(exs) && error("@constraint! requires core, existing constraint, and generator arguments")
 
     parts = Any[]
@@ -1694,7 +1488,7 @@ macro constraint!(exs...)
     con = gensym(:con)
     return quote
         local $con
-        $(esc(core)), $con = add_constraint!(
+        $(esc(core)), $con = constraint!(
             $(esc(core)),
             $(esc(c1)),
             $(map(esc, args)...);
@@ -1703,10 +1497,9 @@ macro constraint!(exs...)
         $con
     end
 end
-export @constraint!
 
-macro subexpr(exs...)
-    isempty(exs) && error("@subexpr requires at least a core and generator argument")
+macro expr(exs...)
+    isempty(exs) && error("@expr requires at least a core and generator argument")
 
     parts = Any[]
     kwargs = Expr(:parameters)
@@ -1726,7 +1519,7 @@ macro subexpr(exs...)
         args = xs[2:end]
         return quote
             local _sub
-            $(esc(core)), _sub = add_subexpr(
+            $(esc(core)), _sub = expr(
                 $(esc(core)),
                 $(map(esc, args)...);
                 $(map(esc, kwargs.args)...),
@@ -1739,7 +1532,7 @@ macro subexpr(exs...)
         sub = gensym(:sub)
         return quote
             local $sub
-            $(esc(core)), $sub = add_subexpr(
+            $(esc(core)), $sub = expr(
                 $(esc(core)),
                 $(map(esc, xs)...);
                 $(map(esc, kwargs.args)...),
@@ -1748,9 +1541,3 @@ macro subexpr(exs...)
         end
     end
 end
-export @subexpr
-
-# function ExaModel(core::ExaCore; kwargs...)
-#     core = add(core; kwargs...)
-#     return ExaModel(core)
-# end
