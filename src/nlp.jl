@@ -1,6 +1,4 @@
 # TODO
-# - subex support
-# - constraint augmentation support
 # - named vars/cons/objs support
 
 abstract type AbstractVariable end
@@ -377,7 +375,7 @@ julia> c = ExaCore();                      # create an ExaCore object
 
 julia> x = add_variable(c, 1:10);              # create variables
 
-julia> objective(c, x[i]^2 for i in 1:10); # set objective function
+julia> add_objective(c, x[i]^2 for i in 1:10); # set objective function
 
 julia> m = ExaModel(c)                     # create an ExaModel object
 An ExaModel{Float64, Vector{Float64}, ...}
@@ -627,8 +625,11 @@ function add_variable(
     append_var_tags(c.tags, c.backend, total(ns); kwargs...)
     v = Variable(ns, len, o, length(c.var) + 1)
     
-    (ExaCore(c; var = (v, c.var...), nvar=nvar, x0=x0, lvar=lvar, uvar=uvar), v)
+    (ExaCore(c; var = (v, c.var...), nvar=nvar, x0=x0, lvar=lvar, uvar=uvar, refs = add_refs(c.refs, name, v)), v)
 end
+
+add_refs(refs, name::Nothing, var) = refs
+add_refs(refs, name::Symbol, var) = (; refs..., name => var)
 
 
 """
@@ -642,13 +643,13 @@ julia> using ExaModels
 
 julia> c = ExaCore();
 
-julia> θ = parameter(c, ones(10))
+julia> θ = add_parameter(c, ones(10))
 Parameter
 
   θ ∈ R^{10}
 ```
 """
-function parameter(c::C, start::AbstractArray;) where {T,C<:ExaCore{T}}
+function add_parameter(c::C, start::AbstractArray; name = nothing) where {T,C<:ExaCore{T}}
 
     ns = Base.size(start)
     o = c.npar
@@ -656,7 +657,7 @@ function parameter(c::C, start::AbstractArray;) where {T,C<:ExaCore{T}}
     npar = c.npar + len
     θ = append!(c.backend, c.θ, start, len)
     p = Parameter(ns, len, o)
-    (ExaCore(c; par = p, θ=θ, npar=npar), p)
+    (ExaCore(c; par = (p, c.par...), θ=θ, npar=npar, refs = add_refs(c.refs, name, p)), p)
 end
 
 """
@@ -670,7 +671,7 @@ julia> using ExaModels
 
 julia> c = ExaCore();
 
-julia> p = parameter(c, ones(5))
+julia> p = add_parameter(c, ones(5))
 Parameter
 
   θ ∈ R^{5}
@@ -722,6 +723,11 @@ function add_variable(c::C; kwargs...) where {T,C<:ExaCore{T}}
     return add_variable(c, 1; kwargs...)[1]
 end
 
+# function add_variable(c::C, name::Symbol, args...; kwargs...) where {T,C<:ExaCore{T}}
+#     c, v= add_variable(c, args...; name, kwargs...)
+#     return c
+# end
+
 """
     objective(core::ExaCore, generator)
 
@@ -735,7 +741,7 @@ julia> c = ExaCore();
 
 julia> x = add_variable(c, 10);
 
-julia> objective(c, x[i]^2 for i=1:10)
+julia> add_objective(c, x[i]^2 for i=1:10)
 Objective
 
   min (...) + ∑_{p ∈ P} f(x,θ,p)
@@ -743,12 +749,12 @@ Objective
   where |P| = 10
 ```
 """
-function objective(c::C, gen) where {T, C<:ExaCore{T}}
+function add_objective(c::C, gen; name = nothing) where {T, C<:ExaCore{T}}
     gen = _adapt_gen(gen)
     f = SIMDFunction(T, gen, c.nobj, c.nnzg, c.nnzh)
     pars = gen.iter
 
-    _objective(c, f, pars)
+      _add_objective(c, f, pars, name)
 end
 
 """
@@ -756,20 +762,20 @@ end
 
 Adds objective terms specified by a `expr` and `pars` to `core`, and returns an `Objective` object.
 """
-function objective(c::C, expr::N, pars = 1:1) where {T,C<:ExaCore{T},N<:AbstractNode}
+function add_objective(c::C, expr::N, pars = 1:1; name = nothing) where {T,C<:ExaCore{T},N<:AbstractNode}
     f = _simdfunction(T, expr, c.nobj, c.nnzg, c.nnzh)
 
-    _objective(c, f, pars)
+      _add_objective(c, f, pars, name)
 end
 
-function _objective(c, f, pars)
+function _add_objective(c, f, pars, name = nothing)
     nitr = length(pars)
     nobj = c.nobj + nitr
     nnzg = c.nnzg + nitr * f.o1step
     nnzh = c.nnzh + nitr * f.o2step
 
     obj = Objective(f, convert_array(pars, c.backend))
-    (ExaCore(c; nobj=nobj, nnzg=nnzg, nnzh=nnzh, obj=(obj, c.obj...)), obj)
+    (ExaCore(c; nobj=nobj, nnzg=nnzg, nnzh=nnzh, obj=(obj, c.obj...), refs = add_refs(c.refs, name, obj)), obj)
 end
 
 
@@ -792,7 +798,7 @@ julia> c = ExaCore();
 
 julia> x = add_variable(c, 10);
 
-julia> constraint(c, x[i] + x[i+1] for i=1:9; lcon = -1, ucon = (1+i for i=1:9))
+julia> add_constraint(c, x[i] + x[i+1] for i=1:9; lcon = -1, ucon = (1+i for i=1:9))
 Constraint
 
   s.t. (...)
@@ -801,10 +807,10 @@ Constraint
   where |P| = 9
 ```
 """
-function constraint(
+function add_constraint(
     c::C,
-    gen::Base.Generator,
-    args...;
+    gen::Base.Generator;
+    name = nothing,
     start = zero(T),
     lcon = zero(T),
     ucon = zero(T),
@@ -815,7 +821,7 @@ function constraint(
     f = SIMDFunction(T, gen, c.ncon, c.nnzj, c.nnzh)
     pars = gen.iter
 
-    _constraint(c, f, pars, start, lcon, ucon; kwargs...)
+    _add_constraint(c, f, pars, start, lcon, ucon, name; kwargs...)
 end
 
 """
@@ -823,10 +829,11 @@ end
 
 Adds constraints specified by a `expr` and `pars` to `core`, and returns an `Constraint` object.
 """
-function constraint(
+function add_constraint(
     c::C,
     expr::N,
     pars = 1:1;
+    name = nothing,
     start = zero(T),
     lcon = zero(T),
     ucon = zero(T),
@@ -835,7 +842,7 @@ function constraint(
 
     f = _simdfunction(T,expr, c.ncon, c.nnzj, c.nnzh)
 
-    _constraint(c, f, pars, start, lcon, ucon; kwargs...)
+    _add_constraint(c, f, pars, start, lcon, ucon, name; kwargs...)
 end
 
 """
@@ -843,10 +850,10 @@ end
 
 Adds empty constraints of dimension n, so that later the terms can be added with `constraint!`.
 """
-function constraint(
+function add_constraint(
     c::C,
-    n,
-    args...;
+    n;
+    name = nothing,
     start = zero(T),
     lcon = zero(T),
     ucon = zero(T),
@@ -855,11 +862,11 @@ function constraint(
 
     f = _simdfunction(T, Null(nothing), c.ncon, c.nnzj, c.nnzh)
 
-    _constraint(c, f, 1:n, start, lcon, ucon; kwargs...)
+    _add_constraint(c, f, 1:n, start, lcon, ucon, name; kwargs...)
 end
 
 
-function _constraint(c::C, f, pars, start, lcon, ucon; kwargs...) where {C<:ExaCore}
+function _add_constraint(c::C, f, pars, start, lcon, ucon, name = nothing; kwargs...) where {C<:ExaCore}
     nitr = length(pars)
     o = c.ncon
     ncon = c.ncon + nitr
@@ -873,7 +880,7 @@ function _constraint(c::C, f, pars, start, lcon, ucon; kwargs...) where {C<:ExaC
 
     con = Constraint(f, convert_array(pars, c.backend), o)
 
-    (ExaCore(c; ncon=ncon, nnzj=nnzj, nnzh=nnzh, y0=y0, lcon=lcon, ucon=ucon, con=(con, c.con...)), con)
+    (ExaCore(c; ncon=ncon, nnzj=nnzj, nnzh=nnzh, y0=y0, lcon=lcon, ucon=ucon, con=(con, c.con...), refs = add_refs(c.refs, name, con)), con)
 end
 
 
@@ -897,9 +904,9 @@ julia> c = ExaCore();
 
 julia> x = add_variable(c, 10);
 
-julia> c1 = constraint(c, x[i] + x[i+1] for i=1:9; lcon = -1, ucon = (1+i for i=1:9));
+julia> c, c1 = add_constraint(c, x[i] + x[i+1] for i=1:9; lcon = -1, ucon = (1+i for i=1:9));
 
-julia> constraint!(c, c1, i => sin(x[i+1]) for i=4:6)
+julia> add_constraint!(c, c1, i => sin(x[i+1]) for i=4:6)
 Constraint Augmentation
 
   s.t. (...)
@@ -908,40 +915,38 @@ Constraint Augmentation
   where |P| = 3
 ```
 """
-function constraint!(c::C, c1, gen::Base.Generator) where {T, C<:ExaCore{T}}
+function add_constraint!(c::C, c1, gen::Base.Generator) where {T, C<:ExaCore{T}}
 
     gen = _adapt_gen(gen)
     f = SIMDFunction(T, gen, offset0(c1, 0), c.nnzj, c.nnzh)
     pars = gen.iter
 
-    _constraint!(c, f, pars, _constraint_dims(c1))
+    _add_constraint!(c, f, pars, _constraint_dims(c1))
 end
 
 # """
-#     constraint!(c, c1, expr, pars)
+#     add_constraint!(c, c1, expr, pars)
 
 # Expands the existing constraint `c1` in `c` by adding addtional constraints terms specified by `expr` and `pars`.
 # """
-# function constraint!(c::C, c1, expr, pars) where {T, C<:ExaCore{T}}
+# function add_constraint!(c::C, c1, expr, pars) where {T, C<:ExaCore{T}}
 #     f = _simdfunction(T, expr, offset0(c1, 0), c.nnzj, c.nnzh)
 
-#     _constraint!(c, f, pars, _constraint_dims(c1))
+#     _add_constraint!(c, f, pars, _constraint_dims(c1))
 # end
 
 # Extract the dimensions of the original constraint's iterator
 _constraint_dims(c::Constraint) = Base.size(c.itr)
 _constraint_dims(c::ConstraintAug) = c.dims
 
-function _constraint!(c, f, pars, dims)
+function _add_constraint!(c, f, pars, dims)
     oa = c.nconaug
-
     nitr = length(pars)
-
-    c.nconaug += nitr
-    c.nnzj += nitr * f.o1step
-    c.nnzh += nitr * f.o2step
-
-    c.con = ConstraintAug(f, convert_array(pars, c.backend), oa, dims)
+    nconaug = c.nconaug + nitr
+    nnzj = c.nnzj + nitr * f.o1step
+    nnzh = c.nnzh + nitr * f.o2step
+    con = ConstraintAug(f, convert_array(pars, c.backend), oa, dims)
+    (ExaCore(c; nconaug=nconaug, nnzj=nnzj, nnzh=nnzh, con=(con, c.con...)), con)
 end
 
 # Helper to infer dimensions from iterator
@@ -978,12 +983,12 @@ julia> c = ExaCore();
 
 julia> x = add_variable(c, 10);
 
-julia> s = subexpr(c, x[i]^2 for i in 1:10)
+julia> s = add_subexpr(c, x[i]^2 for i in 1:10)
 Subexpression (lifted)
 
   s ∈ R^{10}
 
-julia> objective(c, s[i] + s[i+1] for i in 1:9);
+julia> add_objective(c, s[i] + s[i+1] for i in 1:9);
 ```
 
 ## Reduced form (experimental)
@@ -997,10 +1002,10 @@ c = ExaCore()
 x = add_variable(c, 10)
 
 # Reduced form - no extra variables/constraints
-s = subexpr(c, x[i]^2 for i in 1:10; reduced=true)
+s = add_subexpr(c, x[i]^2 for i in 1:10; reduced=true)
 
 # s[i] substitutes x[i]^2 directly into the expression
-objective(c, s[i] + s[i+1] for i in 1:9)
+add_objective(c, s[i] + s[i+1] for i in 1:9)
 ```
 
 ## Parameter-only form
@@ -1010,14 +1015,14 @@ once when parameters change, rather than at every optimization iteration:
 
 ```julia
 c = ExaCore()
-θ = parameter(c, ones(10))
+θ = add_parameter(c, ones(10))
 x = add_variable(c, 10)
 
 # Parameter-only subexpression - computed once per parameter update
-weights = subexpr(c, θ[i]^2 + θ[i+1] for i in 1:9; parameter_only=true)
+weights = add_subexpr(c, θ[i]^2 + θ[i+1] for i in 1:9; parameter_only=true)
 
 # Use in objective - weights[i] returns cached value, not re-computed
-objective(c, weights[i] * x[i]^2 for i in 1:9)
+add_objective(c, weights[i] * x[i]^2 for i in 1:9)
 ```
 
 ## Multi-dimensional example
@@ -1026,10 +1031,10 @@ c = ExaCore()
 x = add_variable(c, 0:T, 0:N)
 
 # Automatically infers 2D structure from Cartesian product
-dx = subexpr(c, x[t, i] - x[t-1, i] for t in 1:T, i in 1:N)
+dx = add_subexpr(c, x[t, i] - x[t-1, i] for t in 1:T, i in 1:N)
 
 # Now dx[t, i] can be used in constraints
-constraint(c, dx[t, i] - something for t in 1:T, i in 1:N)
+add_constraint(c, dx[t, i] - something for t in 1:T, i in 1:N)
 ```
 
 ## Tupled iterators
@@ -1042,7 +1047,7 @@ out of the box:
 c = ExaCore()
 x = add_variable(c, 1:N, 1:K)
 itr = [(i, k) for i in 1:N, k in 1:K]
-s = subexpr(c, x[i, k]^2 for (i, k) in itr; reduced=true)
+s = add_subexpr(c, x[i, k]^2 for (i, k) in itr; reduced=true)
 # s[i, k] works correctly
 ```
 
@@ -1053,7 +1058,7 @@ ranges explicitly:
 c = ExaCore()
 x = add_variable(c, 1:N, 0:K)
 itr = [(i, k) for i in 1:N, k in 0:K]
-s = subexpr(c, x[i, k]^2 for (i, k) in itr; reduced=true, dims=(1:N, 0:K))
+s = add_subexpr(c, x[i, k]^2 for (i, k) in itr; reduced=true, dims=(1:N, 0:K))
 # s[i, k] works correctly with 0-based second dimension
 ```
 
@@ -1064,11 +1069,11 @@ c = ExaCore()
 x = add_variable(c, 1:N, 1:K)
 weights = [2.0*i for i in 1:N]
 itr = [(i, k, weights[i]) for i in 1:N, k in 1:K]
-s = subexpr(c, wi * x[i, k]^2 for (i, k, wi) in itr)
+s = add_subexpr(c, wi * x[i, k]^2 for (i, k, wi) in itr)
 # s[i, k] references auxiliary variables with embedded data
 ```
 """
-function subexpr(c::C, gen::Base.Generator; reduced::Bool = false, parameter_only::Bool = false, dims = nothing) where {T, C <: ExaCore{T}}
+function add_subexpr(c::C, gen::Base.Generator; reduced::Bool = false, parameter_only::Bool = false, dims = nothing) where {T, C <: ExaCore{T}}
     # Infer dimensions before adapting (which may collect the iterator)
     ns = dims === nothing ? _infer_subexpr_dims(gen.iter) : (dims isa Tuple ? dims : (dims,))
 
@@ -1079,8 +1084,8 @@ function subexpr(c::C, gen::Base.Generator; reduced::Bool = false, parameter_onl
         # Parameter-only form: evaluate once, cache values in θ, re-evaluate on parameter update
         # Store values at the end of θ (after user parameters)
         o = c.npar  # Offset into θ
-        c.npar += n
-        c.nparam_subexpr += n
+        npar = c.npar + n
+        nparam_subexpr = c.nparam_subexpr + n
 
         # Store the evaluation function for re-computation on parameter updates
         # This evaluation happens on CPU to avoid GPU scalar indexing issues,
@@ -1093,19 +1098,20 @@ function subexpr(c::C, gen::Base.Generator; reduced::Bool = false, parameter_onl
             dummy_x = T[]
             return T[gen.f(p)(Identity(), dummy_x, θ_cpu) for p in iter_collected]
         end
-        push!(c.param_subexpr_fns, (offset = o, length = n, fn = eval_fn))
+        param_subexpr_fns = [c.param_subexpr_fns..., (offset = o, length = n, fn = eval_fn)]
 
         # Evaluate immediately with current parameter values and append to θ
         # eval_fn returns CPU array, append! handles GPU conversion
         values = eval_fn(c.θ)
-        c.θ = append!(c.backend, c.θ, values, n)
+        θ = append!(c.backend, c.θ, values, n)
 
-        return ParameterSubexpr(ns, n, o)
+        ps = ParameterSubexpr(ns, n, o)
+        return (ExaCore(c; npar=npar, nparam_subexpr=nparam_subexpr, param_subexpr_fns=param_subexpr_fns, θ=θ), ps)
     end
 
     if reduced
         # Reduced form: store the function and iterator for direct substitution
-        return ReducedSubexpr(ns, n, gen.f, collect(gen.iter))
+        return (c, ReducedSubexpr(ns, n, gen.f, collect(gen.iter)))
     end
 
     # Lifted form: create auxiliary variables and defining constraints
@@ -1117,7 +1123,7 @@ function subexpr(c::C, gen::Base.Generator; reduced::Bool = false, parameter_onl
     start_values = T[gen.f(p)(Identity(), x0_cpu, θ_cpu) for p in iter_collected]
 
     # Create auxiliary variables for subexpression values with computed start values
-    v = add_variable(c, ns...; start = start_values)
+    c, v = add_variable(c, ns...; start = start_values)
 
     # Create defining constraints: v[k] - expr(itr[k]) = 0 for k = 1:n
     # We pair each element with its linear index for proper variable indexing
@@ -1131,9 +1137,9 @@ function subexpr(c::C, gen::Base.Generator; reduced::Bool = false, parameter_onl
     end
     def_gen = Base.Generator(def_f, paired_iter)
 
-    con = constraint(c, def_gen; lcon = zero(T), ucon = zero(T))
+    c, con = add_constraint(c, def_gen; lcon = zero(T), ucon = zero(T))
 
-    return Subexpr(ns, n, v.offset, con)
+    return (c, Subexpr(ns, n, v.offset, con))
 end
 
 
@@ -1368,7 +1374,7 @@ for (thing, val) in [(:solution, 1), (:multipliers_L, 0), (:multipliers_U, 2)]
 
         julia> x = add_variable(c, 1:10, lvar = -1, uvar = 1);
 
-        julia> objective(c, (x[i]-2)^2 for i in 1:10);
+        julia> add_objective(c, (x[i]-2)^2 for i in 1:10);
 
         julia> m = ExaModel(c);
 
@@ -1406,9 +1412,9 @@ julia> c = ExaCore();
 
 julia> x = add_variable(c, 1:10, lvar = -1, uvar = 1);
 
-julia> objective(c, (x[i]-2)^2 for i in 1:10);
+julia> add_objective(c, (x[i]-2)^2 for i in 1:10);
 
-julia> y = constraint(c, x[i] + x[i+1] for i=1:9; lcon = -1, ucon = (1+i for i=1:9));
+julia> y = add_constraint(c, x[i] + x[i+1] for i=1:9; lcon = -1, ucon = (1+i for i=1:9));
 
 julia> m = ExaModel(c);
 
@@ -1500,7 +1506,7 @@ macro variable(exs...)
     kwargs = Expr(:parameters)
     for ex in exs
         if ex isa Expr && ex.head == :parameters
-            append!(kwargs.args, ex.args)
+            Base.append!(kwargs.args, ex.args)
         else
             push!(parts, ex)
         end
@@ -1541,6 +1547,218 @@ macro variable(exs...)
     end
 end
 export @variable
+
+macro parameter(exs...)
+    isempty(exs) && error("@parameter requires at least a core and start argument")
+
+    parts = Any[]
+    kwargs = Expr(:parameters)
+    for ex in exs
+        if ex isa Expr && ex.head == :parameters
+            Base.append!(kwargs.args, ex.args)
+        else
+            push!(parts, ex)
+        end
+    end
+
+    core = parts[1]
+    xs = parts[2:end]
+
+    if length(xs) >= 2 && xs[1] isa Symbol
+        name = xs[1]
+        args = xs[2:end]
+        return quote
+            local _par
+            $(esc(core)), _par = add_parameter(
+                $(esc(core)),
+                $(map(esc, args)...);
+                $(map(esc, kwargs.args)...),
+                name = $(QuoteNode(name)),
+            )
+            $(esc(name)) = _par
+            _par
+        end
+    else
+        par = gensym(:par)
+        return quote
+            local $par
+            $(esc(core)), $par = add_parameter(
+                $(esc(core)),
+                $(map(esc, xs)...);
+                $(map(esc, kwargs.args)...),
+            )
+            $par
+        end
+    end
+end
+export @parameter
+
+macro objective(exs...)
+    isempty(exs) && error("@objective requires at least a core and generator argument")
+
+    parts = Any[]
+    kwargs = Expr(:parameters)
+    for ex in exs
+        if ex isa Expr && ex.head == :parameters
+            Base.append!(kwargs.args, ex.args)
+        else
+            push!(parts, ex)
+        end
+    end
+
+    core = parts[1]
+    xs = parts[2:end]
+
+    if length(xs) >= 2 && xs[1] isa Symbol
+        name = xs[1]
+        args = xs[2:end]
+        return quote
+            local _obj
+            $(esc(core)), _obj = add_objective(
+                $(esc(core)),
+                $(map(esc, args)...);
+                $(map(esc, kwargs.args)...),
+                name = $(QuoteNode(name)),
+            )
+            $(esc(name)) = _obj
+            _obj
+        end
+    else
+        obj = gensym(:obj)
+        return quote
+            local $obj
+            $(esc(core)), $obj = add_objective(
+                $(esc(core)),
+                $(map(esc, xs)...);
+                $(map(esc, kwargs.args)...),
+            )
+            $obj
+        end
+    end
+end
+export @objective
+
+macro constraint(exs...)
+    isempty(exs) && error("@constraint requires at least a core and generator argument")
+
+    parts = Any[]
+    kwargs = Expr(:parameters)
+    for ex in exs
+        if ex isa Expr && ex.head == :parameters
+            Base.append!(kwargs.args, ex.args)
+        else
+            push!(parts, ex)
+        end
+    end
+
+    core = parts[1]
+    xs = parts[2:end]
+
+    if length(xs) >= 2 && xs[1] isa Symbol
+        name = xs[1]
+        args = xs[2:end]
+        return quote
+            local _con
+            $(esc(core)), _con = add_constraint(
+                $(esc(core)),
+                $(map(esc, args)...);
+                $(map(esc, kwargs.args)...),
+                name = $(QuoteNode(name)),
+            )
+            $(esc(name)) = _con
+            _con
+        end
+    else
+        con = gensym(:con)
+        return quote
+            local $con
+            $(esc(core)), $con = add_constraint(
+                $(esc(core)),
+                $(map(esc, xs)...);
+                $(map(esc, kwargs.args)...),
+            )
+            $con
+        end
+    end
+end
+export @constraint
+
+macro constraint!(exs...)
+    isempty(exs) && error("@constraint! requires core, existing constraint, and generator arguments")
+
+    parts = Any[]
+    kwargs = Expr(:parameters)
+    for ex in exs
+        if ex isa Expr && ex.head == :parameters
+            Base.append!(kwargs.args, ex.args)
+        else
+            push!(parts, ex)
+        end
+    end
+
+    core  = parts[1]
+    c1    = parts[2]
+    args  = parts[3:end]
+
+    con = gensym(:con)
+    return quote
+        local $con
+        $(esc(core)), $con = add_constraint!(
+            $(esc(core)),
+            $(esc(c1)),
+            $(map(esc, args)...);
+            $(map(esc, kwargs.args)...),
+        )
+        $con
+    end
+end
+export @constraint!
+
+macro subexpr(exs...)
+    isempty(exs) && error("@subexpr requires at least a core and generator argument")
+
+    parts = Any[]
+    kwargs = Expr(:parameters)
+    for ex in exs
+        if ex isa Expr && ex.head == :parameters
+            Base.append!(kwargs.args, ex.args)
+        else
+            push!(parts, ex)
+        end
+    end
+
+    core = parts[1]
+    xs = parts[2:end]
+
+    if length(xs) >= 2 && xs[1] isa Symbol
+        name = xs[1]
+        args = xs[2:end]
+        return quote
+            local _sub
+            $(esc(core)), _sub = add_subexpr(
+                $(esc(core)),
+                $(map(esc, args)...);
+                $(map(esc, kwargs.args)...),
+                name = $(QuoteNode(name)),
+            )
+            $(esc(name)) = _sub
+            _sub
+        end
+    else
+        sub = gensym(:sub)
+        return quote
+            local $sub
+            $(esc(core)), $sub = add_subexpr(
+                $(esc(core)),
+                $(map(esc, xs)...);
+                $(map(esc, kwargs.args)...),
+            )
+            $sub
+        end
+    end
+end
+export @subexpr
+
 # function ExaModel(core::ExaCore; kwargs...)
 #     core = add(core; kwargs...)
 #     return ExaModel(core)
