@@ -9,10 +9,6 @@
 # all NLP dispatch (obj, grad!, jac_coord!, hess_coord!, cons_nln!) statically.
 mutable struct IpoptData{M}
     model::M
-    jac_rows::Vector{Int32}
-    jac_cols::Vector{Int32}
-    hess_rows::Vector{Int32}
-    hess_cols::Vector{Int32}
 end
 
 function solve_with_ipopt(m::M; print_level = 5) where M
@@ -73,9 +69,9 @@ function solve_with_ipopt(m::M; print_level = 5) where M
         d = unsafe_pointer_to_objref(ud_ptr) :: IpoptData{M}
         nnz = Int(nele_jac)
         if values_ptr == C_NULL
-            # sparsity pass
-            copyto!(unsafe_wrap(Array, irow_ptr, nnz), d.jac_rows)
-            copyto!(unsafe_wrap(Array, jcol_ptr, nnz), d.jac_cols)
+            jac_rows = unsafe_wrap(Array, irow_ptr, nnz)
+            jac_cols = unsafe_wrap(Array, jcol_ptr, nnz)
+            ExaModels.jac_structure!(d.model, jac_rows, jac_cols)
         else
             x      = unsafe_wrap(Array, x_ptr,      Int(n))
             values = unsafe_wrap(Array, values_ptr, nnz)
@@ -102,8 +98,9 @@ function solve_with_ipopt(m::M; print_level = 5) where M
         nnz = Int(nele_hess)
         if values_ptr == C_NULL
             # sparsity pass
-            copyto!(unsafe_wrap(Array, irow_ptr, nnz), d.hess_rows)
-            copyto!(unsafe_wrap(Array, jcol_ptr, nnz), d.hess_cols)
+            rows = unsafe_wrap(Array, irow_ptr, nnz)
+            cols = unsafe_wrap(Array, jcol_ptr, nnz)
+            ExaModels.hess_structure!(d.model, rows, cols)
         else
             x      = unsafe_wrap(Array, x_ptr,      Int(n))
             lam    = unsafe_wrap(Array, lam_ptr,    Int(m))
@@ -134,16 +131,16 @@ Solve `model` using Ipopt's C shared library via ccall.
         nele_jac  = Cint(model.meta.nnzj)
         nele_hess = Cint(model.meta.nnzh)
 
-        jac_rows  = zeros(Int32, model.meta.nnzj)
-        jac_cols  = zeros(Int32, model.meta.nnzj)
-        hess_rows = zeros(Int32, model.meta.nnzh)
-        hess_cols = zeros(Int32, model.meta.nnzh)
+        # jac_rows  = zeros(Int32, model.meta.nnzj)
+        # jac_cols  = zeros(Int32, model.meta.nnzj)
+        # hess_rows = zeros(Int32, model.meta.nnzh)
+        # hess_cols = zeros(Int32, model.meta.nnzh)
 
-        ExaModels.jac_structure!(model,  jac_rows,  jac_cols)
-        ExaModels.hess_structure!(model, hess_rows, hess_cols)
+        # ExaModels.jac_structure!(model,  jac_rows,  jac_cols)
+        # ExaModels.hess_structure!(model, hess_rows, hess_cols)
         # NLPModels returns 1-based indices; Ipopt index_style=1 expects the same.
 
-        d = IpoptData(model, jac_rows, jac_cols, hess_rows, hess_cols)
+        d = IpoptData(model)
 
         GC.@preserve d begin
             ud_ptr = pointer_from_objref(d)
