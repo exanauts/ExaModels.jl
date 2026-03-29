@@ -1,0 +1,11 @@
+name = "LuksanVlcekBenchmark"
+uuid = "a7f3c2e1-8b94-4d5f-a9c7-e12b83d6f2a0"
+version = "0.1.0"
+authors = ["ExaModels Contributors"]
+
+[deps]
+ExaModels = "1e616198-e0fe-4b76-9f25-3f4e5f3b6659"
+
+[compat]
+ExaModels = "0.8"
+julia = "1.10"

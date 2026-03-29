@@ -1,6 +1,7 @@
 module LuksanVlcekApp
 
-using ExaModels, LuksanVlcekBenchmark, NLPModelsIpoptLite
+using ExaModels, NLPModelsIpoptLite
+import LuksanVlcekBenchmark as LV
 
 const MODELS = [
     "rosenrock",

@@ -1,0 +1,12 @@
+name = "LuksanVlcekApp"
+uuid = "c3e8f2d1-7a94-4b5e-b0d8-f31a62c8e3a1"
+version = "0.1.0"
+
+[deps]
+ExaModels = "1037b233-b668-4ce9-9b63-f9f681f55dd2"
+LuksanVlcekBenchmark = "a7f3c2e1-8b94-4d5f-a9c7-e12b83d6f2a0"
+NLPModelsIpoptLite = "48c312a9-6620-4177-b859-0e15058d61ee"
+
+[compat]
+ExaModels = "0.9"
+julia = "1.12"
