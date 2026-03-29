@@ -57,6 +57,7 @@ struct Var{I,S} <: AbstractNode
     i::I
 end
 Var(i::I, S) where I = Var{I,S}(i)
+Var(i::I) where I = Var{I,Nothing}(i)
 
 
 struct ParameterSource <: AbstractNode end

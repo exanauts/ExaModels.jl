@@ -1,6 +1,16 @@
 module Rosenrock
 
+using LinearAlgebra
 using ExaModels
+using Ipopt_jll: libipopt
+using OpenBLAS32_jll: libopenblas_path
+
+function __init__()
+    # Julia's libblastrampoline defaults to ILP64 (dscal_64_, dcopy_64_, ...).
+    # Ipopt and MUMPS call LP64 symbols (dscal_, dcopy_, ...).
+    # Forward the LP64 OpenBLAS that ships with Ipopt_jll so those symbols resolve.
+    LinearAlgebra.BLAS.lbt_forward(libopenblas_path)
+end
 
 @inline function rosenrock_model(N = 1000; T = Float64, kwargs...)
     c = ExaCore(T; kwargs...)
@@ -15,28 +25,25 @@ using ExaModels
     m = ExaModel(c)
 end
 
+# Compute the concrete ExaModel type produced by rosenrock_model.
+# ipopt.jl uses this so --trim=safe can resolve all NLP dispatch statically.
+# const _IpoptModelType = typeof(rosenrock_model(1))
+
+include("ipopt.jl")
 
 function @main(ARGS)
+    N = length(ARGS) >= 1 ? parse(Int, ARGS[1]) : 10
+    libipopt = length(ARGS) >= 2 ? ARGS[2] : "libipopt"
 
-    # N = parse(Int, ARGS[1])
+    m = rosenrock_model(N)
 
-    # c = ExaCore(Float32)
-    m = rosenrock_model(10)
+    println(Core.stdout, "Solving Rosenrock N=$N with Ipopt ($(libipopt))...")
 
-    xbuffer = randn(m.meta.nvar)
-    ybuffer = randn(m.meta.ncon)
-    jbuffer = randn(m.meta.nnzj)
-    hbuffer = randn(m.meta.nnzh)
+    result = solve_with_ipopt(m; print_level = 5)
 
-    ExaModels.obj(m, m.meta.x0)
-    ExaModels.cons!(m, m.meta.x0, ybuffer)
-    ExaModels.grad!(m, m.meta.x0, xbuffer)
-    ExaModels.jac_coord!(m, m.meta.x0, jbuffer)
-    ExaModels.hess_coord!(m, m.meta.x0, m.meta.y0, hbuffer; obj_weight=1.0)
+    println(Core.stdout, "Ipopt status : ", result.status)
 
-    println(Core.stdout, "Model runs successfully! sum(hess) = ", sum(hbuffer))
-
-    return 0
+    return result.status == 0 ? 0 : 1
 end
 
 end # module Rosenrock

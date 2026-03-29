@@ -37,10 +37,10 @@ end
 Base.show(io::IO, s::Expression) = print(
     io,
     """
-    Subexpression (reduced)
+Subexpression (reduced)
 
-      s ∈ R^{$(join(size(s.size), " × "))}
-    """,
+  s ∈ R^{$(join(size(s.size), " × "))}
+""",
 )
 
 struct Parameter{S,O} <: AbstractParameter
@@ -112,9 +112,9 @@ Constraint Augmentation
 abstract type AbstractExaCore{T,VT,B,S} end
 
 """
-    ExaCore([array_eltype::Type; backend = backend, minimize = true])
+    ExaCore([array_eltype::Type; backend = nothing, minimize = true])
 
-Returns an intermediate data object `ExaCore`, which later can be used for creating `ExaModel`
+Creates an intermediate data object `ExaCore`, which later can be used for creating an `ExaModel`
 
 ## Example
 ```jldoctest
@@ -304,13 +304,13 @@ optimization solvers within `JuliaSmoothOptimizer` ecosystem, such as
 ```jldoctest
 julia> using ExaModels
 
-julia> c = ExaCore();                      # create an ExaCore object
+julia> c = ExaCore();                           # create an ExaCore object
 
-julia> x = variable(c, 1:10);              # create variables
+julia> c, x = add_var(c, 1:10);               # create variables
 
-julia> objective(c, x[i]^2 for i in 1:10); # set objective function
+julia> c, _ = add_obj(c, x[i]^2 for i in 1:10); # set objective function
 
-julia> m = ExaModel(c)                     # create an ExaModel object
+julia> m = ExaModel(c)                          # create an ExaModel object
 An ExaModel{Float64, Vector{Float64}, ...}
 
   Problem name: Generic
@@ -475,14 +475,20 @@ _start(n::Int) = 1
 _start(n::UnitRange) = n.start
 
 """
-    variable(core, dims...; start = 0, lvar = -Inf, uvar = Inf, kwargs...)
+    add_var(core, dims...; start = 0, lvar = -Inf, uvar = Inf, name = nothing, kwargs...)
+    add_var(core, name::Symbol, dims...; kwargs...)
 
-Adds variables with dimensions specified by `dims` to `core`, and returns `Variable` object. `dims` can be either `Integer` or `UnitRange`.
+Adds variables with dimensions specified by `dims` to `core`. `dims` can be either `Integer` or `UnitRange`.
+
+The two forms differ in their return value:
+- Without a positional `name`: returns `(core, Variable)`.
+- With a positional `name::Symbol`: returns just `core`; the variable is registered under `name` and accessible later as `core.name` or `model.name`.
 
 ## Keyword Arguments
 - `start`: The initial guess of the solution. Can either be `Number`, `AbstractArray`, or `Generator`.
 - `lvar` : The variable lower bound. Can either be `Number`, `AbstractArray`, or `Generator`.
 - `uvar` : The variable upper bound. Can either be `Number`, `AbstractArray`, or `Generator`.
+- `name` : When given as `Val(:name)`, registers the variable in `core` for later retrieval as `core.name` or `model.name` (in addition to being returned in the tuple). See [`@var`](@ref) for the idiomatic named interface.
 - `kwargs...`: Additional keyword arguments for variable tags (e.g., `scenario` for two-stage models)
 
 ## Example
@@ -491,19 +497,23 @@ julia> using ExaModels
 
 julia> c = ExaCore();
 
-julia> x = variable(c, 10; start = (sin(i) for i=1:10))
+julia> c, x = add_var(c, 10; start = (sin(i) for i=1:10));
+
+julia> x
 Variable
 
   x ∈ R^{10}
 
-julia> y = variable(c, 2:10, 3:5; lvar = zeros(9,3), uvar = ones(9,3))
+julia> c, y = add_var(c, 2:10, 3:5; lvar = zeros(9,3), uvar = ones(9,3));
+
+julia> y
 Variable
 
   x ∈ R^{9 × 3}
 
 ```
 """
-function variable(
+function add_var(
     c::C,
     ns...;
     name = nothing,
@@ -529,13 +539,15 @@ end
 
 @inline add_refs(refs, ::Nothing, var) = refs
 @inline add_refs(refs, ::Val{N}, var) where {N} = (; refs..., N => var)
-# @inline add_refs(refs, name::Symbol, var) = add_refs(refs, Val(name), var)  # interactive fallback
 
 
 """
-    parameter(core, start::AbstractArray)
+    add_par(core, start::AbstractArray; name = nothing)
 
-Adds parameters with initial values specified by `start`, and returns `Parameter` object.
+Adds parameters with initial values specified by `start`, and returns `(core, Parameter)`.
+
+## Keyword Arguments
+- `name`: When given as `Val(:name)`, registers the parameter in `core` for later retrieval as `core.name` or `model.name`. See [`@par`](@ref) for the idiomatic named interface.
 
 ## Example
 ```jldoctest
@@ -543,13 +555,15 @@ julia> using ExaModels
 
 julia> c = ExaCore();
 
-julia> θ = parameter(c, ones(10))
+julia> c, θ = add_par(c, ones(10));
+
+julia> θ
 Parameter
 
   θ ∈ R^{10}
 ```
 """
-function parameter(c::C, start::AbstractArray; name = nothing) where {T,C<:ExaCore{T}}
+function add_par(c::C, start::AbstractArray; name = nothing) where {T,C<:ExaCore{T}}
 
     ns = Base.size(start)
     o = c.npar
@@ -571,12 +585,9 @@ julia> using ExaModels
 
 julia> c = ExaCore();
 
-julia> p = parameter(c, ones(5))
-Parameter
+julia> c, p = add_par(c, ones(5));
 
-  θ ∈ R^{5}
-
-julia> set_parameter!(c, p, rand(5))  # Update with new values
+julia> set_parameter!(c, p, ones(5))
 ```
 """
 function set_parameter!(c::ExaCore, param::Parameter, values::AbstractArray)
@@ -593,45 +604,26 @@ function set_parameter!(c::ExaCore, param::Parameter, values::AbstractArray)
 
     copyto!(@view(c.θ[start_idx:end_idx]), values)
 
-    # Re-evaluate parameter subexpressions that depend on θ
-    _recompute_param_subexprs!(c)
-
     return nothing
 end
 
-"""
-    _recompute_param_subexprs!(c::ExaCore)
+function add_var(c::C; kwargs...) where {T,C<:ExaCore{T}}
 
-Re-evaluates all parameter-only subexpressions and updates their cached values in θ.
-Called automatically by `set_parameter!`.
-"""
-function _recompute_param_subexprs!(c::ExaCore)
-    for ps in c.param_subexpr_fns
-        # Re-evaluate the subexpression with current θ values
-        # Note: θ contains both user parameters and param subexpr values
-        # The eval function only reads user parameters (earlier in θ)
-        new_values = ps.fn(c.θ)
-        start_idx = ps.offset + 1
-        end_idx = ps.offset + ps.length
-        copyto!(@view(c.θ[start_idx:end_idx]), new_values)
-    end
-    return nothing
+    return add_var(c, 1; kwargs...)[1]
 end
 
-function variable(c::C; kwargs...) where {T,C<:ExaCore{T}}
-
-    return variable(c, 1; kwargs...)[1]
-end
-
-function variable(c::C, name::Symbol, args...; kwargs...) where {T,C<:ExaCore{T}}
-    c, v= variable(c, args...; name, kwargs...)
+function add_var(c::C, name::Symbol, args...; kwargs...) where {T,C<:ExaCore{T}}
+    c, v= add_var(c, args...; name, kwargs...)
     return c
 end
 
 """
-    objective(core::ExaCore, generator)
+    add_obj(core::ExaCore, generator; name = nothing)
 
-Adds objective terms specified by a `generator` to `core`, and returns an `Objective` object. Note: it is assumed that the terms are summed.
+Adds objective terms specified by a `generator` to `core`, and returns `(core, Objective)`. The terms are summed.
+
+## Keyword Arguments
+- `name`: When given as `Val(:name)`, registers the objective in `core` for later retrieval as `core.name` or `model.name`. See [`@obj`](@ref) for the idiomatic named interface.
 
 ## Example
 ```jldoctest
@@ -639,9 +631,11 @@ julia> using ExaModels
 
 julia> c = ExaCore();
 
-julia> x = variable(c, 10);
+julia> c, x = add_var(c, 10);
 
-julia> objective(c, x[i]^2 for i=1:10)
+julia> c, obj = add_obj(c, x[i]^2 for i=1:10);
+
+julia> obj
 Objective
 
   min (...) + ∑_{p ∈ P} f(x,θ,p)
@@ -649,7 +643,7 @@ Objective
   where |P| = 10
 ```
 """
-function objective(c::C, gen; name = nothing) where {T, C<:ExaCore{T}}
+function add_obj(c::C, gen; name = nothing) where {T, C<:ExaCore{T}}
     gen = _adapt_gen(gen)
     f = SIMDFunction(T, gen, c.nobj, c.nnzg, c.nnzh)
     pars = gen.iter
@@ -658,11 +652,12 @@ function objective(c::C, gen; name = nothing) where {T, C<:ExaCore{T}}
 end
 
 """
-    objective(core::ExaCore, expr [, pars])
+    add_obj(core::ExaCore, expr [, pars]; name = nothing)
 
-Adds objective terms specified by a `expr` and `pars` to `core`, and returns an `Objective` object.
+Adds objective terms specified by `expr` and `pars` to `core`, and returns `(core, Objective)`.
+When `name` is given as `Val(:name)`, the objective is also accessible as `core.name` or `model.name`.
 """
-function objective(c::C, expr::N, pars = 1:1; name = nothing) where {T,C<:ExaCore{T},N<:AbstractNode}
+function add_obj(c::C, expr::N, pars = 1:1; name = nothing) where {T,C<:ExaCore{T},N<:AbstractNode}
     f = _simdfunction(T, expr, c.nobj, c.nnzg, c.nnzh)
 
       _add_objective(c, f, pars, name)
@@ -680,14 +675,15 @@ end
 
 
 """
-    constraint(core, generator; start = 0, lcon = 0, ucon = 0, kwargs...)
+    add_con(core, generator; start = 0, lcon = 0, ucon = 0, kwargs...)
 
-Adds constraints specified by a `generator` to `core`, and returns an `Constraint` object.
+Adds constraints specified by a `generator` to `core`, and returns `(core, Constraint)`.
 
 ## Keyword Arguments
 - `start`: The initial guess of the dual solution. Can either be `Number`, `AbstractArray`, or `Generator`.
 - `lcon` : The constraint lower bound. Can either be `Number`, `AbstractArray`, or `Generator`.
 - `ucon` : The constraint upper bound. Can either be `Number`, `AbstractArray`, or `Generator`.
+- `name` : When given as `Val(:name)`, registers the constraint in `core` for later retrieval as `core.name` or `model.name`. See [`@con`](@ref) for the idiomatic named interface.
 - `kwargs...`: Additional keyword arguments for constraint tags (e.g., `scenario` for two-stage models)
 
 ## Example
@@ -696,9 +692,11 @@ julia> using ExaModels
 
 julia> c = ExaCore();
 
-julia> x = variable(c, 10);
+julia> c, x = add_var(c, 10);
 
-julia> constraint(c, x[i] + x[i+1] for i=1:9; lcon = -1, ucon = (1+i for i=1:9))
+julia> c, con = add_con(c, x[i] + x[i+1] for i=1:9; lcon = -1, ucon = (1+i for i=1:9));
+
+julia> con
 Constraint
 
   s.t. (...)
@@ -707,7 +705,7 @@ Constraint
   where |P| = 9
 ```
 """
-function constraint(
+function add_con(
     c::C,
     gen::Base.Generator;
     name = nothing,
@@ -725,11 +723,12 @@ function constraint(
 end
 
 """
-    constraint(core, expr [, pars]; start = 0, lcon = 0,  ucon = 0)
+    add_con(core, expr [, pars]; start = 0, lcon = 0, ucon = 0, name = nothing)
 
-Adds constraints specified by a `expr` and `pars` to `core`, and returns an `Constraint` object.
+Adds constraints specified by `expr` and `pars` to `core`, and returns `(core, Constraint)`.
+When `name` is given as `Val(:name)`, the constraint is also accessible as `core.name` or `model.name`.
 """
-function constraint(
+function add_con(
     c::C,
     expr::N,
     pars = 1:1;
@@ -746,11 +745,12 @@ function constraint(
 end
 
 """
-    constraint(core, n; start = 0, lcon = 0,  ucon = 0)
+    add_con(core, n; start = 0, lcon = 0, ucon = 0, name = nothing)
 
-Adds empty constraints of dimension n, so that later the terms can be added with `constraint!`.
+Adds `n` empty constraints to `core` (terms added later via [`add_con!`](@ref)), and returns `(core, Constraint)`.
+When `name` is given as `Val(:name)`, the constraint is also accessible as `core.name` or `model.name`.
 """
-function constraint(
+function add_con(
     c::C,
     n;
     name = nothing,
@@ -787,14 +787,16 @@ end
 
 
 """
-    constraint!(c::C, c1, gen::Base.Generator) where {C<:ExaCore}
+    add_con!(core, c1, generator)
 
-Expands the existing constraint `c1` in `c` by adding additional constraint terms specified by a `generator`.
+Expands the existing constraint `c1` in `core` by adding additional terms specified by a `generator`, and returns `(core, ConstraintAug)`.
 
-# Arguments
-- `c::C`: The model to which the constraints are added.
-- `c1`: An initial constraint value or expression.
-- `gen::Base.Generator`: A generator that produces the pair of constraint index and term to be added.
+The generator should yield `idx => expr` pairs, where `idx` selects which constraint in `c1` to augment and `expr` is the term to add.
+
+## Arguments
+- `core`: The `ExaCore` to which the augmentation is added.
+- `c1`: The `Constraint` (or `ConstraintAug`) to be expanded.
+- `generator`: A generator yielding `constraintindex => term` pairs.
 
 ## Example
 ```jldoctest
@@ -802,11 +804,13 @@ julia> using ExaModels
 
 julia> c = ExaCore();
 
-julia> x = variable(c, 10);
+julia> c, x = add_var(c, 10);
 
-julia> c, c1 = constraint(c, x[i] + x[i+1] for i=1:9; lcon = -1, ucon = (1+i for i=1:9));
+julia> c, c1 = add_con(c, x[i] + x[i+1] for i=1:9; lcon = -1, ucon = (1+i for i=1:9));
 
-julia> constraint!(c, c1, i => sin(x[i+1]) for i=4:6)
+julia> c, c2 = add_con!(c, c1, i => sin(x[i+1]) for i=4:6);
+
+julia> c2
 Constraint Augmentation
 
   s.t. (...)
@@ -815,7 +819,7 @@ Constraint Augmentation
   where |P| = 3
 ```
 """
-function constraint!(c::C, c1, gen::Base.Generator) where {T, C<:ExaCore{T}}
+function add_con!(c::C, c1, gen::Base.Generator) where {T, C<:ExaCore{T}}
 
     gen = _adapt_gen(gen)
     f = SIMDFunction(T, gen, offset0(c1, 0), c.nnzj, c.nnzh)
@@ -856,24 +860,14 @@ _infer_subexpr_dims(itr::Base.Iterators.ProductIterator) = itr.iterators
 _infer_subexpr_dims(itr) = (length(collect(itr)),)  # fallback
 
 """
-    expr(core, generator; reduced=false, parameter_only=false, dims=nothing)
+    add_expr(core, generator; name = nothing)
 
-Creates a subexpression that can be reused in objectives and constraints.
+Creates a subexpression from a `generator` and returns `(core, Expression)`.
+The expression is stored for direct substitution (inlining) when indexed — no auxiliary
+variables or constraints are added to the problem.
 
-Three forms are available:
-
-- **Lifted** (default, `reduced=false`): Creates auxiliary variables with defining equality
-  constraints. This generates derivative code once and uses simple variable references thereafter.
-  Adds variables and constraints to the problem.
-
-- **Reduced** (`reduced=true`): Stores the expression for direct substitution when indexed.
-  No auxiliary variables or constraints are created. The expression is inlined wherever used.
-
-- **Parameter-only** (`parameter_only=true`): For expressions that depend only on parameters (θ),
-  not variables (x). Values are computed once when parameters are set, not at every function
-  evaluation. Automatically recomputed when `set_parameter!` is called.
-
-Both lifted and reduced forms support SIMD-vectorized evaluation and can be nested.
+## Keyword Arguments
+- `name`: When given as `Val(:name)`, registers the subexpression in `core` for later retrieval as `core.name` or `model.name`. See [`@expr`](@ref) for the idiomatic named interface.
 
 ## Example
 ```jldoctest
@@ -881,106 +875,36 @@ julia> using ExaModels
 
 julia> c = ExaCore();
 
-julia> x = variable(c, 10);
+julia> c, x = add_var(c, 10);
 
-julia> s = expr(c, x[i]^2 for i in 1:10)
-Subexpression (lifted)
+julia> c, s = add_expr(c, x[i]^2 for i in 1:10);
+
+julia> s
+Subexpression (reduced)
 
   s ∈ R^{10}
 
-julia> objective(c, s[i] + s[i+1] for i in 1:9);
-```
-
-## Reduced form (experimental)
-
-!!! warning
-    The reduced form (`reduced=true`) is experimental and may have issues with complex
-    nested expressions. Use the default lifted form for production code.
-
-```julia
-c = ExaCore()
-x = variable(c, 10)
-
-# Reduced form - no extra variables/constraints
-s = expr(c, x[i]^2 for i in 1:10; reduced=true)
-
-# s[i] substitutes x[i]^2 directly into the expression
-objective(c, s[i] + s[i+1] for i in 1:9)
-```
-
-## Parameter-only form
-
-For expressions involving only parameters, use `parameter_only=true` to evaluate them
-once when parameters change, rather than at every optimization iteration:
-
-```julia
-c = ExaCore()
-θ = parameter(c, ones(10))
-x = variable(c, 10)
-
-# Parameter-only subexpression - computed once per parameter update
-weights = expr(c, θ[i]^2 + θ[i+1] for i in 1:9; parameter_only=true)
-
-# Use in objective - weights[i] returns cached value, not re-computed
-objective(c, weights[i] * x[i]^2 for i in 1:9)
+julia> c, _ = add_obj(c, s[i] + s[i+1] for i in 1:9);
 ```
 
 ## Multi-dimensional example
-```julia
-c = ExaCore()
-x = variable(c, 0:T, 0:N)
-
-# Automatically infers 2D structure from Cartesian product
-dx = expr(c, x[t, i] - x[t-1, i] for t in 1:T, i in 1:N)
-
-# Now dx[t, i] can be used in constraints
-constraint(c, dx[t, i] - something for t in 1:T, i in 1:N)
-```
-
-## Tupled iterators
-
-When using a tupled iterator (e.g., a comprehension that produces an array of tuples),
-multi-dimensional shapes are automatically preserved. For 1-based indexing this works
-out of the box:
 
 ```julia
 c = ExaCore()
-x = variable(c, 1:N, 1:K)
+c, x = add_var(c, 1:N, 1:K)
 itr = [(i, k) for i in 1:N, k in 1:K]
-s = expr(c, x[i, k]^2 for (i, k) in itr; reduced=true)
-# s[i, k] works correctly
-```
-
-For non-1-based indexing (e.g., `0:K`), use the `dims` keyword to specify the index
-ranges explicitly:
-
-```julia
-c = ExaCore()
-x = variable(c, 1:N, 0:K)
-itr = [(i, k) for i in 1:N, k in 0:K]
-s = expr(c, x[i, k]^2 for (i, k) in itr; reduced=true, dims=(1:N, 0:K))
-# s[i, k] works correctly with 0-based second dimension
-```
-
-To embed scalar data in tuples, use lifted (default) subexpressions:
-
-```julia
-c = ExaCore()
-x = variable(c, 1:N, 1:K)
-weights = [2.0*i for i in 1:N]
-itr = [(i, k, weights[i]) for i in 1:N, k in 1:K]
-s = expr(c, wi * x[i, k]^2 for (i, k, wi) in itr)
-# s[i, k] references auxiliary variables with embedded data
+c, s = add_expr(c, x[i, k]^2 for (i, k) in itr)
+# s[i, k] substitutes x[i,k]^2 directly
 ```
 """
-function expr(c::C, gen::Base.Generator; name = nothing) where {T, C <: ExaCore{T}}
+function add_expr(c::C, gen::Base.Generator; name = nothing) where {T, C <: ExaCore{T}}
     ns = _infer_subexpr_dims(gen.iter)
 
     gen = _adapt_gen(gen)
     n = length(gen.iter)
 
-    expr = Expression(ns, n, gen.f, collect(gen.iter))
-    return (ExaCore(c; refs = add_refs(c.refs, name, expr)), expr)
+    ex = Expression(ns, n, gen.f, collect(gen.iter))
+    return (ExaCore(c; refs = add_refs(c.refs, name, ex)), ex)
 end
 
 
@@ -1213,9 +1137,9 @@ for (thing, val) in [(:solution, 1), (:multipliers_L, 0), (:multipliers_U, 2)]
 
         julia> c = ExaCore();
 
-        julia> x = variable(c, 1:10, lvar = -1, uvar = 1);
+        julia> c, x = add_var(c, 1:10; lvar = -1, uvar = 1);
 
-        julia> objective(c, (x[i]-2)^2 for i in 1:10);
+        julia> c, _ = add_obj(c, (x[i]-2)^2 for i in 1:10);
 
         julia> m = ExaModel(c);
 
@@ -1251,11 +1175,11 @@ julia> using ExaModels, NLPModelsIpopt
 
 julia> c = ExaCore();
 
-julia> x = variable(c, 1:10, lvar = -1, uvar = 1);
+julia> c, x = add_var(c, 1:10; lvar = -1, uvar = 1);
 
-julia> objective(c, (x[i]-2)^2 for i in 1:10);
+julia> c, _ = add_obj(c, (x[i]-2)^2 for i in 1:10);
 
-julia> y = constraint(c, x[i] + x[i+1] for i=1:9; lcon = -1, ucon = (1+i for i=1:9));
+julia> c, y = add_con(c, x[i] + x[i+1] for i=1:9; lcon = -1, ucon = (1+i for i=1:9));
 
 julia> m = ExaModel(c);
 
@@ -1287,6 +1211,24 @@ function Base.getproperty(core::E, name::Symbol) where {E <: Union{ExaCore, ExaM
     end
 end
 
+"""
+    @var(core, [name,] dims...; kwargs...)
+
+Macro interface for [`add_var`](@ref). Updates `core` in the calling scope.
+
+- **Named** (`@var(core, x, dims...)`): binds `x` to the new `Variable` in the local scope
+  and registers it in `core` for later retrieval as `core.x` or `model.x`.
+- **Anonymous** (`@var(core, dims...)`): equivalent to `c, v = add_var(c, dims...)`.
+
+Accepts the same keyword arguments as [`add_var`](@ref).
+
+## Example
+```julia
+c = ExaCore()
+@var(c, x, 10; lvar = -1, uvar = 1)  # x is now in scope; c.x also works
+@var(c, y, 1:5)                        # y is in scope; c.y also works
+```
+"""
 macro var(exs...)
     isempty(exs) && error("@variable requires at least a core argument")
 
@@ -1311,7 +1253,7 @@ macro var(exs...)
 
         return quote
             local _var
-            $(esc(core)), _var = variable(
+            $(esc(core)), _var = add_var(
                 $(esc(core)),
                 $(map(esc, args)...);
                 $(map(esc, kwargs.args)...),
@@ -1326,7 +1268,7 @@ macro var(exs...)
 
         return quote
             local $var
-            $(esc(core)), $var = variable(
+            $(esc(core)), $var = add_var(
                 $(esc(core)),
                 $(map(esc, xs)...);
                 $(map(esc, kwargs.args)...),
@@ -1336,6 +1278,21 @@ macro var(exs...)
     end
 end
 
+"""
+    @par(core, [name,] start; kwargs...)
+
+Macro interface for [`add_par`](@ref). Updates `core` in the calling scope.
+
+- **Named** (`@par(core, θ, start)`): binds `θ` to the new `Parameter` in the local scope
+  and registers it in `core` for later retrieval as `core.θ` or `model.θ`.
+- **Anonymous** (`@par(core, start)`): equivalent to `c, p = add_par(c, start)`.
+
+## Example
+```julia
+c = ExaCore()
+@par(c, θ, ones(10))  # θ is now in scope; c.θ also works
+```
+"""
 macro par(exs...)
     isempty(exs) && error("@parameter requires at least a core and start argument")
 
@@ -1357,7 +1314,7 @@ macro par(exs...)
         args = xs[2:end]
         return quote
             local _par
-            $(esc(core)), _par = parameter(
+            $(esc(core)), _par = add_par(
                 $(esc(core)),
                 $(map(esc, args)...);
                 $(map(esc, kwargs.args)...),
@@ -1370,7 +1327,7 @@ macro par(exs...)
         par = gensym(:par)
         return quote
             local $par
-            $(esc(core)), $par = parameter(
+            $(esc(core)), $par = add_par(
                 $(esc(core)),
                 $(map(esc, xs)...);
                 $(map(esc, kwargs.args)...),
@@ -1380,6 +1337,22 @@ macro par(exs...)
     end
 end
 
+"""
+    @obj(core, [name,] generator; kwargs...)
+
+Macro interface for [`add_obj`](@ref). Updates `core` in the calling scope.
+
+- **Named** (`@obj(core, f, generator)`): binds `f` to the new `Objective` in the local scope
+  and registers it in `core` for later retrieval as `core.f` or `model.f`.
+- **Anonymous** (`@obj(core, generator)`): equivalent to `c, o = add_obj(c, generator)`.
+
+## Example
+```julia
+c = ExaCore()
+@var(c, x, 10)
+@obj(c, x[i]^2 for i in 1:10)
+```
+"""
 macro obj(exs...)
     isempty(exs) && error("@objective requires at least a core and generator argument")
 
@@ -1401,7 +1374,7 @@ macro obj(exs...)
         args = xs[2:end]
         return quote
             local _obj
-            $(esc(core)), _obj = objective(
+            $(esc(core)), _obj = add_obj(
                 $(esc(core)),
                 $(map(esc, args)...);
                 $(map(esc, kwargs.args)...),
@@ -1414,7 +1387,7 @@ macro obj(exs...)
         obj = gensym(:obj)
         return quote
             local $obj
-            $(esc(core)), $obj = objective(
+            $(esc(core)), $obj = add_obj(
                 $(esc(core)),
                 $(map(esc, xs)...);
                 $(map(esc, kwargs.args)...),
@@ -1424,6 +1397,24 @@ macro obj(exs...)
     end
 end
 
+"""
+    @con(core, [name,] generator; kwargs...)
+
+Macro interface for [`add_con`](@ref). Updates `core` in the calling scope.
+
+- **Named** (`@con(core, g, generator)`): binds `g` to the new `Constraint` in the local scope
+  and registers it in `core` for later retrieval as `core.g` or `model.g`.
+- **Anonymous** (`@con(core, generator)`): equivalent to `c, g = add_con(c, generator)`.
+
+Accepts the same keyword arguments as [`add_con`](@ref) (`lcon`, `ucon`, `start`, etc.).
+
+## Example
+```julia
+c = ExaCore()
+@var(c, x, 10)
+@con(c, g, x[i] + x[i+1] for i in 1:9; lcon = -1, ucon = 1)  # g in scope; c.g also works
+```
+"""
 macro con(exs...)
     isempty(exs) && error("@constraint requires at least a core and generator argument")
 
@@ -1445,7 +1436,7 @@ macro con(exs...)
         args = xs[2:end]
         return quote
             local _con
-            $(esc(core)), _con = constraint(
+            $(esc(core)), _con = add_con(
                 $(esc(core)),
                 $(map(esc, args)...);
                 $(map(esc, kwargs.args)...),
@@ -1458,7 +1449,7 @@ macro con(exs...)
         con = gensym(:con)
         return quote
             local $con
-            $(esc(core)), $con = constraint(
+            $(esc(core)), $con = add_con(
                 $(esc(core)),
                 $(map(esc, xs)...);
                 $(map(esc, kwargs.args)...),
@@ -1468,6 +1459,22 @@ macro con(exs...)
     end
 end
 
+"""
+    @con!(core, c1, generator; kwargs...)
+
+Macro interface for [`add_con!`](@ref). Updates `core` in the calling scope and returns the
+new `ConstraintAug`. Equivalent to `c, aug = add_con!(c, c1, generator)`.
+
+The generator should yield `idx => expr` pairs; see [`add_con!`](@ref) for details.
+
+## Example
+```julia
+c = ExaCore()
+@var(c, x, 10)
+@con(c, g, x[i] + x[i+1] for i in 1:9; lcon = -1, ucon = 1)
+aug = @con!(c, g, i => sin(x[i+1]) for i in 4:6)
+```
+"""
 macro con!(exs...)
     isempty(exs) && error("@constraint! requires core, existing constraint, and generator arguments")
 
@@ -1488,7 +1495,7 @@ macro con!(exs...)
     con = gensym(:con)
     return quote
         local $con
-        $(esc(core)), $con = constraint!(
+        $(esc(core)), $con = add_con!(
             $(esc(core)),
             $(esc(c1)),
             $(map(esc, args)...);
@@ -1498,6 +1505,23 @@ macro con!(exs...)
     end
 end
 
+"""
+    @expr(core, [name,] generator; kwargs...)
+
+Macro interface for [`add_expr`](@ref). Updates `core` in the calling scope.
+
+- **Named** (`@expr(core, s, generator)`): binds `s` to the new `Expression` in the local scope
+  and registers it in `core` for later retrieval as `core.s` or `model.s`.
+- **Anonymous** (`@expr(core, generator)`): equivalent to `c, s = add_expr(c, generator)`.
+
+## Example
+```julia
+c = ExaCore()
+@var(c, x, 10)
+@expr(c, s, x[i]^2 for i in 1:10)    # s in scope; c.s also works
+@obj(c, s[i] + s[i+1] for i in 1:9)
+```
+"""
 macro expr(exs...)
     isempty(exs) && error("@expr requires at least a core and generator argument")
 
@@ -1519,7 +1543,7 @@ macro expr(exs...)
         args = xs[2:end]
         return quote
             local _sub
-            $(esc(core)), _sub = expr(
+            $(esc(core)), _sub = add_expr(
                 $(esc(core)),
                 $(map(esc, args)...);
                 $(map(esc, kwargs.args)...),
@@ -1532,7 +1556,7 @@ macro expr(exs...)
         sub = gensym(:sub)
         return quote
             local $sub
-            $(esc(core)), $sub = expr(
+            $(esc(core)), $sub = add_expr(
                 $(esc(core)),
                 $(map(esc, xs)...);
                 $(map(esc, kwargs.args)...),

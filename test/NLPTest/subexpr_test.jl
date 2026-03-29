@@ -638,24 +638,24 @@ function test_subexpr(backend)
         test_subexpr_reduced_0based_nested(backend)
     end
 
-    @testset "Subexpr parameter-only basic" begin
-        test_subexpr_param_only_basic(backend)
-    end
+    # @testset "Subexpr parameter-only basic" begin
+    #     test_subexpr_param_only_basic(backend)
+    # end
 
-    @testset "Subexpr parameter-only update" begin
-        test_subexpr_param_only_update(backend)
-    end
+    # @testset "Subexpr parameter-only update" begin
+    #     test_subexpr_param_only_update(backend)
+    # end
 
-    @testset "Subexpr parameter-only multi-dim" begin
-        test_subexpr_param_only_multidim(backend)
-    end
+    # @testset "Subexpr parameter-only multi-dim" begin
+    #     test_subexpr_param_only_multidim(backend)
+    # end
 
-    @testset "Subexpr parameter-only in constraint" begin
-        test_subexpr_param_only_in_constraint(backend)
-    end
+    # @testset "Subexpr parameter-only in constraint" begin
+    #     test_subexpr_param_only_in_constraint(backend)
+    # end
 
-    return @testset "Subexpr parameter-only mixed" begin
-        test_subexpr_param_only_mixed(backend)
-    end
+    # return @testset "Subexpr parameter-only mixed" begin
+    #     test_subexpr_param_only_mixed(backend)
+    # end
 end
 

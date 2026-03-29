@@ -12,7 +12,8 @@
       "Bash(perl -0pe 's/\\(?<!@\\)\\\\bobjective\\\\\\(/\\\\@obj\\(/g')",
       "Bash(echo \"Exit: $?\")",
       "Bash(git stash:*)",
-      "Bash(grep:*)"
+      "Bash(grep:*)",
+      "Bash(otool -L /Users/sushin/git/ExaModels.jl/test/Rosenrock.jl/rosenrock)"
     ]
   }
 }
