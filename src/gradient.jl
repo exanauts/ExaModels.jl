@@ -84,7 +84,7 @@ end
     @inbounds y[o1+comp(cnt+=1)] += adj
     return cnt
 end
-@inline function grpass(d::AdjointNodeVar, comp::Nothing, y, o1, cnt, adj) # despecialization
+@inline function grpass(d::D, comp::Nothing, y, o1, cnt, adj) where {D<:AdjointNodeVar}
     list, cidx = cnt
     idx, cidx = update_sparsity(0, true, d.i, cidx...)
     return (list..., idx), cidx

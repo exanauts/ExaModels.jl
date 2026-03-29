@@ -38,16 +38,16 @@ Returns a `SIMDFunction` using the `gen`.
 - `o1`: offset for the derivative evalution
 - `o2`: offset for the second-order derivative evalution
 """
-function SIMDFunction(T, gen::Base.Generator, o0 = 0, o1 = 0, o2 = 0)
+@inline function SIMDFunction(T, gen::Base.Generator, o0 = 0, o1 = 0, o2 = 0)
     _simdfunction(T, gen.f(ParSource()), o0, o1, o2)
 end
 
-function _simdfunction(T, f::F, o0, o1, o2) where {F<:Real}
+@inline function _simdfunction(T, f::F, o0, o1, o2) where {F<:Real}
     f = replace_T(T, f)
     SIMDFunction(
         f,
-        ExaModels.Compressor{Tuple{}}(()),
-        ExaModels.Compressor{Tuple{}}(()),
+        Compressor{Tuple{}}(()),
+        Compressor{Tuple{}}(()),
         o0,
         o1,
         o2,
@@ -56,41 +56,34 @@ function _simdfunction(T, f::F, o0, o1, o2) where {F<:Real}
     )
 end
 
-function _simdfunction(T, f, o0, o1, o2)
+@inline function _simdfunction(T, f, o0, o1, o2)
     f = replace_T(T, f)
     
     d = f(Identity(), AdjointNodeSource(NaNSource{T}()), NaNSource{T}())
-    a1, y1 = ExaModels.grpass(d, nothing, nothing, NaNSource{T}(), ((),()), T(NaN))
-
+    a1, _ = grpass(d, nothing, nothing, NaNSource{T}(), ((),()), T(NaN))
+    
     t = f(Identity(), SecondAdjointNodeSource(NaNSource{T}()), NaNSource{T}())
-    a2, y2 = ExaModels.hrpass0(t, nothing, nothing, NaNSource{T}(), NaNSource{T}(), ((),()), T(NaN), T(NaN))
+    a2, _ = hrpass0(t, nothing, nothing, NaNSource{T}(), NaNSource{T}(), ((), ()), T(NaN), T(NaN))
 
-    o1step = length(y1)
+    o1step = maximum(a1; init = 0)
+    o2step = maximum(a2; init = 0)
     c1 = Compressor(a1)
-
-    o2step = length(y2)
     c2 = Compressor(a2)
 
     SIMDFunction(f, c1, c2, o0, o1, o2, o1step, o2step)
 end
 
-struct NodeWrap{N}
-    node::N
+struct NodeWrap{I}
+    inner::I
     unique::Bool
 end
-
-function update_sparsity(cnt, unique, new, y0, ys...)
-    if unique && new != y0.node
-        cnt += 1
-        unique = true
-    else
-        cnt += 1
-        unique = false
-    end
-    cnt, ys = update_sparsity(cnt, unique, new, ys...)
-    return cnt, (y0, ys...)
+@inline function update_sparsity(cnt::Int, uni::Bool, new, y0, ys...)
+    cnt += y0.unique
+    uni = uni && new != y0.inner
+    cntnew, ys = update_sparsity(cnt, uni, new, ys...)
+    return (uni ? cntnew : cnt)::Int, (y0, ys...)
 end
-update_sparsity(cnt, unique, new) = cnt+1, (NodeWrap(new, unique),)
+@inline update_sparsity(cnt::Int, uni::Bool, new) = cnt+1, (NodeWrap(new, uni),)
 
 
 @inline replace_T(t, n::Union{AbstractNode,Real}) = n

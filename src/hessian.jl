@@ -26,7 +26,7 @@ Performs sparse hessian evaluation (`(df1/dx)(df2/dx)'` portion) via the reverse
     cnt = hdrpass(t1.inner, t2.inner, comp, y1, y2, o2, cnt, adj * t1.y * t2.y)
     cnt
 end
-function hdrpass(
+@inline function hdrpass(
     t1::SecondAdjointNode1,
     t2::SecondAdjointNode1,
     comp::Nothing,
@@ -54,7 +54,7 @@ end
     cnt = hdrpass(t1, t2.inner, comp, y1, y2, o2, cnt, adj * t2.y)
     cnt
 end
-function hdrpass(
+@inline function hdrpass(
     t1::SecondAdjointNodeVar,
     t2::SecondAdjointNode1,
     comp::Nothing,
@@ -82,7 +82,7 @@ end
     cnt = hdrpass(t1.inner, t2, comp, y1, y2, o2, cnt, adj * t1.y)
     cnt
 end
-function hdrpass(
+@inline function hdrpass(
     t1::SecondAdjointNode1,
     t2::SecondAdjointNodeVar,
     comp::Nothing,
@@ -113,7 +113,7 @@ end
     cnt = hdrpass(t1.inner2, t2.inner2, comp, y1, y2, o2, cnt, adj * t1.y2 * t2.y2)
     cnt
 end
-function hdrpass(
+@inline function hdrpass(
     t1::SecondAdjointNode2,
     t2::SecondAdjointNode2,
     comp::Nothing,
@@ -145,7 +145,7 @@ end
     cnt = hdrpass(t1.inner, t2.inner2, comp, y1, y2, o2, cnt, adj * t1.y * t2.y2)
     cnt
 end
-function hdrpass(
+@inline function hdrpass(
     t1::SecondAdjointNode1,
     t2::SecondAdjointNode2,
     comp::Nothing,
@@ -203,7 +203,7 @@ end
     cnt = hdrpass(t1, t2.inner2, comp, y1, y2, o2, cnt, adj * t2.y2)
     cnt
 end
-function hdrpass(
+@inline function hdrpass(
     t1::SecondAdjointNodeVar,
     t2::SecondAdjointNode2,
     comp::Nothing,
@@ -232,7 +232,7 @@ end
     cnt = hdrpass(t1.inner2, t2, comp, y1, y2, o2, cnt, adj * t1.y2)
     cnt
 end
-function hdrpass(
+@inline function hdrpass(
     t1::SecondAdjointNode2,
     t2::SecondAdjointNodeVar,
     comp::Nothing,
@@ -497,7 +497,7 @@ end
 end
 
 
-function hdrpass(
+@inline function hdrpass(
     t1::SecondAdjointNodeVar,
     t2::SecondAdjointNodeVar,
     comp::Nothing,
@@ -512,12 +512,11 @@ function hdrpass(
 
     return (list..., idx), cidx
 end
-function hrpass(t::SecondAdjointNodeVar, comp::Nothing, y1, y2, o2, cnt, adj, adj2)
+@inline function hrpass(t::SecondAdjointNodeVar, comp::Nothing, y1, y2, o2, cnt, adj, adj2)
     list, cidx = cnt
     idx, cidx = update_sparsity(0, true, (t.i, t.i), cidx...)
 
     return (list..., idx), cidx
-    cnt
 end
 
 @inline function hrpass(

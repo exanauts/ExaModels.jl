@@ -643,12 +643,12 @@ Objective
   where |P| = 10
 ```
 """
-function add_obj(c::C, gen; name = nothing) where {T, C<:ExaCore{T}}
+@inline function add_obj(c::C, gen; name = nothing) where {T, C<:ExaCore{T}}
     gen = _adapt_gen(gen)
     f = SIMDFunction(T, gen, c.nobj, c.nnzg, c.nnzh)
     pars = gen.iter
 
-      _add_objective(c, f, pars, name)
+    _add_objective(c, f, pars, name)
 end
 
 """
@@ -657,13 +657,13 @@ end
 Adds objective terms specified by `expr` and `pars` to `core`, and returns `(core, Objective)`.
 When `name` is given as `Val(:name)`, the objective is also accessible as `core.name` or `model.name`.
 """
-function add_obj(c::C, expr::N, pars = 1:1; name = nothing) where {T,C<:ExaCore{T},N<:AbstractNode}
+@inline function add_obj(c::C, expr::N, pars = 1:1; name = nothing) where {T,C<:ExaCore{T},N<:AbstractNode}
     f = _simdfunction(T, expr, c.nobj, c.nnzg, c.nnzh)
 
       _add_objective(c, f, pars, name)
 end
 
-function _add_objective(c, f, pars, name = nothing)
+@inline function _add_objective(c, f, pars, name = nothing)
     nitr = length(pars)
     nobj = c.nobj + nitr
     nnzg = c.nnzg + nitr * f.o1step
