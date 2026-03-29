@@ -1,4 +1,22 @@
-# Direct Ipopt C-API interface for ExaModels problems.
+# This is a temporary interface to Ipopt that uses the C API directly.
+# This module is primarily intended for testing the AOT compilation of ExaModels with Ipopt.
+# For a more complete and robust interface, please use NLPModelsIpopt.jl.
+
+module NLPModelsIpoptLite
+
+using NLPModels
+using LinearAlgebra
+using Ipopt_jll: libipopt
+using OpenBLAS32_jll: libopenblas_path
+
+function __init__()
+    # Julia's libblastrampoline defaults to ILP64 (dscal_64_, dcopy_64_, ...).
+    # Ipopt and MUMPS call LP64 symbols (dscal_, dcopy_, ...).
+    # Forward the LP64 OpenBLAS that ships with Ipopt_jll so those symbols resolve.
+    LinearAlgebra.BLAS.lbt_forward(libopenblas_path)
+end
+
+# Direct Ipopt C-API interface for NLPModels problems.
 #
 # Ipopt's C interface is documented in IpStdCInterface.h.
 # Indices are 1-based (index_style = 1 / Fortran convention), which matches
@@ -7,11 +25,12 @@
 # _IpoptModelType is defined in Rosenrock.jl before this file is included.
 # Using the concrete model type here (rather than Any) lets --trim=safe resolve
 # all NLP dispatch (obj, grad!, jac_coord!, hess_coord!, cons_nln!) statically.
-mutable struct IpoptData{M}
-    model::M
-end
 
-function solve_with_ipopt(m::M; print_level = 5) where M
+function ipopt(
+    m::M;
+    tol = 1e-8,
+    print_level = 5
+    ) where M
 
     function _ipopt_eval_f(
         n       :: Cint,
@@ -20,9 +39,9 @@ function solve_with_ipopt(m::M; print_level = 5) where M
         obj_ptr :: Ptr{Cdouble},
         ud_ptr  :: Ptr{Cvoid},
         ) :: Cint
-        d = unsafe_pointer_to_objref(ud_ptr) :: IpoptData{M}
+        d = unsafe_pointer_to_objref(ud_ptr) :: Base.RefValue{M}
         x = unsafe_wrap(Array, x_ptr, Int(n))
-        unsafe_store!(obj_ptr, ExaModels.obj(d.model, x))
+        unsafe_store!(obj_ptr, NLPModels.obj(d.x, x))
         return Cint(1)
     end
 
@@ -34,10 +53,10 @@ function solve_with_ipopt(m::M; print_level = 5) where M
         g_ptr  :: Ptr{Cdouble},
         ud_ptr :: Ptr{Cvoid},
         ) :: Cint
-        d = unsafe_pointer_to_objref(ud_ptr) :: IpoptData{M}
+        d = unsafe_pointer_to_objref(ud_ptr) :: Base.RefValue{M}
         x = unsafe_wrap(Array, x_ptr, Int(n))
         g = unsafe_wrap(Array, g_ptr, Int(m))
-        ExaModels.cons_nln!(d.model, x, g)
+        NLPModels.cons_nln!(d.x, x, g)
         return Cint(1)
     end
 
@@ -48,10 +67,10 @@ function solve_with_ipopt(m::M; print_level = 5) where M
         grad_ptr :: Ptr{Cdouble},
         ud_ptr   :: Ptr{Cvoid},
         ) :: Cint
-        d = unsafe_pointer_to_objref(ud_ptr) :: IpoptData{M}
+        d = unsafe_pointer_to_objref(ud_ptr) :: Base.RefValue{M}
         x    = unsafe_wrap(Array, x_ptr,    Int(n))
         grad = unsafe_wrap(Array, grad_ptr, Int(n))
-        ExaModels.grad!(d.model, x, grad)
+        NLPModels.grad!(d.x, x, grad)
         return Cint(1)
     end
 
@@ -66,16 +85,16 @@ function solve_with_ipopt(m::M; print_level = 5) where M
         values_ptr :: Ptr{Cdouble},
         ud_ptr     :: Ptr{Cvoid},
         ) :: Cint
-        d = unsafe_pointer_to_objref(ud_ptr) :: IpoptData{M}
+        d = unsafe_pointer_to_objref(ud_ptr) :: Base.RefValue{M}
         nnz = Int(nele_jac)
         if values_ptr == C_NULL
             jac_rows = unsafe_wrap(Array, irow_ptr, nnz)
             jac_cols = unsafe_wrap(Array, jcol_ptr, nnz)
-            ExaModels.jac_structure!(d.model, jac_rows, jac_cols)
+            NLPModels.jac_structure!(d.x, jac_rows, jac_cols)
         else
             x      = unsafe_wrap(Array, x_ptr,      Int(n))
             values = unsafe_wrap(Array, values_ptr, nnz)
-            ExaModels.jac_coord!(d.model, x, values)
+            NLPModels.jac_coord!(d.x, x, values)
         end
         return Cint(1)
     end
@@ -94,18 +113,18 @@ function solve_with_ipopt(m::M; print_level = 5) where M
         values_ptr :: Ptr{Cdouble},
         ud_ptr     :: Ptr{Cvoid},
         ) :: Cint
-        d = unsafe_pointer_to_objref(ud_ptr) :: IpoptData{M}
+        d = unsafe_pointer_to_objref(ud_ptr) :: Base.RefValue{M}
         nnz = Int(nele_hess)
         if values_ptr == C_NULL
             # sparsity pass
             rows = unsafe_wrap(Array, irow_ptr, nnz)
             cols = unsafe_wrap(Array, jcol_ptr, nnz)
-            ExaModels.hess_structure!(d.model, rows, cols)
+            NLPModels.hess_structure!(d.x, rows, cols)
         else
             x      = unsafe_wrap(Array, x_ptr,      Int(n))
             lam    = unsafe_wrap(Array, lam_ptr,    Int(m))
             values = unsafe_wrap(Array, values_ptr, nnz)
-            ExaModels.hess_coord!(d.model, x, lam, values; obj_weight = obj_factor)
+            NLPModels.hess_coord!(d.x, x, lam, values; obj_weight = obj_factor)
         end
         return Cint(1)
     end
@@ -115,14 +134,15 @@ function solve_with_ipopt(m::M; print_level = 5) where M
     # ---------------------------------------------------------------------------
 
     """
-    solve_with_ipopt(model; libipopt, print_level) -> NamedTuple
+    solve(model; libipopt, print_level) -> NamedTuple
 
 Solve `model` using Ipopt's C shared library via ccall.
 
 `libipopt` should be the path (or name) of `libipopt.dylib` / `libipopt.so`.
 """
-    function _solve_with_ipopt(
+    function _solve(
         model;
+        tol = 1e-8,
         print_level:: Int    = 5,
         )
 
@@ -130,17 +150,7 @@ Solve `model` using Ipopt's C shared library via ccall.
         mc        = Cint(model.meta.ncon)
         nele_jac  = Cint(model.meta.nnzj)
         nele_hess = Cint(model.meta.nnzh)
-
-        # jac_rows  = zeros(Int32, model.meta.nnzj)
-        # jac_cols  = zeros(Int32, model.meta.nnzj)
-        # hess_rows = zeros(Int32, model.meta.nnzh)
-        # hess_cols = zeros(Int32, model.meta.nnzh)
-
-        # ExaModels.jac_structure!(model,  jac_rows,  jac_cols)
-        # ExaModels.hess_structure!(model, hess_rows, hess_cols)
-        # NLPModels returns 1-based indices; Ipopt index_style=1 expects the same.
-
-        d = IpoptData(model)
+        d = Ref(model)
 
         GC.@preserve d begin
             ud_ptr = pointer_from_objref(d)
@@ -162,8 +172,8 @@ Solve `model` using Ipopt's C shared library via ccall.
             )
             prob == C_NULL && error("CreateIpoptProblem returned NULL")
 
-            ccall((:AddIpoptIntOption, libipopt), Cint,
-                  (Ptr{Cvoid}, Cstring, Cint), prob, "print_level", Cint(print_level))
+            ccall((:AddIpoptNumOption, libipopt), Cint, (Ptr{Cvoid}, Cstring, Cdouble), prob, "tol", tol)
+            ccall((:AddIpoptIntOption, libipopt), Cint, (Ptr{Cvoid}, Cstring, Cint), prob, "print_level", Cint(print_level))
 
             x       = copy(model.meta.x0)
             g       = zeros(model.meta.ncon)
@@ -186,5 +196,9 @@ Solve `model` using Ipopt's C shared library via ccall.
         end
     end
 
-    _solve_with_ipopt(m; print_level)
+    return _solve(m; print_level, tol)
 end
+
+export ipopt
+
+end # module NLPModelsIpoptLite

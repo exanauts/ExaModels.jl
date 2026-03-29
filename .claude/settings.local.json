@@ -13,7 +13,10 @@
       "Bash(echo \"Exit: $?\")",
       "Bash(git stash:*)",
       "Bash(grep:*)",
-      "Bash(otool -L /Users/sushin/git/ExaModels.jl/test/Rosenrock.jl/rosenrock)"
+      "Bash(otool -L /Users/sushin/git/ExaModels.jl/test/Rosenrock.jl/rosenrock)",
+      "Bash(./a rosenrock:*)",
+      "Bash(./a broyden_banded 10)",
+      "Bash(juliac --output-exe a --trim=safe --experimental .)"
     ]
   }
 }

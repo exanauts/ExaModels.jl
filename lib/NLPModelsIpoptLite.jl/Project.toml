@@ -1,0 +1,16 @@
+name = "NLPModelsIpoptLite"
+uuid = "48c312a9-6620-4177-b859-0e15058d61ee"
+version = "0.1.0"
+authors = ["Sungho Shin <sushin@mit.edu>"]
+
+[deps]
+Ipopt_jll = "9cc047cb-c261-5740-88fc-0cf96f7bdcc7"
+LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
+NLPModels = "a4795742-8479-5a88-8948-cc11e1c8c1a6"
+OpenBLAS32_jll = "656ef2d0-ae68-5445-9ca0-591084a874a2"
+
+[compat]
+Ipopt_jll = "300.1400.1901"
+LinearAlgebra = "1.12.0"
+NLPModels = "0.21.12"
+OpenBLAS32_jll = "0.3.30"
