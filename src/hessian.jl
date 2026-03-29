@@ -507,17 +507,28 @@ function hdrpass(
     cnt,
     adj,
 )
-    list, cidx = cnt
-    idx, cidx = update_sparsity(0, (t1.i, t2.i), cidx...)
-
-    return (list..., idx), cidx
+    list, seen = cnt
+    key = (t1.i.i, t2.i.i)
+    pos_idx = findfirst(k -> k === key, seen)
+    if isnothing(pos_idx)
+        push!(seen, key)
+        pos = length(seen)
+    else
+        pos = pos_idx
+    end
+    return (list..., pos), seen
 end
 function hrpass(t::SecondAdjointNodeVar, comp::Nothing, y1, y2, o2, cnt, adj, adj2)
-    list, cidx = cnt
-    idx, cidx = update_sparsity(0, (t.i, t.i), cidx...)
-
-    return (list..., idx), cidx
-    cnt
+    list, seen = cnt
+    key = (t.i.i, t.i.i)
+    pos_idx = findfirst(k -> k === key, seen)
+    if isnothing(pos_idx)
+        push!(seen, key)
+        pos = length(seen)
+    else
+        pos = pos_idx
+    end
+    return (list..., pos), seen
 end
 
 @inline function hrpass(

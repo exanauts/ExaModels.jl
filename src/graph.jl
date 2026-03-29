@@ -51,13 +51,13 @@ struct VarSource <: AbstractNode end
 A variable node for symbolic expression tree
 
 # Fields:
-- `i::I`: (parameterized) index 
+- `i::I`: (parameterized) index
 """
-struct Var{I,S} <: AbstractNode
+struct Var{I} <: AbstractNode
     i::I
 end
-Var(i::I, S) where I = Var{I,S}(i)
-Var(i::I) where I = Var{I,Nothing}(i)
+Var(i::I, S) where I = Var{I}(i)  # S ignored; kept for backward compatibility
+Var(i::I) where I = Var{I}(i)
 
 
 struct ParameterSource <: AbstractNode end
@@ -128,7 +128,7 @@ end
 @inline Base.indexed_iterate(v::ParIndexed{I, n}, idx, start = 1) where {I, n} = (ParIndexed(v, idx), idx + 1)
 
 
-@inline Base.getindex(n::VarSource, i) = Var(i,i)
+@inline Base.getindex(n::VarSource, i) = Var(i)
 @inline Base.getindex(::ParameterSource, i) = ParameterNode(i)
 
 @inline Node1(f::F, inner::I) where {F,I} = Node1{F,I}(inner)

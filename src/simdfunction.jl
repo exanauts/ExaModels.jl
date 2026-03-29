@@ -58,30 +58,21 @@ end
 
 function _simdfunction(T, f, o0, o1, o2)
     f = replace_T(T, f)
-    
+
     d = f(Identity(), AdjointNodeSource(NaNSource{T}()), NaNSource{T}())
-    a1, y1 = ExaModels.grpass(d, nothing, nothing, NaNSource{T}(), ((),()), T(NaN))
+    a1, seen1 = ExaModels.grpass(d, nothing, nothing, NaNSource{T}(), ((), []), T(NaN))
 
     t = f(Identity(), SecondAdjointNodeSource(NaNSource{T}()), NaNSource{T}())
-    a2, y2 = ExaModels.hrpass0(t, nothing, nothing, NaNSource{T}(), NaNSource{T}(), ((),()), T(NaN), T(NaN))
+    a2, seen2 = ExaModels.hrpass0(t, nothing, nothing, NaNSource{T}(), NaNSource{T}(), ((), []), T(NaN), T(NaN))
 
-    o1step = length(y1)
+    o1step = length(seen1)
     c1 = Compressor(a1)
 
-    o2step = length(y2)
+    o2step = length(seen2)
     c2 = Compressor(a2)
 
     SIMDFunction(f, c1, c2, o0, o1, o2, o1step, o2step)
 end
-
-function update_sparsity(cnt, new, y0, ys...)
-    cnt, ys = update_sparsity(cnt += 1, new, ys...)
-    return cnt, (y0, ys...)
-end
-function update_sparsity(cnt, new::A, y0::A, ys...) where A
-    return cnt+1, (y0, ys...)
-end
-update_sparsity(cnt, new) = cnt+1, (new,)
 
 
 @inline replace_T(t, n::Union{AbstractNode,Real}) = n
