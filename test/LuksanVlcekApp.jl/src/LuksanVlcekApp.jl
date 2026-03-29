@@ -45,9 +45,9 @@ function @main(ARGS)
         m = LV.wood_model(LV.ExaModelsBackend(), N)
         result = ipopt(m; print_level = 5)
 
-    elseif name == "augmented_lagrangian"
-        m = LV.augmented_lagrangian_model(LV.ExaModelsBackend(), N)
-        result = ipopt(m; print_level = 5)
+    # elseif name == "augmented_lagrangian"
+    #     m = LV.augmented_lagrangian_model(LV.ExaModelsBackend(), N)
+    #     result = ipopt(m; print_level = 5)
 
     # elseif name == "broyden_banded"
     #     m = LV.broyden_banded_model(LV.ExaModelsBackend(), N)
