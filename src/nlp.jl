@@ -367,12 +367,12 @@ build_extension(c::ExaCore; kwargs...) = nothing
 
 @inline function Base.getindex(v::V, i) where {D, V<:Variable{D}}
     _bound_check(v.size, i)
-    Var(i + (v.offset - _start(v.size[1]) + 1), (D,i))
+    Var(i + (v.offset - _start(v.size[1]) + 1))
 end
 @inline function Base.getindex(v::V, is...) where {D, V<:Variable{D}}
     @assert(length(is) == length(v.size), "Variable index dimension error")
     _bound_check(v.size, is)
-    Var(v.offset + idxx(is .- (_start.(v.size) .- 1), _length.(v.size)), (D,is))
+    Var(v.offset + idxx(is .- (_start.(v.size) .- 1), _length.(v.size)))
 end
 
 # Expression indexing - evaluates the expression directly

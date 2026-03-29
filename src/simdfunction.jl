@@ -74,14 +74,23 @@ function _simdfunction(T, f, o0, o1, o2)
     SIMDFunction(f, c1, c2, o0, o1, o2, o1step, o2step)
 end
 
-function update_sparsity(cnt, new, y0, ys...)
-    cnt, ys = update_sparsity(cnt += 1, new, ys...)
+struct NodeWrap{N}
+    node::N
+    unique::Bool
+end
+
+function update_sparsity(cnt, unique, new, y0, ys...)
+    if unique && new != y0.node
+        cnt += 1
+        unique = true
+    else
+        cnt += 1
+        unique = false
+    end
+    cnt, ys = update_sparsity(cnt, unique, new, ys...)
     return cnt, (y0, ys...)
 end
-function update_sparsity(cnt, new::A, y0::A, ys...) where A
-    return cnt+1, (y0, ys...)
-end
-update_sparsity(cnt, new) = cnt+1, (new,)
+update_sparsity(cnt, unique, new) = cnt+1, (NodeWrap(new, unique),)
 
 
 @inline replace_T(t, n::Union{AbstractNode,Real}) = n

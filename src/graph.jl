@@ -53,11 +53,9 @@ A variable node for symbolic expression tree
 # Fields:
 - `i::I`: (parameterized) index 
 """
-struct Var{I,S} <: AbstractNode
+struct Var{I} <: AbstractNode
     i::I
 end
-Var(i::I, S) where I = Var{I,S}(i)
-Var(i::I) where I = Var{I,Nothing}(i)
 
 
 struct ParameterSource <: AbstractNode end

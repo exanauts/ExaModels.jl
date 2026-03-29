@@ -86,7 +86,7 @@ end
 end
 @inline function grpass(d::AdjointNodeVar, comp::Nothing, y, o1, cnt, adj) # despecialization
     list, cidx = cnt
-    idx, cidx = update_sparsity(0, d.i, cidx...)
+    idx, cidx = update_sparsity(0, true, d.i, cidx...)
     return (list..., idx), cidx
 end
 @inline function grpass(
