@@ -137,6 +137,41 @@ Constraint
 """,
 )
 
+"""
+    ConEntry
+
+A single constraint entry within a [`ConstraintBatch`](@ref).
+"""
+struct ConEntry{F,I}
+    f::F
+    itr::I
+    offset::Int
+end
+
+"""
+    ConstraintBatch
+
+Batches multiple `constraint()` calls that share the same `SIMDFunction`
+**type** into a single node of the constraint linked list, preventing
+LLVM compile-time explosion from deeply nested recursive types.
+"""
+struct ConstraintBatch{R,F,I} <: AbstractConstraint
+    inner::R
+    entries::Vector{ConEntry{F,I}}
+end
+
+Base.show(io::IO, v::ConstraintBatch) = print(
+    io,
+    """
+Constraint Batch
+
+  s.t. (...)
+       g♭ ≤ [g(x,θ,p)]_{p ∈ P} ≤ g♯
+
+  where K = $(length(v.entries)), total |P| = $(sum(length(e.itr) for e in v.entries))
+""",
+)
+
 
 struct ConstraintAug{R,F,I,D} <: AbstractConstraint
     inner::R
@@ -155,6 +190,53 @@ Constraint Augmentation
        g♭ ≤ (...) + ∑_{p ∈ P} h(x,θ,p) ≤ g♯
 
   where |P| = $(length(v.itr))
+""",
+)
+
+"""
+    AugEntry
+
+A single augmentation entry within a [`ConstraintAugBatch`](@ref).
+Stores a SIMDFunction, its iterator, augmentation offset, and constraint
+dimensions — the same data as `ConstraintAug` but without the recursive
+`inner` field.  Implements the `offset0/1/2` protocol so that
+`sjacobian!` and `shessian!` can process it directly.
+"""
+struct AugEntry{F,I,D}
+    f::F
+    itr::I
+    oa::Int
+    dims::D
+end
+
+"""
+    ConstraintAugBatch
+
+Batches multiple augmentations that share the same `SIMDFunction` **type**
+into a single node of the constraint linked list.  This bounds the nesting
+depth of the recursive type `R` to the number of *unique* expression types
+rather than the total number of `constraint!` calls, preventing LLVM
+compile-time explosion for problems with hundreds of same-typed
+augmentations (e.g. CNN layer decompositions).
+
+The evaluation functions loop over `entries` with a plain `for` loop.
+Because every entry shares the same `F` type, the `@simd` inner loop
+inside `sjacobian!`/`shessian!` is compiled once and reused.
+"""
+struct ConstraintAugBatch{R,F,I,D} <: AbstractConstraint
+    inner::R
+    entries::Vector{AugEntry{F,I,D}}
+end
+
+Base.show(io::IO, v::ConstraintAugBatch) = print(
+    io,
+    """
+Constraint Augmentation Batch
+
+  s.t. (...)
+       g♭ ≤ (...) + ∑ₖ ∑_{p ∈ Pₖ} h(x,θ,p) ≤ g♯
+
+  where K = $(length(v.entries)), total |P| = $(sum(length(e.itr) for e in v.entries))
 """,
 )
 
@@ -228,6 +310,8 @@ Base.@kwdef mutable struct ExaCore{T,VT<:AbstractVector{T}, B, S}
     tags::S = nothing
     # VectorNonlinearOracle support
     oracles::Vector{Any} = Any[]
+    # ScalarNonlinearOracle support (objective oracles)
+    scalar_oracles::Vector{Any} = Any[]
 end
 
 default_T(backend) = Float64
@@ -319,7 +403,7 @@ julia> result = ipopt(m; print_level=0)    # solve the problem
 ```
 """
 function ExaModel(c::C; kwargs...) where {C <: ExaCore}
-    isempty(c.oracles) || return _build_with_oracle(c; kwargs...)
+    (isempty(c.oracles) && isempty(c.scalar_oracles)) || return _build_with_oracle(c; kwargs...)
     return ExaModel(
         c.obj,
         c.con,
@@ -776,7 +860,15 @@ function _constraint(c::C, f, pars, start, lcon, ucon; kwargs...) where {C<:ExaC
     c.ucon = append!(c.backend, c.ucon, ucon, nitr)
     append_con_tags(c.tags, c.backend, nitr; kwargs...)
 
-    c.con = Constraint(c.con, f, convert_array(pars, c.backend), o)
+    itr = convert_array(pars, c.backend)
+    entry = ConEntry(f, itr, o)
+
+    # Batch same-typed constraints to bound recursive type depth
+    if c.con isa ConstraintBatch{<:Any, typeof(f), typeof(itr)}
+        push!(c.con.entries, entry)
+    else
+        c.con = ConstraintBatch(c.con, ConEntry{typeof(f), typeof(itr)}[entry])
+    end
 end
 
 
@@ -833,6 +925,12 @@ end
 # Extract the dimensions of the original constraint's iterator
 _constraint_dims(c::Constraint) = Base.size(c.itr)
 _constraint_dims(c::ConstraintAug) = c.dims
+_constraint_dims(c::ConstraintAugBatch) = c.entries[end].dims
+# For batched base constraints, delegate to the last entry
+_constraint_dims(c::ConstraintBatch) = Base.size(c.entries[end].itr)
+
+# offset0 for ConstraintBatch: delegate to the last entry (the one being augmented)
+@inbounds @inline offset0(c::ConstraintBatch, i) = offset0(c.entries[end], i)
 
 function _constraint!(c, f, pars, dims)
     oa = c.nconaug
@@ -843,7 +941,18 @@ function _constraint!(c, f, pars, dims)
     c.nnzj += nitr * f.o1step
     c.nnzh += nitr * f.o2step
 
-    c.con = ConstraintAug(c.con, f, convert_array(pars, c.backend), oa, dims)
+    itr = convert_array(pars, c.backend)
+    entry = AugEntry(f, itr, oa, dims)
+
+    # Try to batch: if the current tail is a ConstraintAugBatch with the
+    # same (F, I, D) types, append to it instead of creating a new nesting
+    # level.  This bounds the type recursion depth to the number of unique
+    # expression types rather than the number of constraint!() calls.
+    if c.con isa ConstraintAugBatch{<:Any, typeof(f), typeof(itr), typeof(dims)}
+        push!(c.con.entries, entry)
+    else
+        c.con = ConstraintAugBatch(c.con, AugEntry{typeof(f), typeof(itr), typeof(dims)}[entry])
+    end
 end
 
 # Helper to infer dimensions from iterator
@@ -1049,6 +1158,18 @@ function _jac_structure!(T, cons, rows, cols)
     _jac_structure!(T, cons.inner, rows, cols)
     sjacobian!(rows, cols, cons, NaNSource{T}(), NaNSource{T}(), T(NaN))
 end
+function _jac_structure!(T, cons::ConstraintBatch, rows, cols)
+    _jac_structure!(T, cons.inner, rows, cols)
+    for entry in cons.entries
+        sjacobian!(rows, cols, entry, NaNSource{T}(), NaNSource{T}(), T(NaN))
+    end
+end
+function _jac_structure!(T, cons::ConstraintAugBatch, rows, cols)
+    _jac_structure!(T, cons.inner, rows, cols)
+    for entry in cons.entries
+        sjacobian!(rows, cols, entry, NaNSource{T}(), NaNSource{T}(), T(NaN))
+    end
+end
 
 function hess_structure!(m::AbstractExaModel{T}, rows::AbstractVector, cols::AbstractVector) where T
     _obj_hess_structure!(T, m.objs, rows, cols)
@@ -1066,6 +1187,18 @@ _con_hess_structure!(T, cons::ConstraintNull, rows, cols) = nothing
 function _con_hess_structure!(T, cons, rows, cols)
     _con_hess_structure!(T, cons.inner, rows, cols)
     shessian!(rows, cols, cons, NaNSource{T}(), NaNSource{T}(), T(NaN), T(NaN))
+end
+function _con_hess_structure!(T, cons::ConstraintBatch, rows, cols)
+    _con_hess_structure!(T, cons.inner, rows, cols)
+    for entry in cons.entries
+        shessian!(rows, cols, entry, NaNSource{T}(), NaNSource{T}(), T(NaN), T(NaN))
+    end
+end
+function _con_hess_structure!(T, cons::ConstraintAugBatch, rows, cols)
+    _con_hess_structure!(T, cons.inner, rows, cols)
+    for entry in cons.entries
+        shessian!(rows, cols, entry, NaNSource{T}(), NaNSource{T}(), T(NaN), T(NaN))
+    end
 end
 
 function obj(m::AbstractExaModel, x::AbstractVector)
@@ -1090,6 +1223,22 @@ function _cons_nln!(cons, x, θ, g)
     end
 end
 _cons_nln!(cons::ConstraintNull, x, θ, g) = nothing
+function _cons_nln!(cons::ConstraintBatch, x, θ, g)
+    _cons_nln!(cons.inner, x, θ, g)
+    for entry in cons.entries
+        @simd for i in eachindex(entry.itr)
+            @inbounds g[offset0(entry, i)] += entry.f(entry.itr[i], x, θ)
+        end
+    end
+end
+function _cons_nln!(cons::ConstraintAugBatch, x, θ, g)
+    _cons_nln!(cons.inner, x, θ, g)
+    for entry in cons.entries
+        @simd for i in eachindex(entry.itr)
+            @inbounds g[offset0(entry, i)] += entry.f(entry.itr[i], x, θ)
+        end
+    end
+end
 
 
 
@@ -1116,6 +1265,18 @@ function _jac_coord!(cons, x, θ, jac)
     _jac_coord!(cons.inner, x, θ, jac)
     sjacobian!(jac, nothing, cons, x, θ, one(eltype(jac)))
 end
+function _jac_coord!(cons::ConstraintBatch, x, θ, jac)
+    _jac_coord!(cons.inner, x, θ, jac)
+    for entry in cons.entries
+        sjacobian!(jac, nothing, entry, x, θ, one(eltype(jac)))
+    end
+end
+function _jac_coord!(cons::ConstraintAugBatch, x, θ, jac)
+    _jac_coord!(cons.inner, x, θ, jac)
+    for entry in cons.entries
+        sjacobian!(jac, nothing, entry, x, θ, one(eltype(jac)))
+    end
+end
 
 function jprod_nln!(m::AbstractExaModel, x::AbstractVector, v::AbstractVector, Jv::AbstractVector)
     fill!(Jv, zero(eltype(Jv)))
@@ -1128,6 +1289,18 @@ function _jprod_nln!(cons, x, θ, v, Jv)
     _jprod_nln!(cons.inner, x, θ, v, Jv)
     sjacobian!((Jv, v), nothing, cons, x, θ, one(eltype(Jv)))
 end
+function _jprod_nln!(cons::ConstraintBatch, x, θ, v, Jv)
+    _jprod_nln!(cons.inner, x, θ, v, Jv)
+    for entry in cons.entries
+        sjacobian!((Jv, v), nothing, entry, x, θ, one(eltype(Jv)))
+    end
+end
+function _jprod_nln!(cons::ConstraintAugBatch, x, θ, v, Jv)
+    _jprod_nln!(cons.inner, x, θ, v, Jv)
+    for entry in cons.entries
+        sjacobian!((Jv, v), nothing, entry, x, θ, one(eltype(Jv)))
+    end
+end
 
 function jtprod_nln!(m::AbstractExaModel, x::AbstractVector, v::AbstractVector, Jtv::AbstractVector)
     fill!(Jtv, zero(eltype(Jtv)))
@@ -1139,6 +1312,18 @@ _jtprod_nln!(cons::ConstraintNull, x, θ, v, Jtv) = nothing
 function _jtprod_nln!(cons, x, θ, v, Jtv)
     _jtprod_nln!(cons.inner, x, θ, v, Jtv)
     sjacobian!(nothing, (Jtv, v), cons, x, θ, one(eltype(Jtv)))
+end
+function _jtprod_nln!(cons::ConstraintBatch, x, θ, v, Jtv)
+    _jtprod_nln!(cons.inner, x, θ, v, Jtv)
+    for entry in cons.entries
+        sjacobian!(nothing, (Jtv, v), entry, x, θ, one(eltype(Jtv)))
+    end
+end
+function _jtprod_nln!(cons::ConstraintAugBatch, x, θ, v, Jtv)
+    _jtprod_nln!(cons.inner, x, θ, v, Jtv)
+    for entry in cons.entries
+        sjacobian!(nothing, (Jtv, v), entry, x, θ, one(eltype(Jtv)))
+    end
 end
 
 function hess_coord!(
@@ -1175,6 +1360,18 @@ _con_hess_coord!(cons::ConstraintNull, x, θ, y, hess, obj_weight) = nothing
 function _con_hess_coord!(cons, x, θ, y, hess, obj_weight)
     _con_hess_coord!(cons.inner, x, θ, y, hess, obj_weight)
     shessian!(hess, nothing, cons, x, θ, y, zero(eltype(hess)))
+end
+function _con_hess_coord!(cons::ConstraintBatch, x, θ, y, hess, obj_weight)
+    _con_hess_coord!(cons.inner, x, θ, y, hess, obj_weight)
+    for entry in cons.entries
+        shessian!(hess, nothing, entry, x, θ, y, zero(eltype(hess)))
+    end
+end
+function _con_hess_coord!(cons::ConstraintAugBatch, x, θ, y, hess, obj_weight)
+    _con_hess_coord!(cons.inner, x, θ, y, hess, obj_weight)
+    for entry in cons.entries
+        shessian!(hess, nothing, entry, x, θ, y, zero(eltype(hess)))
+    end
 end
 
 function hprod!(
@@ -1214,7 +1411,22 @@ function _con_hprod!(cons, x, θ, y, v, Hv, obj_weight)
     _con_hprod!(cons.inner, x, θ, y, v, Hv, obj_weight)
     shessian!((Hv, v), nothing, cons, x, θ, y, zero(eltype(Hv)))
 end
+function _con_hprod!(cons::ConstraintBatch, x, θ, y, v, Hv, obj_weight)
+    _con_hprod!(cons.inner, x, θ, y, v, Hv, obj_weight)
+    for entry in cons.entries
+        shessian!((Hv, v), nothing, entry, x, θ, y, zero(eltype(Hv)))
+    end
+end
+function _con_hprod!(cons::ConstraintAugBatch, x, θ, y, v, Hv, obj_weight)
+    _con_hprod!(cons.inner, x, θ, y, v, Hv, obj_weight)
+    for entry in cons.entries
+        shessian!((Hv, v), nothing, entry, x, θ, y, zero(eltype(Hv)))
+    end
+end
 
+@inbounds @inline offset0(a::ConEntry, i) = a.offset + i
+@inbounds @inline offset1(a::ConEntry, i) = offset1(a.f, i)
+@inbounds @inline offset2(a::ConEntry, i) = offset2(a.f, i)
 @inbounds @inline offset0(a, i) = offset0(a.f, i)
 @inbounds @inline offset1(a, i) = offset1(a.f, i)
 @inbounds @inline offset2(a, i) = offset2(a.f, i)
@@ -1223,6 +1435,7 @@ end
 @inbounds @inline offset1(f::F, i) where {F<:SIMDFunction} = f.o1 + f.o1step * (i - 1)
 @inbounds @inline offset2(f::F, i) where {F<:SIMDFunction} = f.o2 + f.o2step * (i - 1)
 @inbounds @inline offset0(a::C, i) where {C<:ConstraintAug} = offset0(a.f, a.itr, i, a.dims)
+@inbounds @inline offset0(a::AugEntry, i) = offset0(a.f, a.itr, i, a.dims)
 @inbounds @inline offset0(f::F, itr, i) where {P<:Pair,F<:SIMDFunction{P}} =
     f.o0 + f.f.first(itr[i], nothing, nothing)
 @inbounds @inline offset0(f::F, itr, i) where {I<:Integer,P<:Pair{I},F<:SIMDFunction{P}} =
