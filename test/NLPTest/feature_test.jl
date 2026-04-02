@@ -17,7 +17,7 @@ function test_const(backend)
         @test m.meta.nvar == N
         @test m.meta.nnzo > 0
 
-        x0 = ones(N)
+        x0 = ExaModels.convert_array(ones(N), backend)
         @test NLPModels.obj(m, x0) ≈ N * N  # sum of N*x[i]^2 = N*N*1
     end
 
