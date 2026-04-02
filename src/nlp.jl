@@ -480,6 +480,53 @@ size(ns) = Tuple(_length(n) for n in ns)
 _start(n::Int) = 1
 _start(n::UnitRange) = n.start
 
+function exa_macro_expansion(name, args)
+    name = Symbol(name)
+    ret = gensym("ret")
+    if length(args) > 0 && Meta.isexpr(args[1], :parameters)
+        params = args[1]
+        c = args[2]
+        other_args = args[3:end]
+        return quote
+            ($(esc(c)), $ret) = ExaModels.$name($(esc(c)), $(map(esc, other_args)...); $(map(esc, params.args)...))
+            $ret
+        end
+    else
+        c = args[1]
+        other_args = args[2:end]
+        return quote
+            ($(esc(c)), $ret) = ExaModels.$name($(esc(c)), $(map(esc, other_args)...))
+            $ret
+        end
+    end
+end
+
+
+macro variable(args...)
+    exa_macro_expansion(:variable, args)
+end
+
+macro constraint(args...)
+    exa_macro_expansion(:constraint, args)
+end
+
+macro objective(args...)
+    exa_macro_expansion(:objective, args)
+end
+
+macro parameter(args...)
+    exa_macro_expansion(:parameter, args)
+end
+
+macro constraint!(args...)
+    exa_macro_expansion(:constraint!, args)
+end
+
+macro subexpr(args...)
+    exa_macro_expansion(:subexpr, args)
+end
+
+
 """
     variable(core, dims...; start = 0, lvar = -Inf, uvar = Inf, kwargs...)
 

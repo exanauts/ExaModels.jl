@@ -56,7 +56,14 @@ export ExaModel,
     multipliers,
     multipliers_L,
     multipliers_U,
+    @variable,
+    @constraint,
+    @objective,
+    @parameter,
+    @constraint!,
+    @subexpr,
     @register_univariate,
     @register_bivariate
+
 
 end # module ExaModels
