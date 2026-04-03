@@ -52,7 +52,7 @@ function runtests()
 
         # ── LuksanVlcek ──────────────────────────────────────────────────────────
         @testset "LuksanVlcekApp" begin
-            exe_path = joinpath(tempdir(), "luksanvlcek_test")
+            exe_path = joinpath(tempdir(), "luksanvlcek_test" * (Sys.iswindows() ? ".exe" : ""))
 
             compiled = false
             @testset "juliac compiles LuksanVlcekApp" begin
@@ -70,7 +70,7 @@ function runtests()
 
         # ── COPSBenchmark ─────────────────────────────────────────────────────────
         @testset "COPSApp" begin
-            exe_path = joinpath(tempdir(), "cops_test")
+            exe_path = joinpath(tempdir(), "cops_test" * (Sys.iswindows() ? ".exe" : ""))
 
             compiled = false
             @testset "juliac compiles COPSApp" begin

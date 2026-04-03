@@ -47,8 +47,8 @@ function test_add_var_gen(backend)
         @test m.meta.nvar == 2 * N
         @test m.meta.ncon == N
         # equality constraints: lcon == ucon == 0
-        @test all(m.meta.lcon .== 0.0)
-        @test all(m.meta.ucon .== 0.0)
+        @test all(iszero, m.meta.lcon)
+        @test all(iszero, m.meta.ucon)
     end
 end
 
