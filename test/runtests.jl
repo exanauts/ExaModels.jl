@@ -1,3 +1,7 @@
+import Pkg
+
+include("backends.jl")
+
 using Test, ExaModels
 using Random
 
@@ -12,7 +16,6 @@ ad_tolerance(::Type{Float32}) = 1e-4
 sol_tolerance(::Type{Float32}) = 1e-1
 solver_tolerance(::Type{Float32}) = 1e-4
 
-include("backends.jl")
 include("NLPTest/NLPTest.jl")
 include("ADTest/ADTest.jl")
 include("JuMPTest/JuMPTest.jl")
