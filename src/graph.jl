@@ -317,3 +317,68 @@ end
 @inline (v::Null{N})(i, x::AdjointNodeSource{T}, θ) where {N, T} = AdjointNull(eltype(T)(v.value))
 @inline (v::Null{Nothing})(i, x::SecondAdjointNodeSource{T}, θ) where {T} = SecondAdjointNull(zero(eltype(T)))
 @inline (v::Null{N})(i, x::SecondAdjointNodeSource{T}, θ) where {N, T} = SecondAdjointNull(eltype(T)(v.value))
+
+# ── SumNode / ProdNode ────────────────────────────────────────────────────────
+
+"""
+    SumNode{I} <: AbstractNode
+
+A node representing the sum of a tuple of child nodes.
+
+Constructed by [`exa_sum`](@ref).  Within `@obj`, `@con`, and `@expr` macros,
+`sum(body for k in range)` is automatically rewritten to
+`exa_sum(k -> body, Val(range))` with the `Val` hoisted outside the generator
+closure for type stability under `juliac --trim=safe`.
+
+In adjoint / second-adjoint mode the children are evaluated and folded via
+`reduce(+, …)` (or `reduce(*, …)` for [`ProdNode`](@ref)), reusing the existing
+registered `+` / `*` dispatch.  No dedicated adjoint node types are needed.
+"""
+struct SumNode{I} <: AbstractNode
+    inners::I
+end
+
+"""
+    ProdNode{I} <: AbstractNode
+
+A node representing the product of a tuple of child nodes.
+
+Constructed by [`exa_prod`](@ref).  See [`SumNode`](@ref) for design notes.
+"""
+struct ProdNode{I} <: AbstractNode
+    inners::I
+end
+
+# ── Primal evaluation (x::AbstractVector → scalar) ───────────────────────────
+
+@inline (n::SumNode{Tuple{}})(i, x::V, θ) where {T, V<:AbstractVector{T}} = zero(T)
+@inline (n::SumNode)(i, x::V, θ) where {T, V<:AbstractVector{T}} =
+    mapreduce(inner -> inner(i, x, θ), +, n.inners)
+
+@inline (n::ProdNode{Tuple{}})(i, x::V, θ) where {T, V<:AbstractVector{T}} = one(T)
+@inline (n::ProdNode)(i, x::V, θ) where {T, V<:AbstractVector{T}} =
+    mapreduce(inner -> inner(i, x, θ), *, n.inners)
+
+# ── Adjoint tree (gradient) ───────────────────────────────────────────────────
+
+@inline (n::SumNode{Tuple{}})(i, x::AdjointNodeSource{VT}, θ) where {VT} =
+    AdjointNull(zero(eltype(VT)))
+@inline (n::SumNode)(i, x::AdjointNodeSource, θ) =
+    reduce(+, map(inner -> inner(i, x, θ), n.inners))
+
+@inline (n::ProdNode{Tuple{}})(i, x::AdjointNodeSource{VT}, θ) where {VT} =
+    AdjointNull(one(eltype(VT)))
+@inline (n::ProdNode)(i, x::AdjointNodeSource, θ) =
+    reduce(*, map(inner -> inner(i, x, θ), n.inners))
+
+# ── Second-adjoint tree (Hessian) ─────────────────────────────────────────────
+
+@inline (n::SumNode{Tuple{}})(i, x::SecondAdjointNodeSource{VT}, θ) where {VT} =
+    SecondAdjointNull(zero(eltype(VT)))
+@inline (n::SumNode)(i, x::SecondAdjointNodeSource, θ) =
+    reduce(+, map(inner -> inner(i, x, θ), n.inners))
+
+@inline (n::ProdNode{Tuple{}})(i, x::SecondAdjointNodeSource{VT}, θ) where {VT} =
+    SecondAdjointNull(one(eltype(VT)))
+@inline (n::ProdNode)(i, x::SecondAdjointNodeSource, θ) =
+    reduce(*, map(inner -> inner(i, x, θ), n.inners))

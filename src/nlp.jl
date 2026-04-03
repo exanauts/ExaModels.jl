@@ -1156,9 +1156,15 @@ function obj(m::AbstractExaModel, x::AbstractVector)
     return _obj(m.objs, x, m.θ)
 end
 
-_obj((obj,objs...), x, θ) =
-    _obj(objs, x, θ) +
-    (isempty(obj.itr) ? zero(eltype(x)) : sum(obj.f(k, x, θ) for k in obj.itr))
+@inline function _obj((obj, objs...), x, θ)
+    s = _obj(objs, x, θ)
+    # Use @simd loop instead of sum(gen) — Base.foldl_impl in the generator
+    # form creates MappingRF types that juliac --trim=safe cannot resolve.
+    @simd for k in eachindex(obj.itr)
+        @inbounds s += obj.f(obj.itr[k], x, θ)
+    end
+    s
+end
 _obj(obj::Tuple{}, x, θ) = zero(eltype(x))
 
 function cons_nln!(m::AbstractExaModel, x::AbstractVector, g::AbstractVector)

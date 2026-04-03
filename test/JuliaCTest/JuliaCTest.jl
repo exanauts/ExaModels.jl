@@ -86,9 +86,13 @@ function runtests()
             compiled && _run_app_tests(exe_path, [
                 ("camshape",  50),
                 ("bearing",   10),
+                ("catmix",    10),
                 ("chain",     20),
+                ("gasoil",    10),
                 ("glider",    20),
+                ("marine",    10),
                 ("minsurf",   10),
+                ("pinene",    10),
                 ("robot",     20),
                 ("rocket",    20),
                 ("steering",  20),

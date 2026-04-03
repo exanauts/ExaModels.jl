@@ -1,6 +1,5 @@
 using Test, ExaModels
 using Random
-using KernelAbstractions
 
 Random.seed!(0)
 

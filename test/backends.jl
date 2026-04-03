@@ -1,10 +1,23 @@
-using KernelAbstractions
+import Pkg
+const BACKENDS = []
 
-const BACKENDS = Any[nothing, CPU()]
+if haskey(ARGS, "EXAMODELS_NO_TEST_CPU")
+    @info "excluding CPU"
+else
+    @eval push!(BACKENDS, nothing)
+end
 
-is_package_installed(name::String) = !isnothing(Base.find_package(name))
-const EXAMODELS_TEST_CUDA = is_package_installed("CUDA")
-if EXAMODELS_TEST_CUDA
+if haskey(ARGS, "EXAMODELS_TEST_KA")
+    Pkg.activate(joinpath(@__DIR__, "test-ka"))
+    @eval using KernelAbstractions
+    @eval push!(BACKENDS, CPU())
+    @info "including CPU"
+else
+    @info "excluding CPU"
+end
+
+if haskey(ARGS, "EXAMODELS_TEST_CUDA")
+    Pkg.activate(joinpath(@__DIR__, "test-cuda"))
     @eval using CUDA
     @eval push!(BACKENDS, CUDABackend())
     @info "including CUDA"
@@ -12,8 +25,8 @@ else
     @info "excluding CUDA"
 end
 
-const EXAMODELS_TEST_AMDGPU = is_package_installed("AMDGPU")
-if EXAMODELS_TEST_AMDGPU
+if haskey(ARGS, "EXAMODELS_TEST_AMDGPU")
+    Pkg.activate(joinpath(@__DIR__, "test-amdgpu"))
     @eval using AMDGPU
     @eval push!(BACKENDS, ROCBackend())
     @info "including AMDGPU"
@@ -21,8 +34,8 @@ else
     @info "excluding AMDGPU"
 end
 
-const EXAMODELS_TEST_ONEAPI = is_package_installed("oneAPI")
-if EXAMODELS_TEST_ONEAPI
+if haskey(ARGS, "EXAMODELS_TEST_ONEAPI")
+    Pkg.activate(joinpath(@__DIR__, "test-oneapi"))
     @eval using oneAPI
     @eval push!(BACKENDS, oneAPIBackend())
     @info "including oneAPI"
@@ -30,8 +43,8 @@ else
     @info "excluding oneAPI"
 end
 
-const EXAMODELS_TEST_METAL = is_package_installed("Metal")
-if EXAMODELS_TEST_METAL
+if haskey(ARGS, "EXAMODELS_TEST_METAL") 
+    Pkg.activate(joinpath(@__DIR__, "test-metal"))
     @eval using Metal
     @eval push!(BACKENDS, MetalBackend())
     @info "including Metal"
@@ -39,8 +52,8 @@ else
     @info "excluding Metal"
 end
 
-const EXAMODELS_TEST_OPENCL = is_package_installed("OpenCL") && is_package_installed("pocl_jll")
-if EXAMODELS_TEST_OPENCL
+if haskey(ARGS, "EXAMODELS_TEST_POCL")
+    Pkg.activate(joinpath(@__DIR__, "test-opencl"))
     @eval begin
         using OpenCL, pocl_jll
         if !(Sys.iswindows() && OpenCL.cl.is_high_integrity_level())

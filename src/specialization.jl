@@ -44,8 +44,8 @@ AbstractNodes, etc.) passes through unchanged.
 # (not iterator vars, not function names, not array/dot bases) via _maybe_const().
 
 const _MAYBE_CONST_REF = GlobalRef(@__MODULE__, :_maybe_const)
-const _EXA_SUM_REF    = GlobalRef(@__MODULE__, :_exa_sum)
-const _EXA_PROD_REF   = GlobalRef(@__MODULE__, :_exa_prod)
+const _EXA_SUM_REF    = GlobalRef(@__MODULE__, :exa_sum)
+const _EXA_PROD_REF   = GlobalRef(@__MODULE__, :exa_prod)
 
 # Collect iterator variable names from the LHS of a for-clause
 function _collect_iter_vars!(vars::Set{Symbol}, lhs)
@@ -83,22 +83,38 @@ function _process_generator(gen, outer_vars::Set{Symbol})
         _collect_iter_vars!(iter_vars, spec.args[1])
     end
 
+    # hoisted: accumulates (sym => val_expr) pairs that must be computed OUTSIDE
+    # the generator closure for juliac constant propagation to resolve Val{N}.
+    hoisted = Pair{Symbol,Any}[]
+
     body = gen.args[1]
     if body isa Expr && body.head == :generator
         new_body = _process_generator(body, iter_vars)
     elseif body isa Expr && body.head == :flatten
         new_body = Expr(:flatten, _process_generator(body.args[1], iter_vars))
     else
-        new_body = _wrap_free_symbols(body, iter_vars)
+        new_body = _wrap_free_symbols(body, iter_vars, hoisted)
     end
 
-    return Expr(:generator, new_body, gen.args[2:end]...)
+    result = Expr(:generator, new_body, gen.args[2:end]...)
+
+    # Wrap in a let-block so hoisted Val bindings are evaluated once, outside the
+    # generator closure.  Julia's inference can then propagate Val{N} concretely.
+    if !isempty(hoisted)
+        binds = Expr(:block, [Expr(:(=), p.first, p.second) for p in hoisted]...)
+        result = Expr(:let, binds, result)
+    end
+
+    return result
 end
 
 # Walk an expression and wrap free symbols in Const().
 # "Free" means: not an iterator var, not in function-call position,
 # not an array base (first arg of ref[]), not a dot-access target.
-function _wrap_free_symbols(expr, iter_vars::Set{Symbol})
+# `hoisted` accumulates (sym => expr) pairs for Val bindings that must be
+# evaluated outside the generator closure (for juliac constant propagation).
+function _wrap_free_symbols(expr, iter_vars::Set{Symbol},
+                            hoisted::Vector{Pair{Symbol,Any}} = Pair{Symbol,Any}[])
     if expr isa Symbol
         return expr in iter_vars ? expr : Expr(:call, _MAYBE_CONST_REF, expr)
     elseif !(expr isa Expr)
@@ -109,52 +125,57 @@ function _wrap_free_symbols(expr, iter_vars::Set{Symbol})
     if h == :call
         fn = expr.args[1]
         # sum(body for j in range) / prod(body for j in range) — single-spec generator only.
-        # Transform to _exa_sum(j -> wrapped_body, range) so the fold is type-stable for juliac.
-        # Only the body is auto-const-wrapped; the range is kept as plain Julia (it's not an NLP expr).
+        # Transform to exa_sum(j -> wrapped_body, lo, val_sym) where val_sym is a
+        # hoisted Val(length(range)) binding.  Hoisting outside the generator closure
+        # lets juliac --trim=safe resolve Val{N} concretely via constant propagation.
         if length(expr.args) == 2 &&
            expr.args[2] isa Expr && expr.args[2].head == :generator &&
            length(expr.args[2].args) == 2 &&   # body + exactly one for-spec
            (fn === :sum || fn === :prod ||
             fn isa GlobalRef && (fn.name === :sum || fn.name === :prod))
-            gen  = expr.args[2]
-            body = gen.args[1]
-            spec = gen.args[2]   # Expr(:(=), iter_var_lhs, range_expr)
+            gen        = expr.args[2]
+            body       = gen.args[1]
+            spec       = gen.args[2]            # Expr(:(=), iter_var_lhs, range_expr)
             iter_lhs   = spec.args[1]
             range_expr = spec.args[2]
             nested_vars = copy(iter_vars)
             _collect_iter_vars!(nested_vars, iter_lhs)
-            wrapped_body = _wrap_free_symbols(body, nested_vars)
-            ref = (fn === :sum || fn isa GlobalRef && fn.name === :sum) ? _EXA_SUM_REF : _EXA_PROD_REF
-            return Expr(:call, ref, Expr(:->, iter_lhs, wrapped_body), range_expr)
+            wrapped_body = _wrap_free_symbols(body, nested_vars, hoisted)
+            ref = (fn === :sum || fn isa GlobalRef && fn.name === :sum) ?
+                  _EXA_SUM_REF : _EXA_PROD_REF
+            # Hoist Val(range) outside the generator closure so juliac can
+            # resolve the concrete type (e.g. Val{1:3}).
+            val_sym = gensym(:exa_sum_val)
+            push!(hoisted, val_sym => Expr(:call, :Val, range_expr))
+            return Expr(:call, ref, Expr(:->, iter_lhs, wrapped_body), val_sym)
         end
         new_args = Any[expr.args[1]]  # keep function name as-is
         for i in 2:length(expr.args)
-            push!(new_args, _wrap_free_symbols(expr.args[i], iter_vars))
+            push!(new_args, _wrap_free_symbols(expr.args[i], iter_vars, hoisted))
         end
         return Expr(:call, new_args...)
     elseif h == :ref
         new_args = Any[expr.args[1]]  # keep array base as-is
         for i in 2:length(expr.args)
-            push!(new_args, _wrap_free_symbols(expr.args[i], iter_vars))
+            push!(new_args, _wrap_free_symbols(expr.args[i], iter_vars, hoisted))
         end
         return Expr(:ref, new_args...)
     elseif h == :generator
-        # Nested generator (e.g. sum(f(x) for x in 1:n) appearing in the body of an
-        # outer generator).  We must collect the inner iterator variables and only
-        # wrap free symbols in the generator *body* — not in the for-specs.
-        # Wrapping the for-spec LHS (the iterator variable) turns `j = 1:n` into
-        # `_maybe_const(j) = 1:n`, which Julia lowering reads as a global method
-        # definition and raises a lowering error.
         nested_vars = copy(iter_vars)
         for spec in expr.args[2:end]
             _collect_iter_vars!(nested_vars, spec.args[1])
         end
-        new_body = _wrap_free_symbols(expr.args[1], nested_vars)
+        new_body = _wrap_free_symbols(expr.args[1], nested_vars, hoisted)
         return Expr(:generator, new_body, expr.args[2:end]...)
+    elseif h == :->
+        lambda_vars = copy(iter_vars)
+        _collect_iter_vars!(lambda_vars, expr.args[1])
+        new_body = _wrap_free_symbols(expr.args[2], lambda_vars, hoisted)
+        return Expr(:->, expr.args[1], new_body)
     elseif h == :. || h == :quote || h == :macrocall
-        return expr  # leave dot access, quotes, and nested macros alone
+        return expr
     else
-        return Expr(h, [_wrap_free_symbols(a, iter_vars) for a in expr.args]...)
+        return Expr(h, [_wrap_free_symbols(a, iter_vars, hoisted) for a in expr.args]...)
     end
 end
 
@@ -198,38 +219,96 @@ end
 @inline Base.:*(d1::Real, d2::AbstractNode) = Node2(*, Const(d1), d2)
 @inline Base.:-(d1::Real, d2::AbstractNode) = Node2(-, Const(d1), d2)
 
-# ── Type-stable sum/prod for use inside @obj / @con generators ───────────────
+# ── exa_sum / exa_prod ────────────────────────────────────────────────────────
 #
-# Julia's Base.sum/prod over a UnitRange uses a loop whose accumulator type
-# changes each iteration (T → Node2{+,T,T} → Node2{+,Node2{...},T} → …),
-# which is not type-stable and breaks juliac --trim=safe.
+# Type-stable sum/prod for use inside @obj / @con / @expr generators.
 #
-# _exa_sum / _exa_prod use:
-#   • Tuple iterator  → Base.tail recursion (each dispatch level has a
-#                        different concrete Tuple type → concrete return type)
-#   • UnitRange{Int}  → Val{N}-based recursion; Val{length(r)} is concrete when
-#                        the range length is a compile-time constant (e.g. nc=3).
-#                        For truly runtime-length ranges the type is not inferrable
-#                        by juliac, which is the intended restriction: only
-#                        "concretely typed" iterators are supported inside @obj/@con.
+# The macro transformation rewrites:
+#   sum(body for j in range)  →  exa_sum(j -> wrapped_body, range)
+#   prod(body for j in range) →  exa_prod(j -> wrapped_body, range)
 #
-# These helpers are injected by the @obj / @con macro transformation when it sees
-#   sum(body for j in range)  →  _exa_sum(j -> body, range)
-# and similarly for prod.
+# The function-based form is type-stable for:
+#   • Tuple iterators  — tail-recursive _exa_map builds a concrete NTuple
+#   • UnitRange{Int}   — ntuple(f, Val{N}()) is concrete when N is a
+#                        compile-time constant (e.g. literal range 1:3 or
+#                        a Val-encoded length). Runtime-variable lengths are
+#                        not supported for juliac --trim=safe.
 
-# Tuple iterator — recursion on the tail
-@inline _exa_sum(f, t::Tuple{T}) where {T}  = f(t[1])
-@inline _exa_sum(f, t::Tuple)               = f(t[1]) + _exa_sum(f, Base.tail(t))
+# Helper: type-stable map over a tuple → returns a concrete tuple of results.
+@inline _exa_map(f, ::Tuple{}) = ()
+@inline _exa_map(f, t::Tuple) = (f(t[1]), _exa_map(f, Base.tail(t))...)
 
-@inline _exa_prod(f, t::Tuple{T}) where {T} = f(t[1])
-@inline _exa_prod(f, t::Tuple)              = f(t[1]) * _exa_prod(f, Base.tail(t))
+# ── Tuple iterator ────────────────────────────────────────────────────────────
 
-# UnitRange{Int} — Val{N}-based recursion (N = length of range, concrete when constant)
-@inline _exa_sum(f, r::UnitRange{Int})  = _exa_sum_val(f,  first(r), Val(length(r)))
-@inline _exa_prod(f, r::UnitRange{Int}) = _exa_prod_val(f, first(r), Val(length(r)))
+"""
+    exa_sum(f, itr)
+    exa_sum(f, ::Val{range})
+    exa_sum(gen::Base.Generator)
 
-@inline _exa_sum_val(f, lo, ::Val{1})       = f(lo)
-@inline _exa_sum_val(f, lo, ::Val{N}) where {N} = f(lo) + _exa_sum_val(f, lo + 1, Val{N-1}())
+Build a [`SumNode`](@ref) representing `∑ f(k)` for `k ∈ itr`. Inside `@obj`,
+`@con`, and `@expr` macros, `sum(body for k in range)` is automatically
+rewritten to `exa_sum(k -> body, Val(range))` with the `Val` hoisted outside
+the generator closure.
 
-@inline _exa_prod_val(f, lo, ::Val{1})       = f(lo)
-@inline _exa_prod_val(f, lo, ::Val{N}) where {N} = f(lo) * _exa_prod_val(f, lo + 1, Val{N-1}())
+# Supported iterators
+- `Tuple`: type-stable via tail recursion.
+- `UnitRange{Int}`: type-stable when the length is a compile-time constant.
+- `Val{range}` (preferred for juliac): `exa_sum(f, Val(1:nc))` embeds the range
+  in the type parameter, ensuring `juliac --trim=safe` can resolve `Val{N}`.
+
+# juliac / AOT usage
+Julia's inference cannot propagate constants like `nc = 3` through a generator
+closure boundary.  When calling `add_con`/`add_obj` programmatically (not via
+macro), hoist `Val(range)` outside the generator:
+
+```julia
+v = Val(1:nc)                                          # outside generator
+c, con = add_con(c, (exa_sum(j -> x[j], v) for i in 1:nh))  # v captured
+```
+"""
+@inline exa_sum(f, ::Tuple{}) = SumNode(())
+@inline exa_sum(f, t::Tuple) = SumNode(_exa_map(f, t))
+
+"""
+    exa_prod(f, itr)
+    exa_prod(f, ::Val{range})
+    exa_prod(gen::Base.Generator)
+
+Build a [`ProdNode`](@ref) representing `∏ f(k)` for `k ∈ itr`. Inside `@obj`,
+`@con`, and `@expr` macros, `prod(body for k in range)` is automatically
+rewritten to `exa_prod(k -> body, Val(range))` with the `Val` hoisted outside
+the generator closure.
+
+See [`exa_sum`](@ref) for supported iterators and juliac usage notes.
+"""
+@inline exa_prod(f, ::Tuple{}) = ProdNode(())
+@inline exa_prod(f, t::Tuple) = ProdNode(_exa_map(f, t))
+
+# ── UnitRange{Int}: Val{N}-based recursion ────────────────────────────────────
+
+# UnitRange form (for direct use / Generator fallback — NOT type-stable inside
+# generator closures for juliac; prefer the Val form below).
+@inline exa_sum(f, r::UnitRange{Int}) = _exa_sum_range(f, first(r), Val(length(r)))
+@inline exa_prod(f, r::UnitRange{Int}) = _exa_prod_range(f, first(r), Val(length(r)))
+
+# Val-wrapped range form: Val(1:nc) embeds the range in the type parameter.
+# The macro hoists `Val(range)` outside the generator closure so juliac can
+# resolve the concrete Val{UnitRange{Int64}(1,3)} type.
+# Users can also call this directly: `exa_sum(j -> x[j], Val(1:nc))`
+@inline function exa_sum(f, ::Val{r}) where {r}
+    _exa_sum_range(f, first(r), Val(length(r)))
+end
+@inline function exa_prod(f, ::Val{r}) where {r}
+    _exa_prod_range(f, first(r), Val(length(r)))
+end
+
+@inline _exa_sum_range(f, lo::Int, ::Val{N}) where {N} =
+    SumNode(ntuple(i -> f(lo + i - 1), Val{N}()))
+
+@inline _exa_prod_range(f, lo::Int, ::Val{N}) where {N} =
+    ProdNode(ntuple(i -> f(lo + i - 1), Val{N}()))
+
+# ── Generator form (direct use outside macro) ─────────────────────────────────
+
+@inline exa_sum(gen::Base.Generator) = exa_sum(gen.f, gen.iter)
+@inline exa_prod(gen::Base.Generator) = exa_prod(gen.f, gen.iter)

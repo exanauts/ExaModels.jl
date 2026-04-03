@@ -178,3 +178,11 @@ end
 @inline replace_T(t, n::Null{T}) where T <: Real = Null{t}(t(n.value))
 @inline replace_T(::Type{T1}, n::T2) where {T1, T2 <: Real} = T1(n)
 @inline replace_T(::Type{T1}, ::Val{V}) where {T1, V} = Val(T1(V))
+@inline function replace_T(t, n::SumNode{I}) where {I}
+    inners = map(x -> replace_T(t, x), n.inners)
+    SumNode(inners)
+end
+@inline function replace_T(t, n::ProdNode{I}) where {I}
+    inners = map(x -> replace_T(t, x), n.inners)
+    ProdNode(inners)
+end

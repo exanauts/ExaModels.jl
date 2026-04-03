@@ -61,6 +61,10 @@ export ExaModel,
     multipliers_L,
     multipliers_U,
     Const,
+    SumNode,
+    ProdNode,
+    exa_sum,
+    exa_prod,
     @register_univariate,
     @register_bivariate
 

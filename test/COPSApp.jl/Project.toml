@@ -9,5 +9,5 @@ NLPModelsIpoptLite = "48c312a9-6620-4177-b859-0e15058d61ee"
 
 [sources]
 ExaModels = {path = "../.."}
-NLPModelsIpoptLite = {path = "../../lib/NLPModelsIpoptLite.jl"}
+NLPModelsIpoptLite = {path = "../NLPModelsIpoptLite.jl"}
 COPSBenchmark = {path = "../../../COPSBenchmark.jl"}

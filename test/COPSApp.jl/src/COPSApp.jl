@@ -54,27 +54,22 @@ function @main(ARGS)
         result = ipopt(_camshape(N); print_level = 5)
     elseif name == "bearing"
         result = ipopt(_bearing(N); print_level = 5)
-    # # TODO: implement sum and prod nodes; iterator should be restricted to unit range or tuple
-    # # elseif name == "catmix"
-    # #     result = ipopt(_catmix(N); print_level = 5)
+    elseif name == "catmix"
+        result = ipopt(_catmix(N); print_level = 5)
     elseif name == "chain"
         result = ipopt(_chain(N); print_level = 5)
     elseif name == "glider"
         result = ipopt(_glider(N); print_level = 5)
-    # # TODO: implement sum and prod nodes; iterator should be restricted to unit range or tuple
-    # # elseif name == "gasoil"
-    # #     result = ipopt(_gasoil(N); print_level = 5)
-    # # TODO: implement sum and prod nodes; iterator should be restricted to unit range or tuple
-    # # elseif name == "marine"
-    # #     result = ipopt(_marine(N); print_level = 5)
-    # # TODO: implement sum and prod nodes; iterator should be restricted to unit range or tuple
-    # # elseif name == "methanol"
-    # #     result = ipopt(_methanol(N); print_level = 5)
+    elseif name == "gasoil"
+        result = ipopt(_gasoil(N); print_level = 5)
+    elseif name == "marine"
+        result = ipopt(_marine(N); print_level = 5)
+    elseif name == "methanol"
+        result = ipopt(_methanol(N); print_level = 5)
     elseif name == "minsurf"
         result = ipopt(_minsurf(N); print_level = 5)
-    # # TODO: implement sum and prod nodes; iterator should be restricted to unit range or tuple
-    # # elseif name == "pinene"
-    # #     result = ipopt(_pinene(N); print_level = 5)
+    elseif name == "pinene"
+        result = ipopt(_pinene(N); print_level = 5)
     elseif name == "robot"
         result = ipopt(_robot(N); print_level = 5)
     elseif name == "rocket"
