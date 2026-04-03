@@ -6,7 +6,8 @@ const LUKSANVLCEK_APP_DIR = abspath(joinpath(@__DIR__, "..", "LuksanVlcekApp.jl"
 const COPS_APP_DIR        = abspath(joinpath(@__DIR__, "..", "COPSApp.jl"))
 
 const _JuliaC = try
-    Base.require(Base.PkgId(Base.UUID("acedd4c2-ced6-4a15-accc-2607eb759ba2"), "JuliaC"))
+    m = Base.require(Base.PkgId(Base.UUID("acedd4c2-ced6-4a15-accc-2607eb759ba2"), "JuliaC"))
+    isdefined(m, :ImageRecipe) ? m : nothing
 catch
     nothing
 end
@@ -15,7 +16,7 @@ end
 # Returns true on success, false if JuliaC is not available.
 function _compile_exe(app_dir::String, exe_path::String)
     if _JuliaC === nothing
-        @warn "JuliaC not available, skipping AOT compilation test"
+        @warn "JuliaC not available (or incompatible version), skipping AOT compilation test"
         return false
     end
 
