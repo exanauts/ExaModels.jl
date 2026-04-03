@@ -57,7 +57,7 @@ function runtests()
             compiled = false
             @testset "juliac compiles LuksanVlcekApp" begin
                 compiled = _compile_exe(LUKSANVLCEK_APP_DIR, exe_path)
-                @test compiled
+                @test compiled skip=!_HAS_JULIAC_API
                 compiled && @test isfile(exe_path)
             end
 
@@ -75,7 +75,7 @@ function runtests()
             compiled = false
             @testset "juliac compiles COPSApp" begin
                 compiled = _compile_exe(COPS_APP_DIR, exe_path)
-                @test compiled
+                @test compiled skip=!_HAS_JULIAC_API
                 compiled && @test isfile(exe_path)
             end
 
