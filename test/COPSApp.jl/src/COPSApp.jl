@@ -36,7 +36,7 @@ const MODELS = [
 @inline _steering(N)  = COPSBenchmark.steering_model(COPSBenchmark.ExaModelsBackend(), N;    T = Float64)
 @inline _torsion(N)   = COPSBenchmark.torsion_model(COPSBenchmark.ExaModelsBackend(),  N, N; T = Float64)
 
-function @main(ARGS)
+function (@main)(ARGS)
     if length(ARGS) < 2
         println(Core.stdout, "Usage: cops model N")
         println(Core.stdout, "")

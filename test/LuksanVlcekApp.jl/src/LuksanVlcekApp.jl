@@ -23,7 +23,7 @@ const MODELS = [
     "Chained_HS53",
 ]
 
-function @main(ARGS)
+function (@main)(ARGS)
     if length(ARGS) < 2
         println(Core.stdout, "Usage: luksanvlcek model N")
         println(Core.stdout, "")
