@@ -6,6 +6,7 @@
 # Also, if you're using NVIDIA GPUs, make sure to have installed appropriate drivers.
 
 # Let's say that our CPU code is as follows.
+using ExaModels
 function luksan_vlcek_obj(x, i)
     return 100 * (x[i-1]^2 - x[i])^2 + (x[i-1] - 1)^2
 end
