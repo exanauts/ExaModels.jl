@@ -6,8 +6,14 @@ const LUKSANVLCEK_APP_DIR = abspath(joinpath(@__DIR__, "..", "LuksanVlcekApp.jl"
 const COPS_APP_DIR        = abspath(joinpath(@__DIR__, "..", "COPSApp.jl"))
 
 # Compile app_dir into an executable at exe_path using the JuliaC programmatic API.
-# Returns true on success, false if JuliaC is not available.
+# Returns true on success, false if JuliaC API is not available.
+const _HAS_JULIAC_API = isdefined(JuliaC, :ImageRecipe)
+
 function _compile_exe(app_dir::String, exe_path::String)
+    if !_HAS_JULIAC_API
+        @warn "JuliaC.ImageRecipe not available, skipping AOT compilation test"
+        return false
+    end
 
     img = JuliaC.ImageRecipe(
         file        = app_dir,
