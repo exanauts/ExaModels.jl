@@ -12,44 +12,13 @@
 #
 # This script is NOT a runtime dependency — it generates static Julia code.
 
-using Symbolics, SpecialFunctions
-
-@variables x x1 x2
-
-# ============================================================================
-# Symbolics helpers (shared with generate_functionlist.jl pattern)
-# ============================================================================
-
-function sym_derivs_univ(f_sym)
-    expr = f_sym(x)
-    df = Symbolics.simplify(Symbolics.derivative(expr, x))
-    ddf = Symbolics.simplify(Symbolics.derivative(df, x))
-    return df, ddf
-end
-
-function sym_derivs_biv(f_sym)
-    expr = f_sym(x1, x2)
-    df1 = Symbolics.simplify(Symbolics.derivative(expr, x1))
-    df2 = Symbolics.simplify(Symbolics.derivative(expr, x2))
-    ddf11 = Symbolics.simplify(Symbolics.derivative(df1, x1))
-    ddf12 = Symbolics.simplify(Symbolics.derivative(df1, x2))
-    ddf22 = Symbolics.simplify(Symbolics.derivative(df2, x2))
-    return df1, df2, ddf11, ddf12, ddf22
-end
-
-function _runic_mul_spaces(s::String)
-    for _ in 1:2
-        s = replace(s, r"(\S)\*(\S)" => s"\1 * \2")
-    end
-    return s
-end
+include(joinpath(@__DIR__, "codegen_utils.jl"))
+using SpecialFunctions
 
 # ============================================================================
-# Type-generic constant replacement
+# Float64 constants specific to SpecialFunctions derivatives
 # ============================================================================
 
-# Float64 constants emitted by Symbolics.jl for SpecialFunctions derivatives.
-# All replaced with type-generic helper calls to support Float32.
 const SF_FLOAT_CONSTANT_REPLACEMENTS = [
     # 1/sqrt(π) ≈ 0.5641895835477563
     (string(1 / sqrt(Float64(π))), "_cinvsqrtpi({V})"),
@@ -65,42 +34,6 @@ const SF_FLOAT_CONSTANT_REPLACEMENTS = [
     (string(Float64(π)), "_cpi({V})"),
 ]
 
-function replace_sf_float_constants(s::String, typevar::String)
-    for (literal, template) in SF_FLOAT_CONSTANT_REPLACEMENTS
-        repl = replace(template, "{V}" => typevar)
-        escaped = replace(literal, "." => "\\.")
-        s = replace(s, Regex(escaped * raw"(?=[a-zA-Z_(])") => repl * " * ")
-        s = replace(s, literal => repl)
-    end
-    return s
-end
-
-function replace_integer_constants(s::String, typevar::String)
-    if occursin(r"^-?\d+$", s)
-        n = parse(Int, s)
-        n == 0 && return "zero($typevar)"
-        n == 1 && return "one($typevar)"
-        n == -1 && return "-one($typevar)"
-        return "oftype($typevar, $s)"
-    end
-    return s
-end
-
-function sym2lambda_sf(expr, vars::Symbol...)
-    s = string(expr)
-    typevar = string(vars[1])
-    # Qualify bare SpecialFunctions names that Symbolics sometimes unqualifies
-    s = replace_sf_float_constants(s, typevar)
-    s = replace_integer_constants(s, typevar)
-    s = _runic_mul_spaces(s)
-    if length(vars) == 1
-        return "$(vars[1]) -> $s"
-    else
-        vstr = join(vars, ", ")
-        return "($vstr) -> $s"
-    end
-end
-
 # ============================================================================
 # Function tables
 # ============================================================================
@@ -112,7 +45,7 @@ const AUTO_UNIVARIATES = [
     :erfi,
     :erfcx,
     :erfcinv,
-    :erfinv,    # will be overridden by manual entry below if needed
+    :erfinv,
     :digamma,
     :trigamma,
     :invdigamma,
@@ -128,9 +61,7 @@ const AUTO_UNIVARIATES = [
     :dawson,
 ]
 
-# Manual overrides: (fname, df_string, ddf_string) — used when Symbolics fails or
-# when the auto-generated output contains hardcoded Float64 literals that the constant
-# replacement regex cannot match due to Symbolics.jl printing fewer significant digits.
+# Manual overrides: (fname, df_string, ddf_string)
 const MANUAL_UNIVARIATES = [
     (
         :erfinv,
@@ -138,8 +69,6 @@ const MANUAL_UNIVARIATES = [
         "x -> _csqrtpihalf(x) * exp(SpecialFunctions.erfinv(x)^2) * 2 * SpecialFunctions.erfinv(x) * _csqrtpihalf(x) * exp(SpecialFunctions.erfinv(x)^2)",
     ),
     (
-        # Symbolics.jl emits truncated Float64 literals (e.g. 0.886226925452758) that
-        # don't match string(sqrt(π)/2) exactly, so we override with type-generic helpers.
         :erfcinv,
         "x -> -_csqrtpihalf(x) * exp(SpecialFunctions.erfcinv(x)^2)",
         "x -> (_cpi(x) / 2) * SpecialFunctions.erfcinv(x) * exp(2 * SpecialFunctions.erfcinv(x)^2)",
@@ -179,8 +108,8 @@ function generate()
         fname in MANUAL_NAMES && continue
         f = getfield(SpecialFunctions, fname)
         df_sym, ddf_sym = sym_derivs_univ(f)
-        df_s = sym2lambda_sf(df_sym, :x)
-        ddf_s = sym2lambda_sf(ddf_sym, :x)
+        df_s = sym2lambda(df_sym, SF_FLOAT_CONSTANT_REPLACEMENTS, :x)
+        ddf_s = sym2lambda(ddf_sym, SF_FLOAT_CONSTANT_REPLACEMENTS, :x)
         println(io, "ExaModels.@register_univariate(")
         println(io, "    SpecialFunctions.$fname,")
         println(io, "    $df_s,")
@@ -210,11 +139,11 @@ function generate()
     for fname in AUTO_BIVARIATES
         f = getfield(SpecialFunctions, fname)
         df1_sym, df2_sym, ddf11_sym, ddf12_sym, ddf22_sym = sym_derivs_biv(f)
-        df1_s = sym2lambda_sf(df1_sym, :x1, :x2)
-        df2_s = sym2lambda_sf(df2_sym, :x1, :x2)
-        ddf11_s = sym2lambda_sf(ddf11_sym, :x1, :x2)
-        ddf12_s = sym2lambda_sf(ddf12_sym, :x1, :x2)
-        ddf22_s = sym2lambda_sf(ddf22_sym, :x1, :x2)
+        df1_s = sym2lambda(df1_sym, SF_FLOAT_CONSTANT_REPLACEMENTS, :x1, :x2)
+        df2_s = sym2lambda(df2_sym, SF_FLOAT_CONSTANT_REPLACEMENTS, :x1, :x2)
+        ddf11_s = sym2lambda(ddf11_sym, SF_FLOAT_CONSTANT_REPLACEMENTS, :x1, :x2)
+        ddf12_s = sym2lambda(ddf12_sym, SF_FLOAT_CONSTANT_REPLACEMENTS, :x1, :x2)
+        ddf22_s = sym2lambda(ddf22_sym, SF_FLOAT_CONSTANT_REPLACEMENTS, :x1, :x2)
         println(io, "ExaModels.@register_bivariate(")
         println(io, "    SpecialFunctions.$fname,")
         println(io, "    $df1_s,")
