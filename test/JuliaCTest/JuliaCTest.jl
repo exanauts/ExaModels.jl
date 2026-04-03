@@ -1,35 +1,24 @@
 module JuliaCTest
 
-using Test
+using Test, JuliaC
 
 const LUKSANVLCEK_APP_DIR = abspath(joinpath(@__DIR__, "..", "LuksanVlcekApp.jl"))
 const COPS_APP_DIR        = abspath(joinpath(@__DIR__, "..", "COPSApp.jl"))
 
-const _JuliaC = try
-    m = Base.require(Base.PkgId(Base.UUID("acedd4c2-ced6-4a15-accc-2607eb759ba2"), "JuliaC"))
-    isdefined(m, :ImageRecipe) ? m : nothing
-catch
-    nothing
-end
-
 # Compile app_dir into an executable at exe_path using the JuliaC programmatic API.
 # Returns true on success, false if JuliaC is not available.
 function _compile_exe(app_dir::String, exe_path::String)
-    if _JuliaC === nothing
-        @warn "JuliaC not available (or incompatible version), skipping AOT compilation test"
-        return false
-    end
 
-    img = _JuliaC.ImageRecipe(
+    img = JuliaC.ImageRecipe(
         file        = app_dir,
         output_type = "--output-exe",
         trim_mode   = "safe",
         julia_args  = ["--experimental"],
     )
-    _JuliaC.compile_products(img)
+    JuliaC.compile_products(img)
 
-    link = _JuliaC.LinkRecipe(image_recipe = img, outname = exe_path)
-    _JuliaC.link_products(link)
+    link = JuliaC.LinkRecipe(image_recipe = img, outname = exe_path)
+    JuliaC.link_products(link)
     return true
 end
 

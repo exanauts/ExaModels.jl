@@ -46,8 +46,13 @@ jobs:
         run: |
           set +e
           MERGE_BASE=$(git merge-base upstream/${{ github.base_ref }} HEAD) || exit 1
-          DIFF=$(git runic --diff $MERGE_BASE)
+          # Exclude AOT app entry points using @main (Julia 1.12+ syntax unsupported by Runic)
+          export RUNIC_EXCLUDE="test/COPSApp.jl/ test/LuksanVlcekApp.jl/"
+          DIFF=$(git runic --diff $MERGE_BASE 2>&1 | grep -v "test/COPSApp.jl/\|test/LuksanVlcekApp.jl/")
+          # Re-run to get the real exit code, ignoring excluded file failures
+          git runic --diff $MERGE_BASE -- $(git diff --name-only $MERGE_BASE -- '*.jl' | grep -v -e 'test/COPSApp.jl/' -e 'test/LuksanVlcekApp.jl/') > /dev/null 2>&1
           EXIT_CODE=$?
+          DIFF=$(git runic --diff $MERGE_BASE -- $(git diff --name-only $MERGE_BASE -- '*.jl' | grep -v -e 'test/COPSApp.jl/' -e 'test/LuksanVlcekApp.jl/') 2>/dev/null)
 
           echo "exit_code=$EXIT_CODE" >> $GITHUB_OUTPUT
           echo "diff<<EOF" >> $GITHUB_OUTPUT

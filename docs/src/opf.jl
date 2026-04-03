@@ -1,5 +1,7 @@
 # # [Example: Optimal Power Flow](@id opf)
 
+using ExaModels
+
 function parse_ac_power_data(filename)
     data = PowerModels.parse_file(filename)
     PowerModels.standardize_cost_terms!(data, order = 2)
