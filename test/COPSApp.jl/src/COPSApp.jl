@@ -95,17 +95,17 @@ function (@main)(ARGS)
         result = ipopt(_torsion(N); print_level = 5)
     elseif name == "elec"
         result = ipopt(_elec(N); print_level = 5)
-    # elseif name == "lane_emden"
+    # elseif name == "lane_emden"   # PDE models: Dict{Symbol,Any} is not juliac-compatible
     #     result = ipopt(_lane_emden(N); print_level = 5)
-    elseif name == "polygon"
-        result = ipopt(_polygon(N); print_level = 5)
+    # elseif name == "polygon"      # compiles but NaN at runtime
+    #     result = ipopt(_polygon(N); print_level = 5)
     elseif name == "channel"
         result = ipopt(_channel(N); print_level = 5)
-    # elseif name == "dirichlet"
+    # elseif name == "dirichlet"    # PDE model
     #     result = ipopt(_dirichlet(N); print_level = 5)
-    # elseif name == "henon"
+    # elseif name == "henon"        # PDE model
     #     result = ipopt(_henon(N); print_level = 5)
-    # elseif name == "tetra_duct12"
+    # elseif name == "tetra_duct12"   # mesh models: compile but crash/NaN at runtime (COPSBenchmark issue)
     #     result = ipopt(_tetra_duct12(N); print_level = 5)
     # elseif name == "tetra_duct15"
     #     result = ipopt(_tetra_duct15(N); print_level = 5)
@@ -122,7 +122,7 @@ function (@main)(ARGS)
     # elseif name == "triangle_pacman"
     #     result = ipopt(_triangle_pacman(N); print_level = 5)
     # elseif name == "triangle_turtle"
-    #     result = ipopt(_triangle_turtle(N); print_level = 5) 
+    #     result = ipopt(_triangle_turtle(N); print_level = 5)
     else
         println(Core.stdout, "Unknown model: $name")
         return 1
