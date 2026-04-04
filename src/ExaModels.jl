@@ -87,6 +87,7 @@ export ExaModel,
     exa_sum,
     exa_prod,
     @register_univariate,
-    @register_bivariate
+    @register_bivariate,
+    fulltype
 
 end # module ExaModels

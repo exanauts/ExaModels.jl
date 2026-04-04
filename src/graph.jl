@@ -430,6 +430,23 @@ _opname(::Type{typeof(/)}) = "/"
 _opname(::Type{typeof(^)}) = "^"
 
 # Helper to print expression tree
+function _print_tree(io::IO, node::Constant{T}, indent::Int) where {T}
+    print(io, " "^indent, T)
+end
+function _print_tree(io::IO, node::SumNode, indent::Int)
+    print(io, " "^indent)
+    for (k, inner) in enumerate(node.inners)
+        k > 1 && print(io, " + ")
+        _print_tree(io, inner, 0)
+    end
+end
+function _print_tree(io::IO, node::ProdNode, indent::Int)
+    print(io, " "^indent)
+    for (k, inner) in enumerate(node.inners)
+        k > 1 && print(io, " * ")
+        _print_tree(io, inner, 0)
+    end
+end
 function _print_tree(io::IO, node::Null{Nothing}, indent::Int)
     print(io, " "^indent, "0")
 end
@@ -473,11 +490,15 @@ end
 # Check if a node is a zero constant
 _is_zero(::Null{Nothing}) = true
 _is_zero(n::Null) = n.value == 0
+_is_zero(::Constant{0}) = true
+_is_zero(::Constant) = false
 _is_zero(n::Real) = n == 0
 _is_zero(_) = false
 
 # Check if a node is a one constant
 _is_one(n::Null) = n.value == 1
+_is_one(::Constant{1}) = true
+_is_one(::Constant) = false
 _is_one(n::Real) = n == 1
 _is_one(_) = false
 
@@ -566,6 +587,27 @@ end
 
 # --- Symbolic expression nodes ---
 
+function Base.show(io::IO, node::Constant{T}) where {T}
+    print(io, T)
+end
+function Base.show(io::IO, node::SumNode)
+    print(io, _expr_string(node))
+end
+function Base.show(io::IO, node::ProdNode)
+    print(io, _expr_string(node))
+end
+
+# Type show for new types
+function Base.show(io::IO, ::Type{Constant{T}}) where {T}
+    print(io, "Constant{", T, "}")
+end
+function Base.show(io::IO, ::Type{SumNode{I}}) where {I}
+    print(io, "SumNode{…}")
+end
+function Base.show(io::IO, ::Type{ProdNode{I}}) where {I}
+    print(io, "ProdNode{…}")
+end
+
 function Base.show(io::IO, node::Null{Nothing})
     print(io, "Null(0)")
 end
@@ -653,6 +695,36 @@ end
 
 # --- Short type name (use typeof(node) for full info) ---
 
+"""
+    fulltype(node)
+    fulltype(io::IO, node)
+
+Print the full unabbreviated type of a node. By default, node types display
+with short names (e.g. `Node2{+,…}`). Use `fulltype` to see the complete
+parametric type.
+"""
+fulltype(node) = fulltype(stdout, node)
+function fulltype(io::IO, node)
+    _print_fulltype(io, typeof(node))
+    println(io)
+end
+function _print_fulltype(io::IO, @nospecialize(T::Type))
+    if T isa DataType && !isempty(T.parameters)
+        print(io, T.name.name, "{")
+        for (k, p) in enumerate(T.parameters)
+            k > 1 && print(io, ", ")
+            if p isa Type
+                _print_fulltype(io, p)
+            else
+                print(io, p)
+            end
+        end
+        print(io, "}")
+    else
+        print(io, T)
+    end
+end
+
 _short_type(::Null{Nothing}) = "Null"
 _short_type(::Null{T}) where {T} = "Null{$T}"
 _short_type(::Var) = "Var"
@@ -661,6 +733,9 @@ _short_type(::ParameterSource) = "ParameterSource"
 _short_type(::ParameterNode) = "ParameterNode"
 _short_type(::ParSource) = "ParSource"
 _short_type(::ParIndexed) = "ParIndexed"
+_short_type(::Constant{T}) where {T} = "Constant{$T}"
+_short_type(::SumNode) = "SumNode"
+_short_type(::ProdNode) = "ProdNode"
 _short_type(::Node1{F}) where {F} = "Node1{$(_opname(F))}"
 _short_type(::Node2{F}) where {F} = "Node2{$(_opname(F))}"
 _short_type(::AdjointNull) = "AdjointNull"
@@ -730,7 +805,7 @@ end
 # --- MIME "text/plain" for detailed display ---
 
 function Base.show(io::IO, ::MIME"text/plain", node::AbstractNode)
-    println(io, _short_type(node), "  (use typeof(node) for full type)")
+    println(io, _short_type(node), "  (use fulltype(node) for full type)")
     print(io, "  ", _expr_string(node))
 end
 
