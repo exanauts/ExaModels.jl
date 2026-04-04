@@ -88,166 +88,6 @@ const AUTO_BIVARIATES = [
 function generate()
     io = IOBuffer()
 
-    # --- Helper functions ---
-    println(io, "@inline _mone(x) = -one(x)")
-    println(io, "@inline _one(x1, x2) = one(x1)")
-    println(io, "@inline _zero(x1, x2) = zero(x1)")
-    println(io, "@inline _mone(x1, x2) = -one(x1)")
-    println(io, "@inline _x1(x1, x2) = x1")
-    println(io, "@inline _x2(x1, x2) = x2")
-    println(io, "@inline _and(x::Bool, y::Bool) = x && y")
-    println(io, "@inline _or(x::Bool, y::Bool) = x || y")
-    println(io, "@inline _and(x, y::Bool) = x == 1 && y")
-    println(io, "@inline _or(x, y::Bool) = x == 1 || y")
-    println(io, "@inline _and(x::Bool, y) = x && y == 1")
-    println(io, "@inline _or(x::Bool, y) = x || y == 1")
-    println(io, "@inline _and(x, y) = x == 1 && y == 1")
-    println(io, "@inline _or(x, y) = x == 1 || y == 1")
-    println(io)
-    println(io, "# Type-generic constant helpers (avoid Float64 literals for Float32 compatibility)")
-    println(io, "@inline _clog2(x) = oftype(x, log(2))")
-    println(io, "@inline _clog10(x) = oftype(x, log(10))")
-    println(io, "@inline _cpi(x) = oftype(x, π)")
-    println(io, "@inline _cd2r(x) = oftype(x, π / 180)")
-    println(io, "@inline _cr2d(x) = oftype(x, 180 / π)")
-    println(io)
-
-    # --- Registration helpers ---
-    println(
-        io, raw"""# Runtime registration helpers — use Base.$fname pattern (symbols) to avoid
-        # syntax errors with operator function names like Base.:+.
-
-        # _needs_overload: true when no ExaModels-specific method exists yet.
-        # Plain `hasmethod` is too conservative — it returns true for
-        # untyped Base generics like max(x,y) = ifelse(isless(x,y),y,x),
-        # which prevents the Node2 overload from being added.  Check the
-        # module of the matched method: only skip if ExaModels already owns it
-        # (e.g. the identity-element specializations in specialization.jl).
-        function _needs_overload(f, types)
-            hasmethod(f, types) || return true
-            return which(f, types).module !== @__MODULE__
-        end
-
-        function _register_univ(fname::Symbol, df, ddf)
-            if _needs_overload(getfield(Base, fname), Tuple{AbstractNode})
-                @eval @inline Base.$fname(n::N) where {N <: AbstractNode} = Node1(Base.$fname, n)
-            end
-            @eval @inline Base.$fname(d::D) where {D <: AbstractAdjointNode} =
-                AdjointNode1(Base.$fname, Base.$fname(d.x), ($df)(d.x), d)
-            @eval @inline Base.$fname(t::T) where {T <: AbstractSecondAdjointNode} =
-                SecondAdjointNode1(Base.$fname, Base.$fname(t.x), ($df)(t.x), ($ddf)(t.x), t)
-            return @eval @inline (n::Node1{typeof(Base.$fname), I})(i, x, θ) where {I} =
-                Base.$fname(n.inner(i, x, θ))
-        end
-
-        function _register_biv(fname::Symbol, df1, df2, ddf11, ddf12, ddf22)
-            f = getfield(Base, fname)
-            if _needs_overload(f, Tuple{AbstractNode, AbstractNode})
-                @eval @inline function Base.$fname(
-                        d1::D1,
-                        d2::D2,
-                    ) where {D1 <: AbstractNode, D2 <: AbstractNode}
-                    return Node2(Base.$fname, d1, d2)
-                end
-            end
-            if _needs_overload(f, Tuple{AbstractNode, Real})
-                @eval @inline function Base.$fname(
-                        d1::D1,
-                        d2::D2,
-                    ) where {D1 <: AbstractNode, D2 <: Real}
-                    return Node2(Base.$fname, d1, d2)
-                end
-            end
-            if _needs_overload(f, Tuple{Real, AbstractNode})
-                @eval @inline function Base.$fname(
-                        d1::D1,
-                        d2::D2,
-                    ) where {D1 <: Real, D2 <: AbstractNode}
-                    return Node2(Base.$fname, d1, d2)
-                end
-            end
-            return @eval begin
-                @inline function Base.$fname(
-                        d1::D1,
-                        d2::D2,
-                    ) where {D1 <: AbstractAdjointNode, D2 <: AbstractAdjointNode}
-                    x1 = d1.x
-                    x2 = d2.x
-                    return AdjointNode2(Base.$fname, Base.$fname(x1, x2), ($df1)(x1, x2), ($df2)(x1, x2), d1, d2)
-                end
-                @inline function Base.$fname(
-                        d1::D1,
-                        d2::D2,
-                    ) where {D1 <: AbstractAdjointNode, D2 <: Union{Real, ParameterNode}}
-                    x1 = d1.x
-                    x2 = d2
-                    return AdjointNode1(Base.$fname, Base.$fname(x1, x2), ($df1)(x1, x2), d1)
-                end
-                @inline function Base.$fname(
-                        d1::D1,
-                        d2::D2,
-                    ) where {D1 <: Union{Real, ParameterNode}, D2 <: AbstractAdjointNode}
-                    x1 = d1
-                    x2 = d2.x
-                    return AdjointNode1(Base.$fname, Base.$fname(x1, x2), ($df2)(x1, x2), d2)
-                end
-                @inline function Base.$fname(
-                        t1::T1,
-                        t2::T2,
-                    ) where {T1 <: AbstractSecondAdjointNode, T2 <: AbstractSecondAdjointNode}
-                    x1 = t1.x
-                    x2 = t2.x
-                    return SecondAdjointNode2(
-                        Base.$fname,
-                        Base.$fname(x1, x2),
-                        ($df1)(x1, x2),
-                        ($df2)(x1, x2),
-                        ($ddf11)(x1, x2),
-                        ($ddf12)(x1, x2),
-                        ($ddf22)(x1, x2),
-                        t1,
-                        t2,
-                    )
-                end
-                @inline function Base.$fname(
-                        t1::T1,
-                        t2::T2,
-                    ) where {T1 <: AbstractSecondAdjointNode, T2 <: Union{Real, ParameterNode}}
-                    x1 = t1.x
-                    x2 = t2
-                    return SecondAdjointNode1(
-                        SecondFixed(Base.$fname),
-                        Base.$fname(x1, x2),
-                        ($df1)(x1, x2),
-                        ($ddf11)(x1, x2),
-                        t1,
-                    )
-                end
-                @inline function Base.$fname(
-                        t1::T1,
-                        t2::T2,
-                    ) where {T1 <: Union{Real, ParameterNode}, T2 <: AbstractSecondAdjointNode}
-                    x1 = t1
-                    x2 = t2.x
-                    return SecondAdjointNode1(
-                        FirstFixed(Base.$fname),
-                        Base.$fname(x1, x2),
-                        ($df2)(x1, x2),
-                        ($ddf22)(x1, x2),
-                        t2,
-                    )
-                end
-                @inline (n::Node2{typeof(Base.$fname), I1, I2})(i, x, θ) where {I1, I2} =
-                    Base.$fname(n.inner1(i, x, θ), n.inner2(i, x, θ))
-                @inline (n::Node2{typeof(Base.$fname), I1, I2})(i, x, θ) where {I1 <: Real, I2} =
-                    Base.$fname(n.inner1, n.inner2(i, x, θ))
-                @inline (n::Node2{typeof(Base.$fname), I1, I2})(i, x, θ) where {I1, I2 <: Real} =
-                    Base.$fname(n.inner1(i, x, θ), n.inner2)
-            end
-        end"""
-    )
-    println(io)
-
     # --- Univariate table ---
     println(io, "# " * "="^76)
     println(io, "# Univariate functions: (symbol, df, ddf)")
@@ -274,7 +114,7 @@ function generate()
     println(io, "]")
     println(io)
     println(io, "for (fname, df, ddf) in _UNIVARIATES")
-    println(io, "    _register_univ(fname, df, ddf)")
+    println(io, "    @eval @register_univariate(Base.\$fname, \$df, \$ddf)")
     println(io, "end")
     println(io)
 
@@ -300,7 +140,7 @@ function generate()
     println(io, "]")
     println(io)
     println(io, "for (fname, df1, df2, ddf11, ddf12, ddf22) in _BIVARIATES")
-    println(io, "    _register_biv(fname, df1, df2, ddf11, ddf12, ddf22)")
+    println(io, "    @eval @register_bivariate(Base.\$fname, \$df1, \$df2, \$ddf11, \$ddf12, \$ddf22)")
     println(io, "end")
 
     return String(take!(io))
