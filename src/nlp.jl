@@ -20,13 +20,15 @@ struct Variable{S,O} <: AbstractVariable
     size::S
     length::O
     offset::O
+    name::Symbol
+    Variable(size::S, length::O, offset::O, name::Symbol = :x) where {S, O} = new{S,O}(size, length, offset, name)
 end
 Base.show(io::IO, v::Variable) = print(
     io,
     """
 Variable
 
-  x ∈ R^{$(join(size(v.size)," × "))}
+  $(v.name) ∈ R^{$(join(size(v.size)," × "))}
 """,
 )
 
@@ -58,7 +60,7 @@ function _show_expression(io::IO, s::Expression)
 Subexpression (reduced)
 
   s ∈ R^{$(join(size(s.size), " × "))}
-  s(x,p) = $expr
+  s(x,i) = $expr
 """,
     )
 end
@@ -103,9 +105,9 @@ function Base.show(io::IO, v::Objective)
         """
 Objective
 
-  min (...) + ∑_{p ∈ P} f(x,p)
+  min (...) + ∑_{i ∈ P} f(x,i)
 
-  f(x,p) = $expr
+  f(x,i) = $expr
 
   where |P| = $(length(v.itr))
 """,
@@ -135,9 +137,9 @@ function Base.show(io::IO, v::Constraint)
 Constraint
 
   s.t. (...)
-       g♭ ≤ [g(x,p)]_{p ∈ P} ≤ g♯
+       g♭ ≤ [g(x,i)]_{i ∈ P} ≤ g♯
 
-  g(x,p) = $expr
+  g(x,i) = $expr
 
   where |P| = $(length(v.itr))
 """,
@@ -170,9 +172,9 @@ function Base.show(io::IO, v::ConstraintAugmentation)
 Constraint Augmentation
 
   s.t. (...)
-       g♭ ≤ (...) + ∑_{p ∈ P} h(x,p) ≤ g♯
+       g♭ ≤ (...) + ∑_{i ∈ P} h(x,i) ≤ g♯
 
-  h(x,p) = $expr
+  h(x,i) = $expr
 
   where |P| = $(length(v.itr))
 """,
@@ -670,10 +672,62 @@ Variable
     uvar = append!(c.backend, c.uvar, uvar, total(ns))
 
     append_var_tags(c.tags, c.backend, total(ns); kwargs...)
-    v = Variable(ns, len, o)
+    vname = name isa Val ? _val_name(name) : :x
+    v = Variable(ns, len, o, vname)
 
     (ExaCore(c; var = (v, c.var...), nvar=nvar, x0=x0, lvar=lvar, uvar=uvar, refs = add_refs(c.refs, name, v)), v)
 end
+
+# Explicit 2D overload — prevents juliac from widening ns to Tuple{T,Vararg{T}}
+function add_var(
+    c::C,
+    n1::N1,
+    n2::N2;
+    name = nothing,
+    start = zero(T),
+    lvar = T(-Inf),
+    uvar = T(Inf),
+    kwargs...
+) where {T, C<:ExaCore{T}, N1<:Union{Integer,AbstractUnitRange}, N2<:Union{Integer,AbstractUnitRange}}
+    ns = (n1, n2)
+    o = c.nvar
+    len = total(ns)
+    nvar = c.nvar + len
+    x0 = append!(c.backend, c.x0, start, len)
+    lvar = append!(c.backend, c.lvar, lvar, len)
+    uvar = append!(c.backend, c.uvar, uvar, len)
+    append_var_tags(c.tags, c.backend, len; kwargs...)
+    vname = name isa Val ? _val_name(name) : :x
+    v = Variable(ns, len, o, vname)
+    (ExaCore(c; var = (v, c.var...), nvar=nvar, x0=x0, lvar=lvar, uvar=uvar, refs = add_refs(c.refs, name, v)), v)
+end
+
+# Explicit 3D overload — prevents juliac from widening ns to Tuple{T,Vararg{T}}
+function add_var(
+    c::C,
+    n1::N1,
+    n2::N2,
+    n3::N3;
+    name = nothing,
+    start = zero(T),
+    lvar = T(-Inf),
+    uvar = T(Inf),
+    kwargs...
+) where {T, C<:ExaCore{T}, N1<:Union{Integer,AbstractUnitRange}, N2<:Union{Integer,AbstractUnitRange}, N3<:Union{Integer,AbstractUnitRange}}
+    ns = (n1, n2, n3)
+    o = c.nvar
+    len = total(ns)
+    nvar = c.nvar + len
+    x0 = append!(c.backend, c.x0, start, len)
+    lvar = append!(c.backend, c.lvar, lvar, len)
+    uvar = append!(c.backend, c.uvar, uvar, len)
+    append_var_tags(c.tags, c.backend, len; kwargs...)
+    vname = name isa Val ? _val_name(name) : :x
+    v = Variable(ns, len, o, vname)
+    (ExaCore(c; var = (v, c.var...), nvar=nvar, x0=x0, lvar=lvar, uvar=uvar, refs = add_refs(c.refs, name, v)), v)
+end
+
+_val_name(::Val{N}) where {N} = N
 
 @inline add_refs(refs, ::Nothing, var) = refs
 @inline add_refs(refs, ::Val{N}, var) where {N} = (; refs..., N => var)
@@ -799,9 +853,9 @@ julia> c, obj = add_obj(c, x[i]^2 for i=1:10);
 julia> obj
 Objective
 
-  min (...) + ∑_{p ∈ P} f(x,p)
+  min (...) + ∑_{i ∈ P} f(x,i)
 
-  f(x,p) = (x[(p + 0)] ^ 2)
+  f(x,i) = (x[i] ^ 2)
 
   where |P| = 10
 ```
@@ -869,9 +923,9 @@ julia> con
 Constraint
 
   s.t. (...)
-       g♭ ≤ [g(x,p)]_{p ∈ P} ≤ g♯
+       g♭ ≤ [g(x,i)]_{i ∈ P} ≤ g♯
 
-  g(x,p) = (x[(p + 0)] + x[((p + 0) + 1)])
+  g(x,i) = (x[i] + x[(i + 1)])
 
   where |P| = 9
 ```
@@ -1084,9 +1138,9 @@ julia> c2
 Constraint Augmentation
 
   s.t. (...)
-       g♭ ≤ (...) + ∑_{p ∈ P} h(x,p) ≤ g♯
+       g♭ ≤ (...) + ∑_{i ∈ P} h(x,i) ≤ g♯
 
-  h(x,p) = sin(x[((p.1 + 0) + 1)])
+  h(x,i) = sin(x[(i.1 + 1)])
 
   where |P| = 3
 ```
@@ -1194,7 +1248,7 @@ julia> s
 Subexpression (reduced)
 
   s ∈ R^{10}
-  s(x,p) = (x[(p + 0)] ^ 2)
+  s(x,i) = (x[i] ^ 2)
 
 julia> c, _ = add_obj(c, s[i] + s[i+1] for i in 1:9);
 ```

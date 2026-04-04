@@ -1,167 +1,108 @@
 using ExaModels
 
 println("=" ^ 60)
-println("  ExaModels Node Pretty Print Demo")
+println("  ExaModels Pretty Print Demo")
 println("=" ^ 60)
-
-# ── Symbolic Expression Nodes ──────────────────────────────
-
-println("\n── Symbolic Expression Nodes ─────────────────────────\n")
-
-# Null nodes
-n0 = ExaModels.Null()
-n1 = ExaModels.Null(3.14)
-println("Null():       ", n0)
-println("Null(3.14):   ", n1)
-
-# Variable nodes
-v1 = ExaModels.Var(1)
-v2 = ExaModels.Var(5)
-println("Var(1):       ", v1)
-println("Var(5):       ", v2)
-
-# Parameter nodes
-p1 = ExaModels.ParameterNode(2)
-println("ParameterNode(2): ", p1)
-
-# Par nodes
-ps = ExaModels.ParSource()
-pi = ExaModels.ParIndexed(ps, :cost)
-pi2 = ExaModels.ParIndexed(pi, :sub)
-println("ParSource():       ", ps)
-println("ParIndexed(:cost): ", pi)
-println("Nested ParIndexed: ", pi2)
-
-# Unary operation nodes
-sin_node = ExaModels.Node1(sin, v1)
-cos_node = ExaModels.Node1(cos, v2)
-neg_node = ExaModels.Node1(-, v1)
-println("sin(x[1]):    ", sin_node)
-println("cos(x[5]):    ", cos_node)
-println("-(x[1]):      ", neg_node)
-
-# Binary operation nodes
-add_node = ExaModels.Node2(+, v1, v2)
-mul_node = ExaModels.Node2(*, v1, n1)
-pow_node = ExaModels.Node2(^, v2, ExaModels.Null(2))
-println("x[1] + x[5]:    ", add_node)
-println("x[1] * 3.14:    ", mul_node)
-println("x[5] ^ 2:       ", pow_node)
-
-# Nested expressions
-nested = ExaModels.Node2(+, sin_node, mul_node)
-println("sin(x[1]) + x[1]*3.14: ", nested)
-
-deep = ExaModels.Node2(^, nested, ExaModels.Null(2))
-println("(...) ^ 2:             ", deep)
-
-par_expr = ExaModels.Node2(+, sin_node, pi)
-println("sin(x[1]) + p.cost:    ", par_expr)
-
-# ── Detailed REPL display ─────────────────────────────────
-
-println("\n── Detailed display (text/plain) ─────────────────────\n")
-println("display(sin(x[1]) + x[1]*3.14):")
-display(nested)
-println("\n")
-
-# ── First-Order Adjoint Nodes ─────────────────────────────
-
-println("\n── First-Order Adjoint Nodes ─────────────────────────\n")
-
-an = ExaModels.AdjointNull(1.5)
-println("AdjointNull:    ", an)
-
-av = ExaModels.AdjointNodeVar(3, 0.7)
-println("AdjointNodeVar: ", av)
-
-a1 = ExaModels.AdjointNode1(sin, 0.8415, 0.5403, an)
-println("AdjointNode1:   ", a1)
-
-a2 = ExaModels.AdjointNode2(+, 2.2, 1.0, 1.0, an, av)
-println("AdjointNode2:   ", a2)
-
-println("\ndisplay(AdjointNode1):")
-display(a1)
-println("\n")
-
-println("display(AdjointNode2):")
-display(a2)
-println("\n")
-
-# ── Second-Order Adjoint Nodes ────────────────────────────
-
-println("\n── Second-Order Adjoint Nodes ────────────────────────\n")
-
-sn = ExaModels.SecondAdjointNull(2.0)
-println("SecondAdjointNull:    ", sn)
-
-sv = ExaModels.SecondAdjointNodeVar(1, 0.5)
-println("SecondAdjointNodeVar: ", sv)
-
-s1 = ExaModels.SecondAdjointNode1(sin, 0.8415, 0.5403, -0.8415, sn)
-println("SecondAdjointNode1:   ", s1)
-
-s2 = ExaModels.SecondAdjointNode2(*, 3.0, 1.5, 2.0, 0.0, 1.0, 0.0, sn, sv)
-println("SecondAdjointNode2:   ", s2)
-
-println("\ndisplay(SecondAdjointNode1):")
-display(s1)
-println("\n")
-
-println("display(SecondAdjointNode2):")
-display(s2)
-println("\n")
 
 # ══════════════════════════════════════════════════════════
-# Using pretty print through the ExaModels API
+# 1. Named variables
 # ══════════════════════════════════════════════════════════
 
-println("=" ^ 60)
-println("  ExaModels API - Objective & Constraint Pretty Print")
-println("=" ^ 60)
-
-# ── Objective ─────────────────────────────────────────────
-
-println("\n── Objective (x[i]^2 for i=1:5) ─────────────────────\n")
+println("\n── Named Variables ───────────────────────────────────\n")
 
 c = ExaCore()
-c, x = add_var(c, 5)
-c, obj = add_obj(c, x[i]^2 for i=1:5)
-display(obj)
 
-# ── Constraint ────────────────────────────────────────────
+# Using @var macro — name flows into display
+@var(c, x, 5)
+println("@var(c, x, 5):")
+display(x)
 
-println("\n── Constraint (sin(x[i]) + x[i+1] for i=1:4) ───────\n")
+@var(c, y, 3)
+println("@var(c, y, 3):")
+display(y)
 
-c, con = add_con(c, sin(x[i]) + x[i+1] for i=1:4; lcon = -1.0, ucon = 1.0)
-display(con)
+# Unnamed variable defaults to 'x'
+c, z = add_var(c, 4)
+println("add_var(c, 4):")
+display(z)
 
-# ── Constraint Augmentation ───────────────────────────────
+# Named via keyword
+c, w = add_var(c, 2; name = Val(:w))
+println("add_var(c, 2; name = Val(:w)):")
+display(w)
 
-println("\n── ConstraintAug (i => cos(x[i]) for i=2:3) ────────\n")
+# ══════════════════════════════════════════════════════════
+# 2. Objectives — expression tree is shown
+# ══════════════════════════════════════════════════════════
 
-c, con2 = add_con!(c, con, i => cos(x[i]) for i=2:3)
+println("\n── Objectives ────────────────────────────────────────\n")
+
+println("add_obj(c, x[i]^2 for i=1:5):")
+c, obj1 = add_obj(c, x[i]^2 for i=1:5)
+display(obj1)
+
+println("\nadd_obj(c, sin(x[i]) * y[j] for (i,j) in [(1,1),(2,2),(3,3)]):")
+c, obj2 = add_obj(c, sin(x[i]) * y[j] for (i,j) in [(1,1),(2,2),(3,3)])
+display(obj2)
+
+# ══════════════════════════════════════════════════════════
+# 3. Constraints — expression tree is shown
+# ══════════════════════════════════════════════════════════
+
+println("\n── Constraints ───────────────────────────────────────\n")
+
+println("add_con(c, sin(x[i]) + x[i+1] for i=1:4):")
+c, con1 = add_con(c, sin(x[i]) + x[i+1] for i=1:4; lcon = -1.0, ucon = 1.0)
+display(con1)
+
+println("\nadd_con(c, x[i] - y[j] for (i,j) in [(1,1),(2,2)]):")
+c, con2 = add_con(c, x[i] - y[j] for (i,j) in [(1,1),(2,2)]; lcon = 0.0, ucon = 0.0)
 display(con2)
 
-# ── Expression (subexpression) ────────────────────────────
+# ══════════════════════════════════════════════════════════
+# 4. Constraint augmentation
+# ══════════════════════════════════════════════════════════
 
-println("\n── Expression (x[i]^3 + 1.0 for i in 1:5) ──────────\n")
+println("\n── Constraint Augmentation ───────────────────────────\n")
 
+println("add_con!(c, con1, i => cos(x[i]) for i=2:3):")
+c, con3 = add_con!(c, con1, i => cos(x[i]) for i=2:3)
+display(con3)
+
+# ══════════════════════════════════════════════════════════
+# 5. Subexpressions
+# ══════════════════════════════════════════════════════════
+
+println("\n── Subexpressions ────────────────────────────────────\n")
+
+println("add_expr(c, x[i]^3 + 1.0 for i in 1:5):")
 c, s = add_expr(c, x[i]^3 + 1.0 for i in 1:5)
 display(s)
 
-# ── Objective using subexpression ─────────────────────────
+# ══════════════════════════════════════════════════════════
+# 6. Low-level nodes (direct construction)
+# ══════════════════════════════════════════════════════════
 
-println("\n── Objective using subexpression (s[i]*x[i] for i=1:5)\n")
+println("\n── Raw Nodes ─────────────────────────────────────────\n")
 
-c, obj2 = add_obj(c, s[i] * x[i] for i=1:5)
-display(obj2)
+v = ExaModels.Var(1)
+println("Var(1):         ", v)
+println("sin(x[1]):      ", sin(v))
+println("x[1] + x[5]:    ", ExaModels.Node2(+, v, ExaModels.Var(5)))
+println("x[1] ^ 2:       ", v ^ 2)
 
-# ── Full model summary ───────────────────────────────────
+# Show identity simplification
+p = ExaModels.ParSource()
+println("\nParSource (iteration variable):")
+println("  i:            ", p)
+println("  i.cost:       ", ExaModels.ParIndexed(p, :cost))
+println("  i.cost.sub:   ", ExaModels.ParIndexed(ExaModels.ParIndexed(p, :cost), :sub))
 
-println("\n── Full ExaModel ────────────────────────────────────\n")
+# ══════════════════════════════════════════════════════════
+# 7. Full model
+# ══════════════════════════════════════════════════════════
 
+println("\n── Full Model ────────────────────────────────────────\n")
 m = ExaModel(c)
 display(m)
 

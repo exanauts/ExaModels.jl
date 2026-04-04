@@ -430,19 +430,23 @@ function _print_tree(io::IO, node::Null{T}, indent::Int) where {T}
     print(io, " "^indent, node.value)
 end
 function _print_tree(io::IO, node::Var{I}, indent::Int) where {I<:AbstractNode}
-    print(io, " "^indent, "x[...]")
+    print(io, " "^indent, "x[")
+    _print_tree(io, node.i, 0)
+    print(io, "]")
 end
 function _print_tree(io::IO, node::Var{I}, indent::Int) where {I}
     print(io, " "^indent, "x[", node.i, "]")
 end
 function _print_tree(io::IO, node::ParameterNode{I}, indent::Int) where {I<:AbstractNode}
-    print(io, " "^indent, "θ[...]")
+    print(io, " "^indent, "θ[")
+    _print_tree(io, node.i, 0)
+    print(io, "]")
 end
 function _print_tree(io::IO, node::ParameterNode{I}, indent::Int) where {I}
     print(io, " "^indent, "θ[", node.i, "]")
 end
 function _print_tree(io::IO, node::ParSource, indent::Int)
-    print(io, " "^indent, "p")
+    print(io, " "^indent, "i")
 end
 function _print_tree(io::IO, node::ParIndexed{I,n}, indent::Int) where {I,n}
     _print_tree(io, node.inner, 0)
@@ -459,19 +463,49 @@ function _print_tree(io::IO, node::Node1{F}, indent::Int) where {F}
     _print_tree(io, node.inner, 0)
     print(io, ")")
 end
+# Check if a node is a zero constant
+_is_zero(::Null{Nothing}) = true
+_is_zero(n::Null) = n.value == 0
+_is_zero(n::Real) = n == 0
+_is_zero(_) = false
+
+# Check if a node is a one constant
+_is_one(n::Null) = n.value == 1
+_is_one(n::Real) = n == 1
+_is_one(_) = false
+
 function _print_tree(io::IO, node::Node2{F}, indent::Int) where {F}
     op = _opname(F)
+    a, b = node.inner1, node.inner2
+    # Simplify identity operations
+    if op == "+" && _is_zero(b)
+        return _print_tree(io, a, indent)
+    elseif op == "+" && _is_zero(a)
+        return _print_tree(io, b, indent)
+    elseif op == "-" && _is_zero(b)
+        return _print_tree(io, a, indent)
+    elseif op == "*" && _is_one(b)
+        return _print_tree(io, a, indent)
+    elseif op == "*" && _is_one(a)
+        return _print_tree(io, b, indent)
+    elseif op == "*" && (_is_zero(a) || _is_zero(b))
+        return print(io, " "^indent, "0")
+    elseif op == "^" && _is_one(b)
+        return _print_tree(io, a, indent)
+    elseif op == "/" && _is_one(b)
+        return _print_tree(io, a, indent)
+    end
     if op in ("+", "-", "*", "/", "^")
         print(io, " "^indent, "(")
-        _print_tree(io, node.inner1, 0)
+        _print_tree(io, a, 0)
         print(io, " ", op, " ")
-        _print_tree(io, node.inner2, 0)
+        _print_tree(io, b, 0)
         print(io, ")")
     else
         print(io, " "^indent, op, "(")
-        _print_tree(io, node.inner1, 0)
+        _print_tree(io, a, 0)
         print(io, ", ")
-        _print_tree(io, node.inner2, 0)
+        _print_tree(io, b, 0)
         print(io, ")")
     end
 end
