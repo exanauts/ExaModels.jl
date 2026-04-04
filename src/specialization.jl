@@ -203,6 +203,8 @@ end
 @inline _pow_val(d1::AbstractNode, ::Val{1}) = d1
 @inline _pow_val(d1::AbstractNode, ::Val{2}) = Node1(abs2, d1)
 @inline _pow_val(d1::AbstractNode, ::Val{V}) where {V} = Node2(^, d1, Val{V}())
+# Val{V}() used as inner2 in Node2(^, d1, Val{V}()) — make it callable in the eval context.
+@inline (::Val{V})(i, x, θ) where {V} = V
 
 # ── node OP real / real OP node ───────────────────────────────────────────────
 # Use Const(d) instead of Val(d): Const{T} is always a concrete type for any T,
