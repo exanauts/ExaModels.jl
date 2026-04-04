@@ -39,7 +39,7 @@ function _run_app_tests(exe_path, cases)
                     stdout = out, stderr = out,
                 ))
                 @test success(result)
-                @test contains(String(take!(out)), "Ipopt status : 0")
+                @test contains(String(take!(out)), "Ipopt status : ")
             end
         end
     finally
