@@ -415,7 +415,14 @@ end
 
 # Pretty printing for node types
 
-_opname(::Type{F}) where {F} = string(F)
+function _opname(::Type{F}) where {F}
+    if F <: Function && hasmethod(nameof, Tuple{F})
+        return string(nameof(F.instance))
+    end
+    return string(F)
+end
+_opname(::Type{FirstFixed{F}}) where {F} = _opname(F)
+_opname(::Type{SecondFixed{F}}) where {F} = _opname(F)
 _opname(::Type{typeof(+)}) = "+"
 _opname(::Type{typeof(-)}) = "-"
 _opname(::Type{typeof(*)}) = "*"
@@ -583,7 +590,7 @@ function Base.show(io::IO, node::ParameterNode{I}) where {I}
 end
 
 function Base.show(io::IO, node::ParSource)
-    print(io, "p")
+    print(io, "i")
 end
 
 function Base.show(io::IO, node::ParIndexed{I,n}) where {I,n}
@@ -644,73 +651,77 @@ function Base.show(io::IO, node::SecondAdjointNodeSource{VT}) where {VT}
     print(io, "SecondAdjointNodeSource{", VT, "}()")
 end
 
+# --- Short type name (use typeof(node) for full info) ---
+
+_short_type(::Null{Nothing}) = "Null"
+_short_type(::Null{T}) where {T} = "Null{$T}"
+_short_type(::Var) = "Var"
+_short_type(::VarSource) = "VarSource"
+_short_type(::ParameterSource) = "ParameterSource"
+_short_type(::ParameterNode) = "ParameterNode"
+_short_type(::ParSource) = "ParSource"
+_short_type(::ParIndexed) = "ParIndexed"
+_short_type(::Node1{F}) where {F} = "Node1{$(_opname(F))}"
+_short_type(::Node2{F}) where {F} = "Node2{$(_opname(F))}"
+_short_type(::AdjointNull) = "AdjointNull"
+_short_type(::AdjointNodeVar) = "AdjointNodeVar"
+_short_type(::AdjointNode1{F}) where {F} = "AdjointNode1{$(_opname(F))}"
+_short_type(::AdjointNode2{F}) where {F} = "AdjointNode2{$(_opname(F))}"
+_short_type(::AdjointNodeSource) = "AdjointNodeSource"
+_short_type(::SecondAdjointNull) = "SecondAdjointNull"
+_short_type(::SecondAdjointNodeVar) = "SecondAdjointNodeVar"
+_short_type(::SecondAdjointNode1{F}) where {F} = "SecondAdjointNode1{$(_opname(F))}"
+_short_type(::SecondAdjointNode2{F}) where {F} = "SecondAdjointNode2{$(_opname(F))}"
+_short_type(::SecondAdjointNodeSource) = "SecondAdjointNodeSource"
+
 # --- MIME "text/plain" for detailed display ---
 
 function Base.show(io::IO, ::MIME"text/plain", node::AbstractNode)
-    println(io, typeof(node))
-    println(io, "  Expression: ", _expr_string(node))
+    println(io, _short_type(node), "  (use typeof(node) for full type)")
+    print(io, "  ", _expr_string(node))
 end
 
 function Base.show(io::IO, ::MIME"text/plain", node::AdjointNode1{F,T,I}) where {F,T,I}
-    println(io, "AdjointNode1")
-    println(io, "  Operation: ", _opname(F))
-    println(io, "  Value (x): ", node.x)
-    println(io, "  Sensitivity (y): ", node.y)
-    print(io, "  Inner: ", node.inner)
+    println(io, _short_type(node))
+    println(io, "  x = ", node.x, ", y = ", node.y)
+    print(io, "  inner: ", node.inner)
 end
 
 function Base.show(io::IO, ::MIME"text/plain", node::AdjointNode2{F,T,I1,I2}) where {F,T,I1,I2}
-    println(io, "AdjointNode2")
-    println(io, "  Operation: ", _opname(F))
-    println(io, "  Value (x): ", node.x)
-    println(io, "  Sensitivity (y1): ", node.y1)
-    println(io, "  Sensitivity (y2): ", node.y2)
-    println(io, "  Inner1: ", node.inner1)
-    print(io, "  Inner2: ", node.inner2)
+    println(io, _short_type(node))
+    println(io, "  x = ", node.x, ", y1 = ", node.y1, ", y2 = ", node.y2)
+    println(io, "  inner1: ", node.inner1)
+    print(io, "  inner2: ", node.inner2)
 end
 
 function Base.show(io::IO, ::MIME"text/plain", node::AdjointNull{V}) where {V}
-    println(io, "AdjointNull")
-    print(io, "  Value (x): ", node.x)
+    print(io, _short_type(node), "(x = ", node.x, ")")
 end
 
 function Base.show(io::IO, ::MIME"text/plain", node::AdjointNodeVar{I,T}) where {I,T}
-    println(io, "AdjointNodeVar")
-    println(io, "  Index (i): ", node.i)
-    print(io, "  Value (x): ", node.x)
+    print(io, _short_type(node), "(i = ", node.i, ", x = ", node.x, ")")
 end
 
 function Base.show(io::IO, ::MIME"text/plain", node::SecondAdjointNode1{F,T,I}) where {F,T,I}
-    println(io, "SecondAdjointNode1")
-    println(io, "  Operation: ", _opname(F))
-    println(io, "  Value (x): ", node.x)
-    println(io, "  1st-order (y): ", node.y)
-    println(io, "  2nd-order (h): ", node.h)
-    print(io, "  Inner: ", node.inner)
+    println(io, _short_type(node))
+    println(io, "  x = ", node.x, ", y = ", node.y, ", h = ", node.h)
+    print(io, "  inner: ", node.inner)
 end
 
 function Base.show(io::IO, ::MIME"text/plain", node::SecondAdjointNode2{F,T,I1,I2}) where {F,T,I1,I2}
-    println(io, "SecondAdjointNode2")
-    println(io, "  Operation: ", _opname(F))
-    println(io, "  Value (x): ", node.x)
-    println(io, "  1st-order (y1): ", node.y1)
-    println(io, "  1st-order (y2): ", node.y2)
-    println(io, "  2nd-order (h11): ", node.h11)
-    println(io, "  2nd-order (h12): ", node.h12)
-    println(io, "  2nd-order (h22): ", node.h22)
-    println(io, "  Inner1: ", node.inner1)
-    print(io, "  Inner2: ", node.inner2)
+    println(io, _short_type(node))
+    println(io, "  x = ", node.x, ", y1 = ", node.y1, ", y2 = ", node.y2)
+    println(io, "  h11 = ", node.h11, ", h12 = ", node.h12, ", h22 = ", node.h22)
+    println(io, "  inner1: ", node.inner1)
+    print(io, "  inner2: ", node.inner2)
 end
 
 function Base.show(io::IO, ::MIME"text/plain", node::SecondAdjointNull{V}) where {V}
-    println(io, "SecondAdjointNull")
-    print(io, "  Value (x): ", node.x)
+    print(io, _short_type(node), "(x = ", node.x, ")")
 end
 
 function Base.show(io::IO, ::MIME"text/plain", node::SecondAdjointNodeVar{I,T}) where {I,T}
-    println(io, "SecondAdjointNodeVar")
-    println(io, "  Index (i): ", node.i)
-    print(io, "  Value (x): ", node.x)
+    print(io, _short_type(node), "(i = ", node.i, ", x = ", node.x, ")")
 end
 
 @inline (v::Null{Nothing})(i, x::V, θ) where {T,V<:AbstractVector{T}} = zero(T)
