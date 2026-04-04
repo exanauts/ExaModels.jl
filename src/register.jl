@@ -1,4 +1,21 @@
 """
+    _needs_overload(f, types)
+
+Return `true` when ExaModels should add a method for `f` with the given
+argument `types`.
+
+Plain `hasmethod` is too conservative for Base generics such as
+`max(x,y) = ifelse(isless(x,y),y,x)`: those definitions match any
+`AbstractNode` argument, so `hasmethod` returns `true` and would prevent the
+ExaModels-specific overload from being added.  We instead check the *owner
+module* of the matching method and only skip when ExaModels already owns it.
+"""
+function _needs_overload(f, types)
+    hasmethod(f, types) || return true
+    return which(f, types).module !== @__MODULE__
+end
+
+"""
     @register_univariate(f, df, ddf)
 
 Register a univariate function `f` to `ExaModels`, so that it can be used within objective and constraint expressions
@@ -27,7 +44,7 @@ julia> @register_univariate(relu3, drelu3, ddrelu3)
 macro register_univariate(f, df, ddf)
     return esc(
         quote
-            if !hasmethod($f, Tuple{ExaModels.AbstractNode})
+            if ExaModels._needs_overload($f, Tuple{ExaModels.AbstractNode})
                 @inline $f(n::N) where {N<:ExaModels.AbstractNode} = ExaModels.Node1($f, n)
             end
 
@@ -83,7 +100,7 @@ julia> @register_bivariate(relu23, drelu231, drelu232, ddrelu2311, ddrelu2312, d
 macro register_bivariate(f, df1, df2, ddf11, ddf12, ddf22)
     return esc(
         quote
-            if !hasmethod($f, Tuple{ExaModels.AbstractNode,ExaModels.AbstractNode})
+            if ExaModels._needs_overload($f, Tuple{ExaModels.AbstractNode,ExaModels.AbstractNode})
                 @inline function $f(
                     d1::D1,
                     d2::D2,
@@ -92,7 +109,7 @@ macro register_bivariate(f, df1, df2, ddf11, ddf12, ddf22)
                 end
             end
 
-            if !hasmethod($f, Tuple{ExaModels.AbstractNode,Real})
+            if ExaModels._needs_overload($f, Tuple{ExaModels.AbstractNode,Real})
                 @inline function $f(
                     d1::D1,
                     d2::D2,
@@ -101,7 +118,7 @@ macro register_bivariate(f, df1, df2, ddf11, ddf12, ddf22)
                 end
             end
 
-            if !hasmethod($f, Tuple{Real,ExaModels.AbstractNode})
+            if ExaModels._needs_overload($f, Tuple{Real,ExaModels.AbstractNode})
                 @inline function $f(
                     d1::D1,
                     d2::D2,
