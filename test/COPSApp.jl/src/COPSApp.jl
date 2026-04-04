@@ -95,16 +95,16 @@ function (@main)(ARGS)
         result = ipopt(_torsion(N); print_level = 5)
     elseif name == "elec"
         result = ipopt(_elec(N); print_level = 5)
-    elseif name == "lane_emden"
-        result = ipopt(_lane_emden(N); print_level = 5)
+    # elseif name == "lane_emden"   # PDE models: transition_state_model passes T::DataType abstractly
+    #     result = ipopt(_lane_emden(N); print_level = 5)
     elseif name == "polygon"
         result = ipopt(_polygon(N); print_level = 5)
     elseif name == "channel"
         result = ipopt(_channel(N); print_level = 5)
-    elseif name == "dirichlet"
-        result = ipopt(_dirichlet(N); print_level = 5)
-    elseif name == "henon"
-        result = ipopt(_henon(N); print_level = 5)
+    # elseif name == "dirichlet"    # PDE model
+    #     result = ipopt(_dirichlet(N); print_level = 5)
+    # elseif name == "henon"        # PDE model
+    #     result = ipopt(_henon(N); print_level = 5)
     elseif name == "tetra_duct12"
         result = ipopt(_tetra_duct12(N); print_level = 5)
     elseif name == "tetra_duct15"
