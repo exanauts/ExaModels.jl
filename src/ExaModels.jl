@@ -38,6 +38,7 @@ include("hessian.jl")
 include("nlp.jl")
 include("tags.jl")
 include("utils.jl")
+include("aot.jl")
 
 export ExaModel,
     ExaCore,
@@ -65,6 +66,8 @@ export ExaModel,
     multipliers_L,
     multipliers_U,
     @register_univariate,
-    @register_bivariate
+    @register_bivariate,
+    warmup,
+    precompile_model
 
 end # module ExaModels

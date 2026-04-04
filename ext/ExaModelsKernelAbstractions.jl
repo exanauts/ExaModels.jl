@@ -668,6 +668,10 @@ end
     @inbounds sparsity[i] = ((J[i], I[i]), i)
 end
 
+function ExaModels._sync_backend(m::ExaModels.AbstractExaModel{T,VT,E}) where {T,VT,E<:KAExtension}
+    synchronize(m.ext.backend)
+end
+
 end # module ExaModelsKernelAbstractions
 
 
