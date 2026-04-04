@@ -35,6 +35,21 @@ const MODELS = [
 @inline _rocket(N)    = COPSBenchmark.rocket_model(COPSBenchmark.ExaModelsBackend(),   N;    T = Float64)
 @inline _steering(N)  = COPSBenchmark.steering_model(COPSBenchmark.ExaModelsBackend(), N;    T = Float64)
 @inline _torsion(N)   = COPSBenchmark.torsion_model(COPSBenchmark.ExaModelsBackend(),  N, N; T = Float64)
+@inline _channel(N)   = COPSBenchmark.channel_model(COPSBenchmark.ExaModelsBackend(),  N, N; T = Float64)
+@inline _dirichlet(N)  = COPSBenchmark.dirichlet_model(COPSBenchmark.ExaModelsBackend(), N, N; T = Float64)
+@inline _elec(N)       = COPSBenchmark.elec_model(COPSBenchmark.ExaModelsBackend(), N, N; T = Float64)
+@inline _henon(N)     = COPSBenchmark.henon_model(COPSBenchmark.ExaModelsBackend(), N;   T = Float64)
+@inline _lane_emden(N) = COPSBenchmark.lane_emden_model(COPSBenchmark.ExaModelsBackend(), N;   T = Float64)
+@inline _polygon(N)    = COPSBenchmark.polygon_model(COPSBenchmark.ExaModelsBackend(), N;   T = Float64)
+@inline _tetra_duct12(N) = COPSBenchmark.tetra_duct12_model(COPSBenchmark.ExaModelsBackend(), N;   T = Float64)
+@inline _tetra_duct15(N) = COPSBenchmark.tetra_duct15_model(COPSBenchmark.ExaModelsBackend(), N;   T = Float64)
+@inline _tetra_duct20(N) = COPSBenchmark.tetra_duct20_model(COPSBenchmark.ExaModelsBackend(), N;   T = Float64)
+@inline _tetra_foam5(N)  = COPSBenchmark.tetra_foam5_model(COPSBenchmark.ExaModelsBackend(), N;   T = Float64)
+@inline _tetra_gear(N)   = COPSBenchmark.tetra_gear_model(COPSBenchmark.ExaModelsBackend(), N;   T = Float64)
+@inline _tetra_hook(N)  = COPSBenchmark.tetra_hook_model(COPSBenchmark.ExaModelsBackend(), N;  T = Float64)
+@inline _triangle_deer(N)   = COPSBenchmark.triangle_deer_model(COPSBenchmark.ExaModelsBackend(), N;   T = Float64)                                                          
+@inline _triangle_pacman(N) = COPSBenchmark.triangle_pacman_model(COPSBenchmark.ExaModelsBackend(), N;   T = Float64)
+@inline _triangle_turtle(N) = COPSBenchmark.triangle_turtle_model(COPSBenchmark.ExaModelsBackend(), N;   T = Float64)
 
 function (@main)(ARGS)
     if length(ARGS) < 2
@@ -78,6 +93,8 @@ function (@main)(ARGS)
         result = ipopt(_steering(N); print_level = 5)
     elseif name == "torsion"
         result = ipopt(_torsion(N); print_level = 5)
+    elseif name == "channel"
+        
     else
         println(Core.stdout, "Unknown model: $name")
         return 1

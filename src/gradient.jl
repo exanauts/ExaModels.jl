@@ -8,7 +8,7 @@ Performs dense gradient evaluation via the reverse pass on the computation (sub)
 - `y`: result vector
 - `adj`: adjoint propagated up to the current node
 """
-@inline function drpass(d::D, y, adj) where {D<:AdjointNull}
+@inline function drpass(d::D, y, adj) where {D<:Union{Real,AdjointNull}}
     nothing
 end
 @inline function drpass(d::D, y, adj) where {D<:AdjointNode1}
