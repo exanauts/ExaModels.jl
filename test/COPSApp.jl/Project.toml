@@ -10,4 +10,4 @@ NLPModelsIpoptLite = "48c312a9-6620-4177-b859-0e15058d61ee"
 [sources]
 ExaModels = {path = "../.."}
 NLPModelsIpoptLite = {path = "../NLPModelsIpoptLite.jl"}
-COPSBenchmark = {url = "https://github.com/MadNLP/COPSBenchmark.jl", rev= "dd06bc8"}
+COPSBenchmark = {url = "https://github.com/MadNLP/COPSBenchmark.jl", rev= "claude/compare-backends-glider-IRYgD"}
