@@ -644,33 +644,44 @@ end
 # struggles to resolve when the ExaCore type is deeply parametric.
 # The @var / @obj / @con / @par / @expr macros emit calls to these methods
 # so that `name::Val` is a positional argument, not a keyword argument.
+# Each method calls the underlying function WITHOUT name (keeping name out of
+# kwcall), then patches `refs` on the returned ExaCore.
 
 @inline function add_var(c::C, ns_and_name::Val; kwargs...) where {T, C<:ExaCore{T}}
-    add_var(c; name = ns_and_name, kwargs...)
+    c2, v = add_var(c; kwargs...)
+    return (ExaCore(c2; refs = add_refs(c2.refs, ns_and_name, v)), v)
 end
 @inline function add_var(c::C, n1, name::Val; kwargs...) where {T, C<:ExaCore{T}}
-    add_var(c, n1; name = name, kwargs...)
+    c2, v = add_var(c, n1; kwargs...)
+    return (ExaCore(c2; refs = add_refs(c2.refs, name, v)), v)
 end
 @inline function add_var(c::C, n1, n2, name::Val; kwargs...) where {T, C<:ExaCore{T}}
-    add_var(c, n1, n2; name = name, kwargs...)
+    c2, v = add_var(c, n1, n2; kwargs...)
+    return (ExaCore(c2; refs = add_refs(c2.refs, name, v)), v)
 end
 @inline function add_var(c::C, n1, n2, n3, name::Val; kwargs...) where {T, C<:ExaCore{T}}
-    add_var(c, n1, n2, n3; name = name, kwargs...)
+    c2, v = add_var(c, n1, n2, n3; kwargs...)
+    return (ExaCore(c2; refs = add_refs(c2.refs, name, v)), v)
 end
 @inline function add_var(c::C, gen::Base.Generator, name::Val; kwargs...) where {T, C<:ExaCore{T}}
-    add_var(c, gen; name = name, kwargs...)
+    c2, v = add_var(c, gen; kwargs...)
+    return (ExaCore(c2; refs = add_refs(c2.refs, name, v)), v)
 end
 @inline function add_par(c::C, start::AbstractArray, name::Val) where {T, C<:ExaCore{T}}
-    add_par(c, start; name = name)
+    c2, p = add_par(c, start)
+    return (ExaCore(c2; refs = add_refs(c2.refs, name, p)), p)
 end
 @inline function add_obj(c::C, gen::Base.Generator, name::Val) where {T, C<:ExaCore{T}}
-    add_obj(c, gen; name = name)
+    c2, obj = add_obj(c, gen)
+    return (ExaCore(c2; refs = add_refs(c2.refs, name, obj)), obj)
 end
 @inline function add_obj(c::C, expr::N, name::Val) where {T, C<:ExaCore{T}, N<:AbstractNode}
-    add_obj(c, expr; name = name)
+    c2, obj = add_obj(c, expr)
+    return (ExaCore(c2; refs = add_refs(c2.refs, name, obj)), obj)
 end
 @inline function add_obj(c::C, expr::N, pars, name::Val) where {T, C<:ExaCore{T}, N<:AbstractNode}
-    add_obj(c, expr, pars; name = name)
+    c2, obj = add_obj(c, expr, pars)
+    return (ExaCore(c2; refs = add_refs(c2.refs, name, obj)), obj)
 end
 
 
@@ -1000,16 +1011,20 @@ end
 
 # Positional-name forwarding for add_con — avoids Core.kwcall for `name`.
 @inline function add_con(c::C, gen::Base.Generator, name::Val; kwargs...) where {T, C<:ExaCore{T}}
-    add_con(c, gen; name = name, kwargs...)
+    c2, con = add_con(c, gen; kwargs...)
+    return (ExaCore(c2; refs = add_refs(c2.refs, name, con)), con)
 end
 @inline function add_con(c::C, expr::N, name::Val; kwargs...) where {T, C<:ExaCore{T}, N<:AbstractNode}
-    add_con(c, expr; name = name, kwargs...)
+    c2, con = add_con(c, expr; kwargs...)
+    return (ExaCore(c2; refs = add_refs(c2.refs, name, con)), con)
 end
 @inline function add_con(c::C, expr::N, pars, name::Val; kwargs...) where {T, C<:ExaCore{T}, N<:AbstractNode}
-    add_con(c, expr, pars; name = name, kwargs...)
+    c2, con = add_con(c, expr, pars; kwargs...)
+    return (ExaCore(c2; refs = add_refs(c2.refs, name, con)), con)
 end
 @inline function add_con(c::C, n::Integer, name::Val; kwargs...) where {T, C<:ExaCore{T}}
-    add_con(c, n; name = name, kwargs...)
+    c2, con = add_con(c, n; kwargs...)
+    return (ExaCore(c2; refs = add_refs(c2.refs, name, con)), con)
 end
 
 function _add_constraint(c::C, f, pars, start, lcon, ucon, name = nothing; kwargs...) where {C<:ExaCore}
@@ -1173,7 +1188,8 @@ end
 
 # Positional-name forwarding for add_expr — avoids Core.kwcall for `name`.
 @inline function add_expr(c::C, gen::Base.Generator, name::Val) where {T, C <: ExaCore{T}}
-    add_expr(c, gen; name = name)
+    c2, ex = add_expr(c, gen)
+    return (ExaCore(c2; refs = add_refs(c2.refs, name, ex)), ex)
 end
 
 
