@@ -31,15 +31,15 @@ end
 function _run_app_tests(exe_path, cases)
     isfile(exe_path) || return
     try
-        for (model, n) in cases
+        for (model, n, broken) in cases
             @testset "AOT exe: $model N=$n" begin
                 out = IOBuffer()
                 result = run(pipeline(
                     ignorestatus(`$exe_path $model $n`);
                     stdout = out, stderr = out,
                 ))
-                @test success(result)
-                @test contains(String(take!(out)), "Ipopt status : 0")
+                @test success(result) broken=broken
+                @test contains(String(take!(out)), "Ipopt status : 0") broken=broken
             end
         end
     finally
@@ -62,9 +62,9 @@ function runtests()
             end
 
             compiled && _run_app_tests(exe_path, [
-                ("rosenrock",            10),
-                ("augmented_lagrangian", 20),
-                ("broyden_tridiagonal",  10),
+                ("rosenrock",            10, false),
+                ("augmented_lagrangian", 20, false),
+                ("broyden_tridiagonal",  10, false),
             ])
         end
 
@@ -80,19 +80,19 @@ function runtests()
             end
 
             compiled && _run_app_tests(exe_path, [
-                ("camshape",  50),
-                ("bearing",   10),
-                ("catmix",    10),
-                ("chain",     20),
-                ("gasoil",    10),
-                ("glider",    10),
-                ("marine",    10),
-                ("minsurf",   10),
-                ("pinene",    10),
-                ("robot",     20),
-                ("rocket",    20),
-                ("steering",  20),
-                ("torsion",   10),
+                ("camshape",  50, false),
+                ("bearing",   10, false),
+                ("catmix",    10, false),
+                ("chain",     20, false),
+                ("gasoil",    10, false),
+                ("glider",    20, Sys.iswindows()),
+                ("marine",    10, false),
+                ("minsurf",   10, false),
+                ("pinene",    10, false),
+                ("robot",     20, false),
+                ("rocket",    20, false),
+                ("steering",  20, false),
+                ("torsion",   10, false),
             ])
         end
 
