@@ -105,11 +105,11 @@ function Base.show(io::IO, v::Objective)
         """
 Objective
 
-  min (...) + ∑_{i ∈ P} f(x,i)
+  ∑_{i ∈ I} f(x,i)
 
   f(x,i) = $expr
 
-  where |P| = $(length(v.itr))
+  where |I| = $(length(v.itr))
 """,
     )
 end
@@ -136,12 +136,11 @@ function Base.show(io::IO, v::Constraint)
         """
 Constraint
 
-  s.t. (...)
-       g♭ ≤ [g(x,i)]_{i ∈ P} ≤ g♯
+  g♭ ≤ [g(x,i)]_{i ∈ I} ≤ g♯
 
   g(x,i) = $expr
 
-  where |P| = $(length(v.itr))
+  where |I| = $(length(v.itr))
 """,
     )
 end
@@ -171,12 +170,11 @@ function Base.show(io::IO, v::ConstraintAugmentation)
         """
 Constraint Augmentation
 
-  s.t. (...)
-       g♭ ≤ (...) + ∑_{i ∈ P} h(x,i) ≤ g♯
+  g♭ ≤ (...) + ∑_{i ∈ I} h(x,i) ≤ g♯
 
   h(x,i) = $expr
 
-  where |P| = $(length(v.itr))
+  where |I| = $(length(v.itr))
 """,
     )
 end
@@ -853,11 +851,11 @@ julia> c, obj = add_obj(c, x[i]^2 for i=1:10);
 julia> obj
 Objective
 
-  min (...) + ∑_{i ∈ P} f(x,i)
+  ∑_{i ∈ I} f(x,i)
 
   f(x,i) = (x[i] ^ 2)
 
-  where |P| = 10
+  where |I| = 10
 ```
 """
 @inline function add_obj(c::C, gen; name = nothing) where {T, C<:ExaCore{T}}
@@ -922,12 +920,11 @@ julia> c, con = add_con(c, x[i] + x[i+1] for i=1:9; lcon = -1, ucon = (1+i for i
 julia> con
 Constraint
 
-  s.t. (...)
-       g♭ ≤ [g(x,i)]_{i ∈ P} ≤ g♯
+  g♭ ≤ [g(x,i)]_{i ∈ I} ≤ g♯
 
   g(x,i) = (x[i] + x[(i + 1)])
 
-  where |P| = 9
+  where |I| = 9
 ```
 """
 @inline function add_con(
@@ -1137,12 +1134,11 @@ julia> c, c2 = add_con!(c, c1, i => sin(x[i+1]) for i=4:6);
 julia> c2
 Constraint Augmentation
 
-  s.t. (...)
-       g♭ ≤ (...) + ∑_{i ∈ P} h(x,i) ≤ g♯
+  g♭ ≤ (...) + ∑_{i ∈ I} h(x,i) ≤ g♯
 
   h(x,i) = sin(x[(i.1 + 1)])
 
-  where |P| = 3
+  where |I| = 3
 ```
 
 Multi-source augmentation (typical power-flow use case) — accumulate arc flows into bus
