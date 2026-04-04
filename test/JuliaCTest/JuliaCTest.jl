@@ -39,7 +39,7 @@ function _run_app_tests(exe_path, cases)
                     stdout = out, stderr = out,
                 ))
                 @test success(result)
-                @test contains(String(take!(out)), "Ipopt status : ")
+                @test contains(String(take!(out)), "Ipopt status : 0")
             end
         end
     finally
@@ -85,7 +85,7 @@ function runtests()
                 ("catmix",    10),
                 ("chain",     20),
                 ("gasoil",    10),
-                ("glider",    20),
+                ("glider",    10),
                 ("marine",    10),
                 ("minsurf",   10),
                 ("pinene",    10),

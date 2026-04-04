@@ -84,7 +84,7 @@ function (@main)(ARGS)
     end
 
     println(Core.stdout, "Ipopt status : ", result.status)
-    return result.status <= 1 ? 0 : 1
+    return result.status == 0 ? 0 : 1
 end
 
 end # module COPSApp
