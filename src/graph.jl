@@ -495,7 +495,12 @@ function _print_tree(io::IO, node::Node2{F}, indent::Int) where {F}
     elseif op == "/" && _is_one(b)
         return _print_tree(io, a, indent)
     end
-    if op in ("+", "-", "*", "/", "^")
+    if op == "*"
+        print(io, " "^indent)
+        _print_tree(io, a, 0)
+        print(io, " * ")
+        _print_tree(io, b, 0)
+    elseif op in ("+", "-", "/", "^")
         print(io, " "^indent, "(")
         _print_tree(io, a, 0)
         print(io, " ", op, " ")
@@ -519,7 +524,22 @@ end
 function _expr_string(node)
     buf = IOBuffer()
     _print_tree(buf, node, 0)
-    return String(take!(buf))
+    s = String(take!(buf))
+    # Strip outermost parentheses
+    if length(s) >= 2 && s[1] == '(' && s[end] == ')'
+        # Verify they are matching (not e.g. "(a) + (b)")
+        depth = 0
+        matched = true
+        for (k, ch) in enumerate(s)
+            depth += (ch == '(') - (ch == ')')
+            if depth == 0 && k < length(s)
+                matched = false
+                break
+            end
+        end
+        matched && return s[2:end-1]
+    end
+    return s
 end
 
 # Fallback for non-node types (e.g., Real constants in SIMDFunction.f)
