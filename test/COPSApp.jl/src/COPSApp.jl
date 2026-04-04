@@ -35,12 +35,12 @@ const MODELS = [
 @inline _rocket(N)    = COPSBenchmark.rocket_model(COPSBenchmark.ExaModelsBackend(),   N;    T = Float64)
 @inline _steering(N)  = COPSBenchmark.steering_model(COPSBenchmark.ExaModelsBackend(), N;    T = Float64)
 @inline _torsion(N)   = COPSBenchmark.torsion_model(COPSBenchmark.ExaModelsBackend(),  N, N; T = Float64)
-@inline _channel(N)   = COPSBenchmark.channel_model(COPSBenchmark.ExaModelsBackend(),  N, N; T = Float64)
-@inline _dirichlet(N)  = COPSBenchmark.dirichlet_model(COPSBenchmark.ExaModelsBackend(), N, N; T = Float64)
-@inline _elec(N)       = COPSBenchmark.elec_model(COPSBenchmark.ExaModelsBackend(), N, N; T = Float64)
-@inline _henon(N)     = COPSBenchmark.henon_model(COPSBenchmark.ExaModelsBackend(), N;   T = Float64)
+@inline _elec(N)       = COPSBenchmark.elec_model(COPSBenchmark.ExaModelsBackend(), N; T = Float64)
 @inline _lane_emden(N) = COPSBenchmark.lane_emden_model(COPSBenchmark.ExaModelsBackend(), N;   T = Float64)
 @inline _polygon(N)    = COPSBenchmark.polygon_model(COPSBenchmark.ExaModelsBackend(), N;   T = Float64)
+@inline _channel(N)   = COPSBenchmark.channel_model(COPSBenchmark.ExaModelsBackend(),  N; T = Float64)
+@inline _dirichlet(N)  = COPSBenchmark.dirichlet_model(COPSBenchmark.ExaModelsBackend(), N; T = Float64)
+@inline _henon(N)     = COPSBenchmark.henon_model(COPSBenchmark.ExaModelsBackend(), N;   T = Float64)
 @inline _tetra_duct12(N) = COPSBenchmark.tetra_duct12_model(COPSBenchmark.ExaModelsBackend(), N;   T = Float64)
 @inline _tetra_duct15(N) = COPSBenchmark.tetra_duct15_model(COPSBenchmark.ExaModelsBackend(), N;   T = Float64)
 @inline _tetra_duct20(N) = COPSBenchmark.tetra_duct20_model(COPSBenchmark.ExaModelsBackend(), N;   T = Float64)
@@ -64,7 +64,7 @@ function (@main)(ARGS)
     name = ARGS[1]
     N    = parse(Int, ARGS[2])
     println(Core.stdout, "Solving $name (N=$N) with Ipopt...")
-
+ 
     if name == "camshape"
         result = ipopt(_camshape(N); print_level = 5)
     elseif name == "bearing"
@@ -93,8 +93,36 @@ function (@main)(ARGS)
         result = ipopt(_steering(N); print_level = 5)
     elseif name == "torsion"
         result = ipopt(_torsion(N); print_level = 5)
+    elseif name == "elec"
+        result = ipopt(_elec(N); print_level = 5)
+    # elseif name == "lane_emden"
+    #     result = ipopt(_lane_emden(N); print_level = 5)
+    elseif name == "polygon"
+        result = ipopt(_polygon(N); print_level = 5)
     elseif name == "channel"
-        
+        result = ipopt(_channel(N); print_level = 5)
+    # elseif name == "dirichlet"
+    #     result = ipopt(_dirichlet(N); print_level = 5)
+    # elseif name == "henon"
+    #     result = ipopt(_henon(N); print_level = 5)
+    # elseif name == "tetra_duct12"
+    #     result = ipopt(_tetra_duct12(N); print_level = 5)
+    # elseif name == "tetra_duct15"
+    #     result = ipopt(_tetra_duct15(N); print_level = 5)
+    # elseif name == "tetra_duct20"
+    #     result = ipopt(_tetra_duct20(N); print_level = 5)
+    # elseif name == "tetra_foam5"
+    #     result = ipopt(_tetra_foam5(N); print_level = 5)
+    # elseif name == "tetra_gear"
+    #     result = ipopt(_tetra_gear(N); print_level = 5)
+    # elseif name == "tetra_hook"
+    #     result = ipopt(_tetra_hook(N); print_level = 5)
+    # elseif name == "triangle_deer"
+    #     result = ipopt(_triangle_deer(N); print_level = 5)
+    # elseif name == "triangle_pacman"
+    #     result = ipopt(_triangle_pacman(N); print_level = 5)
+    # elseif name == "triangle_turtle"
+    #     result = ipopt(_triangle_turtle(N); print_level = 5) 
     else
         println(Core.stdout, "Unknown model: $name")
         return 1
