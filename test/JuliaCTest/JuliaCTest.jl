@@ -9,6 +9,9 @@ const COPS_APP_DIR        = abspath(joinpath(@__DIR__, "..", "COPSApp.jl"))
 # Returns true on success, false if JuliaC API is not available.
 const _HAS_JULIAC_API = isdefined(JuliaC, :ImageRecipe)
 
+# Skip AOT tests when EXAMODELS_SKIP_AOT is set (e.g. on Julia LTS or less critical CI legs)
+const _SKIP_AOT = get(ENV, "EXAMODELS_SKIP_AOT", "") != ""
+
 function _compile_exe(app_dir::String, exe_path::String)
     if !_HAS_JULIAC_API
         @warn "JuliaC.ImageRecipe not available, skipping AOT compilation test"
@@ -48,6 +51,11 @@ function _run_app_tests(exe_path, cases)
 end
 
 function runtests()
+    if _SKIP_AOT
+        @info "Skipping AOT tests (EXAMODELS_SKIP_AOT is set)"
+        @testset "AOT compilation (juliac)" begin end
+        return
+    end
     @testset "AOT compilation (juliac)" begin
 
         # ── LuksanVlcek ──────────────────────────────────────────────────────────
@@ -79,6 +87,8 @@ function runtests()
                 compiled && @test isfile(exe_path)
             end
 
+            # Run a representative subset at runtime — compilation of all 28 models
+            # is already verified by the juliac compile step above.
             compiled && _run_app_tests(exe_path, [
                 ("camshape",  50, false),
                 ("bearing",   10, false),
@@ -93,6 +103,8 @@ function runtests()
                 ("rocket",    20, false),
                 ("steering",  20, false),
                 ("torsion",   10, false),
+                ("elec",      10, false),
+                ("channel",   10, false),
             ])
         end
 
