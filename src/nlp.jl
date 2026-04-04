@@ -663,8 +663,11 @@ end
 @inline function add_par(c::C, start::AbstractArray, name::Val) where {T, C<:ExaCore{T}}
     add_par(c, start; name = name)
 end
-@inline function add_obj(c::C, gen, name::Val) where {T, C<:ExaCore{T}}
+@inline function add_obj(c::C, gen::Base.Generator, name::Val) where {T, C<:ExaCore{T}}
     add_obj(c, gen; name = name)
+end
+@inline function add_obj(c::C, expr::N, name::Val) where {T, C<:ExaCore{T}, N<:AbstractNode}
+    add_obj(c, expr; name = name)
 end
 @inline function add_obj(c::C, expr::N, pars, name::Val) where {T, C<:ExaCore{T}, N<:AbstractNode}
     add_obj(c, expr, pars; name = name)
@@ -999,10 +1002,13 @@ end
 @inline function add_con(c::C, gen::Base.Generator, name::Val; kwargs...) where {T, C<:ExaCore{T}}
     add_con(c, gen; name = name, kwargs...)
 end
+@inline function add_con(c::C, expr::N, name::Val; kwargs...) where {T, C<:ExaCore{T}, N<:AbstractNode}
+    add_con(c, expr; name = name, kwargs...)
+end
 @inline function add_con(c::C, expr::N, pars, name::Val; kwargs...) where {T, C<:ExaCore{T}, N<:AbstractNode}
     add_con(c, expr, pars; name = name, kwargs...)
 end
-@inline function add_con(c::C, n, name::Val; kwargs...) where {T, C<:ExaCore{T}}
+@inline function add_con(c::C, n::Integer, name::Val; kwargs...) where {T, C<:ExaCore{T}}
     add_con(c, n; name = name, kwargs...)
 end
 
@@ -1155,11 +1161,6 @@ c, s = add_expr(c, x[i, k]^2 for (i, k) in itr)
 # s[i, k] substitutes x[i,k]^2 directly
 ```
 """
-# Positional-name forwarding for add_expr — avoids Core.kwcall for `name`.
-@inline function add_expr(c::C, gen::Base.Generator, name::Val) where {T, C <: ExaCore{T}}
-    add_expr(c, gen; name = name)
-end
-
 function add_expr(c::C, gen::Base.Generator; name = nothing) where {T, C <: ExaCore{T}}
     ns = _infer_subexpr_dims(gen.iter)
 
@@ -1168,6 +1169,11 @@ function add_expr(c::C, gen::Base.Generator; name = nothing) where {T, C <: ExaC
 
     ex = Expression(ns, n, gen.f, collect(gen.iter))
     return (ExaCore(c; refs = add_refs(c.refs, name, ex)), ex)
+end
+
+# Positional-name forwarding for add_expr — avoids Core.kwcall for `name`.
+@inline function add_expr(c::C, gen::Base.Generator, name::Val) where {T, C <: ExaCore{T}}
+    add_expr(c, gen; name = name)
 end
 
 
