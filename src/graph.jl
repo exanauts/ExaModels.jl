@@ -674,6 +674,59 @@ _short_type(::SecondAdjointNode1{F}) where {F} = "SecondAdjointNode1{$(_opname(F
 _short_type(::SecondAdjointNode2{F}) where {F} = "SecondAdjointNode2{$(_opname(F))}"
 _short_type(::SecondAdjointNodeSource) = "SecondAdjointNodeSource"
 
+# --- Short type printing (for stacktraces, MethodErrors, etc.) ---
+
+function Base.show(io::IO, ::Type{Null{T}}) where {T}
+    T === Nothing ? print(io, "Null") : print(io, "Null{", T, "}")
+end
+function Base.show(io::IO, ::Type{Var{I}}) where {I}
+    print(io, "Var{…}")
+end
+function Base.show(io::IO, ::Type{ParameterNode{I}}) where {I}
+    print(io, "ParameterNode{…}")
+end
+function Base.show(io::IO, ::Type{ParIndexed{I,J}}) where {I,J}
+    print(io, "ParIndexed{…}")
+end
+function Base.show(io::IO, ::Type{Node1{F,I}}) where {F,I}
+    print(io, "Node1{", _opname(F), ",…}")
+end
+function Base.show(io::IO, ::Type{Node2{F,I1,I2}}) where {F,I1,I2}
+    print(io, "Node2{", _opname(F), ",…}")
+end
+
+function Base.show(io::IO, ::Type{AdjointNull{V}}) where {V}
+    print(io, "AdjointNull{", V, "}")
+end
+function Base.show(io::IO, ::Type{AdjointNodeVar{I,T}}) where {I,T}
+    print(io, "AdjointNodeVar{…,", T, "}")
+end
+function Base.show(io::IO, ::Type{AdjointNode1{F,T,I}}) where {F,T,I}
+    print(io, "AdjointNode1{", _opname(F), ",", T, ",…}")
+end
+function Base.show(io::IO, ::Type{AdjointNode2{F,T,I1,I2}}) where {F,T,I1,I2}
+    print(io, "AdjointNode2{", _opname(F), ",", T, ",…}")
+end
+function Base.show(io::IO, ::Type{AdjointNodeSource{VT}}) where {VT}
+    print(io, "AdjointNodeSource{…}")
+end
+
+function Base.show(io::IO, ::Type{SecondAdjointNull{V}}) where {V}
+    print(io, "SecondAdjointNull{", V, "}")
+end
+function Base.show(io::IO, ::Type{SecondAdjointNodeVar{I,T}}) where {I,T}
+    print(io, "SecondAdjointNodeVar{…,", T, "}")
+end
+function Base.show(io::IO, ::Type{SecondAdjointNode1{F,T,I}}) where {F,T,I}
+    print(io, "SecondAdjointNode1{", _opname(F), ",", T, ",…}")
+end
+function Base.show(io::IO, ::Type{SecondAdjointNode2{F,T,I1,I2}}) where {F,T,I1,I2}
+    print(io, "SecondAdjointNode2{", _opname(F), ",", T, ",…}")
+end
+function Base.show(io::IO, ::Type{SecondAdjointNodeSource{VT}}) where {VT}
+    print(io, "SecondAdjointNodeSource{…}")
+end
+
 # --- MIME "text/plain" for detailed display ---
 
 function Base.show(io::IO, ::MIME"text/plain", node::AbstractNode)
