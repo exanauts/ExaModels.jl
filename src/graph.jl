@@ -476,11 +476,26 @@ function _print_tree(io::IO, node::Node2{F}, indent::Int) where {F}
     end
 end
 
+# Handle Pair nodes (used in constraint augmentation: index => expr)
+function _print_tree(io::IO, node::Pair{P,S}, indent::Int) where {P,S<:AbstractNode}
+    _print_tree(io, node.second, indent)
+end
+
 # Compact expression string for a node
-function _expr_string(node::AbstractNode)
+function _expr_string(node)
     buf = IOBuffer()
     _print_tree(buf, node, 0)
     return String(take!(buf))
+end
+
+# Fallback for non-node types (e.g., Real constants in SIMDFunction.f)
+function _print_tree(io::IO, node::Real, indent::Int)
+    print(io, " "^indent, node)
+end
+
+# Generic fallback for unknown types
+function _print_tree(io::IO, node, indent::Int)
+    print(io, " "^indent, node)
 end
 
 # --- Symbolic expression nodes ---

@@ -48,15 +48,13 @@ println("x[1] + x[5]:    ", add_node)
 println("x[1] * 3.14:    ", mul_node)
 println("x[5] ^ 2:       ", pow_node)
 
-# Nested expressions: sin(x[1]) + x[5] * 3.14
+# Nested expressions
 nested = ExaModels.Node2(+, sin_node, mul_node)
 println("sin(x[1]) + x[1]*3.14: ", nested)
 
-# Deeper nesting: (sin(x[1]) + x[1]*3.14) ^ 2
 deep = ExaModels.Node2(^, nested, ExaModels.Null(2))
 println("(...) ^ 2:             ", deep)
 
-# With parameter access: sin(x[1]) + p.cost
 par_expr = ExaModels.Node2(+, sin_node, pi)
 println("sin(x[1]) + p.cost:    ", par_expr)
 
@@ -115,28 +113,58 @@ println("display(SecondAdjointNode2):")
 display(s2)
 println("\n")
 
-# ── Building a real expression with ExaModels API ─────────
+# ══════════════════════════════════════════════════════════
+# Using pretty print through the ExaModels API
+# ══════════════════════════════════════════════════════════
 
-println("\n── Real ExaModels expression tree ────────────────────\n")
+println("=" ^ 60)
+println("  ExaModels API - Objective & Constraint Pretty Print")
+println("=" ^ 60)
+
+# ── Objective ─────────────────────────────────────────────
+
+println("\n── Objective (x[i]^2 for i=1:5) ─────────────────────\n")
 
 c = ExaCore()
-x = variable(c, 5)
-# The generator function passed to objective() internally builds
-# node trees from VarSource. Let's show what that looks like:
-vs = ExaModels.VarSource()
-println("VarSource: ", vs)
-expr = ExaModels.Node2(+,
-    ExaModels.Node1(sin, ExaModels.Var(1)),
-    ExaModels.Node2(*,
-        ExaModels.Var(2),
-        ExaModels.Node1(cos, ExaModels.Var(3))
-    )
-)
-println("sin(x[1]) + x[2]*cos(x[3]): ", expr)
-println("\ndisplay:")
-display(expr)
-println()
+c, x = add_var(c, 5)
+c, obj = add_obj(c, x[i]^2 for i=1:5)
+display(obj)
 
-println("\n", "=" ^ 60)
+# ── Constraint ────────────────────────────────────────────
+
+println("\n── Constraint (sin(x[i]) + x[i+1] for i=1:4) ───────\n")
+
+c, con = add_con(c, sin(x[i]) + x[i+1] for i=1:4; lcon = -1.0, ucon = 1.0)
+display(con)
+
+# ── Constraint Augmentation ───────────────────────────────
+
+println("\n── ConstraintAug (i => cos(x[i]) for i=2:3) ────────\n")
+
+c, con2 = add_con!(c, con, i => cos(x[i]) for i=2:3)
+display(con2)
+
+# ── Expression (subexpression) ────────────────────────────
+
+println("\n── Expression (x[i]^3 + 1.0 for i in 1:5) ──────────\n")
+
+c, s = add_expr(c, x[i]^3 + 1.0 for i in 1:5)
+display(s)
+
+# ── Objective using subexpression ─────────────────────────
+
+println("\n── Objective using subexpression (s[i]*x[i] for i=1:5)\n")
+
+c, obj2 = add_obj(c, s[i] * x[i] for i=1:5)
+display(obj2)
+
+# ── Full model summary ───────────────────────────────────
+
+println("\n── Full ExaModel ────────────────────────────────────\n")
+
+m = ExaModel(c)
+display(m)
+
+println("\n\n", "=" ^ 60)
 println("  Done!")
 println("=" ^ 60)
