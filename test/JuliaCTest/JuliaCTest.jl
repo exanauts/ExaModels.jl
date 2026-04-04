@@ -95,7 +95,7 @@ function runtests()
                 ("catmix",    10, false),
                 ("chain",     20, false),
                 ("gasoil",    10, false),
-                ("glider",    20, Sys.iswindows()), # TODO: investigate glider AOT failure on Windows
+                ("glider",    20, false),
                 ("marine",    10, false),
                 ("minsurf",   10, false),
                 ("pinene",    10, false),
