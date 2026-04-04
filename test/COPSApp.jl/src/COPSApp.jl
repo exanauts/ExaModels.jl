@@ -93,14 +93,14 @@ function (@main)(ARGS)
         result = ipopt(_steering(N); print_level = 5)
     elseif name == "torsion"
         result = ipopt(_torsion(N); print_level = 5)
-    elseif name == "elec"
-        result = ipopt(_elec(N); print_level = 5)
+    # elseif name == "elec"       # TODO: needs COPSBenchmark fix for juliac (ExaCore(T; backend=nothing) with abstract T)
+    #     result = ipopt(_elec(N); print_level = 5)
     # elseif name == "lane_emden"
     #     result = ipopt(_lane_emden(N); print_level = 5)
     elseif name == "polygon"
         result = ipopt(_polygon(N); print_level = 5)
-    elseif name == "channel"
-        result = ipopt(_channel(N); print_level = 5)
+    # elseif name == "channel"   # TODO: needs COPSBenchmark fix for juliac
+    #     result = ipopt(_channel(N); print_level = 5)
     # elseif name == "dirichlet"
     #     result = ipopt(_dirichlet(N); print_level = 5)
     # elseif name == "henon"
