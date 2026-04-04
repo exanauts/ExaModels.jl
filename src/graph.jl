@@ -495,15 +495,20 @@ function _print_tree(io::IO, node::Node2{F}, indent::Int) where {F}
     elseif op == "/" && _is_one(b)
         return _print_tree(io, a, indent)
     end
-    if op == "*"
+    if op == "^"
         print(io, " "^indent)
         _print_tree(io, a, 0)
-        print(io, " * ")
+        print(io, "^")
         _print_tree(io, b, 0)
-    elseif op in ("+", "-", "/", "^")
-        print(io, " "^indent, "(")
+    elseif op in ("*", "+", "-")
+        print(io, " "^indent)
         _print_tree(io, a, 0)
         print(io, " ", op, " ")
+        _print_tree(io, b, 0)
+    elseif op == "/"
+        print(io, " "^indent, "(")
+        _print_tree(io, a, 0)
+        print(io, " / ")
         _print_tree(io, b, 0)
         print(io, ")")
     else

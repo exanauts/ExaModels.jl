@@ -853,7 +853,7 @@ Objective
 
   ∑_{i ∈ I} f(x,i)
 
-  f(x,i) = x[i] ^ 2
+  f(x,i) = x[i]^2
 
   where |I| = 10
 ```
@@ -922,7 +922,7 @@ Constraint
 
   g♭ ≤ [g(x,i)]_{i ∈ I} ≤ g♯
 
-  g(x,i) = x[i] + x[(i + 1)]
+  g(x,i) = x[i] + x[i + 1]
 
   where |I| = 9
 ```
@@ -1136,7 +1136,7 @@ Constraint Augmentation
 
   g♭ ≤ (...) + ∑_{i ∈ I} h(x,i) ≤ g♯
 
-  h(x,i) = sin(x[(i.1 + 1)])
+  h(x,i) = sin(x[i.1 + 1])
 
   where |I| = 3
 ```
@@ -1244,7 +1244,7 @@ julia> s
 Subexpression (reduced)
 
   s ∈ R^{10}
-  s(x,i) = x[i] ^ 2
+  s(x,i) = x[i]^2
 
 julia> c, _ = add_obj(c, s[i] + s[i+1] for i in 1:9);
 ```
