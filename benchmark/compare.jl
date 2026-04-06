@@ -23,7 +23,7 @@ function sort_key(name)
     parts = split(name, "-")
     # Last part is backend label, second-to-last is size (numeric), rest is model name
     backend = parts[end]
-    size_str = length(parts) >= 2 ? parts[end-1] : "0"
+    size_str = length(parts) >= 2 ? parts[end - 1] : "0"
     size_num = something(tryparse(Int, size_str), 0)
     model = join(parts[1:end-2], "-")
     border = get(BACKEND_ORDER, backend, 99)
@@ -42,7 +42,7 @@ sorted_names = sort(all_names; by = sort_key)
 # when main is zero (would give division-by-zero / Inf).
 function ratio_str(c, m)
     (isnan(c) || isnan(m) || m == 0) && return "     N/A"
-    @sprintf("%8.3f", c / m)
+    return @sprintf("%8.3f", c / m)
 end
 
 const NAME_W = 26
