@@ -528,19 +528,14 @@ _start(n::UnitRange) = n.start
 
 """
     add_var(core, dims...; start = 0, lvar = -Inf, uvar = Inf, name = nothing, kwargs...)
-    add_var(core, name::Symbol, dims...; kwargs...)
 
-Adds variables with dimensions specified by `dims` to `core`. `dims` can be either `Integer` or `UnitRange`.
-
-The two forms differ in their return value:
-- Without a positional `name`: returns `(core, Variable)`.
-- With a positional `name::Symbol`: returns just `core`; the variable is registered under `name` and accessible later as `core.name` or `model.name`.
+Adds variables with dimensions specified by `dims` to `core`. `dims` can be either `Integer` or `UnitRange`. Returns `(core, Variable)`.
 
 ## Keyword Arguments
 - `start`: The initial guess of the solution. Can either be `Number`, `AbstractArray`, or `Generator`.
 - `lvar` : The variable lower bound. Can either be `Number`, `AbstractArray`, or `Generator`.
 - `uvar` : The variable upper bound. Can either be `Number`, `AbstractArray`, or `Generator`.
-- `name` : When given as `Val(:name)`, registers the variable in `core` for later retrieval as `core.name` or `model.name` (in addition to being returned in the tuple). See [`@var`](@ref) for the idiomatic named interface.
+- `name` : When given as `Val(:name)`, registers the variable in `core` for later retrieval as `core.name` or `model.name`. See [`@var`](@ref) for the idiomatic named interface.
 - `kwargs...`: Additional keyword arguments for variable tags (e.g., `scenario` for two-stage models)
 
 ## Example
@@ -718,11 +713,6 @@ function add_par(c::C, start::AbstractArray; name = nothing) where {T,C<:ExaCore
     (ExaCore(c; par = (p, c.par...), θ=θ, npar=npar, refs = add_refs(c.refs, name, p)), p)
 end
 
-function add_par(c::C, name::Symbol, args...; kwargs...) where {T,C<:ExaCore{T}}
-    c, p = add_par(c, args...; name, kwargs...)
-    return c
-end
-
 """
     set_parameter!(core, param, values)
 
@@ -788,10 +778,6 @@ function add_var(
     return (c, x)
 end
 
-function add_var(c::C, name::Symbol, args...; kwargs...) where {T,C<:ExaCore{T}}
-    c, v = add_var(c, args...; name, kwargs...)
-    return c
-end
 
 """
     add_obj(core::ExaCore, generator; name = nothing)
@@ -1032,11 +1018,6 @@ end
     return (ExaCore(c2; refs = add_refs(c2.refs, name, con)), con)
 end
 
-function add_con(c::C, name::Symbol, args...; kwargs...) where {T,C<:ExaCore{T}}
-    c, con = add_con(c, args...; name, kwargs...)
-    return c
-end
-
 function _add_constraint(c::C, f, pars, start, lcon, ucon, name = nothing; kwargs...) where {C<:ExaCore}
     nitr = length(pars)
     o = c.ncon
@@ -1201,12 +1182,6 @@ end
     c2, ex = add_expr(c, gen)
     return (ExaCore(c2; refs = add_refs(c2.refs, name, ex)), ex)
 end
-
-function add_expr(c::C, name::Symbol, args...; kwargs...) where {T, C <: ExaCore{T}}
-    c, ex = add_expr(c, args...; name, kwargs...)
-    return c
-end
-
 
 function jac_structure!(m::AbstractExaModel{T}, rows::AbstractVector, cols::AbstractVector) where T
     _jac_structure!(T, m.cons, rows, cols)
