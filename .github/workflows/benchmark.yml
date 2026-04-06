@@ -71,12 +71,12 @@ jobs:
         id: parse
         run: |
           if [[ "${{ github.event_name }}" == "workflow_run" ]]; then
-            # Automatic trigger on CI success: run full
-            echo "nothing=true" >> $GITHUB_OUTPUT
-            echo "cuda=true"    >> $GITHUB_OUTPUT
-            echo "amdgpu=true"  >> $GITHUB_OUTPUT
-            echo "oneapi=true"  >> $GITHUB_OUTPUT
-            echo "metal=true"   >> $GITHUB_OUTPUT
+            # Automatic trigger on CI success: CPU only (GPU backends require explicit comment)
+            echo "nothing=true"  >> $GITHUB_OUTPUT
+            echo "cuda=false"    >> $GITHUB_OUTPUT
+            echo "amdgpu=false"  >> $GITHUB_OUTPUT
+            echo "oneapi=false"  >> $GITHUB_OUTPUT
+            echo "metal=false"   >> $GITHUB_OUTPUT
           else
             BODY=$(cat <<'COMMENT_EOF'
             ${{ github.event.comment.body }}

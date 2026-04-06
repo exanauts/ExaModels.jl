@@ -90,24 +90,21 @@ function _process_generator(gen, outer_vars::Set{Symbol})
     return result
 end
 
-# Walk the body of a generator and apply two transformations:
+# Walk the body of a generator and apply one transformation:
 #
 #   • sum/prod(body for j in range) → exa_sum(j -> body, val_sym)
 #     where val_sym is a hoisted Val(range) binding (see _process_generator).
 #
-#   • Number literals and constant sub-expressions (those that reference no
-#     iterator variable) are wrapped in Constant{T}() so that algebraic
-#     simplification rules (x*1 → x, x^2 → abs2(x), …) fire at
-#     model-construction time rather than producing a Node2 unnecessarily.
-#     Sub-expressions that DO reference iterator variables are left as plain
-#     Julia values; they become scalars at runtime, handled by the
-#     `AbstractNode * Real` dispatch.
+# All other sub-expressions — including number literals and free symbols — are
+# left as-is.  Numeric scalars are handled by the `AbstractNode * Real` dispatch
+# in `register.jl`, which stores them directly in `Node2` as a concrete field.
+# Users who want value-in-type optimisation (algebraic folding via
+# `Constant{T}`) can call `Constant(v)` explicitly in their model expressions.
 #
-# Rules for what is NOT wrapped:
+# Nodes that are NOT recursed into:
 #   • Function names in call position
 #   • Array bases in indexing expressions  (`a` in `a[i]`)
 #   • Dot-access targets and quoted expressions
-#   • Iterator variables themselves
 function _wrap_free_symbols(expr, iter_vars::Set{Symbol},
                             hoisted::Vector{Pair{Symbol,Any}} = Pair{Symbol,Any}[])
     if !(expr isa Expr)
