@@ -23,7 +23,7 @@ function sort_key(name)
     parts = split(name, "-")
     # Last part is backend label, second-to-last is size (numeric), rest is model name
     backend = parts[end]
-    size_str = length(parts) >= 2 ? parts[end-1] : "0"
+    size_str = length(parts) >= 2 ? parts[end - 1] : "0"
     size_num = something(tryparse(Int, size_str), 0)
     model = join(parts[1:end-2], "-")
     border = get(BACKEND_ORDER, backend, 99)
