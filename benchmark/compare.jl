@@ -1,19 +1,24 @@
 using JLD2, Printf
 
-main_file    = joinpath(@__DIR__, "benchmark-results-main.jld2")
+main_file = joinpath(@__DIR__, "benchmark-results-main.jld2")
 current_file = joinpath(@__DIR__, "benchmark-results-current.jld2")
 
-isfile(main_file)    || error("Missing $main_file — run 'make benchmark-main' first")
+isfile(main_file) || error("Missing $main_file — run 'make benchmark-main' first")
 isfile(current_file) || error("Missing $current_file — run 'make benchmark-current' first")
 
-main_res    = JLD2.load(main_file,    "results")
+main_res = JLD2.load(main_file, "results")
 current_res = JLD2.load(current_file, "results")
 
 all_names = collect(union(keys(main_res), keys(current_res)))
 
-# Sort order for backends (lower = first in output)
+# Sort order for backends within each (model, size) group.
+# GPU backends come first so the most interesting results appear early.
 const BACKEND_ORDER = Dict("CUDA" => 0, "AMDGPU" => 1, "oneAPI" => 2, "Metal" => 3, "nothing" => 4)
 
+# Keys are 4-tuples: (group_index, model_name, size_as_int, backend_index).
+# Benchmark names follow the convention "<model>-<size>-<backend>", e.g.
+# "rosenrock-1000-CUDA".  The size field is parsed as an integer so that
+# 1000 < 10000 < 100000 (lexicographic order would give the wrong result).
 function sort_key(name)
     parts = split(name, "-")
     # Last part is backend label, second-to-last is size (numeric), rest is model name
@@ -32,6 +37,9 @@ end
 
 sorted_names = sort(all_names; by = sort_key)
 
+# Format a timing ratio as "current / main".  Values below 1.0 are
+# improvements.  Returns "N/A" when either measurement is missing (NaN) or
+# when main is zero (would give division-by-zero / Inf).
 function ratio_str(c, m)
     (isnan(c) || isnan(m) || m == 0) && return "     N/A"
     @sprintf("%8.3f", c / m)
@@ -47,6 +55,8 @@ println(SEP)
 @printf("  %-*s  | %8s %8s %8s %8s %8s\n", NAME_W, "name", "obj", "cons", "grad", "jac", "hess")
 println(SEP)
 
+# prev_group is a Ref so that assignment inside the for-loop body modifies the
+# outer binding rather than creating a new loop-local variable (Julia soft-scope).
 prev_group = Ref("")
 for name in sorted_names
     group = split(name, "-")[1]

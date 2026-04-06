@@ -165,7 +165,10 @@ _hdrpass_fixedvar_val(::Type{SecondAdjointNode2{F,T,I1,I2}}) where {F,T,I1,I2} =
 @inline replace_T(t, n::AbstractNode) = n
 @inline replace_T(t, n::Real) = n
 @inline replace_T(t, n::AbstractFloat) = t(n)
-@inline replace_T(t, c::Constant{n}) where {n} = Constant(replace_T(t, n))
+# For Constant{T}, the value lives in the type parameter, so we re-wrap the
+# type-converted value in a new Constant rather than touching a field.
+@inline replace_T(t, ::Constant{n}) where {n} = Constant(replace_T(t, n))
+@inline replace_T(t, ::Val{n}) where {n} = Val(replace_T(t, n))
 @inline replace_T(t, (a,b)::Pair) = a => replace_T(t, b)
 @inline function replace_T(t, n::Node1{F,I}) where {F, I}
     i = replace_T(t, n.inner)
@@ -177,8 +180,6 @@ end
     return Node2{F,typeof(i1),typeof(i2)}(i1, i2)
 end
 @inline replace_T(t, n::Null{T}) where T <: Real = Null{t}(t(n.value))
-@inline replace_T(::Type{T1}, n::T2) where {T1, T2 <: Real} = T1(n)
-@inline replace_T(::Type{T1}, ::Val{V}) where {T1, V} = Val(T1(V))
 @inline function replace_T(t, n::SumNode{I}) where {I}
     inners = map(x -> replace_T(t, x), n.inners)
     SumNode(inners)

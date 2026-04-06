@@ -18,12 +18,24 @@ end
 """
     @register_univariate(f, df, ddf)
 
-Register a univariate function `f` to `ExaModels`, so that it can be used within objective and constraint expressions
+Register a univariate function `f` so it can be used inside `@obj` / `@con`
+expressions.  The macro adds three method groups:
 
-# Arguments:
-- `f`: function
-- `df`: derivative function
-- `ddf`: second-order derivative function
+1. **Primal graph node** — `f(n::AbstractNode) → Node1(f, n)`.
+   Applied at model-construction time to build the symbolic graph.
+
+2. **Constant folding** — `f(::Constant{T}) → Constant(f(T))`.
+   When the argument is a [`Constant`](@ref) (value encoded as a type
+   parameter), the result is evaluated immediately and stored as a new
+   `Constant`, avoiding a `Node1` allocation entirely.
+
+3. **Adjoint / second-adjoint nodes** — forward-pass nodes for gradient and
+   Hessian computation, using `df` and `ddf` as the derivative functions.
+
+# Arguments
+- `f`:   the function to register
+- `df`:  first derivative `f'(x)`
+- `ddf`: second derivative `f''(x)`
 
 ## Example
 ```jldoctest
@@ -47,6 +59,8 @@ macro register_univariate(f, df, ddf)
             if ExaModels._needs_overload($f, Tuple{ExaModels.AbstractNode})
                 @inline $f(n::N) where {N<:ExaModels.AbstractNode} = ExaModels.Node1($f, n)
             end
+            # Constant folding: f(Constant{T}()) → Constant(f(T))
+            @inline $f(n::Constant{I}) where {I} = Constant($f(I))
 
             @inline $f(d::D) where {D<:ExaModels.AbstractAdjointNode} =
                 ExaModels.AdjointNode1($f, $f(d.x), $df(d.x), d)
@@ -60,17 +74,26 @@ macro register_univariate(f, df, ddf)
 end
 
 """
-    register_bivariate(f, df1, df2, ddf11, ddf12, ddf22)
+    @register_bivariate(f, df1, df2, ddf11, ddf12, ddf22)
 
-Register a bivariate function `f` to `ExaModels`, so that it can be used within objective and constraint expressions
+Register a bivariate function `f` so it can be used inside `@obj` / `@con`
+expressions.  The macro adds four method groups:
 
-# Arguments:
-- `f`: function
-- `df1`: derivative function (w.r.t. first argument)
-- `df2`: derivative function (w.r.t. second argument)
-- `ddf11`: second-order derivative function (w.r.t. first argument)
-- `ddf12`: second-order derivative function (w.r.t. first and second argument)
-- `ddf22`: second-order derivative function (w.r.t. second argument)
+1. **Node OP Node** — `f(d1::AbstractNode, d2::AbstractNode) → Node2(f, d1, d2)`.
+2. **Node OP Real** — `f(d1::AbstractNode, d2::Real) → Node2(f, d1, d2)`.
+   Numeric scalars (including iterator-derived values like `factorial(j)`) are
+   stored directly in `Node2` without wrapping in [`Constant`](@ref).
+3. **Real OP Node** — symmetric counterpart of the above.
+4. **Constant folding** — `f(Constant{I1}(), Constant{I2}()) → Constant(f(I1, I2))`.
+   Both-constant expressions are evaluated immediately.
+
+# Arguments
+- `f`:     the function to register
+- `df1`:   partial derivative w.r.t. the first argument
+- `df2`:   partial derivative w.r.t. the second argument
+- `ddf11`: second partial w.r.t. the first argument
+- `ddf12`: mixed second partial
+- `ddf22`: second partial w.r.t. the second argument
 
 ## Example
 ```jldoctest
@@ -108,6 +131,8 @@ macro register_bivariate(f, df1, df2, ddf11, ddf12, ddf22)
                     ExaModels.Node2($f, d1, d2)
                 end
             end
+            # Constant folding: f(Constant{I1}(), Constant{I2}()) → Constant(f(I1,I2))
+            @inline $f(d1::Constant{I1}, d2::Constant{I2}) where {I1, I2} = Constant($f(I1, I2))
 
             if ExaModels._needs_overload($f, Tuple{ExaModels.AbstractNode,Real})
                 @inline function $f(

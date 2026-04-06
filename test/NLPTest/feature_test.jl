@@ -2,16 +2,16 @@ using ExaModels
 using Test
 import NLPModels
 
-# Tests for Const{T}, add_var(gen), and named variable/constraint access
+# Tests for Constant{T}, add_var(gen), and named variable/constraint access
 
 function test_const(backend)
-    @testset "Const basic usage" begin
+    @testset "Constant basic usage" begin
         c = ExaCore(; backend)
         N = 5
         @var(c, x, N; start = 1.0)
 
         # Const(N) keeps type stable — N is not captured in the type parameter
-        @obj(c, Const(N) * x[i]^2 for i in 1:N)
+        @obj(c, Constant(N) * x[i]^2 for i in 1:N)
 
         m = ExaModel(c)
         @test m.meta.nvar == N
@@ -19,13 +19,6 @@ function test_const(backend)
 
         x0 = ExaModels.convert_array(ones(N), backend)
         @test NLPModels.obj(m, x0) ≈ N * N  # sum of N*x[i]^2 = N*N*1
-    end
-
-    @testset "Const type stability" begin
-        # Const{T} is always concrete regardless of value — same type for different values
-        @test typeof(Const(1.0)) == typeof(Const(2.0))
-        @test typeof(Const(1)) == typeof(Const(2))
-        @test Const(3.14).value == 3.14
     end
 end
 

@@ -32,7 +32,6 @@ jobs:
             using Pkg
             Pkg.develop(path=".")
             Pkg.instantiate()
-            push!(ARGS, "EXAMODELS_TEST_KA")
             push!(ARGS, "EXAMODELS_TEST_POCL")
             include("test/runtests.jl")'
       - uses: julia-actions/julia-processcoverage@v1
@@ -74,7 +73,6 @@ jobs:
       run: |
         julia --startup-file=no --color=yes --project=./test -e '
           push!(ARGS, "EXAMODELS_NO_TEST_CPU")
-          push!(ARGS, "EXAMODELS_TEST_KA")
           push!(ARGS, "EXAMODELS_TEST_" * uppercase("${{ matrix.backend }}"))
           include("test/runtests.jl")'
 
@@ -110,7 +108,6 @@ jobs:
         run: |
           julia --startup-file=no --color=yes --project=./test -e '
             push!(ARGS, "EXAMODELS_NO_TEST_CPU")
-            push!(ARGS, "EXAMODELS_TEST_KA")
             push!(ARGS, "EXAMODELS_TEST_METAL")
             include("test/runtests.jl")'
         

@@ -84,7 +84,7 @@ isempty(BENCH_BACKENDS) && error("No functional backends available for the reque
 # ── Timing helpers ─────────────────────────────────────────────────────────────
 
 function belapsed(ex; samples = 1000)
-    ex()
+    ex()  # one warmup to avoid JIT / kernel-compile overhead in the timed window
     minimum(@elapsed ex() for _ in 1:samples)
 end
 
@@ -94,6 +94,8 @@ function benchmark_callbacks(m, sync = () -> nothing; samples = 10)
     nnzj = m.meta.nnzj
     nnzh = m.meta.nnzh
 
+    # Use similar(x0, ...) rather than zeros(...) so that working arrays are
+    # allocated on the same device (GPU/CPU) as the model's initial point x0.
     x    = copy(m.meta.x0)
     y    = similar(x, ncon)
     c    = similar(x, ncon)
@@ -101,6 +103,8 @@ function benchmark_callbacks(m, sync = () -> nothing; samples = 10)
     jac  = similar(x, nnzj)
     hess = similar(x, nnzh)
 
+    # sync() blocks until all GPU kernels enqueued by the callback have
+    # completed, so @elapsed measures real compute time, not just launch time.
     tobj  = belapsed(() -> (ExaModels.obj(m, x);          sync()); samples)
     tcon  = belapsed(() -> (ExaModels.cons!(m, x, c);     sync()); samples)
     tgrad = belapsed(() -> (ExaModels.grad!(m, x, g);     sync()); samples)
@@ -162,6 +166,12 @@ function parse_ac_power_data(filename)
 end
 
 if pkgversion(ExaModels) > v"0.9.7"
+
+    # Model functions are defined with `@eval @inline function` rather than
+    # plain `function` so that the function body is compiled at module-eval time
+    # with fully concrete types.  This makes the definitions visible to the
+    # ahead-of-time compiler (`juliac --trim=safe`) without requiring runtime
+    # inference of the model-building code paths.
 
     # ── Rosenrock ───────────────────────────────────────────────────────────────
     @eval @inline function exa_rosenrock_model(backend, N)
@@ -279,7 +289,7 @@ if pkgversion(ExaModels) > v"0.9.7"
         @var(core, y, 1:np; start = [sin(theta[i])*sin(phi[i]) for i = 1:np])
         @var(core, z, 1:np; start = [cos(phi[i]) for i = 1:np])
 
-        @obj(core, 1.0 / sqrt((x[i]-x[j])^2 + (y[i]-y[j])^2 + (z[i]-z[j])^2) for (i, j) in itr)
+        @obj(core, 1 / sqrt((x[i]-x[j])^2 + (y[i]-y[j])^2 + (z[i]-z[j])^2) for (i, j) in itr)
         @con(core, c1, x[i]^2 + y[i]^2 + z[i]^2 - 1 for i = 1:np)
 
         return ExaModel(core)
@@ -287,6 +297,9 @@ if pkgversion(ExaModels) > v"0.9.7"
 
 else
     # ── Legacy API (ExaModels ≤ 0.9.7) ─────────────────────────────────────────
+    # The `main` environment may pin an older ExaModels release that used
+    # `variable`/`objective`/`constraint` instead of the `@var`/`@obj`/`@con`
+    # macros.  This branch keeps the benchmark runnable against both APIs.
 
     function exa_rosenrock_model(backend, N)
         c = ExaCore(backend = backend)
@@ -400,7 +413,7 @@ else
         y = variable(core, 1:np; start = [sin(theta[i])*sin(phi[i]) for i = 1:np])
         z = variable(core, 1:np; start = [cos(phi[i]) for i = 1:np])
 
-        objective(core, 1.0 / sqrt((x[i]-x[j])^2 + (y[i]-y[j])^2 + (z[i]-z[j])^2) for (i, j) in itr)
+        objective(core, 1 / sqrt((x[i]-x[j])^2 + (y[i]-y[j])^2 + (z[i]-z[j])^2) for (i, j) in itr)
         constraint(core, x[i]^2 + y[i]^2 + z[i]^2 - 1 for i = 1:np)
 
         return ExaModel(core)
@@ -410,7 +423,7 @@ end
 # ── Benchmark loop ─────────────────────────────────────────────────────────────
 
 results = Dict()
-print_header("Benchmarks (rev=$rev, backends=$(join(first.(BENCH_BACKENDS), '+')))")
+print_header("name")
 
 for (bname, backend, sync) in BENCH_BACKENDS
     for (name, thunk) in [

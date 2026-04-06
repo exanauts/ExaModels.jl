@@ -1,11 +1,28 @@
-# ── Auto-Const AST helpers (used by @obj, @con, @con!, @expr macros) ─────────
-# These walk generator expressions at macro-expansion time and wrap free symbols
-# (not iterator vars, not function names, not array/dot bases) via _maybe_const().
+# ── AST transformation helpers (used by @obj, @con, @con!, @expr macros) ──────
+#
+# These functions walk generator expressions at macro-expansion time and perform
+# two transformations on the generator body:
+#
+#   1. sum/prod rewriting — `sum(body for j in range)` is replaced by
+#      `exa_sum(j -> body, Val(range))`.  The `Val`-wrapped range is hoisted
+#      into a `let`-binding outside the generator closure so that
+#      `juliac --trim=safe` can resolve `Val{N}` concretely via constant
+#      propagation.
+#
+#   2. Selective Constant wrapping — non-iterator sub-expressions that evaluate
+#      to a plain number at macro-expansion time (e.g. literal `2`, `3.14`, or
+#      `2*pi`) are wrapped in [`Constant`](@ref) so that algebraic
+#      simplification rules in `specialization.jl` (x*1 → x, x^2 → abs2(x),
+#      etc.) fire at model-construction time.  Sub-expressions that reference
+#      iterator variables are left as-is; they become plain scalars at runtime
+#      and are handled by the `AbstractNode * Real` dispatch in
+#      `register.jl`.
 
-const _EXA_SUM_REF    = GlobalRef(@__MODULE__, :exa_sum)
-const _EXA_PROD_REF   = GlobalRef(@__MODULE__, :exa_prod)
+const _EXA_SUM_REF  = GlobalRef(@__MODULE__, :exa_sum)
+const _EXA_PROD_REF = GlobalRef(@__MODULE__, :exa_prod)
 
-# Collect iterator variable names from the LHS of a for-clause
+# Collect all iterator variable names from the LHS of a for-clause.
+# Handles both simple symbols (`j`) and tuple destructuring (`(i, j)`).
 function _collect_iter_vars!(vars::Set{Symbol}, lhs)
     if lhs isa Symbol
         push!(vars, lhs)
@@ -16,7 +33,8 @@ function _collect_iter_vars!(vars::Set{Symbol}, lhs)
     end
 end
 
-# Entry point: find generators in an expression and wrap free symbols in their bodies
+# Entry point: locate generators inside an expression and process each one.
+# Non-generator nodes are returned unchanged.
 function _auto_const_gen(expr)
     expr isa Expr || return expr
     if expr.head == :generator
@@ -35,14 +53,20 @@ function _auto_const_gen(expr)
     end
 end
 
+# Process a single generator node.  Collects its iterator variables (unioned
+# with `outer_vars` from enclosing generators), then delegates to
+# `_wrap_free_symbols` for the body.  Any `sum`/`prod` calls in the body are
+# rewritten to `exa_sum`/`exa_prod` with their Val-ranges hoisted into a
+# surrounding `let`-block.
 function _process_generator(gen, outer_vars::Set{Symbol})
     iter_vars = copy(outer_vars)
     for spec in gen.args[2:end]
         _collect_iter_vars!(iter_vars, spec.args[1])
     end
 
-    # hoisted: accumulates (sym => val_expr) pairs that must be computed OUTSIDE
-    # the generator closure for juliac constant propagation to resolve Val{N}.
+    # Accumulates (gensym => Val(range)) pairs that must be bound OUTSIDE the
+    # generator closure so that juliac --trim=safe can resolve Val{N} concretely
+    # via constant propagation at the call site.
     hoisted = Pair{Symbol,Any}[]
 
     body = gen.args[1]
@@ -56,8 +80,8 @@ function _process_generator(gen, outer_vars::Set{Symbol})
 
     result = Expr(:generator, new_body, gen.args[2:end]...)
 
-    # Wrap in a let-block so hoisted Val bindings are evaluated once, outside the
-    # generator closure.  Julia's inference can then propagate Val{N} concretely.
+    # Hoist Val bindings outside the generator so Julia's inference can
+    # propagate Val{N} concretely into exa_sum / exa_prod.
     if !isempty(hoisted)
         binds = Expr(:block, [Expr(:(=), p.first, p.second) for p in hoisted]...)
         result = Expr(:let, binds, result)
@@ -66,18 +90,31 @@ function _process_generator(gen, outer_vars::Set{Symbol})
     return result
 end
 
-# Walk an expression and wrap free symbols in Const().
-# "Free" means: not an iterator var, not in function-call position,
-# not an array base (first arg of ref[]), not a dot-access target.
-# `hoisted` accumulates (sym => expr) pairs for Val bindings that must be
-# evaluated outside the generator closure (for juliac constant propagation).
+# Walk the body of a generator and apply two transformations:
+#
+#   • sum/prod(body for j in range) → exa_sum(j -> body, val_sym)
+#     where val_sym is a hoisted Val(range) binding (see _process_generator).
+#
+#   • Number literals and constant sub-expressions (those that reference no
+#     iterator variable) are wrapped in Constant{T}() so that algebraic
+#     simplification rules (x*1 → x, x^2 → abs2(x), …) fire at
+#     model-construction time rather than producing a Node2 unnecessarily.
+#     Sub-expressions that DO reference iterator variables are left as plain
+#     Julia values; they become scalars at runtime, handled by the
+#     `AbstractNode * Real` dispatch.
+#
+# Rules for what is NOT wrapped:
+#   • Function names in call position
+#   • Array bases in indexing expressions  (`a` in `a[i]`)
+#   • Dot-access targets and quoted expressions
+#   • Iterator variables themselves
 function _wrap_free_symbols(expr, iter_vars::Set{Symbol},
                             hoisted::Vector{Pair{Symbol,Any}} = Pair{Symbol,Any}[])
-    if expr isa Number
-        # return expr
-        return Constant(expr)
-    elseif !(expr isa Expr)
-        return expr  # literals, LineNumberNode, etc.
+    if !(expr isa Expr)
+        # Number literals, Symbols, LineNumberNodes — return as-is.
+        # Numbers will be handled by the AbstractNode * Real dispatch at
+        # model-construction time.
+        return expr
     end
 
     h = expr.head
@@ -138,42 +175,53 @@ function _wrap_free_symbols(expr, iter_vars::Set{Symbol},
     end
 end
 
-# Operator dispatch for AbstractNode.
+# ── Operator dispatch for AbstractNode ────────────────────────────────────────
 #
-# ── ^ with integer exponent ──────────────────────────────────────────────────
-# Intercept AbstractNode ^ Integer before _register_biv can add the generic version.
-# Override literal_pow (Julia's x^N fast-path) so the exponent stays as a type
-# parameter Val{P} all the way through — juliac --trim=safe needs this to trace the
-# specific Node2{^, ..., Val{P}} constructor without abstract dispatch.
+# The generic bivariate registrations in `register.jl` cover
+# `AbstractNode OP AbstractNode`, `AbstractNode OP Real`, and
+# `Real OP AbstractNode`.  The specialisations below handle cases where a
+# more specific rule must take precedence.
+
+# ── Constant algebraic simplifications ────────────────────────────────────────
+# These fire at model-construction time whenever a Constant{T} node meets an
+# AbstractNode operand, collapsing trivial graph branches before the model is
+# finalised.  They are registered for the most common numeric zero/one/two
+# values across all standard floating-point types.
+
+# ── Power with compile-time integer exponent ──────────────────────────────────
+# Julia's literal_pow fast-path keeps the exponent as Val{P}, enabling
+# juliac --trim=safe to trace the exact Node2{^, …, Val{P}} constructor.
+# The fallback `^(node, ::Integer)` / `^(node, ::Real)` embeds the exponent
+# directly in Node2 as a concrete scalar.
 @inline Base.literal_pow(::typeof(^), d1::AbstractNode, ::Val{P}) where {P} =
     _pow_val(d1, Val{P}())
-# Runtime integer exponent: use Const so the type is concrete for juliac.
 @inline Base.:^(d1::AbstractNode, d2::Integer) = Node2(^, d1, d2)
-# Runtime Real (e.g. Float64) exponent: Val(d2::Real) would infer abstract Val{<:Real}
-# in the _register_biv generic body; use Const{T} instead (always concrete for any T).
-@inline Base.:^(d1::AbstractNode, d2::Real) = Node2(^, d1, d2)
+@inline Base.:^(d1::AbstractNode, d2::Real)    = Node2(^, d1, d2)
 @inline _pow_val(d1::AbstractNode, ::Val{1}) = d1
 @inline _pow_val(d1::AbstractNode, ::Val{2}) = Node1(abs2, d1)
 @inline _pow_val(d1::AbstractNode, ::Val{V}) where {V} = Node2(^, d1, Val{V}())
-# Val{V}() used as inner2 in Node2(^, d1, Val{V}()) — make it callable in the eval context.
+# Make Val{V}() callable in the eval context so Node2(^, node, Val{V}())
+# evaluates correctly as node^V.
 @inline (::Val{V})(i, x, θ) where {V} = V
 
 # ── exa_sum / exa_prod ────────────────────────────────────────────────────────
 #
 # Type-stable sum/prod for use inside @obj / @con / @expr generators.
 #
-# The macro transformation rewrites:
-#   sum(body for j in range)  →  exa_sum(j -> wrapped_body, range)
-#   prod(body for j in range) →  exa_prod(j -> wrapped_body, range)
+# The macro transformation (_wrap_free_symbols) rewrites:
+#   sum(body for j in range)  →  exa_sum(j -> body, Val(range))
+#   prod(body for j in range) →  exa_prod(j -> body, Val(range))
 #
-# The function-based form is type-stable for:
-#   • Tuple iterators  — tail-recursive _exa_map builds a concrete NTuple
-#   • UnitRange{Int}   — ntuple(f, Val{N}()) is concrete when N is a
-#                        compile-time constant (e.g. literal range 1:3 or
-#                        a Val-encoded length). Runtime-variable lengths are
-#                        not supported for juliac --trim=safe.
+# The Val(range) is hoisted into a let-binding outside the generator closure so
+# that juliac --trim=safe can resolve Val{N} concretely via constant propagation.
+#
+# Supported iterator forms:
+#   • Tuple        — tail-recursive _exa_map builds a concrete NTuple
+#   • UnitRange{Int} — ntuple(f, Val{N}()) is type-stable when N is a
+#                      compile-time constant (literal or Val-encoded length)
+#   • Val{range}   — preferred for juliac; embeds the range in the type
 
-# Helper: type-stable map over a tuple → returns a concrete tuple of results.
+# Helper: type-stable map over a tuple, returning a concrete NTuple of results.
 @inline _exa_map(f, ::Tuple{}) = ()
 @inline _exa_map(f, t::Tuple) = (f(t[1]), _exa_map(f, Base.tail(t))...)
 
@@ -253,21 +301,43 @@ end
 @inline exa_prod(gen::Base.Generator) = exa_prod(gen.f, gen.iter)
 
 
-Base.:+(::Constant{0}, x::AbstractNode) = x
-Base.:+(x::AbstractNode, ::Constant{0}) = x
+# ── Algebraic simplification rules for Constant{T} ───────────────────────────
+#
+# These methods fire when a Constant{T} node appears in an arithmetic expression
+# with another AbstractNode at model-construction time, eliminating unnecessary
+# Node1/Node2 allocations before the graph is finalised.
+#
+# Rules are registered for the most common numeric zero/one/two values across
+# Int, Float64, Float32, and Float16 so that expressions written with any of
+# those literal types are simplified regardless of the calling context.
 
-Base.:-(::Constant{0}, x::AbstractNode) =-x
-Base.:-(x::AbstractNode, ::Constant{0}) = x
+for zero in (0, 0., Float32(0.), Float16(0.))
+    @eval begin
+        Base.:+(::Constant{$zero}, x::AbstractNode) = x           # 0 + x  →  x
+        Base.:+(x::AbstractNode, ::Constant{$zero}) = x           # x + 0  →  x
+        Base.:-(::Constant{$zero}, x::AbstractNode) = -x          # 0 - x  → -x
+        Base.:-(x::AbstractNode, ::Constant{$zero}) = x           # x - 0  →  x
+        Base.:*(::Constant{$zero}, x::AbstractNode) = Constant(0) # 0 * x  →  0
+        Base.:*(x::AbstractNode, ::Constant{$zero}) = Constant(0) # x * 0  →  0
+        Base.:/(::Constant{$zero}, x::AbstractNode) = Constant(0) # 0 / x  →  0
+        Base.:^(x::AbstractNode, ::Constant{$zero}) = Constant(1) # x ^ 0  →  1
+    end
+end
 
-Base.:*(::Constant{1}, x::AbstractNode) = x
-Base.:*(x::AbstractNode, ::Constant{1}) = x
-Base.:*(::Constant{0}, x::AbstractNode) = Constant(0)
-Base.:*(x::AbstractNode, ::Constant{0}) = Constant(0)
+for one in (1, 1., Float32(1.), Float16(1.))
+    @eval begin
+        Base.:*(::Constant{$one}, x::AbstractNode) = x            # 1 * x  →  x
+        Base.:*(x::AbstractNode, ::Constant{$one}) = x            # x * 1  →  x
+        Base.:/(x::AbstractNode, ::Constant{$one}) = x            # x / 1  →  x
+        Base.:/(::Constant{$one}, x::AbstractNode) = inv(x)       # 1 / x  →  inv(x)
+        Base.:^(x::AbstractNode, ::Constant{-$one}) = inv(x)      # x ^ -1 →  inv(x)
+        Base.:^(x::AbstractNode, ::Constant{$one}) = x            # x ^ 1  →  x
+    end
+end
 
-Base.:/(x::AbstractNode, ::Constant{1}) = x
-Base.:/(::Constant{0}, x::AbstractNode) = Constant(0)
+for two in (2, 2., Float32(2.), Float16(2.))
+    @eval begin
+        Base.:^(x::AbstractNode, ::Constant{$two}) = abs2(x)      # x ^ 2  →  abs2(x)
+    end
+end
 
-Base.:^(x::AbstractNode, ::Constant{-1}) = 1/x
-Base.:^(x::AbstractNode, ::Constant{0}) = Constant(1)
-Base.:^(x::AbstractNode, ::Constant{1}) = x
-Base.:^(x::AbstractNode, ::Constant{2}) = abs2(x)

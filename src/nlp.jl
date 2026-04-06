@@ -718,6 +718,11 @@ function add_par(c::C, start::AbstractArray; name = nothing) where {T,C<:ExaCore
     (ExaCore(c; par = (p, c.par...), θ=θ, npar=npar, refs = add_refs(c.refs, name, p)), p)
 end
 
+function add_par(c::C, name::Symbol, args...; kwargs...) where {T,C<:ExaCore{T}}
+    c, p = add_par(c, args...; name, kwargs...)
+    return c
+end
+
 """
     set_parameter!(core, param, values)
 
@@ -784,7 +789,7 @@ function add_var(
 end
 
 function add_var(c::C, name::Symbol, args...; kwargs...) where {T,C<:ExaCore{T}}
-    c, v= add_var(c, args...; name, kwargs...)
+    c, v = add_var(c, args...; name, kwargs...)
     return c
 end
 
@@ -1027,6 +1032,11 @@ end
     return (ExaCore(c2; refs = add_refs(c2.refs, name, con)), con)
 end
 
+function add_con(c::C, name::Symbol, args...; kwargs...) where {T,C<:ExaCore{T}}
+    c, con = add_con(c, args...; name, kwargs...)
+    return c
+end
+
 function _add_constraint(c::C, f, pars, start, lcon, ucon, name = nothing; kwargs...) where {C<:ExaCore}
     nitr = length(pars)
     o = c.ncon
@@ -1190,6 +1200,11 @@ end
 @inline function add_expr(c::C, gen::Base.Generator, name::Val) where {T, C <: ExaCore{T}}
     c2, ex = add_expr(c, gen)
     return (ExaCore(c2; refs = add_refs(c2.refs, name, ex)), ex)
+end
+
+function add_expr(c::C, name::Symbol, args...; kwargs...) where {T, C <: ExaCore{T}}
+    c, ex = add_expr(c, args...; name, kwargs...)
+    return c
 end
 
 

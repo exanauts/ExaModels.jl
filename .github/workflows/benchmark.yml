@@ -3,80 +3,110 @@ name: benchmark
 on:
   issue_comment:
     types: [created]
+  workflow_run:
+    workflows: ["build"]
+    types: [completed]
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.issue.number }}
+  group: ${{ github.workflow }}-${{ github.event.issue.number || github.event.workflow_run.pull_requests[0].number }}
   cancel-in-progress: true
 
 jobs:
-  # ── Parse comment and determine which backends to run ─────────────────────────
+  # ── Parse trigger and determine which backends to run ─────────────────────────
   parse:
     if: |
-      github.event.issue.pull_request != null &&
-      contains(github.event.comment.body, 'run benchmark')
+      (github.event_name == 'issue_comment' &&
+       github.event.issue.pull_request != null &&
+       contains(github.event.comment.body, 'run benchmark')) ||
+      (github.event_name == 'workflow_run' &&
+       github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'pull_request')
     runs-on: ubuntu-latest
     outputs:
-      nothing: ${{ steps.parse.outputs.nothing }}
-      cuda:    ${{ steps.parse.outputs.cuda }}
-      amdgpu:  ${{ steps.parse.outputs.amdgpu }}
-      oneapi:  ${{ steps.parse.outputs.oneapi }}
-      metal:   ${{ steps.parse.outputs.metal }}
-      pr_sha:  ${{ steps.pr.outputs.sha }}
+      nothing:   ${{ steps.parse.outputs.nothing }}
+      cuda:      ${{ steps.parse.outputs.cuda }}
+      amdgpu:    ${{ steps.parse.outputs.amdgpu }}
+      oneapi:    ${{ steps.parse.outputs.oneapi }}
+      metal:     ${{ steps.parse.outputs.metal }}
+      pr_sha:    ${{ steps.info.outputs.pr_sha }}
+      pr_number: ${{ steps.info.outputs.pr_number }}
     steps:
+      - name: Get PR info
+        id: info
+        uses: actions/github-script@v7
+        with:
+          script: |
+            if (context.eventName === 'workflow_run') {
+              const run = context.payload.workflow_run;
+              core.setOutput('pr_sha',    run.head_sha);
+              core.setOutput('pr_number', String(run.pull_requests[0]?.number ?? ''));
+            } else {
+              const pr = await github.rest.pulls.get({
+                owner: context.repo.owner,
+                repo:  context.repo.repo,
+                pull_number: context.issue.number,
+              });
+              core.setOutput('pr_sha',    pr.data.head.sha);
+              core.setOutput('pr_number', String(context.issue.number));
+            }
+
       - name: React to comment
+        if: github.event_name == 'issue_comment'
         uses: actions/github-script@v7
         with:
           script: |
             await github.rest.reactions.createForIssueComment({
               owner: context.repo.owner,
-              repo: context.repo.repo,
+              repo:  context.repo.repo,
               comment_id: context.payload.comment.id,
               content: 'eyes',
             });
 
-      - name: Get PR SHA
-        id: pr
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const pr = await github.rest.pulls.get({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              pull_number: context.issue.number,
-            });
-            core.setOutput('sha', pr.data.head.sha);
-
-      - name: Parse comment
+      - name: Parse backends
         id: parse
         run: |
-          BODY=$(cat <<'COMMENT_EOF'
-          ${{ github.event.comment.body }}
-          COMMENT_EOF
-          )
-
-          nothing=false cuda=false amdgpu=false oneapi=false metal=false
-
-          if echo "$BODY" | grep -qi 'run benchmark full'; then
-            nothing=true; cuda=true; amdgpu=true; oneapi=true; metal=true
+          if [[ "${{ github.event_name }}" == "workflow_run" ]]; then
+            # Automatic trigger on CI success: run full
+            echo "nothing=true" >> $GITHUB_OUTPUT
+            echo "cuda=true"    >> $GITHUB_OUTPUT
+            echo "amdgpu=true"  >> $GITHUB_OUTPUT
+            echo "oneapi=true"  >> $GITHUB_OUTPUT
+            echo "metal=true"   >> $GITHUB_OUTPUT
           else
-            echo "$BODY" | grep -qi 'run benchmark nothing' && nothing=true
-            echo "$BODY" | grep -qi 'run benchmark cuda'    && cuda=true
-            echo "$BODY" | grep -qi 'run benchmark amdgpu'  && amdgpu=true
-            echo "$BODY" | grep -qi 'run benchmark oneapi'  && oneapi=true
-            echo "$BODY" | grep -qi 'run benchmark metal'   && metal=true
-            # Plain "run benchmark" with no backend qualifier → full
-            if ! ($nothing || $cuda || $amdgpu || $oneapi || $metal); then
+            BODY=$(cat <<'COMMENT_EOF'
+            ${{ github.event.comment.body }}
+            COMMENT_EOF
+            )
+
+            nothing=false cuda=false amdgpu=false oneapi=false metal=false
+
+            if echo "$BODY" | grep -qi 'run benchmark full'; then
               nothing=true; cuda=true; amdgpu=true; oneapi=true; metal=true
+            else
+              echo "$BODY" | grep -qi 'run benchmark nothing' && nothing=true
+              echo "$BODY" | grep -qi 'run benchmark cuda'    && cuda=true
+              echo "$BODY" | grep -qi 'run benchmark amdgpu'  && amdgpu=true
+              echo "$BODY" | grep -qi 'run benchmark oneapi'  && oneapi=true
+              echo "$BODY" | grep -qi 'run benchmark metal'   && metal=true
+              # Plain "run benchmark" with no backend qualifier → full
+              if ! ($nothing || $cuda || $amdgpu || $oneapi || $metal); then
+                nothing=true; cuda=true; amdgpu=true; oneapi=true; metal=true
+              fi
             fi
+
+            echo "nothing=$nothing" >> $GITHUB_OUTPUT
+            echo "cuda=$cuda"       >> $GITHUB_OUTPUT
+            echo "amdgpu=$amdgpu"   >> $GITHUB_OUTPUT
+            echo "oneapi=$oneapi"   >> $GITHUB_OUTPUT
+            echo "metal=$metal"     >> $GITHUB_OUTPUT
           fi
 
-          echo "nothing=$nothing" >> $GITHUB_OUTPUT
-          echo "cuda=$cuda"       >> $GITHUB_OUTPUT
-          echo "amdgpu=$amdgpu"   >> $GITHUB_OUTPUT
-          echo "oneapi=$oneapi"   >> $GITHUB_OUTPUT
-          echo "metal=$metal"     >> $GITHUB_OUTPUT
-
-  # ── CPU (nothing) — standard hosted runner ────────────────────────────────────
+  # ── CPU (nothing) ─────────────────────────────────────────────────────────────
   bench-nothing:
     needs: parse
     if: needs.parse.outputs.nothing == 'true'
@@ -221,7 +251,7 @@ jobs:
 
   # ── Merge results and post PR comment ─────────────────────────────────────────
   compare:
-    needs: [bench-nothing, bench-cuda, bench-amdgpu, bench-oneapi, bench-metal]
+    needs: [parse, bench-nothing, bench-cuda, bench-amdgpu, bench-oneapi, bench-metal]
     if: |
       always() &&
       !contains(needs.*.result, 'failure') &&
@@ -281,26 +311,27 @@ jobs:
             const output = fs.readFileSync('benchmark/comparison.txt', 'utf8');
             const marker = '<!-- benchmark-bot -->';
             const body = `${marker}\n## Benchmark Results\n\`\`\`\n${output}\`\`\``;
+            const pr_number = parseInt('${{ needs.parse.outputs.pr_number }}');
 
             const { data: comments } = await github.rest.issues.listComments({
               owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.issue.number,
+              repo:  context.repo.repo,
+              issue_number: pr_number,
             });
 
             const existing = comments.find(c => c.body.startsWith(marker));
             if (existing) {
               await github.rest.issues.updateComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
+                owner:      context.repo.owner,
+                repo:       context.repo.repo,
                 comment_id: existing.id,
-                body: body,
+                body:       body,
               });
             } else {
               await github.rest.issues.createComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: context.issue.number,
-                body: body,
+                owner:        context.repo.owner,
+                repo:         context.repo.repo,
+                issue_number: pr_number,
+                body:         body,
               });
             }
