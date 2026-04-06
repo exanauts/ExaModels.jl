@@ -1,0 +1,311 @@
+name: benchmark
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.issue.number }}
+  cancel-in-progress: true
+
+jobs:
+  # ── Parse comment and determine which backends to run ─────────────────────────
+  parse:
+    if: |
+      github.event.issue.pull_request != null &&
+      contains(github.event.comment.body, 'run benchmark')
+    runs-on: ubuntu-latest
+    outputs:
+      nothing: ${{ steps.parse.outputs.nothing }}
+      cuda:    ${{ steps.parse.outputs.cuda }}
+      amdgpu:  ${{ steps.parse.outputs.amdgpu }}
+      oneapi:  ${{ steps.parse.outputs.oneapi }}
+      metal:   ${{ steps.parse.outputs.metal }}
+      pr_sha:  ${{ steps.pr.outputs.sha }}
+    steps:
+      - name: React to comment
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.reactions.createForIssueComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              comment_id: context.payload.comment.id,
+              content: 'eyes',
+            });
+
+      - name: Get PR SHA
+        id: pr
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const pr = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.issue.number,
+            });
+            core.setOutput('sha', pr.data.head.sha);
+
+      - name: Parse comment
+        id: parse
+        run: |
+          BODY=$(cat <<'COMMENT_EOF'
+          ${{ github.event.comment.body }}
+          COMMENT_EOF
+          )
+
+          nothing=false cuda=false amdgpu=false oneapi=false metal=false
+
+          if echo "$BODY" | grep -qi 'run benchmark full'; then
+            nothing=true; cuda=true; amdgpu=true; oneapi=true; metal=true
+          else
+            echo "$BODY" | grep -qi 'run benchmark nothing' && nothing=true
+            echo "$BODY" | grep -qi 'run benchmark cuda'    && cuda=true
+            echo "$BODY" | grep -qi 'run benchmark amdgpu'  && amdgpu=true
+            echo "$BODY" | grep -qi 'run benchmark oneapi'  && oneapi=true
+            echo "$BODY" | grep -qi 'run benchmark metal'   && metal=true
+            # Plain "run benchmark" with no backend qualifier → full
+            if ! ($nothing || $cuda || $amdgpu || $oneapi || $metal); then
+              nothing=true; cuda=true; amdgpu=true; oneapi=true; metal=true
+            fi
+          fi
+
+          echo "nothing=$nothing" >> $GITHUB_OUTPUT
+          echo "cuda=$cuda"       >> $GITHUB_OUTPUT
+          echo "amdgpu=$amdgpu"   >> $GITHUB_OUTPUT
+          echo "oneapi=$oneapi"   >> $GITHUB_OUTPUT
+          echo "metal=$metal"     >> $GITHUB_OUTPUT
+
+  # ── CPU (nothing) — standard hosted runner ────────────────────────────────────
+  bench-nothing:
+    needs: parse
+    if: needs.parse.outputs.nothing == 'true'
+    runs-on: ['self-hosted']
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.parse.outputs.pr_sha }}
+      - uses: julia-actions/setup-julia@latest
+        with:
+          version: '1'
+      - name: Instantiate
+        working-directory: benchmark
+        run: |
+          julia --startup-file=no --project=main    -e 'using Pkg; Pkg.Registry.update(); Pkg.instantiate()'
+          julia --startup-file=no --project=current -e 'using Pkg; Pkg.Registry.update(); Pkg.instantiate()'
+      - name: Run benchmark (main)
+        working-directory: benchmark
+        run: julia --startup-file=no runbenchmark.jl main nothing
+      - name: Run benchmark (current)
+        working-directory: benchmark
+        run: julia --startup-file=no runbenchmark.jl current nothing
+      - uses: actions/upload-artifact@v4
+        with:
+          name: results-nothing
+          path: benchmark/benchmark-results-*.jld2
+
+  # ── CUDA ──────────────────────────────────────────────────────────────────────
+  bench-cuda:
+    needs: parse
+    if: needs.parse.outputs.cuda == 'true'
+    runs-on: ['self-hosted', 'gpu', 'cuda']
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.parse.outputs.pr_sha }}
+      - uses: julia-actions/setup-julia@latest
+        with:
+          version: '1'
+      - name: Instantiate
+        working-directory: benchmark
+        run: |
+          julia --startup-file=no --project=main    -e 'using Pkg; Pkg.Registry.update(); Pkg.instantiate()'
+          julia --startup-file=no --project=current -e 'using Pkg; Pkg.Registry.update(); Pkg.instantiate()'
+      - name: Run benchmark (main)
+        working-directory: benchmark
+        run: julia --startup-file=no runbenchmark.jl main cuda
+      - name: Run benchmark (current)
+        working-directory: benchmark
+        run: julia --startup-file=no runbenchmark.jl current cuda
+      - uses: actions/upload-artifact@v4
+        with:
+          name: results-cuda
+          path: benchmark/benchmark-results-*.jld2
+
+  # ── AMDGPU ────────────────────────────────────────────────────────────────────
+  bench-amdgpu:
+    needs: parse
+    if: needs.parse.outputs.amdgpu == 'true'
+    runs-on: ['self-hosted', 'gpu', 'amdgpu']
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.parse.outputs.pr_sha }}
+      - uses: julia-actions/setup-julia@latest
+        with:
+          version: '1'
+      - name: Instantiate
+        working-directory: benchmark
+        run: |
+          julia --startup-file=no --project=main    -e 'using Pkg; Pkg.Registry.update(); Pkg.instantiate()'
+          julia --startup-file=no --project=current -e 'using Pkg; Pkg.Registry.update(); Pkg.instantiate()'
+      - name: Run benchmark (main)
+        working-directory: benchmark
+        run: julia --startup-file=no runbenchmark.jl main amdgpu
+      - name: Run benchmark (current)
+        working-directory: benchmark
+        run: julia --startup-file=no runbenchmark.jl current amdgpu
+      - uses: actions/upload-artifact@v4
+        with:
+          name: results-amdgpu
+          path: benchmark/benchmark-results-*.jld2
+
+  # ── oneAPI ────────────────────────────────────────────────────────────────────
+  bench-oneapi:
+    needs: parse
+    if: needs.parse.outputs.oneapi == 'true'
+    runs-on: ['self-hosted', 'gpu', 'oneapi']
+    env:
+      OverrideDefaultFP64Settings: '1'
+      IGC_EnableDPEmulation: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.parse.outputs.pr_sha }}
+      - uses: julia-actions/setup-julia@latest
+        with:
+          version: '1'
+      - name: Instantiate
+        working-directory: benchmark
+        run: |
+          julia --startup-file=no --project=main    -e 'using Pkg; Pkg.Registry.update(); Pkg.instantiate()'
+          julia --startup-file=no --project=current -e 'using Pkg; Pkg.Registry.update(); Pkg.instantiate()'
+      - name: Run benchmark (main)
+        working-directory: benchmark
+        run: julia --startup-file=no runbenchmark.jl main oneapi
+      - name: Run benchmark (current)
+        working-directory: benchmark
+        run: julia --startup-file=no runbenchmark.jl current oneapi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: results-oneapi
+          path: benchmark/benchmark-results-*.jld2
+
+  # ── Metal (macOS / aarch64) ───────────────────────────────────────────────────
+  bench-metal:
+    needs: parse
+    if: needs.parse.outputs.metal == 'true'
+    runs-on: ['self-hosted', 'gpu', 'metal']
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.parse.outputs.pr_sha }}
+      - uses: julia-actions/setup-julia@latest
+        with:
+          version: '1'
+      - name: Instantiate
+        working-directory: benchmark
+        run: |
+          julia --startup-file=no --project=main    -e 'using Pkg; Pkg.Registry.update(); Pkg.instantiate()'
+          julia --startup-file=no --project=current -e 'using Pkg; Pkg.Registry.update(); Pkg.instantiate()'
+      - name: Run benchmark (main)
+        working-directory: benchmark
+        run: julia --startup-file=no runbenchmark.jl main metal
+      - name: Run benchmark (current)
+        working-directory: benchmark
+        run: julia --startup-file=no runbenchmark.jl current metal
+      - uses: actions/upload-artifact@v4
+        with:
+          name: results-metal
+          path: benchmark/benchmark-results-*.jld2
+
+  # ── Merge results and post PR comment ─────────────────────────────────────────
+  compare:
+    needs: [bench-nothing, bench-cuda, bench-amdgpu, bench-oneapi, bench-metal]
+    if: |
+      always() &&
+      !contains(needs.*.result, 'failure') &&
+      !contains(needs.*.result, 'cancelled') &&
+      contains(needs.*.result, 'success')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: julia-actions/setup-julia@latest
+        with:
+          version: '1'
+
+      - name: Instantiate compare env
+        working-directory: benchmark
+        run: julia --startup-file=no --project=. -e 'using Pkg; Pkg.Registry.update(); Pkg.instantiate()'
+
+      - name: Download all result artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: results-*
+          path: benchmark
+          merge-multiple: true
+
+      - name: Merge JLD2 results
+        working-directory: benchmark
+        run: |
+          julia --startup-file=no --project=. - <<'EOF'
+          using JLD2
+
+          main_merged    = Dict()
+          current_merged = Dict()
+
+          for f in readdir(@__DIR__; join=true)
+              endswith(f, ".jld2") || continue
+              d = JLD2.load(f, "results")
+              if occursin("main", basename(f))
+                  merge!(main_merged, d)
+              elseif occursin("current", basename(f))
+                  merge!(current_merged, d)
+              end
+          end
+
+          JLD2.@save "benchmark-results-main.jld2"    results=main_merged
+          JLD2.@save "benchmark-results-current.jld2" results=current_merged
+          EOF
+
+      - name: Compare
+        working-directory: benchmark
+        run: julia --startup-file=no --project=. compare.jl | tee comparison.txt
+
+      - name: Post PR comment
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const output = fs.readFileSync('benchmark/comparison.txt', 'utf8');
+            const marker = '<!-- benchmark-bot -->';
+            const body = `${marker}\n## Benchmark Results\n\`\`\`\n${output}\`\`\``;
+
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+
+            const existing = comments.find(c => c.body.startsWith(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body: body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: body,
+              });
+            }
