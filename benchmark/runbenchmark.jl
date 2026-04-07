@@ -11,7 +11,7 @@ else
     error("Please specify either 'main' or 'current' as an argument to select the environment.")
 end
 
-using ExaModels, KernelAbstractions, Printf, JLD2, ExaPowerIO, Random
+using ExaModels, Printf, JLD2, ExaPowerIO, Random
 
 # ── Backend selection ──────────────────────────────────────────────────────────
 # Usage: julia runbenchmark.jl (main|current) [nothing] [cuda] [amdgpu] [oneapi] [all]
