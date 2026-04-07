@@ -79,7 +79,11 @@ if "metal" in _extra || _all
     end
 end
 
-isempty(BENCH_BACKENDS) && error("No functional backends available for the requested selection: $(_extra)")
+if isempty(BENCH_BACKENDS)
+    @warn "No functional backends available for the requested selection: $(_extra) — skipping benchmark"
+    JLD2.@save joinpath(@__DIR__, "benchmark-results-$rev.jld2") results=Dict()
+    exit(0)
+end
 
 # ── Timing helpers ─────────────────────────────────────────────────────────────
 
