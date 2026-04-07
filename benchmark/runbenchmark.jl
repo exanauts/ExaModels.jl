@@ -66,19 +66,6 @@ if "oneapi" in _extra || _all
     end
 end
 
-if "metal" in _extra || _all
-    try
-        @eval using Metal
-        if Metal.functional()
-            push!(BENCH_BACKENDS, ("Metal", MetalBackend(), Metal.synchronize))
-        else
-            @warn "Metal loaded but not functional — skipping"
-        end
-    catch e
-        @warn "Metal unavailable: $e"
-    end
-end
-
 if isempty(BENCH_BACKENDS)
     @warn "No functional backends available for the requested selection: $(_extra) — skipping benchmark"
     JLD2.@save joinpath(@__DIR__, "benchmark-results-$rev.jld2") results=Dict()

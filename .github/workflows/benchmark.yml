@@ -32,7 +32,6 @@ jobs:
       cuda:      ${{ steps.parse.outputs.cuda }}
       amdgpu:    ${{ steps.parse.outputs.amdgpu }}
       oneapi:    ${{ steps.parse.outputs.oneapi }}
-      metal:     ${{ steps.parse.outputs.metal }}
       pr_sha:    ${{ steps.info.outputs.pr_sha }}
       pr_number: ${{ steps.info.outputs.pr_number }}
     steps:
@@ -71,24 +70,23 @@ jobs:
         id: parse
         run: |
           if [[ "${{ github.event_name }}" == "workflow_run" ]]; then
-            # Automatic trigger: full benchmark
-            nothing=true; cuda=true; amdgpu=true; oneapi=true; metal=true
+            # Automatic trigger after CI passes: full benchmark
+            nothing=true; cuda=true; amdgpu=true; oneapi=true
           else
             BODY=$(cat <<'COMMENT_EOF'
             ${{ github.event.comment.body }}
             COMMENT_EOF
             )
 
-            nothing=false cuda=false amdgpu=false oneapi=false metal=false
+            nothing=false cuda=false amdgpu=false oneapi=false
 
             echo "$BODY" | grep -qi 'run benchmark nothing' && nothing=true
             echo "$BODY" | grep -qi 'run benchmark cuda'    && cuda=true
             echo "$BODY" | grep -qi 'run benchmark amdgpu'  && amdgpu=true
             echo "$BODY" | grep -qi 'run benchmark oneapi'  && oneapi=true
-            echo "$BODY" | grep -qi 'run benchmark metal'   && metal=true
             # Plain "run benchmark" with no specific backend → full
-            if ! ($nothing || $cuda || $amdgpu || $oneapi || $metal); then
-              nothing=true; cuda=true; amdgpu=true; oneapi=true; metal=true
+            if ! ($nothing || $cuda || $amdgpu || $oneapi); then
+              nothing=true; cuda=true; amdgpu=true; oneapi=true
             fi
           fi
 
@@ -96,7 +94,6 @@ jobs:
           echo "cuda=$cuda"       >> $GITHUB_OUTPUT
           echo "amdgpu=$amdgpu"   >> $GITHUB_OUTPUT
           echo "oneapi=$oneapi"   >> $GITHUB_OUTPUT
-          echo "metal=$metal"     >> $GITHUB_OUTPUT
 
   # ── CPU (nothing) ─────────────────────────────────────────────────────────────
   bench-nothing:
@@ -213,37 +210,9 @@ jobs:
           name: results-oneapi
           path: benchmark/benchmark-results-*.jld2
 
-  # ── Metal (macOS / aarch64) ───────────────────────────────────────────────────
-  bench-metal:
-    needs: parse
-    if: needs.parse.outputs.metal == 'true'
-    runs-on: ['self-hosted', 'gpu', 'metal']
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ needs.parse.outputs.pr_sha }}
-      - uses: julia-actions/setup-julia@latest
-        with:
-          version: '1'
-      - name: Instantiate
-        working-directory: benchmark
-        run: |
-          julia --startup-file=no --project=main    -e 'using Pkg; Pkg.Registry.update(); Pkg.instantiate()'
-          julia --startup-file=no --project=current -e 'using Pkg; Pkg.Registry.update(); Pkg.instantiate()'
-      - name: Run benchmark (main)
-        working-directory: benchmark
-        run: julia --startup-file=no runbenchmark.jl main metal
-      - name: Run benchmark (current)
-        working-directory: benchmark
-        run: julia --startup-file=no runbenchmark.jl current metal
-      - uses: actions/upload-artifact@v4
-        with:
-          name: results-metal
-          path: benchmark/benchmark-results-*.jld2
-
   # ── Merge results and post PR comment ─────────────────────────────────────────
   compare:
-    needs: [parse, bench-nothing, bench-cuda, bench-amdgpu, bench-oneapi, bench-metal]
+    needs: [parse, bench-nothing, bench-cuda, bench-amdgpu, bench-oneapi]
     if: |
       always() &&
       !contains(needs.*.result, 'failure') &&
