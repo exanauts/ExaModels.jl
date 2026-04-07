@@ -37,10 +37,8 @@ include("TwoStageTest/TwoStageTest.jl")
     @info "Running Utils Test"
     UtilsTest.runtests()
 
-    if VERSION >= v"1.12"
-        @info "Running JuliaC AOT Test"
-        JuliaCTest.runtests()
-    end
+    @info "Running JuliaC AOT Test"
+    JuliaCTest.runtests()
 
     @info "Running TwoStage Test"
     TwoStageTest.runtests()
