@@ -18,6 +18,7 @@ solver_tolerance(::Type{Float32}) = 1e-4
 
 include("NLPTest/NLPTest.jl")
 include("ADTest/ADTest.jl")
+include("DeprecatedTest/DeprecatedTest.jl")
 include("JuMPTest/JuMPTest.jl")
 include("UtilsTest/UtilsTest.jl")
 include("JuliaCTest/JuliaCTest.jl")
@@ -25,6 +26,9 @@ include("TwoStageTest/TwoStageTest.jl")
 # include("LinAlgTest/LinAlgTest.jl")
 
 @testset verbose = true "ExaModels test" begin
+    @info "Running Deprecated API Test"
+    DeprecatedTest.runtests()
+
     @info "Running AD Test"
     ADTest.runtests()
 

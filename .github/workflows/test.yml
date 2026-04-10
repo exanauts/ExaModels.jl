@@ -14,7 +14,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        julia-version: ['1']
+        julia-version: ['1', 'lts']
         julia-arch: [x64]
         os: [ubuntu-latest,macos-latest,windows-latest]
     steps:
@@ -44,7 +44,7 @@ jobs:
   gpu:
     strategy:
       matrix:
-        julia-version: ['1']
+        julia-version: ['1', 'lts']
         julia-arch: [x64]
         os: [ubuntu-latest]
         backend: ['cuda', 'amdgpu', 'oneapi']
@@ -79,7 +79,7 @@ jobs:
   metal:
     strategy:
       matrix:
-        julia-version: ['1']
+        julia-version: ['1', 'lts']
         julia-arch: [aarch64]
         os: [macos-latest]
         backend: ['metal']

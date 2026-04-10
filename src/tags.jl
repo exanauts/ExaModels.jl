@@ -10,10 +10,11 @@ function append_con_tags(tags::TwoStageTags, backend, len; scenario = 0)
     append!(backend, tags.con_scenario, scenario, len)
 end
 const TwoStageExaCore{T,VT,B} = ExaCore{T,VT,B,S} where S <: TwoStageTags
-function TwoStageExaCore(args...; backend = nothing, kwargs...)
+function TwoStageExaCore(args...; backend = nothing, concrete = Val(false), kwargs...)
     return ExaCore(
         args...;
-        backend, 
+        backend,
+        concrete,
         tags = TwoStageTags(
             convert_array(zeros(Int, 0), backend),
             convert_array(zeros(Int, 0), backend)
