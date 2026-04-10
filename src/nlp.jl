@@ -165,7 +165,7 @@ Creates an intermediate data object `ExaCore`, which later can be used for creat
 ```jldoctest
 julia> using ExaModels
 
-julia> c = ExaCore()
+julia> c = ExaCore(concrete = Val(true))
 An ExaCore
 
   Float type: ...................... Float64
@@ -175,7 +175,7 @@ An ExaCore
   number of objective patterns: .... 0
   number of constraint patterns: ... 0
 
-julia> c = ExaCore(Float32)
+julia> c = ExaCore(Float32; concrete = Val(true))
 An ExaCore
 
   Float type: ...................... Float32
@@ -354,7 +354,7 @@ optimization solvers within `JuliaSmoothOptimizer` ecosystem, such as
 ```jldoctest
 julia> using ExaModels
 
-julia> c = ExaCore();                           # create an ExaCore object
+julia> c = ExaCore(concrete = Val(true));                           # create an ExaCore object
 
 julia> c, x = add_var(c, 1:10);               # create variables
 
@@ -546,7 +546,7 @@ Adds variables with dimensions specified by `dims` to `core`. `dims` can be eith
 ```jldoctest
 julia> using ExaModels
 
-julia> c = ExaCore();
+julia> c = ExaCore(concrete = Val(true));
 
 julia> c, x = add_var(c, 10; start = (sin(i) for i=1:10));
 
@@ -651,7 +651,7 @@ Adds parameters with initial values specified by `start`, and returns `(core, Pa
 ```jldoctest
 julia> using ExaModels
 
-julia> c = ExaCore();
+julia> c = ExaCore(concrete = Val(true));
 
 julia> c, θ = add_par(c, ones(10));
 
@@ -681,7 +681,7 @@ Updates the values of parameters in the core.
 ```jldoctest
 julia> using ExaModels
 
-julia> c = ExaCore();
+julia> c = ExaCore(concrete = Val(true));
 
 julia> c, p = add_par(c, ones(5));
 
@@ -750,7 +750,7 @@ Adds objective terms specified by a `generator` to `core`, and returns `(core, O
 ```jldoctest
 julia> using ExaModels
 
-julia> c = ExaCore();
+julia> c = ExaCore(concrete = Val(true));
 
 julia> c, x = add_var(c, 10);
 
@@ -817,7 +817,7 @@ Adds constraints specified by a `generator` to `core`, and returns `(core, Const
 ```jldoctest
 julia> using ExaModels
 
-julia> c = ExaCore();
+julia> c = ExaCore(concrete = Val(true));
 
 julia> c, x = add_var(c, 10);
 
@@ -926,7 +926,7 @@ When `name` is given as `Val(:name)`, the constraint is also accessible as
 ```jldoctest
 julia> using ExaModels
 
-julia> c = ExaCore();
+julia> c = ExaCore(concrete = Val(true));
 
 julia> c, x = add_var(c, 10);
 
@@ -1015,7 +1015,7 @@ Single-index augmentation — add `sin(x[i+1])` to constraint rows 4, 5, 6:
 ```jldoctest
 julia> using ExaModels
 
-julia> c = ExaCore();
+julia> c = ExaCore(concrete = Val(true));
 
 julia> c, x = add_var(c, 10);
 
@@ -1084,7 +1084,7 @@ variables or constraints are added to the problem.
 ```jldoctest
 julia> using ExaModels
 
-julia> c = ExaCore();
+julia> c = ExaCore(concrete = Val(true));
 
 julia> c, x = add_var(c, 10);
 
@@ -1101,7 +1101,7 @@ julia> c, _ = add_obj(c, s[i] + s[i+1] for i in 1:9);
 ## Multi-dimensional example
 
 ```julia
-c = ExaCore()
+c = ExaCore(concrete = Val(true))
 c, x = add_var(c, 1:N, 1:K)
 itr = [(i, k) for i in 1:N, k in 1:K]
 c, s = add_expr(c, x[i, k]^2 for (i, k) in itr)
@@ -1350,7 +1350,7 @@ obtained by solving the model. The returned array has the same shape as `x`.
 ```jldoctest
 julia> using ExaModels, NLPModelsIpopt
 
-julia> c = ExaCore();
+julia> c = ExaCore(concrete = Val(true));
 
 julia> c, x = add_var(c, 1:10; lvar = -1, uvar = 1);
 
@@ -1387,7 +1387,7 @@ magnitude measures how much the objective would improve if that bound were relax
 ```jldoctest
 julia> using ExaModels, NLPModelsIpopt
 
-julia> c = ExaCore();
+julia> c = ExaCore(concrete = Val(true));
 
 julia> c, x = add_var(c, 1:10; lvar = -1, uvar = 1);
 
@@ -1424,7 +1424,7 @@ magnitude measures how much the objective would improve if that bound were relax
 ```jldoctest
 julia> using ExaModels, NLPModelsIpopt
 
-julia> c = ExaCore();
+julia> c = ExaCore(concrete = Val(true));
 
 julia> c, x = add_var(c, 1:10; lvar = -1, uvar = 1);
 
@@ -1459,7 +1459,7 @@ Returns the multipliers for constraints `y` associated with `result`, obtained b
 ```jldoctest
 julia> using ExaModels, NLPModelsIpopt
 
-julia> c = ExaCore();
+julia> c = ExaCore(concrete = Val(true));
 
 julia> c, x = add_var(c, 1:10; lvar = -1, uvar = 1);
 
@@ -1520,7 +1520,7 @@ Accepts the same keyword arguments as [`add_var`](@ref).
 
 ## Example
 ```julia
-c = ExaCore()
+c = ExaCore(concrete = Val(true))
 @add_var(c, x, 10; lvar = -1, uvar = 1)  # x is now in scope; c.x also works
 @add_var(c, y, 1:5)                        # y is in scope; c.y also works
 ```
@@ -1571,7 +1571,7 @@ Macro interface for [`add_par`](@ref). Updates `core` in the calling scope.
 
 ## Example
 ```julia
-c = ExaCore()
+c = ExaCore(concrete = Val(true))
 @add_par(c, θ, ones(10))  # θ is now in scope; c.θ also works
 ```
 """
@@ -1620,7 +1620,7 @@ Macro interface for [`add_obj`](@ref). Updates `core` in the calling scope.
 
 ## Example
 ```julia
-c = ExaCore()
+c = ExaCore(concrete = Val(true))
 @add_var(c, x, 10)
 @add_obj(c, x[i]^2 for i in 1:10)
 ```
@@ -1672,7 +1672,7 @@ Accepts the same keyword arguments as [`add_con`](@ref) (`lcon`, `ucon`, `start`
 
 ## Example
 ```julia
-c = ExaCore()
+c = ExaCore(concrete = Val(true))
 @add_var(c, x, 10)
 @add_con(c, g, x[i] + x[i+1] for i in 1:9; lcon = -1, ucon = 1)  # g in scope; c.g also works
 ```
@@ -1723,7 +1723,7 @@ semantics and usage notes.
 
 ## Example
 ```julia
-c = ExaCore()
+c = ExaCore(concrete = Val(true))
 @add_var(c, x, 10)
 @add_con(c, g, x[i] + x[i+1] for i in 1:9; lcon = -1, ucon = 1)
 
@@ -1766,7 +1766,7 @@ Macro interface for [`add_expr`](@ref). Updates `core` in the calling scope.
 
 ## Example
 ```julia
-c = ExaCore()
+c = ExaCore(concrete = Val(true))
 @add_var(c, x, 10)
 @add_expr(c, s, x[i]^2 for i in 1:10)    # s in scope; c.s also works
 @add_obj(c, s[i] + s[i+1] for i in 1:9)
