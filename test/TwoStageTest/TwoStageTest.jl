@@ -9,7 +9,7 @@ function runtests()
     @testset "TwoStageExaCore" begin
 
         @testset "Construction and type" begin
-            core = TwoStageExaCore()
+            core = TwoStageExaCore(concrete = Val(true))
             @test core isa TwoStageExaCore
             @test core isa ExaCore
         end
@@ -17,7 +17,7 @@ function runtests()
         @testset "Variable and constraint scenario tags" begin
             ns, nv, nd = 3, 2, 1
 
-            core = TwoStageExaCore()
+            core = TwoStageExaCore(concrete = Val(true))
             @add_var(core, d; start = 0.0, scenario = 0)
             @add_var(core, v, ns, nv; start = 1.0, scenario = [s for s in 1:ns, j in 1:nv])
 
@@ -42,7 +42,7 @@ function runtests()
             nv = 2
             weight = 1.0 / ns
 
-            core = TwoStageExaCore()
+            core = TwoStageExaCore(concrete = Val(true))
             @add_var(core, d; start = 1.0, lvar = 0.0, uvar = Inf, scenario = 0)
             @add_var(core, v, ns, nv; start = 1.0, lvar = 0.0, uvar = Inf, scenario = [s for s in 1:ns, j in 1:nv])
 
@@ -61,7 +61,7 @@ function runtests()
         end
 
         @testset "Design-only model (no recourse)" begin
-            core = TwoStageExaCore()
+            core = TwoStageExaCore(concrete = Val(true))
             @add_var(core, d, 3; start = 1.0, scenario = 0)
             @add_obj(core, (d[i] - 2)^2 for i in 1:3)
 
