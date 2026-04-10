@@ -94,7 +94,7 @@ end
 function to_exacore(moim::MOI.ModelLike; backend = nothing, T = Float64)
     minimize = check_supported(T, moim)
 
-    c = ExaModels.ExaCore(T; backend = backend, minimize = minimize)
+    c = ExaModels.ExaCore(T; backend = backend, minimize = minimize, concrete = Val(true))
 
     c, var_to_idx = copy_variables!(c, moim, T)
     c, con_to_idx = copy_constraints!(c, moim, var_to_idx, T)
