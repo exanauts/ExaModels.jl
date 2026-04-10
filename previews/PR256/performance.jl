@@ -9,9 +9,9 @@ using ExaModels
 t = @elapsed begin
     c = ExaCore()
     N = 10
-    @var(c, x, N; start = (mod(i, 2) == 1 ? -1.2 : 1.0 for i = 1:N))
-    @obj(c, 100 * (x[i-1]^2 - x[i])^2 + (x[i-1] - 1)^2 for i = 2:N)
-    @con(
+    @add_variable(c, x, N; start = (mod(i, 2) == 1 ? -1.2 : 1.0 for i = 1:N))
+    @add_objective(c, 100 * (x[i-1]^2 - x[i])^2 + (x[i-1] - 1)^2 for i = 2:N)
+    @add_constraint(
         c,
         3x[i+1]^3 + 2 * x[i+2] - 5 + sin(x[i+1] - x[i+2])sin(x[i+1] + x[i+2]) + 4x[i+1] - x[i]exp(x[i] - x[i+1]) - 3 for i = 1:(N-2)
     )
@@ -24,9 +24,9 @@ println("$t seconds elapsed")
 t = @elapsed begin
     c = ExaCore()
     N = 10
-    @var(c, x, N; start = (mod(i, 2) == 1 ? -1.2 : 1.0 for i = 1:N))
-    @obj(c, 100 * (x[i-1]^2 - x[i])^2 + (x[i-1] - 1)^2 for i = 2:N)
-    @con(
+    @add_variable(c, x, N; start = (mod(i, 2) == 1 ? -1.2 : 1.0 for i = 1:N))
+    @add_objective(c, 100 * (x[i-1]^2 - x[i])^2 + (x[i-1] - 1)^2 for i = 2:N)
+    @add_constraint(
         c,
         3x[i+1]^3 + 2 * x[i+2] - 5 + sin(x[i+1] - x[i+2])sin(x[i+1] + x[i+2]) + 4x[i+1] - x[i]exp(x[i] - x[i+1]) - 3 for i = 1:(N-2)
     )
@@ -39,9 +39,9 @@ println("$t seconds elapsed")
 # But instead, if you create a function, we can significantly reduce the model creation time.
 function luksan_vlcek_model(N)
     c = ExaCore()
-    @var(c, x, N; start = (mod(i, 2) == 1 ? -1.2 : 1.0 for i = 1:N))
-    @obj(c, 100 * (x[i-1]^2 - x[i])^2 + (x[i-1] - 1)^2 for i = 2:N)
-    @con(
+    @add_variable(c, x, N; start = (mod(i, 2) == 1 ? -1.2 : 1.0 for i = 1:N))
+    @add_objective(c, 100 * (x[i-1]^2 - x[i])^2 + (x[i-1] - 1)^2 for i = 2:N)
+    @add_constraint(
         c,
         3x[i+1]^3 + 2 * x[i+2] - 5 + sin(x[i+1] - x[i+2])sin(x[i+1] + x[i+2]) + 4x[i+1] -
         x[i]exp(x[i] - x[i+1]) - 3 for i = 1:(N-2)
@@ -74,9 +74,9 @@ function luksan_vlcek_model_concrete(N)
     arr1 = Array(2:N)
     arr2 = Array(1:(N-2))
 
-    @var(c, x, N; start = (mod(i, 2) == 1 ? -1.2 : 1.0 for i = 1:N))
-    @obj(c, 100 * (x[i-1]^2 - x[i])^2 + (x[i-1] - 1)^2 for i in arr1)
-    @con(
+    @add_variable(c, x, N; start = (mod(i, 2) == 1 ? -1.2 : 1.0 for i = 1:N))
+    @add_objective(c, 100 * (x[i-1]^2 - x[i])^2 + (x[i-1] - 1)^2 for i in arr1)
+    @add_constraint(
         c,
         3x[i+1]^3 + 2 * x[i+2] - 5 + sin(x[i+1] - x[i+2])sin(x[i+1] + x[i+2]) + 4x[i+1] -
         x[i]exp(x[i] - x[i+1]) - 3 for i in arr2
@@ -90,9 +90,9 @@ function luksan_vlcek_model_non_concrete(N)
     arr1 = Array{Any}(2:N)
     arr2 = Array{Any}(1:(N-2))
 
-    @var(c, x, N; start = (mod(i, 2) == 1 ? -1.2 : 1.0 for i = 1:N))
-    @obj(c, 100 * (x[i-1]^2 - x[i])^2 + (x[i-1] - 1)^2 for i in arr1)
-    @con(
+    @add_variable(c, x, N; start = (mod(i, 2) == 1 ? -1.2 : 1.0 for i = 1:N))
+    @add_objective(c, 100 * (x[i-1]^2 - x[i])^2 + (x[i-1] - 1)^2 for i in arr1)
+    @add_constraint(
         c,
         3x[i+1]^3 + 2 * x[i+2] - 5 + sin(x[i+1] - x[i+2])sin(x[i+1] + x[i+2]) + 4x[i+1] -
         x[i]exp(x[i] - x[i+1]) - 3 for i in arr2

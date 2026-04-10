@@ -23,9 +23,9 @@ end
 function luksan_vlcek_model(N)
 
     c = ExaCore()
-    @var(c, x, N; start = (luksan_vlcek_x0(i) for i = 1:N))
-    @con(c, luksan_vlcek_con(x, i) for i = 1:(N-2))
-    @obj(c, luksan_vlcek_obj(x, i) for i = 2:N)
+    @add_variable(c, x, N; start = (luksan_vlcek_x0(i) for i = 1:N))
+    @add_constraint(c, luksan_vlcek_con(x, i) for i = 1:(N-2))
+    @add_objective(c, luksan_vlcek_obj(x, i) for i = 2:N)
 
     return ExaModel(c)
 end
@@ -34,9 +34,9 @@ end
 function luksan_vlcek_model(N, backend = nothing)
 
     c = ExaCore(; backend = backend) # specify the backend
-    @var(c, x, N; start = (luksan_vlcek_x0(i) for i = 1:N))
-    @con(c, luksan_vlcek_con(x, i) for i = 1:(N-2))
-    @obj(c, luksan_vlcek_obj(x, i) for i = 2:N)
+    @add_variable(c, x, N; start = (luksan_vlcek_x0(i) for i = 1:N))
+    @add_constraint(c, luksan_vlcek_con(x, i) for i = 1:(N-2))
+    @add_objective(c, luksan_vlcek_obj(x, i) for i = 2:N)
 
     return ExaModel(c)
 end
@@ -68,9 +68,9 @@ function cuda_luksan_vlcek_model(N)
     d2 = CuArray(2:N)
     d3 = CuArray([luksan_vlcek_x0(i) for i = 1:N])
 
-    @var(c, x, N; start = d3)
-    @con(c, luksan_vlcek_con(x, i) for i in d1)
-    @obj(c, luksan_vlcek_obj(x, i) for i in d2)
+    @add_variable(c, x, N; start = d3)
+    @add_constraint(c, luksan_vlcek_con(x, i) for i in d1)
+    @add_objective(c, luksan_vlcek_obj(x, i) for i in d2)
 
     return ExaModel(c)
 end
