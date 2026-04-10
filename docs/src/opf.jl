@@ -99,7 +99,7 @@ function ac_power_model(filename; backend = nothing, T = Float64)
 
     data = parse_ac_power_data(filename, backend)
 
-    w = ExaCore(T; backend = backend)
+    w = ExaCore(T; backend = backend, concrete = Val(true))
 
     @add_var(w, va, length(data.bus);)
 

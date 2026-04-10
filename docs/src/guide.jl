@@ -23,7 +23,7 @@ using ExaModels
 
 # ## ExaCore
 # An `ExaCore` object can be created simply by (Step 1):
-c = ExaCore()
+c = ExaCore(concrete = Val(true))
 # This is where our optimization model information will be progressively stored. This object is not yet an `NLPModel`, but it will essentially store all the necessary information.
 
 # ## Variables
@@ -77,7 +77,7 @@ N = 10
 # Subexpressions are **inlined**: when you index `s[i]`, the original expression is substituted directly — no auxiliary variables or equality constraints are created. Derivative code is shared across all uses of the same subexpression pattern.
 #
 # Here's a simple example:
-c2 = ExaCore()
+c2 = ExaCore(concrete = Val(true))
 @add_var(c2, y, N; start = 1.0)
 # Define a subexpression for y[i]^2
 @add_expr(c2, s, y[i]^2 for i in 1:N)

@@ -13,7 +13,7 @@ First, let's create a core:
 
 ````julia
 using ExaModels, NLPModelsIpopt
-c_param = ExaCore()
+c_param = ExaCore(concrete = Val(true))
 ````
 
 ````

@@ -7,7 +7,7 @@
 using ExaModels
 
 t = @elapsed begin
-    c = ExaCore()
+    c = ExaCore(concrete = Val(true))
     N = 10
     @add_var(c, x, N; start = (mod(i, 2) == 1 ? -1.2 : 1.0 for i = 1:N))
     @add_obj(c, 100 * (x[i-1]^2 - x[i])^2 + (x[i-1] - 1)^2 for i = 2:N)
@@ -22,7 +22,7 @@ println("$t seconds elapsed")
 
 # Even at the second call,
 t = @elapsed begin
-    c = ExaCore()
+    c = ExaCore(concrete = Val(true))
     N = 10
     @add_var(c, x, N; start = (mod(i, 2) == 1 ? -1.2 : 1.0 for i = 1:N))
     @add_obj(c, 100 * (x[i-1]^2 - x[i])^2 + (x[i-1] - 1)^2 for i = 2:N)
@@ -38,7 +38,7 @@ println("$t seconds elapsed")
 
 # But instead, if you create a function, we can significantly reduce the model creation time.
 function luksan_vlcek_model(N)
-    c = ExaCore()
+    c = ExaCore(concrete = Val(true))
     @add_var(c, x, N; start = (mod(i, 2) == 1 ? -1.2 : 1.0 for i = 1:N))
     @add_obj(c, 100 * (x[i-1]^2 - x[i])^2 + (x[i-1] - 1)^2 for i = 2:N)
     @add_con(
@@ -69,7 +69,7 @@ using ExaModels
 N = 1000
 
 function luksan_vlcek_model_concrete(N)
-    c = ExaCore()
+    c = ExaCore(concrete = Val(true))
 
     arr1 = Array(2:N)
     arr2 = Array(1:(N-2))
@@ -85,7 +85,7 @@ function luksan_vlcek_model_concrete(N)
 end
 
 function luksan_vlcek_model_non_concrete(N)
-    c = ExaCore()
+    c = ExaCore(concrete = Val(true))
 
     arr1 = Array{Any}(2:N)
     arr2 = Array{Any}(1:(N-2))

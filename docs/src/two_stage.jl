@@ -13,8 +13,8 @@ nv = 2   ## recourse variables per scenario
 nd = 1   ## design variables
 weight = 1.0 / ns
 
-# Two annotate the scenario for each variable and constraint, we can use the `scenario` we need to start with a special ExaCore that supports such scenario annotations, which can be created by calling `TwoStageExaCore()`. 
-core = TwoStageExaCore()
+# Two annotate the scenario for each variable and constraint, we can use the `scenario` we need to start with a special ExaCore that supports such scenario annotations, which can be created by calling `TwoStageExaCore(concrete = Val(true))`. 
+core = TwoStageExaCore(concrete = Val(true))
 
 # Now we can define the design variable and recourse variables. The `scenario` keyword argument allows us to specify which scenario(s) each variable belongs to. For the design variable `d`, we set `scenario = 0` to indicate that it is shared across all scenarios. 
 @add_var(core, d; start = 1.0, lvar = 0.0, uvar = Inf, scenario = 0)  ## design variable d

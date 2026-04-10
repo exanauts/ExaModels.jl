@@ -22,7 +22,7 @@ end
 
 function luksan_vlcek_model(N)
 
-    c = ExaCore()
+    c = ExaCore(concrete = Val(true))
     @add_var(c, x, N; start = (luksan_vlcek_x0(i) for i = 1:N))
     @add_con(c, luksan_vlcek_con(x, i) for i = 1:(N-2))
     @add_obj(c, luksan_vlcek_obj(x, i) for i = 2:N)
@@ -33,7 +33,7 @@ end
 # Now we simply modify this by
 function luksan_vlcek_model(N, backend = nothing)
 
-    c = ExaCore(; backend = backend) # specify the backend
+    c = ExaCore(; backend = backend, concrete = Val(true)) # specify the backend
     @add_var(c, x, N; start = (luksan_vlcek_x0(i) for i = 1:N))
     @add_con(c, luksan_vlcek_con(x, i) for i = 1:(N-2))
     @add_obj(c, luksan_vlcek_obj(x, i) for i = 2:N)
@@ -63,7 +63,7 @@ ipopt(m)
 # In the case we have arrays for the data, what we need to do is to simply convert the array types to the corresponding device array types. In particular,
 
 function cuda_luksan_vlcek_model(N)
-    c = ExaCore(; backend = CUDABackend())
+    c = ExaCore(; backend = CUDABackend(, concrete = Val(true)))
     d1 = CuArray(1:(N-2))
     d2 = CuArray(2:N)
     d3 = CuArray([luksan_vlcek_x0(i) for i = 1:N])

@@ -7,7 +7,7 @@
 
 # First, let's create a core:
 using ExaModels, NLPModelsIpopt
-c_param = ExaCore()
+c_param = ExaCore(concrete = Val(true))
 
 # Adding parameters is very similar to adding variables -- just pass a vector of values denoting the initial values.
 @add_par(c_param, θ, [100.0, 1.0])  # [penalty_coeff, offset]

@@ -52,7 +52,7 @@ end
 
 function luksan_vlcek_model(N; backend = nothing)
     
-    c = ExaModels.ExaCore(backend)
+    c = ExaModels.ExaCore(backend, concrete = Val(true))
     c, x = ExaModels.add_variable(
         c, N;
         start = (luksan_vlcek_x0(i) for i=1:N)
