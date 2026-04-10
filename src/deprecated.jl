@@ -46,56 +46,6 @@ Base.show(io::IO, c::LegacyExaCore{T,VT,B}) where {T,VT,B} =
     Base.show(io, getfield(c, :inner))
 
 # ---------------------------------------------------------------------------
-# LegacyExaCore overloads for all add_* functions
-# ---------------------------------------------------------------------------
-# Each overload mutates the inner core and returns (same LegacyExaCore, result)
-# so that the tuple-destructuring style `c, x = add_var(c, 10)` still works.
-
-function add_var(c::LegacyExaCore, args...; kwargs...)
-    new_core, v = add_var(c.inner, args...; kwargs...)
-    c.inner = new_core
-    return (c, v)
-end
-
-function add_par(c::LegacyExaCore, args...; kwargs...)
-    new_core, p = add_par(c.inner, args...; kwargs...)
-    c.inner = new_core
-    return (c, p)
-end
-
-function add_obj(c::LegacyExaCore, args...; kwargs...)
-    new_core, o = add_obj(c.inner, args...; kwargs...)
-    c.inner = new_core
-    return (c, o)
-end
-
-function add_con(c::LegacyExaCore, args...; kwargs...)
-    new_core, con = add_con(c.inner, args...; kwargs...)
-    c.inner = new_core
-    return (c, con)
-end
-
-function add_con!(c::LegacyExaCore, args...; kwargs...)
-    new_core, aug = add_con!(c.inner, args...; kwargs...)
-    c.inner = new_core
-    return (c, aug)
-end
-
-function add_expr(c::LegacyExaCore, args...; kwargs...)
-    new_core, ex = add_expr(c.inner, args...; kwargs...)
-    c.inner = new_core
-    return (c, ex)
-end
-
-function set_parameter!(c::LegacyExaCore, param::Parameter, values::AbstractArray)
-    set_parameter!(c.inner, param, values)
-end
-
-function ExaModel(c::LegacyExaCore; kwargs...)
-    ExaModel(c.inner; kwargs...)
-end
-
-# ---------------------------------------------------------------------------
 # Legacy named wrappers (deprecated)
 # ---------------------------------------------------------------------------
 
