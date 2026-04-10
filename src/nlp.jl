@@ -187,7 +187,7 @@ An ExaCore
 
 julia> using CUDA
 
-julia> c = ExaCore(Float32; backend = CUDABackend())
+julia> c = ExaCore(Float32; backend = CUDABackend(), concrete = Val(true))
 An ExaCore
 
   Float type: ...................... Float32
