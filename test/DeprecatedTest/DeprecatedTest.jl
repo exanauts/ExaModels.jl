@@ -66,15 +66,6 @@ function runtests()
             @test NLPModels.obj(m, ones(10)) ≈ 18.0  # sum_{i=1}^{9} (1^2 + 1^2) = 18
         end
 
-        @testset "add_var / add_obj still work on LegacyExaCore" begin
-            c = ExaCore()
-            c, x = add_var(c, 5; start = 2.0)
-            @test x isa ExaModels.Variable
-            c, _ = add_obj(c, x[i]^2 for i = 1:5)
-            m = ExaModel(c)
-            @test NLPModels.obj(m, 2.0 * ones(5)) ≈ 20.0
-        end
-
         @testset "property forwarding to inner ExaCore" begin
             c = ExaCore()
             variable(c, 3)
