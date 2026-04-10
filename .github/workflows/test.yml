@@ -48,6 +48,9 @@ jobs:
         julia-arch: [x64]
         os: [ubuntu-latest]
         backend: ['cuda', 'amdgpu', 'oneapi']
+        exclude:
+          - julia-version: 'lts'
+            backend: 'oneapi'
     runs-on: ['self-hosted', 'gpu', '${{ matrix.backend }}']
     env:
       # oneAPI specific variables
