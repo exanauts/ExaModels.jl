@@ -167,9 +167,9 @@ if pkgversion(ExaModels) > v"0.9.7"
     # ── Rosenrock ───────────────────────────────────────────────────────────────
     @eval @inline function exa_rosenrock_model(backend, N)
         c = ExaCore(; backend)
-        @var(c, x, N; start = (mod(i, 2) == 1 ? -1.2 : 1.0 for i = 1:N))
-        @con(c, s, 3x[i+1]^3 + 2 * x[i+2] - 5 + sin(x[i+1] - x[i+2])sin(x[i+1] + x[i+2]) + 4x[i+1] - x[i]exp(x[i] - x[i+1]) - 3 for i = 1:(N-2))
-        @obj(c, 100 * (x[i-1]^2 - x[i])^2 + (x[i-1] - 1)^2 for i = 2:N)
+        @add_variable(c, x, N; start = (mod(i, 2) == 1 ? -1.2 : 1.0 for i = 1:N))
+        @add_constraint(c, s, 3x[i+1]^3 + 2 * x[i+2] - 5 + sin(x[i+1] - x[i+2])sin(x[i+1] + x[i+2]) + 4x[i+1] - x[i]exp(x[i] - x[i+1]) - 3 for i = 1:(N-2))
+        @add_objective(c, 100 * (x[i-1]^2 - x[i])^2 + (x[i-1] - 1)^2 for i = 2:N)
         return ExaModel(c)
     end
 
@@ -178,63 +178,63 @@ if pkgversion(ExaModels) > v"0.9.7"
         data = parse_ac_power_data(case)
         core = ExaCore(; backend)
 
-        @var(core, pg, length(data.gen); lvar = data.pmin, uvar = data.pmax)
-        @var(core, qg, length(data.gen); lvar = data.qmin, uvar = data.qmax)
-        @var(core, p,  length(data.arc); lvar = -data.rate_a, uvar = data.rate_a)
-        @var(core, q,  length(data.arc); lvar = -data.rate_a, uvar = data.rate_a)
-        @var(core, va, length(data.bus))
-        @var(core, vm, length(data.bus);
+        @add_variable(core, pg, length(data.gen); lvar = data.pmin, uvar = data.pmax)
+        @add_variable(core, qg, length(data.gen); lvar = data.qmin, uvar = data.qmax)
+        @add_variable(core, p,  length(data.arc); lvar = -data.rate_a, uvar = data.rate_a)
+        @add_variable(core, q,  length(data.arc); lvar = -data.rate_a, uvar = data.rate_a)
+        @add_variable(core, va, length(data.bus))
+        @add_variable(core, vm, length(data.bus);
             start = fill!(similar(data.bus, Float64), 1.0),
             lvar  = data.vmin,
             uvar  = data.vmax)
 
-        @obj(core, g.c[1] * pg[g.i]^2 + g.c[2] * pg[g.i] + g.c[3] for g in data.gen)
+        @add_objective(core, g.c[1] * pg[g.i]^2 + g.c[2] * pg[g.i] + g.c[3] for g in data.gen)
 
-        @con(core, c_ref_angle, va[i] for i in data.ref_buses)
+        @add_constraint(core, c_ref_angle, va[i] for i in data.ref_buses)
 
-        @con(core, c_to_active_power_flow,
+        @add_constraint(core, c_to_active_power_flow,
             p[b.f_idx] - b.c5 * vm[b.f_bus]^2 -
             b.c3 * (vm[b.f_bus] * vm[b.t_bus] * cos(va[b.f_bus] - va[b.t_bus])) -
             b.c4 * (vm[b.f_bus] * vm[b.t_bus] * sin(va[b.f_bus] - va[b.t_bus]))
             for b in data.branch)
 
-        @con(core, c_to_reactive_power_flow,
+        @add_constraint(core, c_to_reactive_power_flow,
             q[b.f_idx] +
             b.c6 * vm[b.f_bus]^2 +
             b.c4 * (vm[b.f_bus] * vm[b.t_bus] * cos(va[b.f_bus] - va[b.t_bus])) -
             b.c3 * (vm[b.f_bus] * vm[b.t_bus] * sin(va[b.f_bus] - va[b.t_bus]))
             for b in data.branch)
 
-        @con(core, c_from_active_power_flow,
+        @add_constraint(core, c_from_active_power_flow,
             p[b.t_idx] - b.c7 * vm[b.t_bus]^2 -
             b.c1 * (vm[b.t_bus] * vm[b.f_bus] * cos(va[b.t_bus] - va[b.f_bus])) -
             b.c2 * (vm[b.t_bus] * vm[b.f_bus] * sin(va[b.t_bus] - va[b.f_bus]))
             for b in data.branch)
 
-        @con(core, c_from_reactive_power_flow,
+        @add_constraint(core, c_from_reactive_power_flow,
             q[b.t_idx] +
             b.c8 * vm[b.t_bus]^2 +
             b.c2 * (vm[b.t_bus] * vm[b.f_bus] * cos(va[b.t_bus] - va[b.f_bus])) -
             b.c1 * (vm[b.t_bus] * vm[b.f_bus] * sin(va[b.t_bus] - va[b.f_bus]))
             for b in data.branch)
 
-        @con(core, c_phase_angle_diff,
+        @add_constraint(core, c_phase_angle_diff,
             va[b.f_bus] - va[b.t_bus] for b in data.branch;
             lcon = data.angmin, ucon = data.angmax)
 
-        @con(core, c_active_power_balance,   b.pd + b.gs * vm[b.i]^2 for b in data.bus)
-        @con(core, c_reactive_power_balance, b.qd - b.bs * vm[b.i]^2 for b in data.bus)
+        @add_constraint(core, c_active_power_balance,   b.pd + b.gs * vm[b.i]^2 for b in data.bus)
+        @add_constraint(core, c_reactive_power_balance, b.qd - b.bs * vm[b.i]^2 for b in data.bus)
 
-        @con!(core, c_active_power_balance,   a.bus => p[a.i]   for a in data.arc)
-        @con!(core, c_reactive_power_balance, a.bus => q[a.i]   for a in data.arc)
-        @con!(core, c_active_power_balance,   g.bus => -pg[g.i] for g in data.gen)
-        @con!(core, c_reactive_power_balance, g.bus => -qg[g.i] for g in data.gen)
+        @add_constraint!(core, c_active_power_balance,   a.bus => p[a.i]   for a in data.arc)
+        @add_constraint!(core, c_reactive_power_balance, a.bus => q[a.i]   for a in data.arc)
+        @add_constraint!(core, c_active_power_balance,   g.bus => -pg[g.i] for g in data.gen)
+        @add_constraint!(core, c_reactive_power_balance, g.bus => -qg[g.i] for g in data.gen)
 
-        @con(core, c_from_thermal_limit,
+        @add_constraint(core, c_from_thermal_limit,
             p[b.f_idx]^2 + q[b.f_idx]^2 - b.rate_a^2 for b in data.branch;
             lcon = fill!(similar(data.branch, Float64, length(data.branch)), -Inf))
 
-        @con(core, c_to_thermal_limit,
+        @add_constraint(core, c_to_thermal_limit,
             p[b.t_idx]^2 + q[b.t_idx]^2 - b.rate_a^2 for b in data.branch;
             lcon = fill!(similar(data.branch, Float64, length(data.branch)), -Inf))
 
@@ -249,21 +249,21 @@ if pkgversion(ExaModels) > v"0.9.7"
         tf = 1.0; h = tf / nh
 
         c = ExaCore(; backend = backend)
-        @var(c, u,  nh+1; start = [4*abs(b-a)*(k/nh - tmin) for k in 1:nh+1])
-        @var(c, x1, nh+1; start = [4*abs(b-a)*k/nh*(1/2*k/nh - tmin) + a for k in 1:nh+1])
-        @var(c, x2, nh+1; start = [(4*abs(b-a)*k/nh*(1/2*k/nh - tmin) + a) *
+        @add_variable(c, u,  nh+1; start = [4*abs(b-a)*(k/nh - tmin) for k in 1:nh+1])
+        @add_variable(c, x1, nh+1; start = [4*abs(b-a)*k/nh*(1/2*k/nh - tmin) + a for k in 1:nh+1])
+        @add_variable(c, x2, nh+1; start = [(4*abs(b-a)*k/nh*(1/2*k/nh - tmin) + a) *
             (4*abs(b-a)*(k/nh - tmin)) for k in 1:nh+1])
-        @var(c, x3, nh+1; start = [4*abs(b-a)*(k/nh - tmin) for k in 1:nh+1])
+        @add_variable(c, x3, nh+1; start = [4*abs(b-a)*(k/nh - tmin) for k in 1:nh+1])
 
-        @obj(c, x2[nh+1])
-        @con(c, c1, x1[j+1] - x1[j] - 1/2*h*(u[j] + u[j+1]) for j in 1:nh)
-        @con(c, c2, x1[1] - a)
-        @con(c, c3, x1[nh+1] - b)
-        @con(c, c4, x2[1])
-        @con(c, c5, x3[1])
-        @con(c, c6, x3[nh+1] - L)
-        @con(c, c7, x2[j+1] - x2[j] - 1/2*h*(x1[j]*sqrt(1+u[j]^2) + x1[j+1]*sqrt(1+u[j+1]^2)) for j in 1:nh)
-        @con(c, c8, x3[j+1] - x3[j] - 1/2*h*(sqrt(1+u[j]^2) + sqrt(1+u[j+1]^2)) for j in 1:nh)
+        @add_objective(c, x2[nh+1])
+        @add_constraint(c, c1, x1[j+1] - x1[j] - 1/2*h*(u[j] + u[j+1]) for j in 1:nh)
+        @add_constraint(c, c2, x1[1] - a)
+        @add_constraint(c, c3, x1[nh+1] - b)
+        @add_constraint(c, c4, x2[1])
+        @add_constraint(c, c5, x3[1])
+        @add_constraint(c, c6, x3[nh+1] - L)
+        @add_constraint(c, c7, x2[j+1] - x2[j] - 1/2*h*(x1[j]*sqrt(1+u[j]^2) + x1[j+1]*sqrt(1+u[j+1]^2)) for j in 1:nh)
+        @add_constraint(c, c8, x3[j+1] - x3[j] - 1/2*h*(sqrt(1+u[j]^2) + sqrt(1+u[j+1]^2)) for j in 1:nh)
 
         return ExaModel(c)
     end
@@ -276,12 +276,12 @@ if pkgversion(ExaModels) > v"0.9.7"
         itr   = [(i, j) for i in 1:np-1 for j in i+1:np]
 
         core = ExaCore(; backend = backend)
-        @var(core, x, 1:np; start = [cos(theta[i])*sin(phi[i]) for i = 1:np])
-        @var(core, y, 1:np; start = [sin(theta[i])*sin(phi[i]) for i = 1:np])
-        @var(core, z, 1:np; start = [cos(phi[i]) for i = 1:np])
+        @add_variable(core, x, 1:np; start = [cos(theta[i])*sin(phi[i]) for i = 1:np])
+        @add_variable(core, y, 1:np; start = [sin(theta[i])*sin(phi[i]) for i = 1:np])
+        @add_variable(core, z, 1:np; start = [cos(phi[i]) for i = 1:np])
 
-        @obj(core, 1 / sqrt((x[i]-x[j])^2 + (y[i]-y[j])^2 + (z[i]-z[j])^2) for (i, j) in itr)
-        @con(core, c1, x[i]^2 + y[i]^2 + z[i]^2 - 1 for i = 1:np)
+        @add_objective(core, 1 / sqrt((x[i]-x[j])^2 + (y[i]-y[j])^2 + (z[i]-z[j])^2) for (i, j) in itr)
+        @add_constraint(core, c1, x[i]^2 + y[i]^2 + z[i]^2 - 1 for i = 1:np)
 
         return ExaModel(core)
     end
@@ -289,7 +289,7 @@ if pkgversion(ExaModels) > v"0.9.7"
 else
     # ── Legacy API (ExaModels ≤ 0.9.7) ─────────────────────────────────────────
     # The `main` environment may pin an older ExaModels release that used
-    # `variable`/`objective`/`constraint` instead of the `@var`/`@obj`/`@con`
+    # `variable`/`objective`/`constraint` instead of the `@add_variable`/`@add_objective`/`@add_constraint`
     # macros.  This branch keeps the benchmark runnable against both APIs.
 
     function exa_rosenrock_model(backend, N)

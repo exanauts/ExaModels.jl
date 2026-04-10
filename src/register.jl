@@ -18,7 +18,7 @@ end
 """
     @register_univariate(f, df, ddf)
 
-Register a univariate function `f` so it can be used inside `@obj` / `@con`
+Register a univariate function `f` so it can be used inside `@add_objective` / `@add_constraint`
 expressions.  The macro adds three method groups:
 
 1. **Primal graph node** — `f(n::AbstractNode) → Node1(f, n)`.
@@ -76,7 +76,7 @@ end
 """
     @register_bivariate(f, df1, df2, ddf11, ddf12, ddf22)
 
-Register a bivariate function `f` so it can be used inside `@obj` / `@con`
+Register a bivariate function `f` so it can be used inside `@add_objective` / `@add_constraint`
 expressions.  The macro adds four method groups:
 
 1. **Node OP Node** — `f(d1::AbstractNode, d2::AbstractNode) → Node2(f, d1, d2)`.

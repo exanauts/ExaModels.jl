@@ -11,4 +11,4 @@ NLPModelsIpoptLite = "48c312a9-6620-4177-b859-0e15058d61ee"
 [sources]
 ExaModels = {path = "../.."}
 NLPModelsIpoptLite = {path = "../NLPModelsIpoptLite.jl"}
-LuksanVlcekBenchmark = {url = "https://github.com/MadNLP/LuksanVlcekBenchmark.jl", rev= "4620ed2"}
+LuksanVlcekBenchmark = {url = "https://github.com/MadNLP/LuksanVlcekBenchmark.jl", rev= "ss/aot"}

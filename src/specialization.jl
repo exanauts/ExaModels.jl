@@ -1,4 +1,4 @@
-# ── AST transformation helpers (used by @obj, @con, @con!, @expr macros) ──────
+# ── AST transformation helpers (used by @add_objective, @add_constraint, @add_constraint!, @add_expression macros) ──────
 #
 # These functions walk generator expressions at macro-expansion time and perform
 # two transformations on the generator body:
@@ -203,7 +203,7 @@ end
 
 # ── exa_sum / exa_prod ────────────────────────────────────────────────────────
 #
-# Type-stable sum/prod for use inside @obj / @con / @expr generators.
+# Type-stable sum/prod for use inside @add_objective / @add_constraint / @add_expression generators.
 #
 # The macro transformation (_wrap_free_symbols) rewrites:
 #   sum(body for j in range)  →  exa_sum(j -> body, Val(range))
@@ -229,8 +229,8 @@ end
     exa_sum(f, ::Val{range})
     exa_sum(gen::Base.Generator)
 
-Build a [`SumNode`](@ref) representing `∑ f(k)` for `k ∈ itr`. Inside `@obj`,
-`@con`, and `@expr` macros, `sum(body for k in range)` is automatically
+Build a [`SumNode`](@ref) representing `∑ f(k)` for `k ∈ itr`. Inside `@add_objective`,
+`@add_constraint`, and `@add_expression` macros, `sum(body for k in range)` is automatically
 rewritten to `exa_sum(k -> body, Val(range))` with the `Val` hoisted outside
 the generator closure.
 
@@ -242,12 +242,12 @@ the generator closure.
 
 # juliac / AOT usage
 Julia's inference cannot propagate constants like `nc = 3` through a generator
-closure boundary.  When calling `add_con`/`add_obj` programmatically (not via
+closure boundary.  When calling `add_constraint`/`add_objective` programmatically (not via
 macro), hoist `Val(range)` outside the generator:
 
 ```julia
 v = Val(1:nc)                                          # outside generator
-c, con = add_con(c, (exa_sum(j -> x[j], v) for i in 1:nh))  # v captured
+c, con = add_constraint(c, (exa_sum(j -> x[j], v) for i in 1:nh))  # v captured
 ```
 """
 @inline exa_sum(f, ::Tuple{}) = SumNode(())
@@ -258,8 +258,8 @@ c, con = add_con(c, (exa_sum(j -> x[j], v) for i in 1:nh))  # v captured
     exa_prod(f, ::Val{range})
     exa_prod(gen::Base.Generator)
 
-Build a [`ProdNode`](@ref) representing `∏ f(k)` for `k ∈ itr`. Inside `@obj`,
-`@con`, and `@expr` macros, `prod(body for k in range)` is automatically
+Build a [`ProdNode`](@ref) representing `∏ f(k)` for `k ∈ itr`. Inside `@add_objective`,
+`@add_constraint`, and `@add_expression` macros, `prod(body for k in range)` is automatically
 rewritten to `exa_prod(k -> body, Val(range))` with the `Val` hoisted outside
 the generator closure.
 

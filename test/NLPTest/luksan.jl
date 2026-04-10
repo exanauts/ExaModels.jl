@@ -17,10 +17,10 @@ end
 function _exa_luksan_vlcek_model(backend, N; M = 1)
 
     c = ExaCore(backend = backend)
-    @var(c, x, N, M; start = [luksan_vlcek_x0(i) for i = 1:N, j = 1:M])
-    @con(c, s, luksan_vlcek_con1(x, i, j) for i = 1:(N-2), j = 1:M)
-    @con!(c, s, (i, j) => luksan_vlcek_con2(x, i, j) for i = 1:(N-2), j = 1:M)
-    @obj(c, luksan_vlcek_obj(x, i, j) for i = 2:N, j = 1:M)
+    @add_variable(c, x, N, M; start = [luksan_vlcek_x0(i) for i = 1:N, j = 1:M])
+    @add_constraint(c, s, luksan_vlcek_con1(x, i, j) for i = 1:(N-2), j = 1:M)
+    @add_constraint!(c, s, (i, j) => luksan_vlcek_con2(x, i, j) for i = 1:(N-2), j = 1:M)
+    @add_objective(c, luksan_vlcek_obj(x, i, j) for i = 2:N, j = 1:M)
 
     return ExaModel(c; prod = true), (x,), (s,)
 end

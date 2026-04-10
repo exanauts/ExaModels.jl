@@ -124,9 +124,9 @@ function __exa_ac_power_model(backend, data)
 
     w = ExaModels.ExaCore(backend = backend)
 
-    @var(w, va, length(data.bus);)
+    @add_variable(w, va, length(data.bus);)
 
-    @var(
+    @add_variable(
         w,
         vm,
         length(data.bus);
@@ -134,22 +134,22 @@ function __exa_ac_power_model(backend, data)
         lvar = data.vmin,
         uvar = data.vmax,
     )
-    @var(w, pg, length(data.gen); lvar = data.pmin, uvar = data.pmax)
+    @add_variable(w, pg, length(data.gen); lvar = data.pmin, uvar = data.pmax)
 
-    @var(w, qg, length(data.gen); lvar = data.qmin, uvar = data.qmax)
+    @add_variable(w, qg, length(data.gen); lvar = data.qmin, uvar = data.qmax)
 
-    @var(w, p, length(data.arc); lvar = -data.rate_a, uvar = data.rate_a)
+    @add_variable(w, p, length(data.arc); lvar = -data.rate_a, uvar = data.rate_a)
 
-    @var(w, q, length(data.arc); lvar = -data.rate_a, uvar = data.rate_a)
+    @add_variable(w, q, length(data.arc); lvar = -data.rate_a, uvar = data.rate_a)
 
-    o = @obj(
+    o = @add_objective(
         w,
         g.cost1 * pg[g.i]^2 + g.cost2 * pg[g.i] + g.cost3 for g in data.gen
     )
 
-    @con(w, c1, va[i] for i in data.ref_buses)
+    @add_constraint(w, c1, va[i] for i in data.ref_buses)
 
-    @con(
+    @add_constraint(
         w,
         c2,
         p[b.f_idx] - b.c5 * vm[b.f_bus]^2 -
@@ -158,7 +158,7 @@ function __exa_ac_power_model(backend, data)
         b in data.branch
     )
 
-    @con(
+    @add_constraint(
         w,
         c3,
         q[b.f_idx] +
@@ -168,7 +168,7 @@ function __exa_ac_power_model(backend, data)
         b in data.branch
     )
 
-    @con(
+    @add_constraint(
         w,
         c4,
         p[b.t_idx] - b.c7 * vm[b.t_bus]^2 -
@@ -177,7 +177,7 @@ function __exa_ac_power_model(backend, data)
         b in data.branch
     )
 
-    @con(
+    @add_constraint(
         w,
         c5,
         q[b.t_idx] +
@@ -187,35 +187,35 @@ function __exa_ac_power_model(backend, data)
         b in data.branch
     )
 
-    @con(
+    @add_constraint(
         w,
         c6,
         va[b.f_bus] - va[b.t_bus] for b in data.branch;
         lcon = data.angmin,
         ucon = data.angmax,
     )
-    @con(
+    @add_constraint(
         w,
         c7,
         p[b.f_idx]^2 + q[b.f_idx]^2 - b.rate_a_sq for b in data.branch;
         lcon = fill!(similar(data.branch, eltype(w.x0), length(data.branch)), eltype(w.x0)(-Inf)),
     )
-    @con(
+    @add_constraint(
         w,
         c8,
         p[b.t_idx]^2 + q[b.t_idx]^2 - b.rate_a_sq for b in data.branch;
         lcon = fill!(similar(data.branch, eltype(w.x0), length(data.branch)), eltype(w.x0)(-Inf)),
     )
 
-    @con(w, c9, b.pd + b.gs * vm[b.i]^2 for b in data.bus)
+    @add_constraint(w, c9, b.pd + b.gs * vm[b.i]^2 for b in data.bus)
 
-    @con(w, c10, b.qd - b.bs * vm[b.i]^2 for b in data.bus)
+    @add_constraint(w, c10, b.qd - b.bs * vm[b.i]^2 for b in data.bus)
 
-    c11 = @con!(w, c9, a.bus => p[a.i] for a in data.arc)
-    c12 = @con!(w, c10, a.bus => q[a.i] for a in data.arc)
+    c11 = @add_constraint!(w, c9, a.bus => p[a.i] for a in data.arc)
+    c12 = @add_constraint!(w, c10, a.bus => q[a.i] for a in data.arc)
 
-    c13 = @con!(w, c9, g.bus => -pg[g.i] for g in data.gen)
-    c14 = @con!(w, c10, g.bus => -qg[g.i] for g in data.gen)
+    c13 = @add_constraint!(w, c9, g.bus => -pg[g.i] for g in data.gen)
+    c14 = @add_constraint!(w, c10, g.bus => -qg[g.i] for g in data.gen)
 
     return ExaModels.ExaModel(w; prod = true),
     (va, vm, pg, qg, p, q),

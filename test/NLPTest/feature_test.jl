@@ -2,16 +2,16 @@ using ExaModels
 using Test
 import NLPModels
 
-# Tests for Constant{T}, add_var(gen), and named variable/constraint access
+# Tests for Constant{T}, add_variable(gen), and named variable/constraint access
 
 function test_const(backend)
     @testset "Constant basic usage" begin
         c = ExaCore(; backend)
         N = 5
-        @var(c, x, N; start = 1.0)
+        @add_variable(c, x, N; start = 1.0)
 
         # Const(N) keeps type stable — N is not captured in the type parameter
-        @obj(c, Constant(N) * x[i]^2 for i in 1:N)
+        @add_objective(c, Constant(N) * x[i]^2 for i in 1:N)
 
         m = ExaModel(c)
         @test m.meta.nvar == N
@@ -23,16 +23,16 @@ function test_const(backend)
 end
 
 function test_add_var_gen(backend)
-    @testset "add_var with generator (equality constraints)" begin
+    @testset "add_variable with generator (equality constraints)" begin
         N = 4
         targets = [2.0, 3.0, 4.0, 5.0]
         pars = collect(enumerate(targets))
 
         c = ExaCore(; backend)
-        @var(c, y, N; start = 1.0)
+        @add_variable(c, y, N; start = 1.0)
 
-        # add_var(gen) creates variables x[i] with x[i] == targets[i]
-        c, x = add_var(c, i - 0.0 for i in targets; start = 2.0)
+        # add_variable(gen) creates variables x[i] with x[i] == targets[i]
+        c, x = add_variable(c, i - 0.0 for i in targets; start = 2.0)
 
         m = ExaModel(c)
 
@@ -49,8 +49,8 @@ function test_named_var_access(backend)
     @testset "Named variable access via core.name and model.name" begin
         c = ExaCore(; backend)
         N = 5
-        @var(c, x, N; start = 0.5)
-        @obj(c, (x[i] - 1)^2 for i in 1:N)
+        @add_variable(c, x, N; start = 0.5)
+        @add_objective(c, (x[i] - 1)^2 for i in 1:N)
 
         m = ExaModel(c)
 
@@ -62,8 +62,8 @@ function test_named_var_access(backend)
 
     @testset "Named constraint access via model.name" begin
         c = ExaCore(; backend)
-        @var(c, x, 4; start = 0.0)
-        @con(c, g, x[i] + x[i+1] for i in 1:3)
+        @add_variable(c, x, 4; start = 0.0)
+        @add_constraint(c, g, x[i] + x[i+1] for i in 1:3)
 
         m = ExaModel(c)
 
@@ -73,8 +73,8 @@ function test_named_var_access(backend)
 
     @testset "Named objective access via model.name" begin
         c = ExaCore(; backend)
-        @var(c, x, 3; start = 1.0)
-        @obj(c, f, x[i]^2 for i in 1:3)
+        @add_variable(c, x, 3; start = 1.0)
+        @add_objective(c, f, x[i]^2 for i in 1:3)
 
         m = ExaModel(c)
 
@@ -87,7 +87,7 @@ function test_features(backend)
     @testset "Const" begin
         test_const(backend)
     end
-    @testset "add_var(gen)" begin
+    @testset "add_variable(gen)" begin
         test_add_var_gen(backend)
     end
     @testset "Named variable/constraint access" begin

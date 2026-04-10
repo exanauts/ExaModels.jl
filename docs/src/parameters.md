@@ -31,7 +31,7 @@ An ExaCore
 Adding parameters is very similar to adding variables -- just pass a vector of values denoting the initial values.
 
 ````julia
-@par(c_param, θ, [100.0, 1.0])  # [penalty_coeff, offset]
+@add_parameter(c_param, θ, [100.0, 1.0])  # [penalty_coeff, offset]
 ````
 
 ````
@@ -45,7 +45,7 @@ Define the variables as before:
 
 ````julia
 N = 10
-@var(c_param, x_p, N; start = (mod(i, 2) == 1 ? -1.2 : 1.0 for i = 1:N))
+@add_variable(c_param, x_p, N; start = (mod(i, 2) == 1 ? -1.2 : 1.0 for i = 1:N))
 ````
 
 ````
@@ -58,7 +58,7 @@ Variable
 Now we can use the parameters in our objective function just like variables:
 
 ````julia
-@obj(c_param, θ[1] * (x_p[i-1]^2 - x_p[i])^2 + (x_p[i-1] - θ[2])^2 for i = 2:N)
+@add_objective(c_param, θ[1] * (x_p[i-1]^2 - x_p[i])^2 + (x_p[i-1] - θ[2])^2 for i = 2:N)
 ````
 
 ````
@@ -73,7 +73,7 @@ Objective
 Add the same constraints as before:
 
 ````julia
-@con(
+@add_constraint(
     c_param,
     3x_p[i+1]^3 + 2 * x_p[i+2] - 5 +
     sin(x_p[i+1] - x_p[i+2])sin(x_p[i+1] + x_p[i+2]) +
