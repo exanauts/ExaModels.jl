@@ -100,9 +100,9 @@ function ac_power_model(filename; backend = nothing, T = Float64)
 
     w = ExaCore(T; backend = backend)
 
-    @add_variable(w, va, length(data.bus);)
+    @add_var(w, va, length(data.bus);)
 
-    @add_variable(
+    @add_var(
         w,
         vm,
         length(data.bus);
@@ -110,19 +110,19 @@ function ac_power_model(filename; backend = nothing, T = Float64)
         lvar = data.vmin,
         uvar = data.vmax,
     )
-    @add_variable(w, pg, length(data.gen); lvar = data.pmin, uvar = data.pmax)
+    @add_var(w, pg, length(data.gen); lvar = data.pmin, uvar = data.pmax)
 
-    @add_variable(w, qg, length(data.gen); lvar = data.qmin, uvar = data.qmax)
+    @add_var(w, qg, length(data.gen); lvar = data.qmin, uvar = data.qmax)
 
-    @add_variable(w, p, length(data.arc); lvar = -data.rate_a, uvar = data.rate_a)
+    @add_var(w, p, length(data.arc); lvar = -data.rate_a, uvar = data.rate_a)
 
-    @add_variable(w, q, length(data.arc); lvar = -data.rate_a, uvar = data.rate_a)
+    @add_var(w, q, length(data.arc); lvar = -data.rate_a, uvar = data.rate_a)
 
-    o = @add_objective(w, g.cost1 * pg[g.i]^2 + g.cost2 * pg[g.i] + g.cost3 for g in data.gen)
+    o = @add_obj(w, g.cost1 * pg[g.i]^2 + g.cost2 * pg[g.i] + g.cost3 for g in data.gen)
 
-    @add_constraint(w, c1, va[i] for i in data.ref_buses)
+    @add_con(w, c1, va[i] for i in data.ref_buses)
 
-    @add_constraint(
+    @add_con(
         w,
         c2,
         p[b.f_idx] - b.c5 * vm[b.f_bus]^2 -
@@ -131,7 +131,7 @@ function ac_power_model(filename; backend = nothing, T = Float64)
         b in data.branch
     )
 
-    @add_constraint(
+    @add_con(
         w,
         c3,
         q[b.f_idx] +
@@ -141,7 +141,7 @@ function ac_power_model(filename; backend = nothing, T = Float64)
         b in data.branch
     )
 
-    @add_constraint(
+    @add_con(
         w,
         c4,
         p[b.t_idx] - b.c7 * vm[b.t_bus]^2 -
@@ -150,7 +150,7 @@ function ac_power_model(filename; backend = nothing, T = Float64)
         b in data.branch
     )
 
-    @add_constraint(
+    @add_con(
         w,
         c5,
         q[b.t_idx] +
@@ -160,35 +160,35 @@ function ac_power_model(filename; backend = nothing, T = Float64)
         b in data.branch
     )
 
-    @add_constraint(
+    @add_con(
         w,
         c6,
         va[b.f_bus] - va[b.t_bus] for b in data.branch;
         lcon = data.angmin,
         ucon = data.angmax,
     )
-    @add_constraint(
+    @add_con(
         w,
         c7,
         p[b.f_idx]^2 + q[b.f_idx]^2 - b.rate_a_sq for b in data.branch;
         lcon = fill!(similar(data.branch, Float64, length(data.branch)), -Inf),
     )
-    @add_constraint(
+    @add_con(
         w,
         c8,
         p[b.t_idx]^2 + q[b.t_idx]^2 - b.rate_a_sq for b in data.branch;
         lcon = fill!(similar(data.branch, Float64, length(data.branch)), -Inf),
     )
 
-    @add_constraint(w, c9, b.pd + b.gs * vm[b.i]^2 for b in data.bus)
+    @add_con(w, c9, b.pd + b.gs * vm[b.i]^2 for b in data.bus)
 
-    @add_constraint(w, c10, b.qd - b.bs * vm[b.i]^2 for b in data.bus)
+    @add_con(w, c10, b.qd - b.bs * vm[b.i]^2 for b in data.bus)
 
-    c11 = @add_constraint!(w, c9, a.bus =&gt; p[a.i] for a in data.arc)
-    c12 = @add_constraint!(w, c10, a.bus =&gt; q[a.i] for a in data.arc)
+    c11 = @add_con!(w, c9, a.bus =&gt; p[a.i] for a in data.arc)
+    c12 = @add_con!(w, c10, a.bus =&gt; q[a.i] for a in data.arc)
 
-    c13 = @add_constraint!(w, c9, g.bus =&gt; -pg[g.i] for g in data.gen)
-    c14 = @add_constraint!(w, c10, g.bus =&gt; -qg[g.i] for g in data.gen)
+    c13 = @add_con!(w, c9, g.bus =&gt; -pg[g.i] for g in data.gen)
+    c14 = @add_con!(w, c10, g.bus =&gt; -qg[g.i] for g in data.gen)
 
     return ExaModel(w)
 
@@ -199,7 +199,7 @@ case = tempname() * &quot;.m&quot;
 Downloads.download(
     &quot;https://raw.githubusercontent.com/power-grid-lib/pglib-opf/dc6be4b2f85ca0e776952ec22cbd4c22396ea5a3/pglib_opf_case3_lmbd.m&quot;,
     case,
-)</code></pre><pre><code class="nohighlight hljs">&quot;/tmp/jl_YHctY1cDUD.m&quot;</code></pre><p>Then, we can model/sovle the problem.</p><pre><code class="language-julia hljs">using PowerModels, ExaModels, NLPModelsIpopt
+)</code></pre><pre><code class="nohighlight hljs">&quot;/tmp/jl_C9cHQ7yjaf.m&quot;</code></pre><p>Then, we can model/sovle the problem.</p><pre><code class="language-julia hljs">using PowerModels, ExaModels, NLPModelsIpopt
 
 m = ac_power_model(case)
-ipopt(m)</code></pre><pre><code class="nohighlight hljs">&quot;Execution stats: first-order stationary&quot;</code></pre><hr/><p><em>This page was generated using <a href="https://github.com/fredrikekre/Literate.jl">Literate.jl</a>.</em></p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../distillation/">« Example: Distillation Column</a><a class="docs-footer-nextpage" href="../jump/">JuMP Interface (experimental) »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.17.0 on <span class="colophon-date" title="Friday 10 April 2026 12:02">Friday 10 April 2026</span>. Using Julia version 1.12.5.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
+ipopt(m)</code></pre><pre><code class="nohighlight hljs">&quot;Execution stats: first-order stationary&quot;</code></pre><hr/><p><em>This page was generated using <a href="https://github.com/fredrikekre/Literate.jl">Literate.jl</a>.</em></p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../distillation/">« Example: Distillation Column</a><a class="docs-footer-nextpage" href="../jump/">JuMP Interface (experimental) »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.17.0 on <span class="colophon-date" title="Friday 10 April 2026 13:04">Friday 10 April 2026</span>. Using Julia version 1.12.5.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
