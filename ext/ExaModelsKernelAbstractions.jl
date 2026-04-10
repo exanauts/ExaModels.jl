@@ -121,7 +121,7 @@ end
 _conaug_structure!(T, backend, ::Tuple{}, sparsity) = nothing
 function _conaug_structure!(T, backend, (con, cons...), sparsity)
     _conaug_structure!(T, backend, cons, sparsity)
-    con isa ExaModels.ConstraintAug && !isempty(con.itr) &&
+    con isa ExaModels.ConstraintAugmentation && !isempty(con.itr) &&
         kers(backend)(sparsity, con.f, con.itr, con.oa; ndrange = length(con.itr))
 end
 @kernel function kers(sparsity, @Const(f), @Const(itr), @Const(oa))
@@ -230,7 +230,7 @@ end
 _conaugs!(backend, y, ::Tuple{}, x, θ) = nothing
 function _conaugs!(backend, y, (con, cons...), x, θ)
     _conaugs!(backend, y, cons, x, θ)
-    if con isa ExaModels.ConstraintAug && !isempty(con.itr)
+    if con isa ExaModels.ConstraintAugmentation && !isempty(con.itr)
         kerf2(backend)(y, con.f, con.itr, x, θ, con.oa; ndrange = length(con.itr))
     end
 end

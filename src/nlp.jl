@@ -126,23 +126,23 @@ Constraint
 
 
 """
-    ConstraintAug
+    ConstraintAugmentation
 
 An augmentation layer added to an existing [`Constraint`](@ref) via
 [`add_con!`](@ref) / [`@add_con!`](@ref). Each element of the iterator yields an
 `idx => expr` pair: `expr` is accumulated into the constraint row identified
-by `idx` at evaluation time. Multiple `ConstraintAug` objects can be stacked on
+by `idx` at evaluation time. Multiple `ConstraintAugmentation` objects can be stacked on
 the same base constraint to aggregate contributions from several data sources
 (e.g. summing arc flows into nodal balance constraints).
 """
-struct ConstraintAug{F,I,D} <: AbstractConstraint
+struct ConstraintAugmentation{F,I,D} <: AbstractConstraint
     f::F
     itr::I
     oa::Int
     dims::D  # dimensions of the original constraint (for Pair{Tuple} offset computation)
 end
 
-Base.show(io::IO, v::ConstraintAug) = print(
+Base.show(io::IO, v::ConstraintAugmentation) = print(
     io,
     """
 Constraint Augmentation
@@ -983,7 +983,7 @@ end
     add_con!(core, c1, generator)
 
 Augments the existing constraint `c1` by adding extra expression terms to a subset of its
-rows, and returns `(core, ConstraintAug)`.
+rows, and returns `(core, ConstraintAugmentation)`.
 
 This is the primary mechanism for building constraints that aggregate contributions from
 multiple data sources — for example, nodal power-balance constraints that sum flows over
@@ -995,7 +995,7 @@ via `add_con!`.
 
 ## Arguments
 - `core`: The [`ExaCore`](@ref) to modify.
-- `c1`: The base [`Constraint`](@ref) (or a previous [`ConstraintAug`](@ref)) whose rows are being augmented.
+- `c1`: The base [`Constraint`](@ref) (or a previous [`ConstraintAugmentation`](@ref)) whose rows are being augmented.
 - `generator`: A `Base.Generator` yielding `idx => expr` pairs, where
   - `idx` is an index (or tuple of indices) into `c1` identifying which constraint row receives the term, and
   - `expr` is the scalar expression to add to that row.
@@ -1052,7 +1052,7 @@ end
 
 # Extract the dimensions of the original constraint's iterator
 _constraint_dims(c::Constraint) = Base.size(c.itr)
-_constraint_dims(c::ConstraintAug) = c.dims
+_constraint_dims(c::ConstraintAugmentation) = c.dims
 
 function _add_con!(c, f, pars, dims)
     oa = c.nconaug
@@ -1060,7 +1060,7 @@ function _add_con!(c, f, pars, dims)
     nconaug = c.nconaug + nitr
     nnzj = c.nnzj + nitr * f.o1step
     nnzh = c.nnzh + nitr * f.o2step
-    con = ConstraintAug(f, convert_array(pars, c.backend), oa, dims)
+    con = ConstraintAugmentation(f, convert_array(pars, c.backend), oa, dims)
     (ExaCore(c; nconaug=nconaug, nnzj=nnzj, nnzh=nnzh, cons=(con, c.cons...)), con)
 end
 
@@ -1307,14 +1307,14 @@ end
 @inbounds @inline offset0(f::F, i) where {F<:SIMDFunction} = f.o0 + i
 @inbounds @inline offset1(f::F, i) where {F<:SIMDFunction} = f.o1 + f.o1step * (i - 1)
 @inbounds @inline offset2(f::F, i) where {F<:SIMDFunction} = f.o2 + f.o2step * (i - 1)
-@inbounds @inline offset0(a::C, i) where {C<:ConstraintAug} = offset0(a.f, a.itr, i, a.dims)
+@inbounds @inline offset0(a::C, i) where {C<:ConstraintAugmentation} = offset0(a.f, a.itr, i, a.dims)
 @inbounds @inline offset0(f::F, itr, i) where {P<:Pair,F<:SIMDFunction{P}} =
     f.o0 + f.f.first(itr[i], nothing, nothing)
 @inbounds @inline offset0(f::F, itr, i) where {I<:Integer,P<:Pair{I},F<:SIMDFunction{P}} =
     f.o0 + f.f.first
 @inbounds @inline offset0(f::F, itr, i) where {T<:Tuple,P<:Pair{T},F<:SIMDFunction{P}} =
     f.o0 + idxx(coord(itr, i, f.f.first), Base.size(itr))
-# 4-arg variant used by ConstraintAug to pass original constraint dims
+# 4-arg variant used by ConstraintAugmentation to pass original constraint dims
 @inbounds @inline offset0(f, itr, i, dims) = offset0(f, i)
 @inbounds @inline offset0(f::F, itr, i, dims) where {P<:Pair,F<:SIMDFunction{P}} =
     f.o0 + f.f.first(itr[i], nothing, nothing)
@@ -1715,7 +1715,7 @@ end
     @add_con!(core, c1, generator; kwargs...)
 
 Macro interface for [`add_con!`](@ref). Updates `core` in the calling scope and returns the
-new `ConstraintAug`. Equivalent to `c, aug = add_con!(c, c1, generator)`.
+new `ConstraintAugmentation`. Equivalent to `c, aug = add_con!(c, c1, generator)`.
 
 The generator must yield `idx => expr` pairs, where `idx` is an index into `c1` and `expr`
 is the scalar term to accumulate into that constraint row.  See [`add_con!`](@ref) for full

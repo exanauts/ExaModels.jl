@@ -49,11 +49,11 @@ function fixed_variable_e2etest()
     em = ExaModel(jm)
     @test only(em.meta.lcon) == only(em.meta.ucon) == 1.0
 
-    # em.cons is a Tuple: (ConstraintAug{Null}, ConstraintAug{Pair}, Constraint{Null{Nothing}})
-    @test em.cons[1] isa ExaModels.ConstraintAug
+    # em.cons is a Tuple: (ConstraintAugmentation{Null}, ConstraintAugmentation{Pair}, Constraint{Null{Nothing}})
+    @test em.cons[1] isa ExaModels.ConstraintAugmentation
     @test em.cons[1].f.f isa ExaModels.Null
 
-    @test em.cons[2] isa ExaModels.ConstraintAug
+    @test em.cons[2] isa ExaModels.ConstraintAugmentation
     @test em.cons[2].f.f isa Pair
 
     @test typeof(em.cons[2].f.f.second) <: ExaModels.Node2{
@@ -82,17 +82,17 @@ function fixed_variable_e2etest()
     em = ExaModel(jm)
     @test only(em.meta.lcon) == only(em.meta.ucon) == 0.0
     @test only(em.θ) == 1.0
-    # em.cons: (ConstraintAug{Null}, ConstraintAug{Pair/Param}, ConstraintAug{Pair/Var}, Constraint{Null{Nothing}})
-    @test em.cons[1] isa ExaModels.ConstraintAug
+    # em.cons: (ConstraintAugmentation{Null}, ConstraintAugmentation{Pair/Param}, ConstraintAugmentation{Pair/Var}, Constraint{Null{Nothing}})
+    @test em.cons[1] isa ExaModels.ConstraintAugmentation
     @test em.cons[1].f.f isa ExaModels.Null
-    @test em.cons[2] isa ExaModels.ConstraintAug
+    @test em.cons[2] isa ExaModels.ConstraintAugmentation
     @test em.cons[2].f.f isa Pair
     @test typeof(em.cons[2].f.f.second) <: ExaModels.Node2{
         typeof(*),
         ExaModels.ParameterNode{T1},
         T2,
     } where {T1<:ExaModels.ParIndexed,T2<:ExaModels.ParIndexed}
-    @test em.cons[3] isa ExaModels.ConstraintAug
+    @test em.cons[3] isa ExaModels.ConstraintAugmentation
     @test em.cons[3].f.f isa Pair
     @test typeof(em.cons[3].f.f.second) <: ExaModels.Node2{
         typeof(*),

@@ -276,8 +276,8 @@ function test_parametric_vs_nonparametric(backend)
                 exa_luksan_vlcek_parametric(backend, 4, M = 3, use_parameters = false)
             @test c_param.nvar == c_nonparam.nvar
             @test c_param.ncon == c_nonparam.ncon
-            @test ExaModels.depth(c_param.obj) == ExaModels.depth(c_nonparam.obj)
-            @test ExaModels.depth(c_param.cons) == ExaModels.depth(c_nonparam.cons)
+            @test ExaModels.length(c_param.obj) == ExaModels.length(c_nonparam.obj)
+            @test ExaModels.length(c_param.cons) == ExaModels.length(c_nonparam.cons)
             @test c_param.npar == 7
             @test c_nonparam.npar == 0
         end
