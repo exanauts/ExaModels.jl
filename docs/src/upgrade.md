@@ -26,14 +26,20 @@ functional style (`c, x = add_var(c, ...)`) or the macro style
 | `objective(c, ...)` | `add_obj(c, ...)` → returns `(c, obj)` | `@add_obj(c, f, ...)` |
 | `subexpr(c, ...)` | `add_expr(c, ...)` → returns `(c, expr)` | `@add_expr(c, s, ...)` |
 
-### 2. `ExaCore` mutability and `ConcreteExaCore`
+### 2. `ExaCore` and `LegacyExaCore`
 
-In v0.9, `ExaCore` was a mutable struct.
-In v0.10, `ExaCore(; concrete = Val(false))` (the default) returns a
-`Ref{ExaCore}` that supports both the new functional API and the deprecated
-mutating API.  Pass `concrete = Val(true)` (or use `ConcreteExaCore(...)`) to
-get the bare immutable struct, which is required for AOT compilation with
-`juliac`.
+In v0.9, `ExaCore` was a mutable struct that was modified in-place by each
+model-building call.
+
+In v0.10, `ExaCore` is an immutable struct.  For backward compatibility,
+`ExaCore()` (i.e. `concrete = Val(false)`, the default) returns a
+`LegacyExaCore` — a thin mutable wrapper that accepts both the new functional
+API and the deprecated mutating wrappers (`variable`, `constraint`, …).  A
+deprecation warning is emitted at construction time to signal that this path
+will be removed in a future release.
+
+To obtain the bare immutable `ExaCore` — required for type-stable code and AOT
+compilation with `juliac` — pass `concrete = Val(true)`:
 
 ```julia
 # v0.9
@@ -43,20 +49,15 @@ objective(c, x[i]^2 for i in 1:10)
 m = ExaModel(c)
 
 # v0.10 — functional style (recommended)
-c, x = add_var(ExaCore(), 10; lvar = 0.0)
+c = ExaCore(concrete = Val(true))
+c, x = add_var(c, 10; lvar = 0.0)
 c, _  = add_obj(c, x[i]^2 for i in 1:10)
 m = ExaModel(c)
 
 # v0.10 — macro style (most concise)
-c = ExaCore()
+c = ExaCore(concrete = Val(true))
 @add_var(c, x, 10; lvar = 0.0)
 @add_obj(c, x[i]^2 for i in 1:10)
-m = ExaModel(c)
-
-# v0.10 — concrete (AOT / juliac)
-c = ConcreteExaCore()          # equivalent to ExaCore(concrete = Val(true))
-c, x = add_var(c, 10; lvar = 0.0)
-c, _  = add_obj(c, x[i]^2 for i in 1:10)
 m = ExaModel(c)
 ```
 
@@ -66,7 +67,7 @@ Apply these regex/string substitutions in order to any v0.9 file.
 Each rule is written as `OLD → NEW`.
 
 ```
-variable(     →  add_var(          # only when first arg is an ExaCore/Ref
+variable(     →  add_var(          # only when first arg is an ExaCore
 parameter(    →  add_par(
 objective(    →  add_obj(
 constraint!(  →  add_con!(         # must come before constraint( rule
@@ -74,19 +75,18 @@ constraint(   →  add_con(
 subexpr(      →  add_expr(
 ```
 
-After renaming the call sites, update the call pattern:
+After renaming the call sites, update the call pattern and switch to the
+immutable `ExaCore`:
 
 ```
-# Old: result assigned directly
-x = add_var(c, ...)
+# Old: result assigned directly, c mutated in-place
+c = ExaCore()
+x = variable(c, ...)
 
-# New: functional pair destructuring
+# New: functional pair destructuring, c rebound to updated immutable
+c = ExaCore(concrete = Val(true))
 c, x = add_var(c, ...)
 ```
-
-If the caller uses `ExaCore(; concrete = Val(false))` (default) or the
-deprecated wrappers via a `Ref`, the `c` on the left-hand side is the same
-`Ref` object updated in-place, so no further changes are needed there.
 
 ### 4. `ExaModelsLinearAlgebra` renamed to `ExaModelsOptimalControl`
 
@@ -121,7 +121,7 @@ m = ExaModel(c)
 using ExaModels
 
 n = 100
-c = ExaCore()                                        # returns Ref{ExaCore} by default
+c = ExaCore(concrete = Val(true))
 c, x = add_var(c, n; lvar = -1.0, uvar = 1.0, start = 0.0)
 c, θ = add_par(c, ones(n))
 c, s = add_expr(c, θ[i] * x[i]^2 for i in 1:n)
@@ -134,7 +134,7 @@ m = ExaModel(c)
 using ExaModels
 
 n = 100
-c = ExaCore()
+c = ExaCore(concrete = Val(true))
 @add_var(c, x, n; lvar = -1.0, uvar = 1.0, start = 0.0)
 @add_par(c, θ, ones(n))
 @add_expr(c, s, θ[i] * x[i]^2 for i in 1:n)
