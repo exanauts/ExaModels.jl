@@ -8,7 +8,7 @@ end
 
 function _exa_luksan_struct_model(backend, N; M = 1)
 
-    c = ExaCore(backend = backend)
+    c = ExaCore(backend = backend, concrete = Val(true))
     data = [I1(I2((i,j))) for i = 1:N, j = 1:M]
     @add_var(c, x, N, M; start = [luksan_vlcek_x0(i.i.i[1]) for i in data])
     @add_con(c, s, luksan_vlcek_con1(x, i.i.i[1], i.i.i[2]) for i in data[1:end-2,:])

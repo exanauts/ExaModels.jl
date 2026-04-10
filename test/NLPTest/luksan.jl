@@ -16,7 +16,7 @@ end
 
 function _exa_luksan_vlcek_model(backend, N; M = 1)
 
-    c = ExaCore(backend = backend)
+    c = ExaCore(backend = backend, concrete = Val(true))
     @add_var(c, x, N, M; start = [luksan_vlcek_x0(i) for i = 1:N, j = 1:M])
     @add_con(c, s, luksan_vlcek_con1(x, i, j) for i = 1:(N-2), j = 1:M)
     @add_con!(c, s, (i, j) => luksan_vlcek_con2(x, i, j) for i = 1:(N-2), j = 1:M)

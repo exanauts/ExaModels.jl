@@ -6,7 +6,7 @@ Compares a model with subexpressions to an equivalent model without.
 """
 function test_subexpr_basic(backend)
     # Model WITHOUT subexpressions
-    c1 = ExaCore(; backend = backend)
+    c1 = ExaCore(; backend = backend, concrete = Val(true))
     @add_var(c1, x1, 10; start = 1.0)
     # Objective: sum of (x[i]^2 + x[i+1]^2)^2
     @add_obj(c1, (x1[i]^2 + x1[i + 1]^2)^2 for i in 1:9)
@@ -15,7 +15,7 @@ function test_subexpr_basic(backend)
     m1 = ExaModel(c1)
 
     # Model WITH subexpressions
-    c2 = ExaCore(; backend = backend)
+    c2 = ExaCore(; backend = backend, concrete = Val(true))
     @add_var(c2, x2, 10; start = 1.0)
     # Create subexpression for x[i]^2
     @add_expr(c2, s, x2[i]^2 for i in 1:10)
@@ -49,7 +49,7 @@ Test multi-dimensional subexpressions with automatic dimension inference.
 function test_subexpr_multidim(backend)
     T, N = 5, 4
 
-    c = ExaCore(; backend = backend)
+    c = ExaCore(; backend = backend, concrete = Val(true))
     @add_var(c, x, 0:T, 0:N; start = 0.5)
 
     # Create 2D subexpression with Cartesian product - dimensions inferred automatically
@@ -89,7 +89,7 @@ Test subexpression with automatic dimension inference from Cartesian product.
 function test_subexpr_auto_dims(backend)
     T, N = 3, 2
 
-    c = ExaCore(; backend = backend)
+    c = ExaCore(; backend = backend, concrete = Val(true))
     @add_var(c, x, 1:T, 1:N; start = 1.0)
 
     # Subexpr with Cartesian product syntax - dimensions inferred automatically
@@ -113,7 +113,7 @@ end
 Test that subexpressions can be used in both objectives and constraints.
 """
 function test_subexpr_in_obj_and_con(backend)
-    c = ExaCore(; backend = backend)
+    c = ExaCore(; backend = backend, concrete = Val(true))
     @add_var(c, x, 5; start = 2.0, lvar = 0.0)
 
     # Subexpression
@@ -142,7 +142,7 @@ end
 # evaluated at the main variables' start values.
 # """
 # function test_subexpr_lifted_start_values(backend)
-#     c = ExaCore(; backend = backend)
+#     c = ExaCore(; backend = backend, concrete = Val(true))
 
 #     # Create variables with specific start values
 #     @add_var(c, x, 5; start = 3.0)
@@ -157,7 +157,7 @@ end
 #     @test all(Array(start_vals) .≈ 9.0)
 
 #     # Also test with parameters
-#     c2 = ExaCore(; backend = backend)
+#     c2 = ExaCore(; backend = backend, concrete = Val(true))
 #     @add_par(c2, θ, [1.0, 2.0, 3.0])
 #     @add_var(c2, x2, 3; start = 2.0)
 
@@ -182,14 +182,14 @@ Test reduced subexpressions (no extra variables/constraints).
 """
 function test_subexpr_reduced_basic(backend)
     # Model WITHOUT subexpressions
-    c1 = ExaCore(; backend = backend)
+    c1 = ExaCore(; backend = backend, concrete = Val(true))
     @add_var(c1, x1, 10; start = 1.0)
     @add_obj(c1, (x1[i]^2 + x1[i + 1]^2)^2 for i in 1:9)
     @add_con(c1, x1[i]^2 - 1 for i in 1:10; lcon = 0.0)
     m1 = ExaModel(c1)
 
     # Model WITH reduced subexpressions
-    c2 = ExaCore(; backend = backend)
+    c2 = ExaCore(; backend = backend, concrete = Val(true))
     @add_var(c2, x2, 10; start = 1.0)
     @add_expr(c2, s, x2[i]^2 for i in 1:10)
     @add_obj(c2, (s[i] + s[i + 1])^2 for i in 1:9)
@@ -214,7 +214,7 @@ end
 # """
 # function test_subexpr_lifted_vs_reduced(backend)
 #     # Model with LIFTED subexpressions
-#     c1 = ExaCore(; backend = backend)
+#     c1 = ExaCore(; backend = backend, concrete = Val(true))
 #     @add_var(c1, x1, 5; start = 2.0, lvar = 0.0)
 #     @add_expr(c1, s1, sqrt(x1[i]) for i in 1:5)  # lifted (default)
 #     @add_obj(c1, (s1[i] - 1)^2 for i in 1:5)
@@ -222,7 +222,7 @@ end
 #     m1 = ExaModel(c1)
 
 #     # Model with REDUCED subexpressions
-#     c2 = ExaCore(; backend = backend)
+#     c2 = ExaCore(; backend = backend, concrete = Val(true))
 #     @add_var(c2, x2, 5; start = 2.0, lvar = 0.0)
 #     @add_expr(c2, s2, sqrt(x2[i]) for i in 1:5)
 #     @add_obj(c2, (s2[i] - 1)^2 for i in 1:5)
@@ -249,7 +249,7 @@ Test multi-dimensional reduced subexpressions.
 function test_subexpr_reduced_multidim(backend)
     T, N = 3, 2
 
-    c = ExaCore(; backend = backend)
+    c = ExaCore(; backend = backend, concrete = Val(true))
     @add_var(c, x, 0:T, 0:N; start = 0.5)
 
     # Reduced 2D subexpression
@@ -281,7 +281,7 @@ end
 Test nested reduced subexpressions.
 """
 function test_subexpr_reduced_nested(backend)
-    c = ExaCore(; backend = backend)
+    c = ExaCore(; backend = backend, concrete = Val(true))
     @add_var(c, x, 5; start = 1.0, lvar = 0.1)
 
     # Nested reduced subexpressions
@@ -308,7 +308,7 @@ end
 # Test mixed lifted and reduced subexpressions.
 # """
 # function test_subexpr_mixed(backend)
-#     c = ExaCore(; backend = backend)
+#     c = ExaCore(; backend = backend, concrete = Val(true))
 #     @add_var(c, x, 5; start = 1.0, lvar = 0.1)
 
 #     # First subexpr is lifted
@@ -340,7 +340,7 @@ This tests the symbolic indexing when ranges don't start at 1.
 function test_subexpr_reduced_0based(backend)
     T = 3
 
-    c = ExaCore(; backend = backend)
+    c = ExaCore(; backend = backend, concrete = Val(true))
     @add_var(c, u, 0:T; start = 1.0)
 
     # Reduced subexpressions with 0-based ranges (like distillation column)
@@ -371,7 +371,7 @@ Test nested reduced subexpressions with 0-based ranges (like distillation VdyA).
 function test_subexpr_reduced_0based_nested(backend)
     T, N = 2, 2
 
-    c = ExaCore(; backend = backend)
+    c = ExaCore(; backend = backend, concrete = Val(true))
     @add_var(c, x, 0:T, 0:N; start = 1.0)
 
     # First reduced subexpr with 0-based range

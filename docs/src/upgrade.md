@@ -33,10 +33,13 @@ model-building call.
 
 In v0.10, `ExaCore` is an immutable struct.  For backward compatibility,
 `ExaCore()` (i.e. `concrete = Val(false)`, the default) returns a
-`LegacyExaCore` — a thin mutable wrapper that accepts both the new functional
-API and the deprecated mutating wrappers (`variable`, `constraint`, …).  A
-deprecation warning is emitted at construction time to signal that this path
-will be removed in a future release.
+`LegacyExaCore` — a thin mutable wrapper that supports the deprecated mutating
+wrappers (`variable`, `parameter`, `objective`, `constraint`, `constraint!`,
+`subexpr`).  A deprecation warning is emitted at construction time to signal
+that this path will be removed in a future release.
+
+Note that `LegacyExaCore` does **not** support the new functional `add_*` API.
+Migrate to `ExaCore(concrete = Val(true))` to use `add_var`, `add_obj`, etc.
 
 To obtain the bare immutable `ExaCore` — required for type-stable code and AOT
 compilation with `juliac` — pass `concrete = Val(true)`:

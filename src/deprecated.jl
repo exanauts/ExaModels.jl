@@ -4,9 +4,8 @@
 # lets callers treat the core as mutable via the old positional API.
 # ExaCore(concrete = Val(true)) bypasses this wrapper and returns an ExaCore directly.
 #
-# All add_* functions are overloaded for LegacyExaCore so that the tuple-destructuring
-# style `c, x = add_var(c, 10)` still works (c is the same LegacyExaCore, mutated).
-# The legacy named wrappers (variable, parameter, …) are also overloaded here.
+# The legacy named wrappers (variable, parameter, …) are defined here for
+# LegacyExaCore and forward to the corresponding add_* functions on the inner ExaCore.
 
 # ---------------------------------------------------------------------------
 # LegacyExaCore struct
@@ -44,6 +43,14 @@ end
 
 Base.show(io::IO, c::LegacyExaCore{T,VT,B}) where {T,VT,B} =
     Base.show(io, getfield(c, :inner))
+
+function ExaModel(c::LegacyExaCore; kwargs...)
+    ExaModel(c.inner; kwargs...)
+end
+
+function set_parameter!(c::LegacyExaCore, param::Parameter, values::AbstractArray)
+    set_parameter!(c.inner, param, values)
+end
 
 # ---------------------------------------------------------------------------
 # Legacy named wrappers (deprecated)

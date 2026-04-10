@@ -12,13 +12,13 @@ function test_conaug_1d(backend)
         N = 9
 
         # Old syntax: add_con!(c, g, i => expr for ...)
-        c1 = ExaCore(; backend)
+        c1 = ExaCore(; backend, concrete = Val(true))
         c1, x1 = add_var(c1, N + 1)
         c1, g1 = add_con(c1, N; lcon = -1.0, ucon = 1.0)
         c1, _  = add_con!(c1, g1, i => x1[i] + x1[i+1] for i = 1:N)
 
         # New syntax: add_con!(c, g[i] += expr for ...)
-        c2 = ExaCore(; backend)
+        c2 = ExaCore(; backend, concrete = Val(true))
         c2, x2 = add_var(c2, N + 1)
         c2, g2 = add_con(c2, N; lcon = -1.0, ucon = 1.0)
         c2, _  = add_con!(c2, g2[i] += x2[i] + x2[i+1] for i = 1:N)
@@ -35,7 +35,7 @@ function test_conaug_1d(backend)
 
     @testset "@add_con! two-argument form (1D)" begin
         N = 9
-        c = ExaCore(; backend)
+        c = ExaCore(; backend, concrete = Val(true))
         @add_var(c, x, N + 1)
         @add_con(c, g, Constant(0) for _ = 1:N; lcon = -1.0, ucon = 1.0)
         @add_con!(c, g[i] += x[i] + x[i+1] for i = 1:N)
@@ -50,7 +50,7 @@ end
 function test_conaug_2d(backend)
     @testset "add_con(core, dims...) — 2D integer dims" begin
         N, M = 3, 4
-        c = ExaCore(; backend)
+        c = ExaCore(; backend, concrete = Val(true))
         c, x = add_var(c, N, M)
         c, g = add_con(c, N, M; lcon = -Inf, ucon = 0.0)
         @test Base.size(g.itr) == (N, M)
@@ -64,7 +64,7 @@ function test_conaug_2d(backend)
     @testset "add_con(core, dims...) — range-based 2D dims" begin
         N, M = 3, 4
         r1, r2 = 1:N, 2:M+1
-        c = ExaCore(; backend)
+        c = ExaCore(; backend, concrete = Val(true))
         c, x = add_var(c, N, M)
         c, g = add_con(c, r1, r2; lcon = -Inf, ucon = 0.0)
         @test Base.size(g.itr) == (length(r1), length(r2))
@@ -79,7 +79,7 @@ function test_conaug_2d(backend)
 
     @testset "add_con(core, dims...) — 3D integer dims" begin
         N, M, K = 2, 3, 4
-        c = ExaCore(; backend)
+        c = ExaCore(; backend, concrete = Val(true))
         c, x = add_var(c, N * M * K)  # need at least one variable
         c, g = add_con(c, N, M, K; lcon = 0.0, ucon = 0.0)
         @test Base.size(g.itr) == (N, M, K)
@@ -93,13 +93,13 @@ function test_conaug_2d(backend)
         itr = [(i, j) for i = 1:N-1, j = 1:M][:]
 
         # Integer dims
-        c1 = ExaCore(; backend)
+        c1 = ExaCore(; backend, concrete = Val(true))
         c1, x1 = add_var(c1, N, M)
         c1, g1 = add_con(c1, N, M; lcon = -1.0, ucon = 1.0)
         c1, _  = add_con!(c1, g1[i, j] += x1[i, j] - x1[i+1, j] for (i, j) in itr)
 
         # Range dims (1:N, 1:M) — same as integer N, M
-        c2 = ExaCore(; backend)
+        c2 = ExaCore(; backend, concrete = Val(true))
         c2, x2 = add_var(c2, N, M)
         c2, g2 = add_con(c2, 1:N, 1:M; lcon = -1.0, ucon = 1.0)
         c2, _  = add_con!(c2, g2[i, j] += x2[i, j] - x2[i+1, j] for (i, j) in itr)

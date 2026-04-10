@@ -633,7 +633,7 @@ function runtests()
             end
 
             @testset "ExaCore variable arrays" begin
-                c = ExaModels.ExaCore()
+                c = ExaModels.ExaCore(concrete = Val(true))
                 @add_var(c, xvar, 2, 0:10, lvar=0, uvar=1)
 
                 v = [xvar[i, 1] for i in 1:2]

@@ -122,7 +122,7 @@ end
 
 function __exa_ac_power_model(backend, data)
 
-    w = ExaModels.ExaCore(backend = backend)
+    w = ExaModels.ExaCore(backend = backend, concrete = Val(true))
 
     @add_var(w, va, length(data.bus);)
 

@@ -6,7 +6,7 @@ import NLPModels
 
 function test_const(backend)
     @testset "Constant basic usage" begin
-        c = ExaCore(; backend)
+        c = ExaCore(; backend, concrete = Val(true))
         N = 5
         @add_var(c, x, N; start = 1.0)
 
@@ -28,7 +28,7 @@ function test_add_var_gen(backend)
         targets = [2.0, 3.0, 4.0, 5.0]
         pars = collect(enumerate(targets))
 
-        c = ExaCore(; backend)
+        c = ExaCore(; backend, concrete = Val(true))
         @add_var(c, y, N; start = 1.0)
 
         # add_var(gen) creates variables x[i] with x[i] == targets[i]
@@ -47,7 +47,7 @@ end
 
 function test_named_var_access(backend)
     @testset "Named variable access via core.name and model.name" begin
-        c = ExaCore(; backend)
+        c = ExaCore(; backend, concrete = Val(true))
         N = 5
         @add_var(c, x, N; start = 0.5)
         @add_obj(c, (x[i] - 1)^2 for i in 1:N)
@@ -61,7 +61,7 @@ function test_named_var_access(backend)
     end
 
     @testset "Named constraint access via model.name" begin
-        c = ExaCore(; backend)
+        c = ExaCore(; backend, concrete = Val(true))
         @add_var(c, x, 4; start = 0.0)
         @add_con(c, g, x[i] + x[i+1] for i in 1:3)
 
@@ -72,7 +72,7 @@ function test_named_var_access(backend)
     end
 
     @testset "Named objective access via model.name" begin
-        c = ExaCore(; backend)
+        c = ExaCore(; backend, concrete = Val(true))
         @add_var(c, x, 3; start = 1.0)
         @add_obj(c, f, x[i]^2 for i in 1:3)
 

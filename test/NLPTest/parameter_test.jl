@@ -25,7 +25,7 @@ function exa_luksan_vlcek_parametric(
     use_parameters = true,
     param_values = nothing,
 )
-    c = ExaCore(backend = backend)
+    c = ExaCore(backend = backend, concrete = Val(true))
     @add_var(c, x, N, M; start = [luksan_vlcek_x0(i) for i = 1:N, j = 1:M])
 
     if use_parameters
@@ -78,7 +78,7 @@ function exa_ac_power_model_parametric(backend, filename; use_parameters = true)
     data = parse_ac_power_data(filename, backend)
 
 
-    w = ExaModels.ExaCore(backend = backend)
+    w = ExaModels.ExaCore(backend = backend, concrete = Val(true))
 
     @add_par(w, pd, map(b->b.pd, data.bus))
     @add_par(w, qd, map(b->b.qd, data.bus))
@@ -225,7 +225,7 @@ function test_function_evaluations(model1, core1, model2; tol = sol_tolerance(el
 end
 
 function test_real_only()
-    c = ExaModels.ExaCore()
+    c = ExaModels.ExaCore(concrete = Val(true))
     @add_var(c, x, 10)
 
     @add_con(c, c1, 1.0 for i = 1:2)
@@ -243,7 +243,7 @@ function test_real_only()
 end
 
 function test_param_only()
-    c = ExaModels.ExaCore()
+    c = ExaModels.ExaCore(concrete = Val(true))
     @add_var(c, x, 10)
     θval = rand(2)
     @add_par(c, θ, θval)
