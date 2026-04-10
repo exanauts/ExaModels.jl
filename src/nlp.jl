@@ -184,6 +184,18 @@ An ExaCore
 
   number of objective patterns: .... 0
   number of constraint patterns: ... 0
+
+julia> using CUDA
+
+julia> c = ExaCore(Float32; backend = CUDABackend())
+An ExaCore
+
+  Float type: ...................... Float32
+  Array type: ...................... CUDA.CuArray{Float32, 1, CUDA.DeviceMemory}
+  Backend: ......................... CUDA.CUDAKernels.CUDABackend
+
+  number of objective patterns: .... 0
+  number of constraint patterns: ... 0
 ```
 """
 struct ExaCore{T,VT<:AbstractVector{T}, B, S, V, P, O, C, R} <: AbstractExaCore{T,VT,B,S}
@@ -348,7 +360,28 @@ julia> c, x = add_var(c, 1:10);               # create variables
 
 julia> c, _ = add_obj(c, x[i]^2 for i in 1:10); # set objective function
 
-julia> m = ExaModel(c);                        # create an ExaModel object
+julia> m = ExaModel(c)                          # create an ExaModel object
+An ExaModel{Float64, Vector{Float64}, ...}
+
+  Problem name: Generic
+   All variables: ████████████████████ 10     All constraints: ⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅ 0
+            free: ████████████████████ 10                free: ⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅ 0
+           lower: ⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅ 0                lower: ⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅ 0
+           upper: ⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅ 0                upper: ⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅ 0
+         low/upp: ⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅ 0              low/upp: ⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅ 0
+           fixed: ⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅ 0                fixed: ⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅ 0
+          infeas: ⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅ 0               infeas: ⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅ 0
+            nnzh: ( 81.82% sparsity)   10              linear: ⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅ 0
+                                                    nonlinear: ⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅ 0
+                                                         nnzj: (------% sparsity)
+                                                     lin_nnzj: (------% sparsity)
+                                                     nln_nnzj: (------% sparsity)
+
+julia> using NLPModelsIpopt
+
+julia> result = ipopt(m; print_level=0)    # solve the problem
+"Execution stats: first-order stationary"
+
 ```
 """
 function ExaModel(c::C; prod = false, kwargs...) where {C<:ExaCore}
@@ -1314,7 +1347,7 @@ Returns the primal solution values for variable block `x` associated with `resul
 obtained by solving the model. The returned array has the same shape as `x`.
 
 ## Example
-```julia
+```jldoctest
 julia> using ExaModels, NLPModelsIpopt
 
 julia> c = ExaCore(concrete = Val(true));
@@ -1351,7 +1384,7 @@ A nonzero value indicates that the lower bound is active at the solution; the
 magnitude measures how much the objective would improve if that bound were relaxed.
 
 ## Example
-```julia
+```jldoctest
 julia> using ExaModels, NLPModelsIpopt
 
 julia> c = ExaCore(concrete = Val(true));
@@ -1388,7 +1421,7 @@ A nonzero value indicates that the upper bound is active at the solution; the
 magnitude measures how much the objective would improve if that bound were relaxed.
 
 ## Example
-```julia
+```jldoctest
 julia> using ExaModels, NLPModelsIpopt
 
 julia> c = ExaCore(concrete = Val(true));
@@ -1423,7 +1456,7 @@ solution(result::SolverCore.AbstractExecutionStats, x::Var) = result.solution[x.
 Returns the multipliers for constraints `y` associated with `result`, obtained by solving the model.
 
 ## Example
-```julia
+```jldoctest
 julia> using ExaModels, NLPModelsIpopt
 
 julia> c = ExaCore(concrete = Val(true));
