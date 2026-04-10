@@ -44,7 +44,7 @@ function distillation_column_model(T = 3; backend = nothing)
     itr1 = ExaModels.convert_array(collect(Iterators.product(1:T, (FT+1):NT)), backend)
     itr2 = ExaModels.convert_array(collect(Iterators.product(0:T, 0:(NT+1))), backend)
 
-    c = ExaCore(; backend)
+    c = ExaCore(; backend, concrete = Val(true))
 
     @add_var(c, xA, 0:T, 0:(NT+1); start = 0.5)
     @add_var(c, yA, 0:T, 0:(NT+1); start = 0.5)
@@ -116,7 +116,7 @@ function distillation_column_model_with_subexpr(T = 3; backend = nothing)
     xAf = 0.5
     xA0s = ExaModels.convert_array([(i, 0.5) for i in 0:(NT + 1)], backend)
 
-    c = ExaCore(; backend)
+    c = ExaCore(; backend, concrete = Val(true))
 
     ## Decision variables
     @add_var(c, xA, 0:T, 0:(NT + 1); start = 0.5)
