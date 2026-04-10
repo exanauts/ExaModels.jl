@@ -634,51 +634,6 @@ end
 @inline add_refs(refs, ::Nothing, var) = refs
 @inline add_refs(refs, ::Val{N}, var) where {N} = (; refs..., N => var)
 
-# ── Positional-name forwarding methods ──────────────────────────────────────
-# These bypass Core.kwcall for the `name` keyword, which juliac --trim=safe
-# struggles to resolve when the ExaCore type is deeply parametric.
-# The @var / @obj / @con / @par / @expr macros emit calls to these methods
-# so that `name::Val` is a positional argument, not a keyword argument.
-# Each method calls the underlying function WITHOUT name (keeping name out of
-# kwcall), then patches `refs` on the returned ExaCore.
-
-@inline function add_var(c::C, ns_and_name::Val; kwargs...) where {T, C<:ExaCore{T}}
-    c2, v = add_var(c; kwargs...)
-    return (ExaCore(c2; refs = add_refs(c2.refs, ns_and_name, v)), v)
-end
-@inline function add_var(c::C, n1, name::Val; kwargs...) where {T, C<:ExaCore{T}}
-    c2, v = add_var(c, n1; kwargs...)
-    return (ExaCore(c2; refs = add_refs(c2.refs, name, v)), v)
-end
-@inline function add_var(c::C, n1, n2, name::Val; kwargs...) where {T, C<:ExaCore{T}}
-    c2, v = add_var(c, n1, n2; kwargs...)
-    return (ExaCore(c2; refs = add_refs(c2.refs, name, v)), v)
-end
-@inline function add_var(c::C, n1, n2, n3, name::Val; kwargs...) where {T, C<:ExaCore{T}}
-    c2, v = add_var(c, n1, n2, n3; kwargs...)
-    return (ExaCore(c2; refs = add_refs(c2.refs, name, v)), v)
-end
-@inline function add_var(c::C, gen::Base.Generator, name::Val; kwargs...) where {T, C<:ExaCore{T}}
-    c2, v = add_var(c, gen; kwargs...)
-    return (ExaCore(c2; refs = add_refs(c2.refs, name, v)), v)
-end
-@inline function add_par(c::C, start::AbstractArray, name::Val) where {T, C<:ExaCore{T}}
-    c2, p = add_par(c, start)
-    return (ExaCore(c2; refs = add_refs(c2.refs, name, p)), p)
-end
-@inline function add_obj(c::C, gen::Base.Generator, name::Val) where {T, C<:ExaCore{T}}
-    c2, obj = add_obj(c, gen)
-    return (ExaCore(c2; refs = add_refs(c2.refs, name, obj)), obj)
-end
-@inline function add_obj(c::C, expr::N, name::Val) where {T, C<:ExaCore{T}, N<:AbstractNode}
-    c2, obj = add_obj(c, expr)
-    return (ExaCore(c2; refs = add_refs(c2.refs, name, obj)), obj)
-end
-@inline function add_obj(c::C, expr::N, pars, name::Val) where {T, C<:ExaCore{T}, N<:AbstractNode}
-    c2, obj = add_obj(c, expr, pars)
-    return (ExaCore(c2; refs = add_refs(c2.refs, name, obj)), obj)
-end
-
 
 """
     add_par(core, start::AbstractArray; name = nothing)
@@ -1000,24 +955,6 @@ function add_con(
 end
 
 
-# Positional-name forwarding for add_con — avoids Core.kwcall for `name`.
-@inline function add_con(c::C, gen::Base.Generator, name::Val; kwargs...) where {T, C<:ExaCore{T}}
-    c2, con = add_con(c, gen; kwargs...)
-    return (ExaCore(c2; refs = add_refs(c2.refs, name, con)), con)
-end
-@inline function add_con(c::C, expr::N, name::Val; kwargs...) where {T, C<:ExaCore{T}, N<:AbstractNode}
-    c2, con = add_con(c, expr; kwargs...)
-    return (ExaCore(c2; refs = add_refs(c2.refs, name, con)), con)
-end
-@inline function add_con(c::C, expr::N, pars, name::Val; kwargs...) where {T, C<:ExaCore{T}, N<:AbstractNode}
-    c2, con = add_con(c, expr, pars; kwargs...)
-    return (ExaCore(c2; refs = add_refs(c2.refs, name, con)), con)
-end
-@inline function add_con(c::C, n::Integer, name::Val; kwargs...) where {T, C<:ExaCore{T}}
-    c2, con = add_con(c, n; kwargs...)
-    return (ExaCore(c2; refs = add_refs(c2.refs, name, con)), con)
-end
-
 function _add_constraint(c::C, f, pars, start, lcon, ucon, name = nothing; kwargs...) where {C<:ExaCore}
     nitr = length(pars)
     o = c.ncon
@@ -1177,12 +1114,6 @@ function add_expr(c::C, gen::Base.Generator; name = nothing) where {T, C <: ExaC
     return (ExaCore(c; refs = add_refs(c.refs, name, ex)), ex)
 end
 
-# Positional-name forwarding for add_expr — avoids Core.kwcall for `name`.
-@inline function add_expr(c::C, gen::Base.Generator, name::Val) where {T, C <: ExaCore{T}}
-    c2, ex = add_expr(c, gen)
-    return (ExaCore(c2; refs = add_refs(c2.refs, name, ex)), ex)
-end
-
 function jac_structure!(m::AbstractExaModel{T}, rows::AbstractVector, cols::AbstractVector) where T
     _jac_structure!(T, m.cons, rows, cols)
     return rows, cols
@@ -1218,14 +1149,13 @@ end
 
 @inline function _obj((obj, objs...), x, θ)
     s = _obj(objs, x, θ)
-    # Use @simd loop instead of sum(gen) — Base.foldl_impl in the generator
-    # form creates MappingRF types that juliac --trim=safe cannot resolve.
-    @simd for k in eachindex(obj.itr)
-        @inbounds s += obj.f(obj.itr[k], x, θ)
+    for i in obj.itr
+        s += obj.f(i, x, θ)
     end
-    s
+    return s
 end
-_obj(obj::Tuple{}, x, θ) = zero(eltype(x))
+
+@inline _obj(obj::Tuple{}, x, θ) = zero(eltype(x))
 
 function cons_nln!(m::AbstractExaModel, x::AbstractVector, g::AbstractVector)
     fill!(g, zero(eltype(g)))
@@ -1604,8 +1534,8 @@ macro var(exs...)
             local _var
             $(esc(core)), _var = add_var(
                 $(esc(core)),
-                $(map(esc, args)...),
-                $(Val(name));
+                $(map(esc, args)...);
+                name = $(Val(name)),
                 $(map(esc, kwargs.args)...),
             )
             $(esc(name)) = _var
@@ -1654,8 +1584,8 @@ macro par(exs...)
             local _par
             $(esc(core)), _par = add_par(
                 $(esc(core)),
-                $(map(esc, args)...),
-                $(Val(name));
+                $(map(esc, args)...);
+                name = $(Val(name)),
                 $(map(esc, kwargs.args)...),
             )
             $(esc(name)) = _par
@@ -1704,8 +1634,8 @@ macro obj(exs...)
             local _obj
             $(esc(core)), _obj = add_obj(
                 $(esc(core)),
-                $(map(esc, args)...),
-                $(Val(name));
+                $(map(esc, args)...);
+                name = $(Val(name)),
                 $(map(esc, kwargs.args)...),
             )
             $(esc(name)) = _obj
@@ -1756,8 +1686,8 @@ macro con(exs...)
             local _con
             $(esc(core)), _con = add_con(
                 $(esc(core)),
-                $(map(esc, args)...),
-                $(Val(name));
+                $(map(esc, args)...);
+                name = $(Val(name)),
                 $(map(esc, kwargs.args)...),
             )
             $(esc(name)) = _con
@@ -1851,8 +1781,8 @@ macro expr(exs...)
             local _sub
             $(esc(core)), _sub = add_expr(
                 $(esc(core)),
-                $(map(esc, args)...),
-                $(Val(name));
+                $(map(esc, args)...);
+                name = $(Val(name)),
                 $(map(esc, kwargs.args)...),
             )
             $(esc(name)) = _sub
