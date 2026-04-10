@@ -21,7 +21,7 @@ legacy mutating API (`variable`, `constraint`, etc.).
 `ExaCore(concrete = Val(true))` to obtain the bare immutable `ExaCore`
 required for AOT compilation.
 """
-mutable struct LegacyExaCore{T, VT<:AbstractVector{T}, B, S} <: AbstractExaCore{T,VT,B,S}
+mutable struct LegacyExaCore{T, VT <: AbstractVector{T}, B, S} <: AbstractExaCore{T,VT,B,S}
     inner::Any  # ExaCore{T,VT,B,S,...} — type erased so the tuple type params can grow
 end
 
@@ -29,7 +29,7 @@ end
 @inline function _make_exacore(::Val{false}, ::Type{T}, backend; kwargs...) where {T}
     @warn "`ExaCore()` is deprecated, and will be removed in v0.11. Use `ExaCore(concrete = Val(true))` for the immutable ExaCore. The default behavior for `ExaCore()` will change to return the immutable ExaCore in v0.11."
     inner = _exa_core(; x0 = convert_array(zeros(T, 0), backend), backend, kwargs...)
-    LegacyExaCore{T, typeof(inner.x0), typeof(backend), typeof(inner.tags)}(inner)
+    return LegacyExaCore{T, typeof(inner.x0), typeof(backend), typeof(inner.tags)}(inner)
 end
 
 # ---------------------------------------------------------------------------
@@ -41,15 +41,16 @@ function Base.getproperty(c::LegacyExaCore, s::Symbol)
     return getproperty(getfield(c, :inner), s)
 end
 
-Base.show(io::IO, c::LegacyExaCore{T,VT,B}) where {T,VT,B} =
-    Base.show(io, getfield(c, :inner))
+function Base.show(io::IO, c::LegacyExaCore{T,VT,B}) where {T,VT,B}
+    return Base.show(io, getfield(c, :inner))
+end
 
 function ExaModel(c::LegacyExaCore; kwargs...)
-    ExaModel(c.inner; kwargs...)
+    return ExaModel(c.inner; kwargs...)
 end
 
 function set_parameter!(c::LegacyExaCore, param::Parameter, values::AbstractArray)
-    set_parameter!(c.inner, param, values)
+    return set_parameter!(c.inner, param, values)
 end
 
 # ---------------------------------------------------------------------------
