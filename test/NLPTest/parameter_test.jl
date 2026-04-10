@@ -26,23 +26,23 @@ function exa_luksan_vlcek_parametric(
     param_values = nothing,
 )
     c = ExaCore(backend = backend)
-    @add_variable(c, x, N, M; start = [luksan_vlcek_x0(i) for i = 1:N, j = 1:M])
+    @add_var(c, x, N, M; start = [luksan_vlcek_x0(i) for i = 1:N, j = 1:M])
 
     if use_parameters
-        @add_parameter(c, θ, zeros(7))
+        @add_par(c, θ, zeros(7))
         if !isnothing(param_values)
             set_parameter!(c, θ, param_values)
         else
             set_parameter!(c, θ, [100.0, 1.0, 3.0, 2.0, 5.0, 4.0, 3.0])
         end
 
-        @add_constraint(c, s, luksan_vlcek_con1_param(x, θ, i, j) for i = 1:(N-2), j = 1:M)
-        @add_constraint!(
+        @add_con(c, s, luksan_vlcek_con1_param(x, θ, i, j) for i = 1:(N-2), j = 1:M)
+        @add_con!(
             c,
             s,
             (i, j) => luksan_vlcek_con2_param(x, θ, i, j) for i = 1:(N-2), j = 1:M
         )
-        @add_objective(c, luksan_vlcek_obj_param(x, θ, i, j) for i = 2:N, j = 1:M)
+        @add_obj(c, luksan_vlcek_obj_param(x, θ, i, j) for i = 2:N, j = 1:M)
 
         return ExaModel(c; prod = true), c, (x, θ), (s,)
     else
@@ -65,9 +65,9 @@ function exa_luksan_vlcek_parametric(
                 sin(x[i+1, j] - x[i+2, j])sin(x[i+1, j] + x[i+2, j]) + p6 * x[i+1, j] -
                 x[i, j]exp(x[i, j] - x[i+1, j]) - p7
 
-        @add_constraint(c, s, con1_func(x, i, j) for i = 1:(N-2), j = 1:M)
-        @add_constraint!(c, s, (i, j) => con2_func(x, i, j) for i = 1:(N-2), j = 1:M)
-        @add_objective(c, obj_func(x, i, j) for i = 2:N, j = 1:M)
+        @add_con(c, s, con1_func(x, i, j) for i = 1:(N-2), j = 1:M)
+        @add_con!(c, s, (i, j) => con2_func(x, i, j) for i = 1:(N-2), j = 1:M)
+        @add_obj(c, obj_func(x, i, j) for i = 2:N, j = 1:M)
 
         return ExaModel(c; prod = true), c, (x,), (s,)
     end
@@ -80,12 +80,12 @@ function exa_ac_power_model_parametric(backend, filename; use_parameters = true)
 
     w = ExaModels.ExaCore(backend = backend)
 
-    @add_parameter(w, pd, map(b->b.pd, data.bus))
-    @add_parameter(w, qd, map(b->b.qd, data.bus))
+    @add_par(w, pd, map(b->b.pd, data.bus))
+    @add_par(w, qd, map(b->b.qd, data.bus))
 
-    @add_variable(w, va, length(data.bus);)
+    @add_var(w, va, length(data.bus);)
 
-    @add_variable(
+    @add_var(
         w,
         vm,
         length(data.bus);
@@ -93,24 +93,24 @@ function exa_ac_power_model_parametric(backend, filename; use_parameters = true)
         lvar = data.vmin,
         uvar = data.vmax,
     )
-    @add_variable(w, pg, length(data.gen); lvar = data.pmin, uvar = data.pmax)
+    @add_var(w, pg, length(data.gen); lvar = data.pmin, uvar = data.pmax)
 
-    @add_variable(w, qg, length(data.gen); lvar = data.qmin, uvar = data.qmax)
+    @add_var(w, qg, length(data.gen); lvar = data.qmin, uvar = data.qmax)
 
-    @add_variable(w, p, length(data.arc); lvar = -data.rate_a, uvar = data.rate_a)
+    @add_var(w, p, length(data.arc); lvar = -data.rate_a, uvar = data.rate_a)
 
-    @add_variable(w, q, length(data.arc); lvar = -data.rate_a, uvar = data.rate_a)
+    @add_var(w, q, length(data.arc); lvar = -data.rate_a, uvar = data.rate_a)
 
-    @add_parameter(w, cost2, map(g->g.cost2, data.gen))
+    @add_par(w, cost2, map(g->g.cost2, data.gen))
 
-    o = @add_objective(
+    o = @add_obj(
         w,
         g.cost1 * pg[g.i]^2 + cost2[g.i] * pg[g.i] + g.cost3 for g in data.gen
     )
 
-    @add_constraint(w, c1, va[i] for i in data.ref_buses)
+    @add_con(w, c1, va[i] for i in data.ref_buses)
 
-    @add_constraint(
+    @add_con(
         w,
         c2,
         p[b.f_idx] - b.c5 * vm[b.f_bus]^2 -
@@ -119,7 +119,7 @@ function exa_ac_power_model_parametric(backend, filename; use_parameters = true)
         b in data.branch
     )
 
-    @add_constraint(
+    @add_con(
         w,
         c3,
         q[b.f_idx] +
@@ -129,7 +129,7 @@ function exa_ac_power_model_parametric(backend, filename; use_parameters = true)
         b in data.branch
     )
 
-    @add_constraint(
+    @add_con(
         w,
         c4,
         p[b.t_idx] - b.c7 * vm[b.t_bus]^2 -
@@ -138,7 +138,7 @@ function exa_ac_power_model_parametric(backend, filename; use_parameters = true)
         b in data.branch
     )
 
-    @add_constraint(
+    @add_con(
         w,
         c5,
         q[b.t_idx] +
@@ -148,38 +148,38 @@ function exa_ac_power_model_parametric(backend, filename; use_parameters = true)
         b in data.branch
     )
 
-    @add_constraint(
+    @add_con(
         w,
         c6,
         va[b.f_bus] - va[b.t_bus] for b in data.branch;
         lcon = data.angmin,
         ucon = data.angmax,
     )
-    @add_constraint(
+    @add_con(
         w,
         c7,
         p[b.f_idx]^2 + q[b.f_idx]^2 - b.rate_a_sq for b in data.branch;
         lcon = fill!(similar(data.branch, eltype(w.x0), length(data.branch)), eltype(w.x0)(-Inf)),
     )
-    @add_constraint(
+    @add_con(
         w,
         c8,
         p[b.t_idx]^2 + q[b.t_idx]^2 - b.rate_a_sq for b in data.branch;
         lcon = fill!(similar(data.branch, eltype(w.x0), length(data.branch)), eltype(w.x0)(-Inf)),
     )
 
-    @add_parameter(w, bs, map(b->b.bs, data.bus))
-    @add_parameter(w, gs, map(b->b.gs, data.bus))
+    @add_par(w, bs, map(b->b.bs, data.bus))
+    @add_par(w, gs, map(b->b.gs, data.bus))
 
-    @add_constraint(w, c9, pd[b.i] + gs[b.i] * vm[b.i]^2 for b in data.bus)
+    @add_con(w, c9, pd[b.i] + gs[b.i] * vm[b.i]^2 for b in data.bus)
 
-    @add_constraint(w, c10, qd[b.i] - bs[b.i] * vm[b.i]^2 for b in data.bus)
+    @add_con(w, c10, qd[b.i] - bs[b.i] * vm[b.i]^2 for b in data.bus)
 
-    c11 = @add_constraint!(w, c9, a.bus => p[a.i] for a in data.arc)
-    c12 = @add_constraint!(w, c10, a.bus => q[a.i] for a in data.arc)
+    c11 = @add_con!(w, c9, a.bus => p[a.i] for a in data.arc)
+    c12 = @add_con!(w, c10, a.bus => q[a.i] for a in data.arc)
 
-    c13 = @add_constraint!(w, c9, g.bus => -pg[g.i] for g in data.gen)
-    c14 = @add_constraint!(w, c10, g.bus => -qg[g.i] for g in data.gen)
+    c13 = @add_con!(w, c9, g.bus => -pg[g.i] for g in data.gen)
+    c14 = @add_con!(w, c10, g.bus => -qg[g.i] for g in data.gen)
 
     return ExaModels.ExaModel(w; prod = true),
     w,
@@ -226,11 +226,11 @@ end
 
 function test_real_only()
     c = ExaModels.ExaCore()
-    @add_variable(c, x, 10)
+    @add_var(c, x, 10)
 
-    @add_constraint(c, c1, 1.0 for i = 1:2)
-    o = @add_objective(c, 1.0 for i = 1:2)
-    @add_constraint!(c, c1, j => -(x[i]-1)^2 for i = 1:10, j = 1:2)
+    @add_con(c, c1, 1.0 for i = 1:2)
+    o = @add_obj(c, 1.0 for i = 1:2)
+    @add_con!(c, c1, j => -(x[i]-1)^2 for i = 1:10, j = 1:2)
     em = ExaModels.ExaModel(c)
 
     xval = rand(10)
@@ -244,14 +244,14 @@ end
 
 function test_param_only()
     c = ExaModels.ExaCore()
-    @add_variable(c, x, 10)
+    @add_var(c, x, 10)
     θval = rand(2)
-    @add_parameter(c, θ, θval)
+    @add_par(c, θ, θval)
 
-    @add_constraint(c, c1, θ[i] for i = 1:2)
-    o = @add_objective(c, θ[i] for i = 1:2)
+    @add_con(c, c1, θ[i] for i = 1:2)
+    o = @add_obj(c, θ[i] for i = 1:2)
 
-    @add_constraint!(c, c1, j => -(x[i]-1)^2 for i = 1:10, j = 1:2)
+    @add_con!(c, c1, j => -(x[i]-1)^2 for i = 1:10, j = 1:2)
     em = ExaModels.ExaModel(c)
 
     xval = rand(10)

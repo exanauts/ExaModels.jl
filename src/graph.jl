@@ -427,7 +427,7 @@ end
 
 A node representing the sum of a tuple of child nodes.
 
-Constructed by [`exa_sum`](@ref).  Within `@add_objective`, `@add_constraint`, and `@add_expression` macros,
+Constructed by [`exa_sum`](@ref).  Within `@add_obj`, `@add_con`, and `@add_expr` macros,
 `sum(body for k in range)` is automatically rewritten to
 `exa_sum(k -> body, Val(range))` with the `Val` hoisted outside the generator
 closure for type stability under `juliac --trim=safe`.

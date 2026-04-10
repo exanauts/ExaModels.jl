@@ -7,22 +7,22 @@ Compares a model with subexpressions to an equivalent model without.
 function test_subexpr_basic(backend)
     # Model WITHOUT subexpressions
     c1 = ExaCore(; backend = backend)
-    @add_variable(c1, x1, 10; start = 1.0)
+    @add_var(c1, x1, 10; start = 1.0)
     # Objective: sum of (x[i]^2 + x[i+1]^2)^2
-    @add_objective(c1, (x1[i]^2 + x1[i + 1]^2)^2 for i in 1:9)
+    @add_obj(c1, (x1[i]^2 + x1[i + 1]^2)^2 for i in 1:9)
     # Constraint: x[i]^2 - 1 >= 0
-    @add_constraint(c1, x1[i]^2 - 1 for i in 1:10; lcon = 0.0)
+    @add_con(c1, x1[i]^2 - 1 for i in 1:10; lcon = 0.0)
     m1 = ExaModel(c1)
 
     # Model WITH subexpressions
     c2 = ExaCore(; backend = backend)
-    @add_variable(c2, x2, 10; start = 1.0)
+    @add_var(c2, x2, 10; start = 1.0)
     # Create subexpression for x[i]^2
-    @add_expression(c2, s, x2[i]^2 for i in 1:10)
+    @add_expr(c2, s, x2[i]^2 for i in 1:10)
     # Objective using subexpression
-    @add_objective(c2, (s[i] + s[i + 1])^2 for i in 1:9)
+    @add_obj(c2, (s[i] + s[i + 1])^2 for i in 1:9)
     # Constraint using subexpression
-    @add_constraint(c2, s[i] - 1 for i in 1:10; lcon = 0.0)
+    @add_con(c2, s[i] - 1 for i in 1:10; lcon = 0.0)
     m2 = ExaModel(c2)
 
     # The model with subexpressions has more variables and constraints
@@ -50,21 +50,21 @@ function test_subexpr_multidim(backend)
     T, N = 5, 4
 
     c = ExaCore(; backend = backend)
-    @add_variable(c, x, 0:T, 0:N; start = 0.5)
+    @add_var(c, x, 0:T, 0:N; start = 0.5)
 
     # Create 2D subexpression with Cartesian product - dimensions inferred automatically
-    @add_expression(c, dx, x[t, i] - x[t - 1, i] for t in 1:T, i in 1:N)
+    @add_expr(c, dx, x[t, i] - x[t - 1, i] for t in 1:T, i in 1:N)
 
     # Test that subexpression has correct dimensions (inferred from Cartesian product)
     @test dx.size == (1:T, 1:N)
     @test dx.length == T * N
 
     # Use in objective
-    @add_objective(c, dx[t, i]^2 for t in 1:T, i in 1:N)
+    @add_obj(c, dx[t, i]^2 for t in 1:T, i in 1:N)
 
     # Add some constraints to make it non-trivial
-    @add_constraint(c, x[0, i] - 0.0 for i in 0:N)  # Initial condition
-    @add_constraint(c, x[T, i] - 1.0 for i in 0:N)  # Final condition
+    @add_con(c, x[0, i] - 0.0 for i in 0:N)  # Initial condition
+    @add_con(c, x[T, i] - 1.0 for i in 0:N)  # Final condition
 
     m = ExaModel(c)
 
@@ -90,17 +90,17 @@ function test_subexpr_auto_dims(backend)
     T, N = 3, 2
 
     c = ExaCore(; backend = backend)
-    @add_variable(c, x, 1:T, 1:N; start = 1.0)
+    @add_var(c, x, 1:T, 1:N; start = 1.0)
 
     # Subexpr with Cartesian product syntax - dimensions inferred automatically
-    @add_expression(c, s, x[t, i]^2 + t * i for t in 1:T, i in 1:N)
+    @add_expr(c, s, x[t, i]^2 + t * i for t in 1:T, i in 1:N)
 
     # Check dimensions were inferred
     @test s.size == (1:T, 1:N)
     @test s.length == T * N
 
     # Use in objective
-    @add_objective(c, s[t, i] for t in 1:T, i in 1:N)
+    @add_obj(c, s[t, i] for t in 1:T, i in 1:N)
 
     m = ExaModel(c)
 
@@ -114,16 +114,16 @@ Test that subexpressions can be used in both objectives and constraints.
 """
 function test_subexpr_in_obj_and_con(backend)
     c = ExaCore(; backend = backend)
-    @add_variable(c, x, 5; start = 2.0, lvar = 0.0)
+    @add_var(c, x, 5; start = 2.0, lvar = 0.0)
 
     # Subexpression
-    @add_expression(c, s, sqrt(x[i]) for i in 1:5)
+    @add_expr(c, s, sqrt(x[i]) for i in 1:5)
 
     # Use in objective
-    @add_objective(c, (s[i] - 1)^2 for i in 1:5)
+    @add_obj(c, (s[i] - 1)^2 for i in 1:5)
 
     # Use in constraint
-    @add_constraint(c, s[i] + s[i + 1] for i in 1:4; lcon = 1.0, ucon = 3.0)
+    @add_con(c, s[i] + s[i + 1] for i in 1:4; lcon = 1.0, ucon = 3.0)
 
     m = ExaModel(c)
 
@@ -145,11 +145,11 @@ end
 #     c = ExaCore(; backend = backend)
 
 #     # Create variables with specific start values
-#     @add_variable(c, x, 5; start = 3.0)
+#     @add_var(c, x, 5; start = 3.0)
 
 #     # Create lifted subexpression s[i] = x[i]^2
 #     # With x start = 3.0, the subexpr auxiliary vars should start at 9.0
-#     @add_expression(c, s, x[i]^2 for i in 1:5)
+#     @add_expr(c, s, x[i]^2 for i in 1:5)
 
 #     # Check that the subexpression auxiliary variables have computed start values
 #     # The start values are stored in c.x0 at the subexpr's offset
@@ -158,19 +158,19 @@ end
 
 #     # Also test with parameters
 #     c2 = ExaCore(; backend = backend)
-#     @add_parameter(c2, θ, [1.0, 2.0, 3.0])
-#     @add_variable(c2, x2, 3; start = 2.0)
+#     @add_par(c2, θ, [1.0, 2.0, 3.0])
+#     @add_var(c2, x2, 3; start = 2.0)
 
 #     # Subexpression uses both x and θ: s[i] = x[i] * θ[i]
 #     # With x start = 2.0 and θ = [1,2,3], expect start = [2,4,6]
-#     @add_expression(c2, s2, x2[i] * θ[i] for i in 1:3)
+#     @add_expr(c2, s2, x2[i] * θ[i] for i in 1:3)
 
 #     start_vals2 = c2.x0[(s2.offset+1):(s2.offset+s2.length)]
 #     @test Array(start_vals2) ≈ [2.0, 4.0, 6.0]
 
 #     # Test that the model solves correctly with these start values
-#     @add_objective(c2, (x2[i] - s2[i])^2 for i in 1:3)
-#     @add_constraint(c2, x2[i] - 1 for i in 1:3; lcon = 0.0, ucon = Inf)
+#     @add_obj(c2, (x2[i] - s2[i])^2 for i in 1:3)
+#     @add_con(c2, x2[i] - 1 for i in 1:3; lcon = 0.0, ucon = Inf)
 
 #     m = ExaModel(c2)
 #     result = NLPModelsIpopt.ipopt(WrapperNLPModel(m); print_level = 0, tol = solver_tolerance(eltype(c2.x0)))
@@ -183,17 +183,17 @@ Test reduced subexpressions (no extra variables/constraints).
 function test_subexpr_reduced_basic(backend)
     # Model WITHOUT subexpressions
     c1 = ExaCore(; backend = backend)
-    @add_variable(c1, x1, 10; start = 1.0)
-    @add_objective(c1, (x1[i]^2 + x1[i + 1]^2)^2 for i in 1:9)
-    @add_constraint(c1, x1[i]^2 - 1 for i in 1:10; lcon = 0.0)
+    @add_var(c1, x1, 10; start = 1.0)
+    @add_obj(c1, (x1[i]^2 + x1[i + 1]^2)^2 for i in 1:9)
+    @add_con(c1, x1[i]^2 - 1 for i in 1:10; lcon = 0.0)
     m1 = ExaModel(c1)
 
     # Model WITH reduced subexpressions
     c2 = ExaCore(; backend = backend)
-    @add_variable(c2, x2, 10; start = 1.0)
-    @add_expression(c2, s, x2[i]^2 for i in 1:10)
-    @add_objective(c2, (s[i] + s[i + 1])^2 for i in 1:9)
-    @add_constraint(c2, s[i] - 1 for i in 1:10; lcon = 0.0)
+    @add_var(c2, x2, 10; start = 1.0)
+    @add_expr(c2, s, x2[i]^2 for i in 1:10)
+    @add_obj(c2, (s[i] + s[i + 1])^2 for i in 1:9)
+    @add_con(c2, s[i] - 1 for i in 1:10; lcon = 0.0)
     m2 = ExaModel(c2)
 
     # Reduced subexpressions should NOT add variables or constraints
@@ -215,18 +215,18 @@ end
 # function test_subexpr_lifted_vs_reduced(backend)
 #     # Model with LIFTED subexpressions
 #     c1 = ExaCore(; backend = backend)
-#     @add_variable(c1, x1, 5; start = 2.0, lvar = 0.0)
-#     @add_expression(c1, s1, sqrt(x1[i]) for i in 1:5)  # lifted (default)
-#     @add_objective(c1, (s1[i] - 1)^2 for i in 1:5)
-#     @add_constraint(c1, s1[i] + s1[i + 1] for i in 1:4; lcon = 1.0, ucon = 3.0)
+#     @add_var(c1, x1, 5; start = 2.0, lvar = 0.0)
+#     @add_expr(c1, s1, sqrt(x1[i]) for i in 1:5)  # lifted (default)
+#     @add_obj(c1, (s1[i] - 1)^2 for i in 1:5)
+#     @add_con(c1, s1[i] + s1[i + 1] for i in 1:4; lcon = 1.0, ucon = 3.0)
 #     m1 = ExaModel(c1)
 
 #     # Model with REDUCED subexpressions
 #     c2 = ExaCore(; backend = backend)
-#     @add_variable(c2, x2, 5; start = 2.0, lvar = 0.0)
-#     @add_expression(c2, s2, sqrt(x2[i]) for i in 1:5)
-#     @add_objective(c2, (s2[i] - 1)^2 for i in 1:5)
-#     @add_constraint(c2, s2[i] + s2[i + 1] for i in 1:4; lcon = 1.0, ucon = 3.0)
+#     @add_var(c2, x2, 5; start = 2.0, lvar = 0.0)
+#     @add_expr(c2, s2, sqrt(x2[i]) for i in 1:5)
+#     @add_obj(c2, (s2[i] - 1)^2 for i in 1:5)
+#     @add_con(c2, s2[i] + s2[i + 1] for i in 1:4; lcon = 1.0, ucon = 3.0)
 #     m2 = ExaModel(c2)
 
 #     # Lifted has more vars/cons
@@ -250,10 +250,10 @@ function test_subexpr_reduced_multidim(backend)
     T, N = 3, 2
 
     c = ExaCore(; backend = backend)
-    @add_variable(c, x, 0:T, 0:N; start = 0.5)
+    @add_var(c, x, 0:T, 0:N; start = 0.5)
 
     # Reduced 2D subexpression
-    @add_expression(c, dx, x[t, i] - x[t - 1, i] for t in 1:T, i in 1:N)
+    @add_expr(c, dx, x[t, i] - x[t - 1, i] for t in 1:T, i in 1:N)
 
     # Check dimensions
     @test dx.size == (1:T, 1:N)
@@ -264,11 +264,11 @@ function test_subexpr_reduced_multidim(backend)
     ncon_before = c.ncon
 
     # Use in objective
-    @add_objective(c, dx[t, i]^2 for t in 1:T, i in 1:N)
+    @add_obj(c, dx[t, i]^2 for t in 1:T, i in 1:N)
 
     # Add constraints
-    @add_constraint(c, x[0, i] - 0.0 for i in 0:N)
-    @add_constraint(c, x[T, i] - 1.0 for i in 0:N)
+    @add_con(c, x[0, i] - 0.0 for i in 0:N)
+    @add_con(c, x[T, i] - 1.0 for i in 0:N)
 
     m = ExaModel(c)
 
@@ -282,13 +282,13 @@ Test nested reduced subexpressions.
 """
 function test_subexpr_reduced_nested(backend)
     c = ExaCore(; backend = backend)
-    @add_variable(c, x, 5; start = 1.0, lvar = 0.1)
+    @add_var(c, x, 5; start = 1.0, lvar = 0.1)
 
     # Nested reduced subexpressions
-    @add_expression(c, s1, x[i]^2 for i in 1:5)
-    @add_expression(c, s2, s1[i] + s1[i] for i in 1:5)  # 2*x[i]^2
+    @add_expr(c, s1, x[i]^2 for i in 1:5)
+    @add_expr(c, s2, s1[i] + s1[i] for i in 1:5)  # 2*x[i]^2
 
-    @add_objective(c, (s2[i] - 2)^2 for i in 1:5)  # minimize (2*x^2 - 2)^2
+    @add_obj(c, (s2[i] - 2)^2 for i in 1:5)  # minimize (2*x^2 - 2)^2
 
     m = ExaModel(c)
 
@@ -309,15 +309,15 @@ end
 # """
 # function test_subexpr_mixed(backend)
 #     c = ExaCore(; backend = backend)
-#     @add_variable(c, x, 5; start = 1.0, lvar = 0.1)
+#     @add_var(c, x, 5; start = 1.0, lvar = 0.1)
 
 #     # First subexpr is lifted
-#     @add_expression(c, s_lifted, x[i]^2 for i in 1:5)  # adds 5 vars + 5 cons
+#     @add_expr(c, s_lifted, x[i]^2 for i in 1:5)  # adds 5 vars + 5 cons
 
 #     # Second subexpr is reduced, uses the lifted one
-#     @add_expression(c, s_reduced, s_lifted[i] * 2 for i in 1:5)
+#     @add_expr(c, s_reduced, s_lifted[i] * 2 for i in 1:5)
 
-#     @add_objective(c, (s_reduced[i] - 2)^2 for i in 1:5)
+#     @add_obj(c, (s_reduced[i] - 2)^2 for i in 1:5)
 
 #     m = ExaModel(c)
 
@@ -341,15 +341,15 @@ function test_subexpr_reduced_0based(backend)
     T = 3
 
     c = ExaCore(; backend = backend)
-    @add_variable(c, u, 0:T; start = 1.0)
+    @add_var(c, u, 0:T; start = 1.0)
 
     # Reduced subexpressions with 0-based ranges (like distillation column)
     # V[t] should equal u[t] * 2 + 1, NOT u[t-1] * 2 + 1
-    @add_expression(c, V, u[t] * 2 + 1 for t in 0:T)
+    @add_expr(c, V, u[t] * 2 + 1 for t in 0:T)
 
     # Objective: minimize sum of (V[t] - 3)^2
     # If V[t] = u[t]*2+1, optimal is u[t] = 1 (V[t] = 3)
-    @add_objective(c, (V[t] - 3)^2 for t in 0:T)
+    @add_obj(c, (V[t] - 3)^2 for t in 0:T)
 
     m = ExaModel(c)
 
@@ -372,18 +372,18 @@ function test_subexpr_reduced_0based_nested(backend)
     T, N = 2, 2
 
     c = ExaCore(; backend = backend)
-    @add_variable(c, x, 0:T, 0:N; start = 1.0)
+    @add_var(c, x, 0:T, 0:N; start = 1.0)
 
     # First reduced subexpr with 0-based range
-    @add_expression(c, s1, x[t, i] + 1 for t in 0:T, i in 0:N)
+    @add_expr(c, s1, x[t, i] + 1 for t in 0:T, i in 0:N)
 
     # Second reduced subexpr uses the first one
     # s2[t,i] should be s1[t,i] * 2 = (x[t,i] + 1) * 2
-    @add_expression(c, s2, s1[t, i] * 2 for t in 0:T, i in 0:N)
+    @add_expr(c, s2, s1[t, i] * 2 for t in 0:T, i in 0:N)
 
     # Objective: minimize sum of (s2[t,i] - 4)^2
     # s2 = (x+1)*2 = 4 => x = 1
-    @add_objective(c, (s2[t, i] - 4)^2 for t in 0:T, i in 0:N)
+    @add_obj(c, (s2[t, i] - 4)^2 for t in 0:T, i in 0:N)
 
     m = ExaModel(c)
 

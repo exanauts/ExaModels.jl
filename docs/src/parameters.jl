@@ -10,17 +10,17 @@ using ExaModels, NLPModelsIpopt
 c_param = ExaCore()
 
 # Adding parameters is very similar to adding variables -- just pass a vector of values denoting the initial values.
-@add_parameter(c_param, θ, [100.0, 1.0])  # [penalty_coeff, offset]
+@add_par(c_param, θ, [100.0, 1.0])  # [penalty_coeff, offset]
 
 # Define the variables as before:
 N = 10
-@add_variable(c_param, x_p, N; start = (mod(i, 2) == 1 ? -1.2 : 1.0 for i = 1:N))
+@add_var(c_param, x_p, N; start = (mod(i, 2) == 1 ? -1.2 : 1.0 for i = 1:N))
 
 # Now we can use the parameters in our objective function just like variables:
-@add_objective(c_param, θ[1] * (x_p[i-1]^2 - x_p[i])^2 + (x_p[i-1] - θ[2])^2 for i = 2:N)
+@add_obj(c_param, θ[1] * (x_p[i-1]^2 - x_p[i])^2 + (x_p[i-1] - θ[2])^2 for i = 2:N)
 
 # Add the same constraints as before:
-@add_constraint(
+@add_con(
     c_param,
     3x_p[i+1]^3 + 2 * x_p[i+2] - 5 +
     sin(x_p[i+1] - x_p[i+2])sin(x_p[i+1] + x_p[i+2]) +

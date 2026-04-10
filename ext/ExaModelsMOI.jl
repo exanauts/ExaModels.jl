@@ -166,7 +166,7 @@ function copy_variables!(c, moim, T)
     uvar = fill(T(Inf), nvar)
     fill_variable_bounds!(moim, lvar, uvar, var_to_idx, T)
 
-    c, _ = ExaModels.add_variable(c, nvar; start = x0, lvar = lvar, uvar = uvar)
+    c, _ = ExaModels.add_var(c, nvar; start = x0, lvar = lvar, uvar = uvar)
 
     varpar_to_idx = Dict()
     for (vi, i) in var_to_idx
@@ -179,7 +179,7 @@ function copy_variables!(c, moim, T)
             p0[i] = T(set.value)
             varpar_to_idx[vi] = (type = :parameter, idx = i)
         end
-        c, _ = ExaModels.add_parameter(c, p0)
+        c, _ = ExaModels.add_par(c, p0)
     end
 
     return c, varpar_to_idx
@@ -218,7 +218,7 @@ function copy_constraints!(c, moim, var_to_idx, T)
         bin, offset =
             exafy_con(moim, cis, bin, offset, lcon, ucon, y0, var_to_idx, con_to_idx)
     end
-    c, cons = ExaModels.add_constraint(c, offset; start = y0, lcon = lcon, ucon = ucon)
+    c, cons = ExaModels.add_con(c, offset; start = y0, lcon = lcon, ucon = ucon)
     c = build_constraint!(c, cons, bin)
 
     return c, con_to_idx
@@ -383,7 +383,7 @@ end
 
 function build_constraint!(c, cons, bin)
     c = build_constraint!(c, cons, bin.inner)
-    c, _ = ExaModels.add_constraint!(c, cons, Base.Generator(_ -> bin.head, bin.data))
+    c, _ = ExaModels.add_con!(c, cons, Base.Generator(_ -> bin.head, bin.data))
     return c
 end
 
@@ -393,7 +393,7 @@ end
 
 function build_objective!(c, bin)
     c = build_objective!(c, bin.inner)
-    c, _ = ExaModels.add_objective(c, bin.head, bin.data)
+    c, _ = ExaModels.add_obj(c, bin.head, bin.data)
     return c
 end
 

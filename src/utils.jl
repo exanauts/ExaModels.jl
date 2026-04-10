@@ -415,7 +415,7 @@ A wrapper around an `AbstractNLPModel` that sums duplicate `(row, col)` entries
 in the sparse Jacobian and Hessian.
 
 Duplicates arise when multiple constraint or objective patterns contribute to the
-same matrix position (e.g. after augmentation via [`add_constraint!`](@ref)).
+same matrix position (e.g. after augmentation via [`add_con!`](@ref)).
 `CompressedNLPModel` detects them once at construction and accumulates them on
 every subsequent `jac_coord!` / `hess_coord!` call, so callers receive a matrix
 with no repeated coordinates.
