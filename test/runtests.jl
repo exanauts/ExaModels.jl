@@ -50,3 +50,8 @@ include("TwoStageTest/TwoStageTest.jl")
     # OptimalControlTest.runtests()
 
 end
+
+# Force full GC before Julia exits so that OpenCL/PoCL objects are finalized
+# in the correct order, preventing segfaults during Julia's atexit teardown.
+GC.gc(true)
+GC.gc(true)
