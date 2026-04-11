@@ -41,4 +41,4 @@ compare:
 	$(JULIA) --project=. compare.jl
 
 clean:
-	rm -f benchmark-results-*.jld2
+	rm -f benchmark-results-*.csv benchmark-results-*.jld2

@@ -34,7 +34,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: results-nothing
-          path: benchmark/benchmark-results-*.jld2
+          path: benchmark/benchmark-results-*.csv
 
   bench-cuda:
     runs-on: ['self-hosted', 'gpu', 'cuda']
@@ -57,7 +57,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: results-cuda
-          path: benchmark/benchmark-results-*.jld2
+          path: benchmark/benchmark-results-*.csv
 
   bench-amdgpu:
     runs-on: ['self-hosted', 'gpu', 'amdgpu']
@@ -80,7 +80,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: results-amdgpu
-          path: benchmark/benchmark-results-*.jld2
+          path: benchmark/benchmark-results-*.csv
 
   bench-oneapi:
     runs-on: ['self-hosted', 'gpu', 'oneapi']
@@ -106,7 +106,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: results-oneapi
-          path: benchmark/benchmark-results-*.jld2
+          path: benchmark/benchmark-results-*.csv
 
   compare:
     needs: [bench-nothing, bench-cuda, bench-amdgpu, bench-oneapi]

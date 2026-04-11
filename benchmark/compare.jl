@@ -1,88 +1,81 @@
-using JLD2, Printf
+using Printf
 
-main_res = Dict()
-current_res = Dict()
-
-for f in readdir(@__DIR__; join=true)
-    endswith(f, ".jld2") || continue
-    bn = basename(f)
-    d = JLD2.load(f, "results")
-    if occursin("main", bn)
-        merge!(main_res, d)
-    elseif occursin("current", bn)
-        merge!(current_res, d)
+function read_results(dir, pattern)
+    results = Dict{Tuple{String,String,String}, NamedTuple}()
+    for f in readdir(dir; join=true)
+        endswith(f, ".csv") || continue
+        occursin(pattern, basename(f)) || continue
+        for line in readlines(f)
+            startswith(line, "backend") && continue  # skip header
+            parts = split(line, ',')
+            length(parts) == 10 || continue
+            backend, instance, param = parts[1], parts[2], parts[3]
+            nvar  = parse(Int, parts[4])
+            ncon  = parse(Int, parts[5])
+            tobj  = parse(Float64, parts[6])
+            tcon  = parse(Float64, parts[7])
+            tgrad = parse(Float64, parts[8])
+            tjac  = parse(Float64, parts[9])
+            thess = parse(Float64, parts[10])
+            results[(backend, instance, param)] =
+                (nvar=nvar, ncon=ncon, tobj=tobj, tcon=tcon, tgrad=tgrad, tjac=tjac, thess=thess)
+        end
     end
+    return results
 end
+
+main_res = read_results(@__DIR__, "main")
+current_res = read_results(@__DIR__, "current")
 
 isempty(main_res) && error("No main benchmark results found — run benchmarks first")
 isempty(current_res) && error("No current benchmark results found — run benchmarks first")
 
-all_names = collect(union(keys(main_res), keys(current_res)))
-
-# Sort order for backends within each (model, size) group.
-# GPU backends come first so the most interesting results appear early.
+# Sort by backend (GPU first), then instance, then param (numeric)
 const BACKEND_ORDER = Dict("CUDA" => 0, "AMDGPU" => 1, "oneAPI" => 2, "Metal" => 3, "nothing" => 4)
 
-# Keys are 4-tuples: (group_index, model_name, size_as_int, backend_index).
-# Benchmark names follow the convention "<model>-<size>-<backend>", e.g.
-# "rosenrock-1000-CUDA".  The size field is parsed as an integer so that
-# 1000 < 10000 < 100000 (lexicographic order would give the wrong result).
-function sort_key(name)
-    parts = split(name, "-")
-    # Last part is backend label, second-to-last is size (numeric), rest is model name
-    backend = parts[end]
-    size_str = length(parts) >= 2 ? parts[end - 1] : "0"
-    size_num = something(tryparse(Int, size_str), 0)
-    model = join(parts[1:end-2], "-")
+function sort_key(k)
+    backend, instance, param = k
     border = get(BACKEND_ORDER, backend, 99)
-
-    startswith(name, "rosenrock") && return (1, model, size_num, border)
-    startswith(name, "OPF")       && return (2, model, size_num, border)
-    startswith(name, "chain")     && return (3, model, size_num, border)
-    startswith(name, "elec")      && return (4, model, size_num, border)
-    return (5, model, size_num, border)
+    pnum = something(tryparse(Int, param), 0)
+    return (border, instance, pnum, param)
 end
 
-sorted_names = sort(all_names; by = sort_key)
+all_keys = sort(collect(union(keys(main_res), keys(current_res))); by = sort_key)
 
-# Format a timing ratio as "current / main".  Values below 1.0 are
-# improvements.  Returns "N/A" when either measurement is missing (NaN) or
-# when main is zero (would give division-by-zero / Inf).
 function ratio_str(c, m)
     (isnan(c) || isnan(m) || m == 0) && return "     N/A"
     return @sprintf("%8.3f", c / m)
 end
 
-const NAME_W = 26
+const NAME_W = 30
 const SEP = "=" ^ (NAME_W + 5 + 5 * 9)
 
 println()
 println("Relative timing: current / main  (values < 1.0 are improvements)")
 println()
 println(SEP)
-@printf("  %-*s  | %8s %8s %8s %8s %8s\n", NAME_W, "name", "obj", "cons", "grad", "jac", "hess")
+@printf("  %-*s  | %8s %8s %8s %8s %8s\n", NAME_W, "backend-instance-param", "obj", "cons", "grad", "jac", "hess")
 println(SEP)
 
-# prev_group is a Ref so that assignment inside the for-loop body modifies the
-# outer binding rather than creating a new loop-local variable (Julia soft-scope).
-prev_group = Ref("")
-for name in sorted_names
-    group = split(name, "-")[1]
-    if group != prev_group[] && prev_group[] != ""
+prev_backend = Ref("")
+for key in all_keys
+    backend, instance, param = key
+    if backend != prev_backend[] && prev_backend[] != ""
         println("-" ^ length(SEP))
     end
-    prev_group[] = group
+    prev_backend[] = backend
 
-    if !haskey(main_res, name)
+    name = "$backend-$instance-$param"
+    if !haskey(main_res, key)
         @printf("  %-*s  |  (no main result)\n", NAME_W, name)
         continue
     end
-    if !haskey(current_res, name)
+    if !haskey(current_res, key)
         @printf("  %-*s  |  (no current result)\n", NAME_W, name)
         continue
     end
-    m = main_res[name]
-    c = current_res[name]
+    m = main_res[key]
+    c = current_res[key]
     @printf("  %-*s  | %s %s %s %s %s\n",
         NAME_W, name,
         ratio_str(c.tobj,  m.tobj),
