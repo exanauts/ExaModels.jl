@@ -1,5 +1,7 @@
 # # [Example: Quadrotor](@id quad)
 
+using ExaModels, NLPModelsIpopt
+
 function quadrotor_model(N = 3; backend = nothing)
 
     n = 9
@@ -18,14 +20,14 @@ function quadrotor_model(N = 3; backend = nothing)
     itr1 = [(i, j, Q[j], d(i, j, N)) for (i, j) in Base.product(1:N, 1:n)]
     itr2 = [(j, Qf[j], d(N + 1, j, N)) for j = 1:n]
 
-    c = ExaCore(; backend = backend)
+    c = ExaCore(; backend = backend, concrete = Val(true))
 
-    x = variable(c, 1:(N+1), 1:n)
-    u = variable(c, 1:N, 1:p)
+    @add_var(c, x, 1:(N+1), 1:n)
+    @add_var(c, u, 1:N, 1:p)
 
-    constraint(c, x[1, i] - x0 for (i, x0) in x0s)
-    constraint(c, -x[i+1, 1] + x[i, 1] + (x[i, 2]) * dt for i = 1:N)
-    constraint(
+    @add_con(c, x[1, i] - x0 for (i, x0) in x0s)
+    @add_con(c, -x[i+1, 1] + x[i, 1] + (x[i, 2]) * dt for i = 1:N)
+    @add_con(
         c,
         -x[i+1, 2] +
         x[i, 2] +
@@ -34,8 +36,8 @@ function quadrotor_model(N = 3; backend = nothing)
             u[i, 1] * sin(x[i, 7]) * sin(x[i, 9])
         ) * dt for i = 1:N
     )
-    constraint(c, -x[i+1, 3] + x[i, 3] + (x[i, 4]) * dt for i = 1:N)
-    constraint(
+    @add_con(c, -x[i+1, 3] + x[i, 3] + (x[i, 4]) * dt for i = 1:N)
+    @add_con(
         c,
         -x[i+1, 4] +
         x[i, 4] +
@@ -44,25 +46,25 @@ function quadrotor_model(N = 3; backend = nothing)
             u[i, 1] * sin(x[i, 7]) * cos(x[i, 9])
         ) * dt for i = 1:N
     )
-    constraint(c, -x[i+1, 5] + x[i, 5] + (x[i, 6]) * dt for i = 1:N)
-    constraint(
+    @add_con(c, -x[i+1, 5] + x[i, 5] + (x[i, 6]) * dt for i = 1:N)
+    @add_con(
         c,
         -x[i+1, 6] + x[i, 6] + (u[i, 1] * cos(x[i, 7]) * cos(x[i, 8]) - 9.8) * dt for
         i = 1:N
     )
-    constraint(
+    @add_con(
         c,
         -x[i+1, 7] +
         x[i, 7] +
         (u[i, 2] * cos(x[i, 7]) / cos(x[i, 8]) + u[i, 3] * sin(x[i, 7]) / cos(x[i, 8])) * dt
         for i = 1:N
     )
-    constraint(
+    @add_con(
         c,
         -x[i+1, 8] + x[i, 8] + (-u[i, 2] * sin(x[i, 7]) + u[i, 3] * cos(x[i, 7])) * dt for
         i = 1:N
     )
-    constraint(
+    @add_con(
         c,
         -x[i+1, 9] +
         x[i, 9] +
@@ -73,17 +75,15 @@ function quadrotor_model(N = 3; backend = nothing)
         ) * dt for i = 1:N
     )
 
-    objective(c, 0.5 * R * (u[i, j]^2) for (i, j, R) in itr0)
-    objective(c, 0.5 * Q * (x[i, j] - d)^2 for (i, j, Q, d) in itr1)
-    objective(c, 0.5 * Qf * (x[N+1, j] - d)^2 for (j, Qf, d) in itr2)
+    @add_obj(c, 0.5 * R * (u[i, j]^2) for (i, j, R) in itr0)
+    @add_obj(c, 0.5 * Q * (x[i, j] - d)^2 for (i, j, Q, d) in itr1)
+    @add_obj(c, 0.5 * Qf * (x[N+1, j] - d)^2 for (j, Qf, d) in itr2)
 
     m = ExaModel(c)
 
 end
 
 #-
-
-using ExaModels, NLPModelsIpopt
 
 m = quadrotor_model(100)
 result = ipopt(m)
