@@ -1,6 +1,6 @@
 module ExaModelsOptimalControl
 
-using ExaModels, LinearAlgebra
+using ExaModels, LinearAlgebra, OptimalControl
 
 # ============================================================================
 # Section A: Null node pass-throughs for LinearAlgebra functions
@@ -27,7 +27,7 @@ end
 
 # Null + AbstractNode / AbstractNode + Null (zero elimination)
 @inline function Base.:+(a::ExaModels.Null{T}, b::ExaModels.AbstractNode) where {T <: Real}
-    return a.value == zero(T) ? b : ExaModels.Node2(+, a, b)
+    return ExaModels.Node2(+, a, b)
 end
 @inline function Base.:+(a::ExaModels.AbstractNode, b::ExaModels.Null{T}) where {T <: Real}
     return b.value == zero(T) ? a : ExaModels.Node2(+, a, b)
