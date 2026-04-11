@@ -194,6 +194,8 @@ Base.getindex(c::ConstraintAugmentation, idx...) = begin
 end
 Base.:+(slot::ConstraintSlot, expr::AbstractNode) = Pair(slot.idx, expr)
 Base.:+(expr::AbstractNode, slot::ConstraintSlot) = Pair(slot.idx, expr)
+Base.:+(slot::ConstraintSlot, expr::Real) = Pair(slot.idx, Null(expr))
+Base.:+(expr::Real, slot::ConstraintSlot) = Pair(slot.idx, Null(expr))
 Base.setindex!(::Constraint, val, idx...) = val
 Base.setindex!(::ConstraintAugmentation, val, idx...) = val
 
