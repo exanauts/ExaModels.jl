@@ -145,30 +145,30 @@ struct ParameterNode{I} <: AbstractNode
 end
 
 """
-    ParSource <: AbstractNode
+    DataSource <: AbstractNode
 
 Sentinel node used as the root of a parameter (data) array.  Indexing or
-accessing fields on a `ParSource` returns a [`ParIndexed`](@ref) node that
+accessing fields on a `DataSource` returns a [`DataIndexed`](@ref) node that
 encodes the access path as nested type parameters for zero-overhead data
 lookup.
 """
-struct ParSource <: AbstractNode end
+struct DataSource <: AbstractNode end
 
 """
-    ParIndexed{I, J} <: AbstractNode
+    DataIndexed{I, J} <: AbstractNode
 
 A node representing the lookup `inner.J` (or `inner[J]`) where `inner` is a
-`ParSource` or another `ParIndexed`.  The field/index `J` is encoded as a type
+`DataSource` or another `DataIndexed`.  The field/index `J` is encoded as a type
 parameter so that `getfield` / `getindex` can be resolved at compile time.
 
-Constructed implicitly via `getproperty` / `getindex` on a [`ParSource`](@ref).
+Constructed implicitly via `getproperty` / `getindex` on a [`DataSource`](@ref).
 """
-struct ParIndexed{I,J} <: AbstractNode
+struct DataIndexed{I, J} <: AbstractNode
     inner::I
 end
 
-@inline ParIndexed(inner::I, n) where {I} = ParIndexed{I,n}(inner)
-@inline ParIndexed(inner::I, s::Constant{n}) where {I,n} = ParIndexed{I,n}(inner)
+@inline DataIndexed(inner::I, n) where {I} = DataIndexed{I, n}(inner)
+@inline DataIndexed(inner::I, s::Constant{n}) where {I, n} = DataIndexed{I, n}(inner)
 """
     Node1{F, I} <: AbstractNode
 
@@ -208,13 +208,13 @@ struct SecondFixed{F}
     inner::F
 end
 
-@inline Base.getproperty(n::ParSource, s::Symbol) = ParIndexed(n, s)
-@inline Base.getindex(n::ParSource, i) = ParIndexed(n, i)
-@inline Base.indexed_iterate(n::P, idx, start = 1) where P <: Union{ParSource, ParIndexed} = (ParIndexed(n, idx), idx + 1)
+@inline Base.getproperty(n::DataSource, s::Symbol) = DataIndexed(n, s)
+@inline Base.getindex(n::DataSource, i) = DataIndexed(n, i)
+@inline Base.indexed_iterate(n::P, idx, start = 1) where {P <: Union{DataSource, DataIndexed}} = (DataIndexed(n, idx), idx + 1)
 
-@inline Base.getproperty(v::ParIndexed{I, n}, s::Symbol) where {I, n} = ParIndexed(v, s)
-@inline Base.getindex(v::ParIndexed{I, n}, i) where {I, n} = ParIndexed(v, i)
-@inline Base.indexed_iterate(v::ParIndexed{I, n}, idx, start = 1) where {I, n} = (ParIndexed(v, idx), idx + 1)
+@inline Base.getproperty(v::DataIndexed{I, n}, s::Symbol) where {I, n} = DataIndexed(v, s)
+@inline Base.getindex(v::DataIndexed{I, n}, i) where {I, n} = DataIndexed(v, i)
+@inline Base.indexed_iterate(v::DataIndexed{I, n}, idx, start = 1) where {I, n} = (DataIndexed(v, idx), idx + 1)
 
 
 @inline Base.getindex(n::VarSource, i) = Var(i)
@@ -235,11 +235,11 @@ struct Identity end
 @inline (v::ParameterNode{I})(::Any, x, θ) where {I} = @inbounds θ[v.i]
 @inline (v::ParameterNode{I})(::Identity, x, θ) where {I<:AbstractNode} = @inbounds θ[v.i]
 
-@inline (v::ParSource)(i, x, θ) = i
-@inline (v::ParIndexed{I,n})(i, x, θ) where {I,n} = @inbounds getfield(getfield(v, :inner)(i, x, θ), n)
+@inline (v::DataSource)(i, x, θ) = i
+@inline (v::DataIndexed{I, n})(i, x, θ) where {I, n} = @inbounds getfield(getfield(v, :inner)(i, x, θ), n)
 
-@inline (v::ParIndexed)(i::Identity, x, θ) = eltype(θ)(NaN) 
-@inline (v::ParSource)(i::Identity, x, θ) = eltype(θ)(NaN) 
+@inline (v::DataIndexed)(i::Identity, x, θ) = eltype(θ)(NaN)
+@inline (v::DataSource)(i::Identity, x, θ) = eltype(θ)(NaN)
 
 """
     AdjointNode1{F, T, I} <: AbstractAdjointNode
