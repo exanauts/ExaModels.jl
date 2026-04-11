@@ -523,7 +523,7 @@ function append!(backend, a, b::Number, lb)
     return a
 end
 
-total(ns) = prod(_length(n) for n in ns)
+total(ns) = prod(map(_length, ns))
 _length(n::Int) = n
 _length(n::UnitRange) = length(n)
 size(ns) = Tuple(_length(n) for n in ns)
