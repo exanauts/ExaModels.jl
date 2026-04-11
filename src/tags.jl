@@ -1,32 +1,32 @@
 # Twostage models
 
 """
-    EachScenario
+    EachScen
 
 Marker type for two-stage variable and constraint declarations.
-Pass `EachScenario()` as the last positional argument to [`add_var`](@ref) or
+Pass `EachScen()` as the last positional argument to [`add_var`](@ref) or
 [`add_con`](@ref) to indicate that the declaration is replicated for each scenario.
 
 # Examples
 ```julia
 c = TwoStageExaCore(ns; concrete = Val(true))
 c, d = add_var(c, nd)                                          # design variables (shared)
-c, v = add_var(c, nv, EachScenario())                          # nv recourse vars per scenario
-c, g = add_con(c, (v[i] + d[1] for i in data), EachScenario()) # constraints per scenario
+c, v = add_var(c, nv, EachScen())                          # nv recourse vars per scen
+c, g = add_con(c, (v[i] + d[1] for i in data), EachScen()) # constraints per scen
 ```
 """
-struct EachScenario end
+struct EachScen end
 
 struct TwoStageTags{VI<:AbstractVector{Int}}
     ns::Int
-    var_scenario::VI
-    con_scenario::VI
+    var_scen::VI
+    con_scen::VI
 end
-function append_var_tags(tags::TwoStageTags, backend, len; scenario = 0)
-    append!(backend, tags.var_scenario, scenario, len)
+function append_var_tags(tags::TwoStageTags, backend, len; scen = 0)
+    append!(backend, tags.var_scen, scen, len)
 end
-function append_con_tags(tags::TwoStageTags, backend, len; scenario = 0)
-    append!(backend, tags.con_scenario, scenario, len)
+function append_con_tags(tags::TwoStageTags, backend, len; scen = 0)
+    append!(backend, tags.con_scen, scen, len)
 end
 const TwoStageExaCore{T,VT,B} = ExaCore{T,VT,B,S} where {S<:TwoStageTags}
 function TwoStageExaCore(ns::Integer; backend = nothing, concrete = Val(false), kwargs...)
@@ -42,10 +42,10 @@ function TwoStageExaCore(ns::Integer; backend = nothing, concrete = Val(false), 
     )
 end
 
-# --- EachScenario: add_var ---
+# --- EachScen: add_var ---
 
 """
-    add_var(core::TwoStageExaCore, n, EachScenario(); kwargs...)
+    add_var(core::TwoStageExaCore, n, EachScen(); kwargs...)
 
 Add `n` variables per scenario to `core`, returning `(core, Variable)`.
 The total number of variables added is `ns * total(n)`, automatically tagged
@@ -57,19 +57,19 @@ are added with the standard `add_var(core, n)` call (tagged with scenario 0).
 function add_var(
     c::C,
     n,
-    ::EachScenario;
+    ::EachScen;
     kwargs...,
 ) where {T,VT<:AbstractVector{T},B,S<:TwoStageTags,C<:ExaCore{T,VT,B,S}}
     ns = c.tags.ns
     len = total((n,))
-    scenario_tags = [k for k in 1:ns for _ in 1:len]
-    return add_var(c, ns * len; scenario = scenario_tags, kwargs...)
+    scen_tags = [k for k in 1:ns for _ in 1:len]
+    return add_var(c, ns * len; scen = scen_tags, kwargs...)
 end
 
-# --- EachScenario: add_con (generator form) ---
+# --- EachScen: add_con (generator form) ---
 
 """
-    add_con(core::TwoStageExaCore, gen, EachScenario(); kwargs...)
+    add_con(core::TwoStageExaCore, gen, EachScen(); kwargs...)
 
 Add constraints from `gen` to `core`, automatically tagging each constraint with
 its scenario index.  `gen` must iterate over all scenarios combined; its length
@@ -80,19 +80,19 @@ All keyword arguments accepted by [`add_con`](@ref) are forwarded.
 function add_con(
     c::C,
     gen::Base.Generator,
-    ::EachScenario;
+    ::EachScen;
     kwargs...,
 ) where {T,VT<:AbstractVector{T},B,S<:TwoStageTags,C<:ExaCore{T,VT,B,S}}
     ns = c.tags.ns
     nitr = length(gen.iter)
     @assert nitr % ns == 0 "Number of constraints ($nitr) must be divisible by ns ($ns)"
     nc_per_s = nitr ÷ ns
-    scenario_tags = [k for k in 1:ns for _ in 1:nc_per_s]
-    return add_con(c, gen; scenario = scenario_tags, kwargs...)
+    scen_tags = [k for k in 1:ns for _ in 1:nc_per_s]
+    return add_con(c, gen; scen = scen_tags, kwargs...)
 end
 
 """
-    add_con(core::TwoStageExaCore, gen, gens..., EachScenario(); kwargs...)
+    add_con(core::TwoStageExaCore, gen, gens..., EachScen(); kwargs...)
 
 Multi-generator form of `add_con` with per-scenario tagging.  The first
 generator creates the base constraint; subsequent generators augment it via
@@ -102,14 +102,14 @@ Returns `(core, Constraint)`.
 function add_con(
     c::C,
     gen::Base.Generator,
-    gens_and_es::Union{Base.Generator,EachScenario}...;
+    gens_and_es::Union{Base.Generator,EachScen}...;
     kwargs...,
 ) where {T,VT<:AbstractVector{T},B,S<:TwoStageTags,C<:ExaCore{T,VT,B,S}}
-    # Split trailing EachScenario() from the generator list
+    # Split trailing EachScen() from the generator list
     gens = filter(x -> x isa Base.Generator, gens_and_es)
-    has_es = any(x -> x isa EachScenario, gens_and_es)
+    has_es = any(x -> x isa EachScen, gens_and_es)
     if has_es
-        c, con = add_con(c, gen, EachScenario(); kwargs...)
+        c, con = add_con(c, gen, EachScen(); kwargs...)
         for g in gens
             c, _ = add_con!(c, con, g)
         end
@@ -120,7 +120,7 @@ function add_con(
 end
 
 """
-    add_con(core::TwoStageExaCore, expr::AbstractNode, pars, EachScenario(); kwargs...)
+    add_con(core::TwoStageExaCore, expr::AbstractNode, pars, EachScen(); kwargs...)
 
 Low-level form of `add_con` with per-scenario tagging.  `pars` must have length
 divisible by `ns`.  Returns `(core, Constraint)`.
@@ -129,15 +129,15 @@ function add_con(
     c::C,
     expr::N,
     pars,
-    ::EachScenario;
+    ::EachScen;
     kwargs...,
 ) where {T,VT<:AbstractVector{T},B,S<:TwoStageTags,C<:ExaCore{T,VT,B,S},N<:AbstractNode}
     ns = c.tags.ns
     nitr = length(pars)
     @assert nitr % ns == 0 "Number of constraints ($nitr) must be divisible by ns ($ns)"
     nc_per_s = nitr ÷ ns
-    scenario_tags = [k for k in 1:ns for _ in 1:nc_per_s]
-    return add_con(c, expr, pars; scenario = scenario_tags, kwargs...)
+    scen_tags = [k for k in 1:ns for _ in 1:nc_per_s]
+    return add_con(c, expr, pars; scen = scen_tags, kwargs...)
 end
 
-export EachScenario, TwoStageExaCore
+export EachScen, TwoStageExaCore

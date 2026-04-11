@@ -89,10 +89,10 @@ export ExaModel,
     exa_prod,
     @register_univariate,
     @register_bivariate,
-    EachScenario,
+    EachScen,
     TwoStageExaModel,
-    get_nscenarios,
-    get_var_scenario,
-    get_con_scenario
+    get_nscen,
+    get_var_scen,
+    get_con_scen
 
 end # module ExaModels
