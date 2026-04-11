@@ -68,10 +68,10 @@ function test_conaug_2d(backend)
         c, x = add_var(c, N, M)
         c, g = add_con(c, r1, r2; lcon = -Inf, ucon = 0.0)
         @test Base.size(g.itr) == (length(r1), length(r2))
-        @test g.itr.ns == (r1, r2)
 
-        itr = [(i, j) for i in r1, j in r2 if i < N][:]
-        c, _ = add_con!(c, g[i, j] += x[i, j-1] - x[i+1, j-1] for (i, j) in itr)
+        # Augmentation uses 1-based indices into the constraint block
+        itr = [(i, j) for i = 1:length(r1)-1, j = 1:length(r2)][:]
+        c, _ = add_con!(c, g[i, j] += x[i, j] - x[i+1, j] for (i, j) in itr)
         m = ExaModel(c)
         @test m.meta.ncon == length(r1) * length(r2)
         @test m.meta.nnzj == length(itr) * 2

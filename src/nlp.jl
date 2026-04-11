@@ -155,24 +155,6 @@ Constraint Augmentation
 )
 
 """
-    ConstraintDims{T}
-
-A lightweight iterator-like wrapper around dimension specifications for
-multi-dimensional empty constraints created via `add_con(core, dims...)`.
-Stores the dimension tuple and supports `Base.size`, `length`, and linear
-indexing.
-"""
-struct ConstraintDims{T}
-    ns::T
-end
-Base.size(d::ConstraintDims) = Tuple(_length(n) for n in d.ns)
-Base.length(d::ConstraintDims) = prod(_length(n) for n in d.ns)
-Base.getindex(d::ConstraintDims, i) = i
-Base.firstindex(::ConstraintDims) = 1
-Base.lastindex(d::ConstraintDims) = length(d)
-convert_array(d::ConstraintDims, _) = d
-
-"""
     ConstraintSlot{C, I}
 
 A lightweight handle returned by `getindex` on a [`Constraint`](@ref) or
@@ -966,9 +948,14 @@ Constraint
 ) where {T,C<:ExaCore{T}}
 
     f = _simdfunction(T, Null(nothing), c.ncon, c.nnzj, c.nnzh)
+    pars = _empty_con_itr(ns)
 
-    _add_con(c, f, ConstraintDims(ns), start, lcon, ucon, name; kwargs...)
+    _add_con(c, f, pars, start, lcon, ucon, name; kwargs...)
 end
+
+# Build an iterator for empty constraints: 1:n for 1D, collected ProductIterator for multi-dim.
+_empty_con_itr(ns::Tuple{Any}) = 1:_length(ns[1])
+_empty_con_itr(ns::Tuple) = collect(Iterators.product(map(n -> 1:_length(n), ns)...))
 
 
 function _add_con(c::C, f, pars, start, lcon, ucon, name = nothing; kwargs...) where {C<:ExaCore}
