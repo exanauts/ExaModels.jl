@@ -18,7 +18,7 @@ function sgradient(f, x)
     ff = f(ExaModels.VarSource())
     d = ff(ExaModels.Identity(), ExaModels.AdjointNodeSource(nothing), nothing)
     y1 = []
-    ExaModels.grpass(d, nothing, y1, nothing, 0, NaN)
+    ExaModels.grpass(d, nothing, nothing, nothing, y1, NaN)
 
     a1 = unique(y1)
     comp = ExaModels.Compressor(Tuple(findfirst(isequal(i), a1) for i in y1))
@@ -42,7 +42,7 @@ function shessian(f, x)
     ff = f(ExaModels.VarSource())
     t = ff(ExaModels.Identity(), ExaModels.SecondAdjointNodeSource(nothing), nothing)
     y2 = []
-    ExaModels.hrpass0(t, nothing, y2, nothing, nothing, 0, NaN, NaN)
+    ExaModels.hrpass0(t, nothing, nothing, nothing, nothing, y2, NaN, NaN)
 
     a2 = unique(y2)
     comp = ExaModels.Compressor(Tuple(findfirst(isequal(i), a2) for i in y2))

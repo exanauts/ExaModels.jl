@@ -314,6 +314,25 @@ function LinearAlgebra.diagm(v::VecExaNode)
     return M
 end
 
+function LinearAlgebra.diagm(p::Pair{<:Integer, <:VecExaNode})
+    k, v = p
+    n = length(v)
+    N = n + abs(k)
+    T = typeof(v[1])
+    M = Matrix{Union{T, ExaModels.Null{Int}}}(undef, N, N)
+    for i in 1:N, j in 1:N
+        M[i, j] = ExaModels.Null(0)
+    end
+    for i in 1:n
+        if k >= 0
+            M[i, i + k] = v[i]
+        else
+            M[i - k, i] = v[i]
+        end
+    end
+    return M
+end
+
 # --- adjoint/transpose operations ---
 
 # v' * w = dot(v, w)
@@ -505,14 +524,17 @@ function ExaModels.add_con(
     n = length(v)
     _get(x::AbstractVector, i) = x[i]
     _get(x, _) = x
-    c1 = nothing
+    local con
     for i in 1:n
-        c1, _ = ExaModels.constraint(
-            c1, v[i]; start = _get(start, i), lcon = _get(lcon, i), ucon = _get(ucon, i),
+        c, con = ExaModels.add_con(
+            c, v[i];
+            start = _get(start, i),
+            lcon = _get(lcon, i),
+            ucon = _get(ucon, i),
             kwargs...,
         )
     end
-    return c1
+    return (c, con)
 end
 
 end # module ExaModelsOptimalControl
