@@ -68,7 +68,7 @@ Performs dsparse gradient evaluation via the reverse pass on the computation (su
     o1,
     cnt,
     adj,
-) where {D<:Union{AdjointNull,DataIndexed,Real}}
+    ) where {D <: Union{AdjointNull, DataIndexed, Real}}
     return cnt
 end
 @inline function grpass(d::D, comp, y, o1, cnt, adj) where {D<:AdjointNode1}
@@ -102,9 +102,9 @@ end
     comp::Nothing,
     y,
     o1,
-    cnt::Tuple{<:Tuple,<:Tuple},
+    cnt::Tuple{<:Tuple, <:Tuple},
     adj,
-) where {D<:Union{AdjointNull,DataIndexed,Real}}
+    ) where {D <: Union{AdjointNull, DataIndexed, Real}}
     return cnt
 end
 @inline function grpass(

@@ -163,12 +163,12 @@ parameter so that `getfield` / `getindex` can be resolved at compile time.
 
 Constructed implicitly via `getproperty` / `getindex` on a [`DataSource`](@ref).
 """
-struct DataIndexed{I,J} <: AbstractNode
+struct DataIndexed{I, J} <: AbstractNode
     inner::I
 end
 
-@inline DataIndexed(inner::I, n) where {I} = DataIndexed{I,n}(inner)
-@inline DataIndexed(inner::I, s::Constant{n}) where {I,n} = DataIndexed{I,n}(inner)
+@inline DataIndexed(inner::I, n) where {I} = DataIndexed{I, n}(inner)
+@inline DataIndexed(inner::I, s::Constant{n}) where {I, n} = DataIndexed{I, n}(inner)
 """
     Node1{F, I} <: AbstractNode
 
@@ -210,7 +210,7 @@ end
 
 @inline Base.getproperty(n::DataSource, s::Symbol) = DataIndexed(n, s)
 @inline Base.getindex(n::DataSource, i) = DataIndexed(n, i)
-@inline Base.indexed_iterate(n::P, idx, start = 1) where P <: Union{DataSource, DataIndexed} = (DataIndexed(n, idx), idx + 1)
+@inline Base.indexed_iterate(n::P, idx, start = 1) where {P <: Union{DataSource, DataIndexed}} = (DataIndexed(n, idx), idx + 1)
 
 @inline Base.getproperty(v::DataIndexed{I, n}, s::Symbol) where {I, n} = DataIndexed(v, s)
 @inline Base.getindex(v::DataIndexed{I, n}, i) where {I, n} = DataIndexed(v, i)
@@ -236,7 +236,7 @@ struct Identity end
 @inline (v::ParameterNode{I})(::Identity, x, θ) where {I<:AbstractNode} = @inbounds θ[v.i]
 
 @inline (v::DataSource)(i, x, θ) = i
-@inline (v::DataIndexed{I,n})(i, x, θ) where {I,n} = @inbounds getfield(getfield(v, :inner)(i, x, θ), n)
+@inline (v::DataIndexed{I, n})(i, x, θ) where {I, n} = @inbounds getfield(getfield(v, :inner)(i, x, θ), n)
 
 @inline (v::DataIndexed)(i::Identity, x, θ) = eltype(θ)(NaN)
 @inline (v::DataSource)(i::Identity, x, θ) = eltype(θ)(NaN)

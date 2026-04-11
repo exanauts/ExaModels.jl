@@ -493,7 +493,7 @@ function _exafy(e::MOI.ScalarAffineFunction{T}, var_to_idx, p = ()) where {T}
             c1, p = _exafy(term, var_to_idx, p)
             c1
         end for term in e.terms) +
-        ExaModels.DataIndexed(ExaModels.DataSource(), length(p) + 1)
+            ExaModels.DataIndexed(ExaModels.DataSource(), length(p) + 1)
     else
         ExaModels.DataIndexed(ExaModels.DataSource(), length(p) + 1)
     end
