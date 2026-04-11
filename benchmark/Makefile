@@ -36,9 +36,9 @@ metal:
 	$(JULIA) runbenchmark.jl current metal
 	$(JULIA) --project=. compare.jl
 
-compare: benchmark-results-main.jld2 benchmark-results-current.jld2
+compare:
 	$(JULIA) --project=. -e 'using Pkg; Pkg.instantiate()'
 	$(JULIA) --project=. compare.jl
 
 clean:
-	rm -f benchmark-results-main.jld2 benchmark-results-current.jld2
+	rm -f benchmark-results-*.jld2

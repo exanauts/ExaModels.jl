@@ -131,25 +131,9 @@ jobs:
           pattern: results-*
           path: benchmark
           merge-multiple: true
-      - name: Merge and compare
+      - name: Compare
         working-directory: benchmark
-        run: |
-          julia --startup-file=no --project=. - <<'JLEOF'
-          using JLD2
-          main_merged, current_merged = Dict(), Dict()
-          for f in readdir(@__DIR__; join=true)
-              endswith(f, ".jld2") || continue
-              d = JLD2.load(f, "results")
-              if occursin("main", basename(f))
-                  merge!(main_merged, d)
-              elseif occursin("current", basename(f))
-                  merge!(current_merged, d)
-              end
-          end
-          JLD2.@save "benchmark-results-main.jld2"    results=main_merged
-          JLD2.@save "benchmark-results-current.jld2" results=current_merged
-          JLEOF
-          julia --startup-file=no --project=. compare.jl | tee comparison.txt
+        run: julia --startup-file=no --project=. compare.jl | tee comparison.txt
       - name: Post results on PR
         if: github.event_name == 'pull_request'
         uses: actions/github-script@v7

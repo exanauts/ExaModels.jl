@@ -68,7 +68,7 @@ end
 
 if isempty(BENCH_BACKENDS)
     @warn "No functional backends available for the requested selection: $(_extra) — skipping benchmark"
-    JLD2.@save joinpath(@__DIR__, "benchmark-results-$rev.jld2") results=Dict()
+    JLD2.@save joinpath(@__DIR__, "benchmark-results-$rev-none.jld2") results=Dict()
     exit(0)
 end
 
@@ -439,6 +439,7 @@ for (bname, backend, sync) in BENCH_BACKENDS
     end
 end
 
-JLD2.@save joinpath(@__DIR__, "benchmark-results-$rev.jld2") results
+const _bnames = join([b[1] for b in BENCH_BACKENDS], "-")
+JLD2.@save joinpath(@__DIR__, "benchmark-results-$rev-$(_bnames).jld2") results
 
 println()

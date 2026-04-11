@@ -1,13 +1,21 @@
 using JLD2, Printf
 
-main_file = joinpath(@__DIR__, "benchmark-results-main.jld2")
-current_file = joinpath(@__DIR__, "benchmark-results-current.jld2")
+main_res = Dict()
+current_res = Dict()
 
-isfile(main_file) || error("Missing $main_file — run 'make benchmark-main' first")
-isfile(current_file) || error("Missing $current_file — run 'make benchmark-current' first")
+for f in readdir(@__DIR__; join=true)
+    endswith(f, ".jld2") || continue
+    bn = basename(f)
+    d = JLD2.load(f, "results")
+    if occursin("main", bn)
+        merge!(main_res, d)
+    elseif occursin("current", bn)
+        merge!(current_res, d)
+    end
+end
 
-main_res = JLD2.load(main_file, "results")
-current_res = JLD2.load(current_file, "results")
+isempty(main_res) && error("No main benchmark results found — run benchmarks first")
+isempty(current_res) && error("No current benchmark results found — run benchmarks first")
 
 all_names = collect(union(keys(main_res), keys(current_res)))
 
