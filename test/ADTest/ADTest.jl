@@ -3,121 +3,59 @@ module ADTest
 using ExaModels
 using Test, ForwardDiff, SpecialFunctions
 
+# Each unique anonymous function creates a distinct type, triggering recompilation of the
+# entire AD pipeline (gradient, sgradient, sjacobian, shessian). Individual unary/binary
+# function derivatives are already validated by verify_derivative_tables(). Here we test
+# the full AD pipeline with a small number of composites that cover all operator categories.
 const FUNCTIONS = [
-    ("basic-functions-:+", x -> +(x[1])),
-    ("basic-functions-:-", x -> -(x[1])),
-    ("basic-functions-inv", x -> inv(x[1])),
-    ("basic-functions-abs", x -> abs(x[1])),
-    ("basic-functions-sqrt", x -> sqrt(x[1])),
-    ("basic-functions-cbrt", x -> cbrt(x[1])),
-    ("basic-functions-abs2", x -> abs2(x[1])),
-    ("basic-functions-exp", x -> exp(x[1])),
-    ("basic-functions-exp2", x -> exp2(x[1])),
-    ("basic-functions-exp10", x -> exp10(x[1])),
-    ("basic-functions-log", x -> log(x[1])),
-    ("basic-functions-log2", x -> log2(x[1])),
-    ("basic-functions-log1p", x -> log1p(x[1])),
-    ("basic-functions-log10", x -> log10(x[1])),
-    ("basic-functions-sin", x -> sin(x[1])),
-    ("basic-functions-cos", x -> cos(x[1])),
-    ("basic-functions-tan", x -> tan(x[1])),
-    ("basic-functions-asin", x -> asin(x[1])),
-    ("basic-functions-acos", x -> acos(x[1])),
-    ("basic-functions-csc", x -> csc(x[1])),
-    ("basic-functions-sec", x -> sec(x[1])),
-    ("basic-functions-cot", x -> cot(x[1])),
-    ("basic-functions-atan", x -> atan(x[1])),
-    ("basic-functions-acot", x -> acot(x[1])),
-    # ("basic-functions-sind", x-> sind(x[1])), # cannot extend function 
-    # ("basic-functions-cosd", x-> cosd(x[1])), # cannot extend function 
-    # ("basic-functions-tand", x-> tand(x[1])), # cannot extend function 
-    ("basic-functions-cscd", x -> cscd(x[1])),
-    ("basic-functions-secd", x -> secd(x[1])),
-    ("basic-functions-cotd", x -> cotd(x[1])),
-    # ("basic-functions-atand", x-> atand(x[1])), # cannot extend function 
-    # ("basic-functions-acotd", x-> acotd(x[1])), # cannot extend function 
-    ("basic-functions-sinh", x -> sinh(x[1])),
-    ("basic-functions-asinh", x -> asinh(x[1])),
-    ("basic-functions-cosh", x -> cosh(x[1])),
-    ("basic-functions-acosh", x -> acosh(x[1] + 1)),
-    ("basic-functions-tanh", x -> tanh(x[1])),
-    ("basic-functions-csch", x -> csch(x[1])),
-    ("basic-functions-sech", x -> sech(x[1])),
-    ("basic-functions-coth", x -> coth(x[1])),
-    ("basic-functions-atanh", x -> atanh(x[1])),
-    # ("basic-functions-acoth", x-> acoth(x[1])), # range issue
-    ("basic-functions-:+", x -> +(x[1], x[2])),
-    ("basic-functions-:-", x -> -(x[1], x[2])),
-    ("basic-functions-:*", x -> *(x[1], x[2])),
-    ("basic-functions-:^", x -> ^(x[1], x[2])),
-    ("basic-functions-:/", x -> /(x[1], x[2])),
-    # ("basic-functions-:<=", x-> <=(x[1], x[2])), # not implemented 
-    # ("basic-functions-:>=", x-> >=(x[1], x[2])), # not implemented 
-    # ("basic-functions-:(==),", x-> (==)(x[1], x[2])), # not implemented 
-    # ("basic-functions-:<", x-> <(x[1], x[2])), # not implemented 
-    # ("basic-functions-:>", x-> >(x[1], x[2])), # not implemented 
-    ("special-functions-erfi", x -> erfi(x[1])),
-    ("special-functions-erfcinv", x -> erfcinv(x[1])),
-    ("special-functions-erfcx", x -> erfcx(x[1])),
-    ("special-functions-invdigamma", x -> invdigamma(x[1])),
-    ("special-functions-bessely1", x -> bessely1(x[1])),
-    ("special-functions-besselj1", x -> besselj1(x[1])),
-    ("special-functions-dawson", x -> dawson(x[1])),
-    ("special-functions-airyaiprime", x -> airyaiprime(x[1])),
-    ("special-functions-erf", x -> erf(x[1])),
-    ("special-functions-trigamma", x -> trigamma(x[1])),
-    ("special-functions-gamma", x -> gamma(x[1])),
-    ("special-functions-airyaiprime", x -> airyaiprime(x[1])),
-    ("special-functions-airybiprime", x -> airybiprime(x[1])),
-    ("special-functions-erfinv", x -> erfinv(x[1])),
-    ("special-functions-bessely0", x -> bessely0(x[1])),
-    ("special-functions-erfc", x -> erfc(x[1])),
-    ("special-functions-trigamma", x -> trigamma(x[1])),
-    ("special-functions-airybiprime", x -> airybiprime(x[1])),
-    ("special-functions-besselj0", x -> besselj0(x[1])),
-    ("special-functions-beta", x -> beta(x[1], x[2])),
-    ("special-functions-logbeta", x -> logbeta(x[1], x[2])),
-    (
-        "composite-functions-1-1",
-        x -> beta(erf(x[1] / x[2] / 3.0) + 3.0 * x[2], erf(x[9])^2),
-    ),
-    ("composite-functions-1-2", x -> 0 * x[1]),
-    (
-        "composite-functions-1-3",
-        x -> beta(cos(log(abs2(inv(inv(x[1]))) + 1.0)), erfc(tanh(0 * x[1]))),
-    ),
-    ("composite-functions-1-4", x -> (0 * x[1]^x[3]^1.0 + x[1]) / x[9] / x[10]),
-    (
-        "composite-functions-1-5",
-        x -> exp(x[1] + 1.0)^x[2] * log(abs2(x[3]) + 3) / tanh(x[2]),
-    ),
-    ("composite-functions-1-6", x -> beta(2 * logbeta(x[1], x[5]), beta(x[2], x[3]))),
-    ("composite-functions-1-7", x -> besselj0(exp(erf(-x[1])))),
-    ("composite-functions-1-8", x -> erfc(abs2(x[1]^2 / x[2])^x[9] / x[10])),
-    ("composite-functions-1-9", x -> erfc(x[1])^erf(2.5x[2])),
-    ("composite-functions-1-10", x -> sin(1 / x[1])),
-    ("composite-functions-1-11", x -> exp(x[2]) / cos(x[1])^2 + sin(x[1]^2)),
-    ("composite-functions-1-12", x -> sin(x[9]inv(x[1]) - x[8]inv(x[2]))),
-    ("composite-functions-1-13", x -> x[1] / log(x[2]^2 + 9.0)),
-    (
-        "composite-functions-1-14",
-        x -> beta(beta(tan(beta(x[1], 1) + 2.0), cos(sin(x[2]))), x[3]),
-    ),
+    # Unary basics: sin, cos, exp, log, sqrt, abs, abs2, inv, cbrt, tanh, atan
+    ("basic-unary",
+     x -> sin(x[1]) + cos(x[2]) + exp(x[3]) + log(x[4] + 1) + sqrt(abs2(x[5]) + 1) +
+          tanh(x[6]) + atan(x[7]) + cbrt(x[8]) + abs(x[9]) + inv(x[10])),
+    # Binary ops: +, -, *, ^, /
+    ("basic-binary",
+     x -> (x[1] + x[2]) * (x[3] - x[4]) + x[5]^x[6] + x[7] / x[8]),
+    # Special functions: erf, erfc, gamma, beta, bessel, trigamma, dawson
+    ("special-fns",
+     x -> erf(x[1]) + erfc(x[2]) + gamma(x[3] + 1) + beta(x[4] + 1, x[5] + 1) +
+          besselj0(x[6]) + dawson(x[7]) + trigamma(x[8] + 1)),
+    # Deep nesting with erf and beta
+    ("composite-deep",
+     x -> beta(erf(x[1] / x[2] / 3.0) + 3.0 * x[2], erf(x[9])^2)),
+    # Edge cases: zero multiplication, inv chains, zero-power
+    ("composite-edge",
+     x -> (0 * x[1]) + beta(cos(log(abs2(inv(inv(x[1]))) + 1.0)), erfc(tanh(0 * x[1]))) +
+          (0 * x[1]^x[3]^1.0 + x[1]) / x[9] / x[10]),
+    # Mixed ops: exp-power, log, trig squares, simple division
+    ("composite-mixed",
+     x -> exp(x[1] + 1.0)^x[2] * log(abs2(x[3]) + 3) / tanh(x[2]) +
+          exp(x[2]) / cos(x[1])^2 + sin(x[1]^2) + x[1] / log(x[2]^2 + 9.0)),
+    # Special function compositions: bessel-exp-erf, erfc-power-erf, sin-inv
+    ("composite-special",
+     x -> besselj0(exp(erf(-x[1]))) + erfc(x[1])^erf(2.5x[2]) +
+          erfc(abs2(x[1]^2 / x[2])^x[9] / x[10]) + sin(x[9]inv(x[1]) - x[8]inv(x[2]))),
+    # Nested beta and logbeta
+    ("composite-beta",
+     x -> beta(2 * logbeta(x[1], x[5]), beta(x[2], x[3])) +
+          beta(beta(tan(beta(x[1], 1) + 2.0), cos(sin(x[2]))), x[3])),
 ]
 
+# Consolidated parameter functions: each unique closure type triggers recompilation,
+# so we combine into fewer composites while covering the same operator categories.
 const PARAMETER_FUNCTIONS = [
-    ("parameter-basic-1", (x, θ) -> x[1] + θ[1]),
-    ("parameter-basic-2", (x, θ) -> x[1] * θ[1]),
-    ("parameter-basic-3", (x, θ) -> x[1]^2 + θ[1] * x[2]),
-    ("parameter-basic-4", (x, θ) -> sin(x[1]) + cos(θ[1])),
-    ("parameter-basic-5", (x, θ) -> exp(x[1] + θ[1])),
-    ("parameter-basic-6", (x, θ) -> log(x[1]^2 + θ[1]^2)),
-    ("parameter-basic-7", (x, θ) -> x[1] / (1 + θ[1])),
-    ("parameter-basic-8", (x, θ) -> θ[1] * sin(x[1]) + θ[2] * cos(x[2])),
-    ("parameter-composite-1", (x, θ) -> exp(x[1] * θ[1]) + sin(x[2] + θ[2])),
-    ("parameter-composite-2", (x, θ) -> beta(x[1] + θ[1], x[2] + θ[2])),
-    ("parameter-composite-3", (x, θ) -> sqrt(x[1]^2 + θ[1]^2) * log(x[2] + θ[2] + 1)),
-    ("parameter-composite-4", (x, θ) -> gamma(x[1] + 1) * θ[1] + erf(x[2] * θ[2])),
+    # Basic parameter ops: +, *, ^2, sin, cos, exp, log, /
+    ("parameter-basic",
+     (x, θ) -> (x[1] + θ[1]) + x[1] * θ[1] + x[1]^2 + θ[1] * x[2] +
+               sin(x[1]) + cos(θ[1]) + exp(x[1] + θ[1]) +
+               log(x[1]^2 + θ[1]^2 + 1) + x[1] / (1 + θ[1])),
+    # Multi-parameter with θ[1] and θ[2]
+    ("parameter-multi",
+     (x, θ) -> θ[1] * sin(x[1]) + θ[2] * cos(x[2]) + exp(x[1] * θ[1]) + sin(x[2] + θ[2])),
+    # Composite with special functions
+    ("parameter-composite",
+     (x, θ) -> sqrt(x[1]^2 + θ[1]^2 + 1) * log(x[2] + θ[2] + 2) +
+               gamma(x[1] + 2) * θ[1] + erf(x[2] * θ[2]) +
+               beta(x[1] + θ[1] + 1, x[2] + θ[2] + 1)),
 ]
 
 function gradient(f, x)

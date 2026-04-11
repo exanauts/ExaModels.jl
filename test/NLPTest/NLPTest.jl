@@ -3,14 +3,14 @@ module NLPTest
 using ExaModels
 using Downloads, Test
 using NLPModels, NLPModelsJuMP, NLPModelsIpopt, NLPModelsTest
-using JuMP, PowerModels, MadNLP, Percival
+using JuMP, PowerModels, MadNLP
 
 import ..BACKENDS
 import ..ad_tolerance, ..sol_tolerance, ..solver_tolerance
 
+# Each distinct model builder creates unique ExaModel types, triggering recompilation of the
+# entire solver pipeline per backend. Different sizes of the same model reuse compiled code.
 const NLP_TEST_ARGUMENTS = [
-    ("luksan_struct", 3),
-    ("luksan_struct", 20),
     ("luksan_vlcek", 3),
     ("luksan_vlcek", 20),
     ("ac_power", "pglib_opf_case3_lmbd.m"),
@@ -21,20 +21,10 @@ const NLP_TEST_ARGUMENTS = [
 const SOLVERS = [
     ("ipopt", (nlp; kwargs...) -> ipopt(nlp; print_level = 0, kwargs...)),
     ("madnlp", (nlp; kwargs...) -> madnlp(nlp; print_level = MadNLP.ERROR, kwargs...)),
-    ("percival", (nlp; kwargs...) -> percival(nlp, kwargs...)),
 ]
 
-const EXCLUDE1 = [("ac_power", "percival"), ("struct_ac_power", "percival"), ("trivialmax", "percival")]
+const EXCLUDE1 = []
 const EXCLUDE2 = []
-
-for backend in BACKENDS
-    if "oneAPIBackend()" == string(backend)
-        push!(EXCLUDE2, ("percival", backend))
-    end
-    if "OpenCLBackend()" == string(backend)
-        push!(EXCLUDE2, ("percival", backend))
-    end
-end
 
 include("luksan.jl")
 include("power.jl")

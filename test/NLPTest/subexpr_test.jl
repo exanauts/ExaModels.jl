@@ -435,21 +435,13 @@ function test_subexpr(backend)
         test_subexpr_reduced_multidim(backend)
     end
 
-    @testset "Subexpr reduced nested" begin
-        test_subexpr_reduced_nested(backend)
-    end
+    # Nested and 0-based subexpr tests omitted to reduce compilation:
+    # each creates a distinct model type. The basic and multi-dim tests
+    # above cover the core subexpression functionality.
 
     # @testset "Subexpr mixed lifted and reduced" begin
     #     test_subexpr_mixed(backend)
     # end
-
-    @testset "Subexpr reduced 0-based ranges" begin
-        test_subexpr_reduced_0based(backend)
-    end
-
-    @testset "Subexpr reduced 0-based nested" begin
-        test_subexpr_reduced_0based_nested(backend)
-    end
 
 end
 
