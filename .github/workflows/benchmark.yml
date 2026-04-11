@@ -1,8 +1,6 @@
 name: benchmark
 
 on:
-  issue_comment:
-    types: [created]
   workflow_run:
     workflows: ["build"]
     types: [completed]
@@ -13,157 +11,22 @@ permissions:
   pull-requests: write
 
 concurrency:
-  group: benchmark-${{ github.event.issue.number || github.event.workflow_run.pull_requests[0].number || github.run_id }}
+  group: benchmark-${{ github.event.workflow_run.pull_requests[0].number || github.run_id }}
   cancel-in-progress: true
 
 jobs:
-  # ── Parse trigger and determine which backends to run ─────────────────────────
-  parse:
-    if: |
-      (github.event_name == 'issue_comment' &&
-       github.event.issue.pull_request != null &&
-       contains(github.event.comment.body, 'run benchmark')) ||
-      (github.event_name == 'workflow_run' &&
-       github.event.workflow_run.conclusion == 'success' &&
-       github.event.workflow_run.event == 'pull_request')
-    runs-on: ubuntu-latest
-    outputs:
-      nothing:   ${{ steps.parse.outputs.nothing }}
-      cuda:      ${{ steps.parse.outputs.cuda }}
-      amdgpu:    ${{ steps.parse.outputs.amdgpu }}
-      oneapi:    ${{ steps.parse.outputs.oneapi }}
-      pr_sha:    ${{ steps.info.outputs.pr_sha }}
-      pr_number: ${{ steps.info.outputs.pr_number }}
-    steps:
-      - name: Get PR info
-        id: info
-        uses: actions/github-script@v7
-        with:
-          script: |
-            let pr_sha, pr_number;
-            if (context.eventName === 'workflow_run') {
-              const run = context.payload.workflow_run;
-              pr_sha = run.head_sha;
-              if (run.pull_requests && run.pull_requests.length > 0) {
-                pr_number = String(run.pull_requests[0].number);
-              } else {
-                // Fallback: find the open PR matching this head SHA
-                const { data: prs } = await github.rest.pulls.list({
-                  owner: context.repo.owner,
-                  repo:  context.repo.repo,
-                  state: 'open',
-                  sort:  'updated',
-                  direction: 'desc',
-                  per_page: 100,
-                });
-                const match = prs.find(pr => pr.head.sha === pr_sha);
-                pr_number = match ? String(match.number) : '';
-              }
-            } else {
-              const pr = await github.rest.pulls.get({
-                owner: context.repo.owner,
-                repo:  context.repo.repo,
-                pull_number: context.issue.number,
-              });
-              pr_sha = pr.data.head.sha;
-              pr_number = String(context.issue.number);
-            }
-
-            if (!pr_number) {
-              core.setFailed('Could not determine PR number');
-              return;
-            }
-            core.setOutput('pr_sha',    pr_sha);
-            core.setOutput('pr_number', pr_number);
-
-      - name: React to comment
-        if: github.event_name == 'issue_comment'
-        uses: actions/github-script@v7
-        with:
-          script: |
-            await github.rest.reactions.createForIssueComment({
-              owner: context.repo.owner,
-              repo:  context.repo.repo,
-              comment_id: context.payload.comment.id,
-              content: 'eyes',
-            });
-
-      - name: Post pending status
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const marker = '<!-- benchmark-bot -->';
-            const pr_number = parseInt('${{ steps.info.outputs.pr_number }}');
-            const sha = '${{ steps.info.outputs.pr_sha }}'.substring(0, 7);
-            const body = [
-              marker,
-              '## Benchmark Status',
-              '',
-              `Benchmarks are running for \`${sha}\` vs \`main\`...`,
-              '',
-              '_Results will appear here when complete._',
-            ].join('\n');
-
-            const { data: comments } = await github.rest.issues.listComments({
-              owner: context.repo.owner,
-              repo:  context.repo.repo,
-              issue_number: pr_number,
-            });
-            const existing = comments.find(c => c.body.startsWith(marker));
-            if (existing) {
-              await github.rest.issues.updateComment({
-                owner:      context.repo.owner,
-                repo:       context.repo.repo,
-                comment_id: existing.id,
-                body,
-              });
-            } else {
-              await github.rest.issues.createComment({
-                owner:        context.repo.owner,
-                repo:         context.repo.repo,
-                issue_number: pr_number,
-                body,
-              });
-            }
-
-      - name: Parse backends
-        id: parse
-        run: |
-          if [[ "${{ github.event_name }}" == "workflow_run" ]]; then
-            # Automatic trigger after CI passes: full benchmark
-            nothing=true; cuda=true; amdgpu=true; oneapi=true
-          else
-            BODY=$(cat <<'COMMENT_EOF'
-            ${{ github.event.comment.body }}
-            COMMENT_EOF
-            )
-
-            nothing=false cuda=false amdgpu=false oneapi=false
-
-            echo "$BODY" | grep -qi 'run benchmark nothing' && nothing=true
-            echo "$BODY" | grep -qi 'run benchmark cuda'    && cuda=true
-            echo "$BODY" | grep -qi 'run benchmark amdgpu'  && amdgpu=true
-            echo "$BODY" | grep -qi 'run benchmark oneapi'  && oneapi=true
-            # Plain "run benchmark" with no specific backend → full
-            if ! ($nothing || $cuda || $amdgpu || $oneapi); then
-              nothing=true; cuda=true; amdgpu=true; oneapi=true
-            fi
-          fi
-
-          echo "nothing=$nothing" >> $GITHUB_OUTPUT
-          echo "cuda=$cuda"       >> $GITHUB_OUTPUT
-          echo "amdgpu=$amdgpu"   >> $GITHUB_OUTPUT
-          echo "oneapi=$oneapi"   >> $GITHUB_OUTPUT
-
-  # ── CPU (nothing) ─────────────────────────────────────────────────────────────
   bench-nothing:
-    needs: parse
-    if: needs.parse.outputs.nothing == 'true'
+    if: >
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'pull_request'
     runs-on: ['self-hosted']
+    outputs:
+      pr_sha:    ${{ github.event.workflow_run.head_sha }}
+      pr_number: ${{ github.event.workflow_run.pull_requests[0].number }}
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ needs.parse.outputs.pr_sha }}
+          ref: ${{ github.event.workflow_run.head_sha }}
       - uses: julia-actions/setup-julia@latest
         with:
           version: '1'
@@ -183,15 +46,15 @@ jobs:
           name: results-nothing
           path: benchmark/benchmark-results-*.jld2
 
-  # ── CUDA ──────────────────────────────────────────────────────────────────────
   bench-cuda:
-    needs: parse
-    if: needs.parse.outputs.cuda == 'true'
+    if: >
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'pull_request'
     runs-on: ['self-hosted', 'gpu', 'cuda']
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ needs.parse.outputs.pr_sha }}
+          ref: ${{ github.event.workflow_run.head_sha }}
       - uses: julia-actions/setup-julia@latest
         with:
           version: '1'
@@ -211,15 +74,15 @@ jobs:
           name: results-cuda
           path: benchmark/benchmark-results-*.jld2
 
-  # ── AMDGPU ────────────────────────────────────────────────────────────────────
   bench-amdgpu:
-    needs: parse
-    if: needs.parse.outputs.amdgpu == 'true'
+    if: >
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'pull_request'
     runs-on: ['self-hosted', 'gpu', 'amdgpu']
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ needs.parse.outputs.pr_sha }}
+          ref: ${{ github.event.workflow_run.head_sha }}
       - uses: julia-actions/setup-julia@latest
         with:
           version: '1'
@@ -239,10 +102,10 @@ jobs:
           name: results-amdgpu
           path: benchmark/benchmark-results-*.jld2
 
-  # ── oneAPI ────────────────────────────────────────────────────────────────────
   bench-oneapi:
-    needs: parse
-    if: needs.parse.outputs.oneapi == 'true'
+    if: >
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'pull_request'
     runs-on: ['self-hosted', 'gpu', 'oneapi']
     env:
       OverrideDefaultFP64Settings: '1'
@@ -250,7 +113,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ needs.parse.outputs.pr_sha }}
+          ref: ${{ github.event.workflow_run.head_sha }}
       - uses: julia-actions/setup-julia@latest
         with:
           version: '1'
@@ -270,42 +133,29 @@ jobs:
           name: results-oneapi
           path: benchmark/benchmark-results-*.jld2
 
-  # ── Merge results and post PR comment ─────────────────────────────────────────
   compare:
-    needs: [parse, bench-nothing, bench-cuda, bench-amdgpu, bench-oneapi]
-    if: |
-      always() &&
-      !contains(needs.*.result, 'failure') &&
-      !contains(needs.*.result, 'cancelled') &&
-      contains(needs.*.result, 'success')
+    needs: [bench-nothing, bench-cuda, bench-amdgpu, bench-oneapi]
+    if: always() && contains(needs.*.result, 'success')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
       - uses: julia-actions/setup-julia@latest
         with:
           version: '1'
-
-      - name: Instantiate compare env
+      - name: Instantiate
         working-directory: benchmark
         run: julia --startup-file=no --project=. -e 'using Pkg; Pkg.Registry.update(); Pkg.instantiate()'
-
-      - name: Download all result artifacts
-        uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v4
         with:
           pattern: results-*
           path: benchmark
           merge-multiple: true
-
-      - name: Merge JLD2 results
+      - name: Merge and compare
         working-directory: benchmark
         run: |
-          julia --startup-file=no --project=. - <<'EOF'
+          julia --startup-file=no --project=. - <<'JLEOF'
           using JLD2
-
-          main_merged    = Dict()
-          current_merged = Dict()
-
+          main_merged, current_merged = Dict(), Dict()
           for f in readdir(@__DIR__; join=true)
               endswith(f, ".jld2") || continue
               d = JLD2.load(f, "results")
@@ -315,106 +165,33 @@ jobs:
                   merge!(current_merged, d)
               end
           end
-
           JLD2.@save "benchmark-results-main.jld2"    results=main_merged
           JLD2.@save "benchmark-results-current.jld2" results=current_merged
-          EOF
-
-      - name: Compare
-        working-directory: benchmark
-        run: julia --startup-file=no --project=. compare.jl | tee comparison.txt
-
-      - name: Post PR comment
+          JLEOF
+          julia --startup-file=no --project=. compare.jl | tee comparison.txt
+      - name: Post results on PR
         uses: actions/github-script@v7
         with:
           script: |
             const fs = require('fs');
             const output = fs.readFileSync('benchmark/comparison.txt', 'utf8');
             const marker = '<!-- benchmark-bot -->';
-            const sha = '${{ needs.parse.outputs.pr_sha }}'.substring(0, 7);
-            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
-            const body = [
-              marker,
-              '## Benchmark Results',
-              '',
-              `Comparison of \`${sha}\` vs \`main\` (ratio = current / main; values **< 1.0** are improvements).`,
-              '',
-              '```',
-              output.trimEnd(),
-              '```',
-              '',
-              `[Full workflow run](${runUrl})`,
-            ].join('\n');
-            const pr_number = parseInt('${{ needs.parse.outputs.pr_number }}');
+            const body = `${marker}\n## Benchmark Results\n\`\`\`\n${output.trimEnd()}\n\`\`\``;
+            const pr_number = ${{ github.event.workflow_run.pull_requests[0].number }};
 
             const { data: comments } = await github.rest.issues.listComments({
-              owner: context.repo.owner,
-              repo:  context.repo.repo,
+              owner: context.repo.owner, repo: context.repo.repo,
               issue_number: pr_number,
             });
-
             const existing = comments.find(c => c.body.startsWith(marker));
             if (existing) {
               await github.rest.issues.updateComment({
-                owner:      context.repo.owner,
-                repo:       context.repo.repo,
-                comment_id: existing.id,
-                body,
+                owner: context.repo.owner, repo: context.repo.repo,
+                comment_id: existing.id, body,
               });
             } else {
               await github.rest.issues.createComment({
-                owner:        context.repo.owner,
-                repo:         context.repo.repo,
-                issue_number: pr_number,
-                body,
-              });
-            }
-
-  # ── Update comment on failure ─────────────────────────────────────────────────
-  report-failure:
-    needs: [parse, bench-nothing, bench-cuda, bench-amdgpu, bench-oneapi]
-    if: |
-      always() &&
-      (contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')) &&
-      needs.parse.result == 'success'
-    runs-on: ubuntu-latest
-    steps:
-      - name: Post failure notice
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const marker = '<!-- benchmark-bot -->';
-            const sha = '${{ needs.parse.outputs.pr_sha }}'.substring(0, 7);
-            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
-            const body = [
-              marker,
-              '## Benchmark Failed',
-              '',
-              `Benchmarks for \`${sha}\` did not complete successfully.`,
-              '',
-              `[See workflow logs](${runUrl})`,
-            ].join('\n');
-            const pr_number = parseInt('${{ needs.parse.outputs.pr_number }}');
-
-            const { data: comments } = await github.rest.issues.listComments({
-              owner: context.repo.owner,
-              repo:  context.repo.repo,
-              issue_number: pr_number,
-            });
-
-            const existing = comments.find(c => c.body.startsWith(marker));
-            if (existing) {
-              await github.rest.issues.updateComment({
-                owner:      context.repo.owner,
-                repo:       context.repo.repo,
-                comment_id: existing.id,
-                body,
-              });
-            } else {
-              await github.rest.issues.createComment({
-                owner:        context.repo.owner,
-                repo:         context.repo.repo,
-                issue_number: pr_number,
-                body,
+                owner: context.repo.owner, repo: context.repo.repo,
+                issue_number: pr_number, body,
               });
             }
