@@ -1039,10 +1039,11 @@ julia> c, _ = add_con!(c, g, i => x[i] + x[i+1] for i = 1:9);
 julia> g
 Constraint
 
-  s.t. (...)
-       g♭ ≤ [g(x,θ,p)]_{p ∈ P} ≤ g♯
+  g♭ ≤ [g(x,i)]_{i ∈ I} ≤ g♯
 
-  where |P| = 9
+  g(x,i) = 0
+
+  where |I| = 9
 ```
 """
 @inline function add_con(
