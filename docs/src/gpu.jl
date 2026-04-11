@@ -6,6 +6,7 @@
 # Also, if you're using NVIDIA GPUs, make sure to have installed appropriate drivers.
 
 # Let's say that our CPU code is as follows.
+using ExaModels
 function luksan_vlcek_obj(x, i)
     return 100 * (x[i-1]^2 - x[i])^2 + (x[i-1] - 1)^2
 end
@@ -21,10 +22,10 @@ end
 
 function luksan_vlcek_model(N)
 
-    c = ExaCore()
-    x = variable(c, N; start = (luksan_vlcek_x0(i) for i = 1:N))
-    constraint(c, luksan_vlcek_con(x, i) for i = 1:(N-2))
-    objective(c, luksan_vlcek_obj(x, i) for i = 2:N)
+    c = ExaCore(concrete = Val(true))
+    @add_var(c, x, N; start = (luksan_vlcek_x0(i) for i = 1:N))
+    @add_con(c, luksan_vlcek_con(x, i) for i = 1:(N-2))
+    @add_obj(c, luksan_vlcek_obj(x, i) for i = 2:N)
 
     return ExaModel(c)
 end
@@ -32,10 +33,10 @@ end
 # Now we simply modify this by
 function luksan_vlcek_model(N, backend = nothing)
 
-    c = ExaCore(; backend = backend) # specify the backend
-    x = variable(c, N; start = (luksan_vlcek_x0(i) for i = 1:N))
-    constraint(c, luksan_vlcek_con(x, i) for i = 1:(N-2))
-    objective(c, luksan_vlcek_obj(x, i) for i = 2:N)
+    c = ExaCore(; backend = backend, concrete = Val(true)) # specify the backend
+    @add_var(c, x, N; start = (luksan_vlcek_x0(i) for i = 1:N))
+    @add_con(c, luksan_vlcek_con(x, i) for i = 1:(N-2))
+    @add_obj(c, luksan_vlcek_obj(x, i) for i = 2:N)
 
     return ExaModel(c)
 end
@@ -62,14 +63,14 @@ ipopt(m)
 # In the case we have arrays for the data, what we need to do is to simply convert the array types to the corresponding device array types. In particular,
 
 function cuda_luksan_vlcek_model(N)
-    c = ExaCore(; backend = CUDABackend())
+    c = ExaCore(; backend = CUDABackend(), concrete = Val(true))
     d1 = CuArray(1:(N-2))
     d2 = CuArray(2:N)
     d3 = CuArray([luksan_vlcek_x0(i) for i = 1:N])
 
-    x = variable(c, N; start = d3)
-    constraint(c, luksan_vlcek_con(x, i) for i in d1)
-    objective(c, luksan_vlcek_obj(x, i) for i in d2)
+    @add_var(c, x, N; start = d3)
+    @add_con(c, luksan_vlcek_con(x, i) for i in d1)
+    @add_obj(c, luksan_vlcek_obj(x, i) for i in d2)
 
     return ExaModel(c)
 end

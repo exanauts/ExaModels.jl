@@ -52,16 +52,16 @@ end
 
 function luksan_vlcek_model(N; backend = nothing)
     
-    c = ExaModels.ExaCore(backend)
-    x = ExaModels.variable(
+    c = ExaModels.ExaCore(backend, concrete = Val(true))
+    c, x = ExaModels.add_variable(
         c, N;
         start = (luksan_vlcek_x0(i) for i=1:N)
     )
-    ExaModels.constraint(
+    c, _ = ExaModels.add_constraint(
         c,
         luksan_vlcek_con(x,i)
         for i in 1:N-2)
-    ExaModels.objective(c, luksan_vlcek_obj(x,i) for i in 2:N)
+    c, _ = ExaModels.add_objective(c, luksan_vlcek_obj(x,i) for i in 2:N)
     
     return ExaModels.ExaModel(c) # returns the model
 end

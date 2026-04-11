@@ -29,6 +29,9 @@ pglib*.m
 # ampl nl files
 *.nl
 
+# Editor lock/temp files
+.#*
+
 ## Core latex/pdflatex auxiliary files:
 *.aux
 *.lof
