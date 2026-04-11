@@ -96,7 +96,7 @@ function test_dim_checks(backend)
         @test y isa ExaModels.Variable
 
         # Generator bounds with correct length should work
-        c, z = add_var(c, 4; start = (Float64(i) for i in 1:4))
+        c, z = add_var(c, 4; start = (1.0 * i for i in 1:4))
         @test z isa ExaModels.Variable
 
         # Wrong array length for start
@@ -109,7 +109,7 @@ function test_dim_checks(backend)
         @test_throws DimensionMismatch add_var(c, 5; uvar = ones(3))
 
         # Wrong generator length for start
-        @test_throws DimensionMismatch add_var(c, 5; start = (Float64(i) for i in 1:3))
+        @test_throws DimensionMismatch add_var(c, 5; start = (1.0 * i for i in 1:3))
 
         # Multi-dimensional: wrong array length
         @test_throws DimensionMismatch add_var(c, 2, 3; start = ones(5))
@@ -138,7 +138,7 @@ function test_dim_checks(backend)
 
         # Wrong generator length for ucon
         @test_throws DimensionMismatch add_con(
-            c, x[i] for i in 1:5; ucon = (Float64(i) for i in 1:3)
+            c, x[i] for i in 1:5; ucon = (1.0 * i for i in 1:3)
         )
     end
 end
