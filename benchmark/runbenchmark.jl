@@ -166,7 +166,7 @@ if pkgversion(ExaModels) > v"0.9.7"
 
     # ── Rosenrock ───────────────────────────────────────────────────────────────
     @eval @inline function exa_rosenrock_model(backend, N)
-        c = ExaCore(; backend)
+        c = ExaCore(concrete = Val(true); backend)
         @add_var(c, x, N; start = (mod(i, 2) == 1 ? -1.2 : 1.0 for i = 1:N))
         @add_con(c, s, 3x[i+1]^3 + 2 * x[i+2] - 5 + sin(x[i+1] - x[i+2])sin(x[i+1] + x[i+2]) + 4x[i+1] - x[i]exp(x[i] - x[i+1]) - 3 for i = 1:(N-2))
         @add_obj(c, 100 * (x[i-1]^2 - x[i])^2 + (x[i-1] - 1)^2 for i = 2:N)
@@ -176,7 +176,7 @@ if pkgversion(ExaModels) > v"0.9.7"
     # ── AC OPF ──────────────────────────────────────────────────────────────────
     @eval @inline function exa_opf_model(backend, case)
         data = parse_ac_power_data(case)
-        core = ExaCore(; backend)
+        core = ExaCore(concrete = Val(true); backend)
 
         @add_var(core, pg, length(data.gen); lvar = data.pmin, uvar = data.pmax)
         @add_var(core, qg, length(data.gen); lvar = data.qmin, uvar = data.qmax)
@@ -248,7 +248,7 @@ if pkgversion(ExaModels) > v"0.9.7"
         tmin = b > a ? 1/4 : 3/4
         tf = 1.0; h = tf / nh
 
-        c = ExaCore(; backend = backend)
+        c = ExaCore(concrete = Val(true); backend)
         @add_var(c, u,  nh+1; start = [4*abs(b-a)*(k/nh - tmin) for k in 1:nh+1])
         @add_var(c, x1, nh+1; start = [4*abs(b-a)*k/nh*(1/2*k/nh - tmin) + a for k in 1:nh+1])
         @add_var(c, x2, nh+1; start = [(4*abs(b-a)*k/nh*(1/2*k/nh - tmin) + a) *
@@ -275,7 +275,7 @@ if pkgversion(ExaModels) > v"0.9.7"
         phi   = pi    .* rand(np)
         itr   = [(i, j) for i in 1:np-1 for j in i+1:np]
 
-        core = ExaCore(; backend = backend)
+        core = ExaCore(concrete = Val(true); backend)
         @add_var(core, x, 1:np; start = [cos(theta[i])*sin(phi[i]) for i = 1:np])
         @add_var(core, y, 1:np; start = [sin(theta[i])*sin(phi[i]) for i = 1:np])
         @add_var(core, z, 1:np; start = [cos(phi[i]) for i = 1:np])
@@ -293,7 +293,7 @@ else
     # macros.  This branch keeps the benchmark runnable against both APIs.
 
     function exa_rosenrock_model(backend, N)
-        c = ExaCore(backend = backend)
+        c = ExaCore(; backend)
         x = variable(c, N; start = (mod(i, 2) == 1 ? -1.2 : 1.0 for i = 1:N))
         constraint(c, 3x[i+1]^3 + 2*x[i+2] - 5 + sin(x[i+1] - x[i+2])sin(x[i+1] + x[i+2]) + 4x[i+1] - x[i]exp(x[i] - x[i+1]) - 3 for i = 1:(N-2))
         objective(c, 100*(x[i-1]^2 - x[i])^2 + (x[i-1] - 1)^2 for i = 2:N)
@@ -302,7 +302,7 @@ else
 
     function exa_opf_model(backend, case)
         data = parse_ac_power_data(case)
-        core = ExaCore(backend = backend)
+        core = ExaCore(; backend)
 
         pg = variable(core, length(data.gen); lvar = data.pmin, uvar = data.pmax)
         qg = variable(core, length(data.gen); lvar = data.qmin, uvar = data.qmax)
@@ -373,7 +373,7 @@ else
         tmin = b > a ? 1/4 : 3/4
         tf = 1.0; h = tf / nh
 
-        c = ExaCore(backend = backend)
+        c = ExaCore(; backend)
         u  = variable(c, nh+1; start = [4*abs(b-a)*(k/nh - tmin) for k in 1:nh+1])
         x1 = variable(c, nh+1; start = [4*abs(b-a)*k/nh*(1/2*k/nh - tmin) + a for k in 1:nh+1])
         x2 = variable(c, nh+1; start = [(4*abs(b-a)*k/nh*(1/2*k/nh - tmin) + a) *
@@ -399,7 +399,7 @@ else
         phi   = pi    .* rand(np)
         itr   = [(i, j) for i in 1:np-1 for j in i+1:np]
 
-        core = ExaCore(backend = backend)
+        core = ExaCore(; backend)
         x = variable(core, 1:np; start = [cos(theta[i])*sin(phi[i]) for i = 1:np])
         y = variable(core, 1:np; start = [sin(theta[i])*sin(phi[i]) for i = 1:np])
         z = variable(core, 1:np; start = [cos(phi[i]) for i = 1:np])
