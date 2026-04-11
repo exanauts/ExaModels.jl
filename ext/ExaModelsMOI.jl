@@ -237,7 +237,7 @@ function _exafy_con(
         e = pos ? e : -e
         bin = update_bin!(
             bin,
-            ExaModels.ParIndexed(ExaModels.ParSource(), length(p) + 1) => e,
+            ExaModels.DataIndexed(ExaModels.DataSource(), length(p) + 1) => e,
             (p..., con_to_idx[i]),
         ) # augment data with constraint index
     end
@@ -257,7 +257,7 @@ function _exafy_con(
         e = pos ? e : -e
         bin = update_bin!(
             bin,
-            ExaModels.ParIndexed(ExaModels.ParSource(), length(p) + 1) => e,
+            ExaModels.DataIndexed(ExaModels.DataSource(), length(p) + 1) => e,
             (p..., con_to_idx[i]),
         ) # augment data with constraint index
     end
@@ -266,7 +266,7 @@ function _exafy_con(
         e = pos ? e : -e
         bin = update_bin!(
             bin,
-            ExaModels.ParIndexed(ExaModels.ParSource(), length(p) + 1) => e,
+            ExaModels.DataIndexed(ExaModels.DataSource(), length(p) + 1) => e,
             (p..., con_to_idx[i]),
         ) # augment data with constraint index
     end
@@ -293,7 +293,7 @@ function _exafy_con(
         e = pos ? e : -e
         bin = update_bin!(
             bin,
-            ExaModels.ParIndexed(ExaModels.ParSource(), length(p) + 1) => e,
+            ExaModels.DataIndexed(ExaModels.DataSource(), length(p) + 1) => e,
             (p..., con_to_idx[i]),
         ) # augment data with constraint index
     end
@@ -301,11 +301,11 @@ function _exafy_con(
 end
 function _exafy_con(i, c::C, bin, var_to_idx, con_to_idx; pos = true) where {C<:Real}
     e =
-        pos ? ExaModels.ParIndexed(ExaModels.ParSource(), 1) :
-        -ExaModels.ParIndexed(ExaModels.ParSource(), 1)
+        pos ? ExaModels.DataIndexed(ExaModels.DataSource(), 1) :
+        -ExaModels.DataIndexed(ExaModels.DataSource(), 1)
     bin = update_bin!(
         bin,
-        ExaModels.ParIndexed(ExaModels.ParSource(), 2) => 0 * ExaModels.Var(1) + e,
+        ExaModels.DataIndexed(ExaModels.DataSource(), 2) => 0 * ExaModels.Var(1) + e,
         (c, con_to_idx[i]),
     )
 
@@ -465,7 +465,7 @@ function exafy_obj(o::MOI.ScalarNonlinearFunction, bin, var_to_idx)
 end
 
 function _exafy(v::MOI.VariableIndex, var_to_idx, p = ())
-    i = ExaModels.ParIndexed(ExaModels.ParSource(), length(p) + 1)
+    i = ExaModels.DataIndexed(ExaModels.DataSource(), length(p) + 1)
     vartype, idx = var_to_idx[v]
     if vartype === :variable
         return ExaModels.Var(i), (p..., idx)
@@ -477,7 +477,7 @@ function _exafy(v::MOI.VariableIndex, var_to_idx, p = ())
 end
 
 function _exafy(i::R, var_to_idx, p) where {R<:Real}
-    return ExaModels.ParIndexed(ExaModels.ParSource(), length(p) + 1), (p..., i)
+    return ExaModels.DataIndexed(ExaModels.DataSource(), length(p) + 1), (p..., i)
 end
 
 function _exafy(e::MOI.ScalarNonlinearFunction, var_to_idx, p = ())
@@ -493,9 +493,9 @@ function _exafy(e::MOI.ScalarAffineFunction{T}, var_to_idx, p = ()) where {T}
             c1, p = _exafy(term, var_to_idx, p)
             c1
         end for term in e.terms) +
-        ExaModels.ParIndexed(ExaModels.ParSource(), length(p) + 1)
+            ExaModels.DataIndexed(ExaModels.DataSource(), length(p) + 1)
     else
-        ExaModels.ParIndexed(ExaModels.ParSource(), length(p) + 1)
+        ExaModels.DataIndexed(ExaModels.DataSource(), length(p) + 1)
     end
 
     return ec, (p..., e.constant)
@@ -503,12 +503,12 @@ end
 
 function _exafy(e::MOI.ScalarAffineTerm{T}, var_to_idx, p = ()) where {T}
     c1, p = _exafy(e.variable, var_to_idx, p)
-    return *(c1, ExaModels.ParIndexed(ExaModels.ParSource(), length(p) + 1)),
+    return *(c1, ExaModels.DataIndexed(ExaModels.DataSource(), length(p) + 1)),
     (p..., e.coefficient)
 end
 
 function _exafy(e::MOI.ScalarQuadraticFunction{T}, var_to_idx, p = ()) where {T}
-    t = ExaModels.ParIndexed(ExaModels.ParSource(), length(p) + 1)
+    t = ExaModels.DataIndexed(ExaModels.DataSource(), length(p) + 1)
     p = (p..., e.constant)
 
     if !isempty(e.affine_terms)
@@ -532,12 +532,12 @@ function _exafy(e::MOI.ScalarQuadraticTerm{T}, var_to_idx, p = ()) where {T}
 
     if e.variable_1 == e.variable_2
         v, p = _exafy(e.variable_1, var_to_idx, p)
-        return ExaModels.ParIndexed(ExaModels.ParSource(), length(p) + 1) * abs2(v),
+        return ExaModels.DataIndexed(ExaModels.DataSource(), length(p) + 1) * abs2(v),
         (p..., e.coefficient / 2) # it seems that MOI assumes this by default
     else
         v1, p = _exafy(e.variable_1, var_to_idx, p)
         v2, p = _exafy(e.variable_2, var_to_idx, p)
-        return ExaModels.ParIndexed(ExaModels.ParSource(), length(p) + 1) * v1 * v2,
+        return ExaModels.DataIndexed(ExaModels.DataSource(), length(p) + 1) * v1 * v2,
         (p..., e.coefficient)
     end
 end
