@@ -523,13 +523,16 @@ function append!(backend, a, b::Number, lb)
     return a
 end
 
-@inline total(::Tuple{}) = 1
-@inline total((n, ns...)::Tuple) = _length(n) * total(ns)
-_length(n::Int) = n
-_length(n::UnitRange) = length(n)
-size(ns) = Tuple(_length(n) for n in ns)
-_start(n::Int) = 1
-_start(n::UnitRange) = n.start
+@inline total(ns) = _total(ns...)
+@inline _total() = 1
+@inline _total(n, ns...) = _length(n) * _total(ns...)
+@inline _length(n::Int) = n
+@inline _length(n::UnitRange) = length(n)
+@inline size(ns) = _size(ns...)
+@inline _size() = ()
+@inline _size(n, ns...) = (_length(n), _size(ns...)...)
+@inline _start(n::Int) = 1
+@inline _start(n::UnitRange) = n.start
 
 """
     add_var(core, dims...; start = 0, lvar = -Inf, uvar = Inf, name = nothing, kwargs...)
@@ -565,7 +568,7 @@ Variable
 
 ```
 """
-function add_var(
+@inline function add_var(
     c::C,
     ns...;
     name = nothing,
@@ -615,7 +618,7 @@ Parameter
   θ ∈ R^{10}
 ```
 """
-function add_par(c::C, start::AbstractArray; name = nothing) where {T,C<:ExaCore{T}}
+@inline function add_par(c::C, start::AbstractArray; name = nothing) where {T,C<:ExaCore{T}}
 
     ns = Base.size(start)
     o = c.npar
@@ -659,7 +662,7 @@ function set_parameter!(c::ExaCore, param::Parameter, values::AbstractArray)
     return nothing
 end
 
-function add_var(c::C; kwargs...) where {T,C<:ExaCore{T}}
+@inline function add_var(c::C; kwargs...) where {T,C<:ExaCore{T}}
     c, v = add_var(c, 1; kwargs...)
     return (c, v[1])
 end
@@ -672,7 +675,7 @@ Equivalent to creating `length(gen.iter)` variables with equality constraints
 tying each to the corresponding generator expression.
 Returns `(core, Variable)`.
 """
-function add_var(
+@inline function add_var(
     c::C,
     gen::Base.Generator;
     name = nothing,
@@ -786,7 +789,7 @@ Constraint
   where |P| = 9
 ```
 """
-function add_con(
+@inline function add_con(
     c::C,
     gen::Base.Generator;
     name = nothing,
@@ -825,7 +828,7 @@ c, g = add_con(c,
 )
 ```
 """
-function add_con(
+@inline function add_con(
     c::C,
     gen::Base.Generator,
     gens::Base.Generator...;
@@ -850,7 +853,7 @@ When `name` is given as `Val(:name)`, the constraint is also accessible as
 Prefer the generator form (`add_con(core, gen)`) for typical use; this form
 is intended for code that builds expression trees programmatically.
 """
-function add_con(
+@inline function add_con(
     c::C,
     expr::N,
     pars = 1:1;
@@ -897,7 +900,7 @@ Constraint
   where |P| = 9
 ```
 """
-function add_con(
+@inline function add_con(
     c::C,
     n;
     name = nothing,
@@ -995,7 +998,7 @@ add_con!(c, bus, arc.bus => p[arc.i] for arc in data.arc)              # add arc
 add_con!(c, bus, gen.bus => -pg[gen.i] for gen in data.gen)            # subtract generation
 ```
 """
-function add_con!(c::C, c1, gen::Base.Generator) where {T, C<:ExaCore{T}}
+@inline function add_con!(c::C, c1, gen::Base.Generator) where {T, C<:ExaCore{T}}
 
     gen = _adapt_gen(gen)
     f = SIMDFunction(T, gen, offset0(c1, 0), c.nnzj, c.nnzh)
@@ -1062,7 +1065,7 @@ c, s = add_expr(c, x[i, k]^2 for (i, k) in itr)
 # s[i, k] substitutes x[i,k]^2 directly
 ```
 """
-function add_expr(c::C, gen::Base.Generator; name = nothing) where {T, C <: ExaCore{T}}
+@inline function add_expr(c::C, gen::Base.Generator; name = nothing) where {T, C <: ExaCore{T}}
     ns = _infer_subexpr_dims(gen.iter)
 
     gen = _adapt_gen(gen)
