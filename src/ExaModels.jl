@@ -91,8 +91,8 @@ export ExaModel,
     @register_bivariate,
     EachScenario,
     TwoStageExaModel,
-    num_scenarios,
-    scenario_var_tags,
-    scenario_con_tags
+    get_nscenarios,
+    get_var_scenario,
+    get_con_scenario
 
 end # module ExaModels

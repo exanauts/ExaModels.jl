@@ -31,10 +31,10 @@ function runtests()
 
             @test NLPModels.get_nvar(model) == ns * nv + nd
             @test NLPModels.get_ncon(model) == ns * nv
-            @test num_scenarios(model) == ns
-            @test count(==(0), scenario_var_tags(model)) == nd
-            @test count(==(1), scenario_var_tags(model)) == nv
-            @test count(==(1), scenario_con_tags(model)) == nv
+            @test get_nscenarios(model) == ns
+            @test count(==(0), get_var_scenario(model)) == nd
+            @test count(==(1), get_var_scenario(model)) == nv
+            @test count(==(1), get_con_scenario(model)) == nv
         end
 
         @testset "Variable and constraint tagging" begin
@@ -45,7 +45,7 @@ function runtests()
             d = @add_var(core, nd)
 
             model = ExaModel(core)
-            vtags = scenario_var_tags(model)
+            vtags = get_var_scenario(model)
 
             @test findall(==(1), vtags) == [1, 2, 3]
             @test findall(==(2), vtags) == [4, 5, 6]
@@ -103,7 +103,7 @@ function runtests()
 
             @test c_global ≈ [0.5, 1.5, 1.5, 2.5]
 
-            ctags = scenario_con_tags(model)
+            ctags = get_con_scenario(model)
             @test c_global[findall(==(1), ctags)] ≈ [0.5, 1.5]
             @test c_global[findall(==(2), ctags)] ≈ [1.5, 2.5]
         end
@@ -131,7 +131,7 @@ function runtests()
 
             @test g_global ≈ [4.0, 8.0, 18.0, 24.0, 0.0]
 
-            vtags = scenario_var_tags(model)
+            vtags = get_var_scenario(model)
             @test g_global[findall(==(1), vtags)] ≈ [4.0, 8.0]
             @test g_global[findall(==(0), vtags)] ≈ [0.0]
         end
@@ -232,7 +232,7 @@ function runtests()
             @test result.status == :first_order
 
             x_sol = result.solution
-            vtags = scenario_var_tags(model)
+            vtags = get_var_scenario(model)
             θ_bar = sum(θ_vals) / ns
             d_expected = θ_bar / 2
 
@@ -270,7 +270,7 @@ function runtests()
             @test result.status == :first_order
 
             x_sol = result.solution
-            vtags = scenario_var_tags(model)
+            vtags = get_var_scenario(model)
             d_sol  = x_sol[findall(==(0), vtags)]
             v1_sol = x_sol[findall(==(1), vtags)]
             v2_sol = x_sol[findall(==(2), vtags)]
@@ -305,7 +305,7 @@ function runtests()
             @test result.status == :first_order
 
             x_sol = result.solution
-            vtags = scenario_var_tags(model)
+            vtags = get_var_scenario(model)
             d_expected = sum(θ_vals) / (4 + ns)
 
             @test x_sol[findall(==(0), vtags)][1] ≈ d_expected atol = 1e-5
@@ -336,7 +336,7 @@ function runtests()
             )
 
             model = ExaModel(core)
-            vtags = scenario_var_tags(model)
+            vtags = get_var_scenario(model)
 
             x0 = model.meta.x0
             @test x0[findall(==(1), vtags)] ≈ [0.1, 0.2]
@@ -404,10 +404,10 @@ function runtests()
             )
 
             model = ExaModel(core)
-            vtags = scenario_var_tags(model)
-            ctags = scenario_con_tags(model)
+            vtags = get_var_scenario(model)
+            ctags = get_con_scenario(model)
 
-            @test num_scenarios(model) == 3
+            @test get_nscenarios(model) == 3
             @test findall(==(1), vtags) == [1]
             @test findall(==(2), vtags) == [2]
             @test findall(==(3), vtags) == [3]
@@ -431,7 +431,7 @@ function runtests()
             @test tags.var_scenario == [1, 1, 1, 2, 2, 2, 1, 1, 2, 2, 0]
 
             model = ExaModel(core)
-            vtags = scenario_var_tags(model)
+            vtags = get_var_scenario(model)
             @test findall(==(1), vtags) == [1, 2, 3, 7, 8]
             @test findall(==(2), vtags) == [4, 5, 6, 9, 10]
             @test findall(==(0), vtags) == [11]
