@@ -35,7 +35,6 @@ jobs:
             using Pkg
             Pkg.develop(path=".")
             Pkg.instantiate()
-            push!(ARGS, "EXAMODELS_TEST_POCL")
             include("test/runtests.jl")'
       - uses: julia-actions/julia-processcoverage@v1
         if: matrix.julia-version == '1' && matrix.os == 'ubuntu-latest'
@@ -43,7 +42,38 @@ jobs:
         if: matrix.julia-version == '1' && matrix.os == 'ubuntu-latest'
         with:
           files: lcov.info
-
+          
+  cpu:
+    strategy:
+      matrix:
+        julia-version: ['1', 'lts']
+        julia-arch: [x64]
+        os: [ubuntu-latest]
+    runs-on: ['self-hosted']
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v2
+    - name: Setup Julia
+      uses: julia-actions/setup-julia@latest
+      with:
+        version: ${{ matrix.julia-version }}
+    - name: Setup tests
+      run: |
+        julia --startup-file=no --color=yes --project=./test -e '
+          using Pkg
+          Pkg.Registry.update()
+          Pkg.develop(path=".")
+          Pkg.instantiate()'
+    - name: Run tests
+      env:
+        EXAMODELS_SKIP_AOT: "1"
+      run: |
+        julia --startup-file=no --color=yes --project=./test -e '
+          push!(ARGS, "EXAMODELS_NO_TEST_CPU")
+          push!(ARGS, "EXAMODELS_TEST_KA")
+          push!(ARGS, "EXAMODELS_TEST_POCL")
+          include("test/runtests.jl")'
+    
   gpu:
     strategy:
       matrix:

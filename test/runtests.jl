@@ -4,7 +4,6 @@ include("backends.jl")
 
 using Test, ExaModels
 using Random
-
 Random.seed!(0)
 
 ad_tolerance(m1,m2) = max(ad_tolerance(m1), ad_tolerance(m2))
