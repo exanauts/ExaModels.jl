@@ -433,20 +433,6 @@ _opname(::Type{typeof(^)}) = "^"
 function _print_tree(io::IO, node::Constant{T}, indent::Int) where {T}
     print(io, " "^indent, T)
 end
-function _print_tree(io::IO, node::SumNode, indent::Int)
-    print(io, " "^indent)
-    for (k, inner) in enumerate(node.inners)
-        k > 1 && print(io, " + ")
-        _print_tree(io, inner, 0)
-    end
-end
-function _print_tree(io::IO, node::ProdNode, indent::Int)
-    print(io, " "^indent)
-    for (k, inner) in enumerate(node.inners)
-        k > 1 && print(io, " * ")
-        _print_tree(io, inner, 0)
-    end
-end
 function _print_tree(io::IO, node::Null{Nothing}, indent::Int)
     print(io, " "^indent, "0")
 end
@@ -590,22 +576,9 @@ end
 function Base.show(io::IO, node::Constant{T}) where {T}
     print(io, T)
 end
-function Base.show(io::IO, node::SumNode)
-    print(io, _expr_string(node))
-end
-function Base.show(io::IO, node::ProdNode)
-    print(io, _expr_string(node))
-end
-
 # Type show for new types
 function Base.show(io::IO, ::Type{Constant{T}}) where {T}
     print(io, "Constant{", T, "}")
-end
-function Base.show(io::IO, ::Type{SumNode{I}}) where {I}
-    print(io, "SumNode{…}")
-end
-function Base.show(io::IO, ::Type{ProdNode{I}}) where {I}
-    print(io, "ProdNode{…}")
 end
 
 function Base.show(io::IO, node::Null{Nothing})
@@ -734,8 +707,6 @@ _short_type(::ParameterNode) = "ParameterNode"
 _short_type(::ParSource) = "ParSource"
 _short_type(::ParIndexed) = "ParIndexed"
 _short_type(::Constant{T}) where {T} = "Constant{$T}"
-_short_type(::SumNode) = "SumNode"
-_short_type(::ProdNode) = "ProdNode"
 _short_type(::Node1{F}) where {F} = "Node1{$(_opname(F))}"
 _short_type(::Node2{F}) where {F} = "Node2{$(_opname(F))}"
 _short_type(::AdjointNull) = "AdjointNull"
@@ -888,6 +859,37 @@ Constructed by [`exa_prod`](@ref).  See [`SumNode`](@ref) for design notes.
 """
 struct ProdNode{I} <: AbstractNode
     inners::I
+end
+
+_short_type(::SumNode) = "SumNode"
+_short_type(::ProdNode) = "ProdNode"
+
+# Pretty printing and show for SumNode / ProdNode (must be after struct definitions)
+function Base.show(io::IO, node::SumNode)
+    print(io, _expr_string(node))
+end
+function Base.show(io::IO, node::ProdNode)
+    print(io, _expr_string(node))
+end
+function Base.show(io::IO, ::Type{SumNode{I}}) where {I}
+    print(io, "SumNode{…}")
+end
+function Base.show(io::IO, ::Type{ProdNode{I}}) where {I}
+    print(io, "ProdNode{…}")
+end
+function _print_tree(io::IO, node::SumNode, indent::Int)
+    print(io, " "^indent)
+    for (k, inner) in enumerate(node.inners)
+        k > 1 && print(io, " + ")
+        _print_tree(io, inner, 0)
+    end
+end
+function _print_tree(io::IO, node::ProdNode, indent::Int)
+    print(io, " "^indent)
+    for (k, inner) in enumerate(node.inners)
+        k > 1 && print(io, " * ")
+        _print_tree(io, inner, 0)
+    end
 end
 
 # ── Primal evaluation (x::AbstractVector → scalar) ───────────────────────────
