@@ -26,6 +26,7 @@ oneAPI = "8f75cd03-7ff8-4ecb-9b8f-daf728133b1b" # oneAPI version >= 2.6 is neede
 ExaModelsIpopt = ["MathOptInterface", "NLPModelsIpopt"]
 ExaModelsJuMP = "JuMP"
 ExaModelsKernelAbstractions = "KernelAbstractions"
+ExaModelsOneAPI = "oneAPI"
 ExaModelsMOI = "MathOptInterface"
 ExaModelsMadNLP = ["MadNLP", "MathOptInterface"]
 ExaModelsMetal = "Metal"
@@ -47,4 +48,4 @@ OpenCL = "0.10"
 SolverCore = "0.3"
 SpecialFunctions = "2"
 julia = "1.9"
-oneAPI = "2.6"
+oneAPI = "2"
