@@ -1100,7 +1100,7 @@ c, _ = add_con!(c, g[i] += x[i] + x[i+1] for i = 1:9)
     # getindex on Constraint/ConstraintAugmentation records the constraint
     # in _AUGMENT_CONSTRAINT_REF as a side effect.
     _AUGMENT_CONSTRAINT_REF[] = nothing
-    gen.f(ParSource())
+    gen.f(DataSource())
     con = _AUGMENT_CONSTRAINT_REF[]
     _AUGMENT_CONSTRAINT_REF[] = nothing
 
