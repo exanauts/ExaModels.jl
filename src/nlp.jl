@@ -523,7 +523,7 @@ function append!(backend, a, b::Number, lb)
     return a
 end
 
-total(ns) = prod(_length(n) for n in ns)
+@inline total(ns) = prod(_length(n) for n in ns)
 _length(n::Int) = n
 _length(n::UnitRange) = length(n)
 size(ns) = Tuple(_length(n) for n in ns)
@@ -578,11 +578,11 @@ function add_var(
     o = c.nvar
     len = total(ns)
     nvar = c.nvar + len
-    x0 = append!(c.backend, c.x0, start, total(ns))
-    lvar = append!(c.backend, c.lvar, lvar, total(ns))
-    uvar = append!(c.backend, c.uvar, uvar, total(ns))
+    x0 = append!(c.backend, c.x0, start, len)
+    lvar = append!(c.backend, c.lvar, lvar, len)
+    uvar = append!(c.backend, c.uvar, uvar, len)
 
-    append_var_tags(c.tags, c.backend, total(ns); kwargs...)
+    append_var_tags(c.tags, c.backend, len; kwargs...)
     v = Variable(ns, len, o)
 
     (ExaCore(c; var = (v, c.var...), nvar=nvar, x0=x0, lvar=lvar, uvar=uvar, refs = add_refs(c.refs, name, v)), v)

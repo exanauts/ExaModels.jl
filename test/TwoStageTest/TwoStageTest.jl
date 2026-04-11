@@ -3,6 +3,7 @@ module TwoStageTest
 using Test
 using ExaModels
 import NLPModels
+import NLPModels: cons_nln!, grad!, jac_structure!, jac_coord!, hess_structure!, hess_coord!
 import NLPModelsIpopt: ipopt
 
 function runtests()
@@ -14,18 +15,16 @@ function runtests()
             θ_vals = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0]
 
             core = TwoStageExaCore(ns)
-            v = @add_var(core, nv, EachScenario())
-            d = @add_var(core, nd)
-            θ = @add_par(core, θ_vals)
+            v = @add_var(core, EachScenario(), nv)
+            core, d = add_var(core, nd)
+            core, θ = add_par(core, θ_vals)
 
             obj_data = [(i, j, (i - 1) * nv + j, (i - 1) * nθ) for i in 1:ns for j in 1:nv]
-            objective(
-                core, θ[θ_off + 1] * v[v_idx]^2 + θ[θ_off + 2] * d[1] * v[v_idx]
-                    for (i, j, v_idx, θ_off) in obj_data
-            )
+            @add_obj(core, θ[θ_off + 1] * v[v_idx]^2 + θ[θ_off + 2] * d[1] * v[v_idx]
+                for (i, j, v_idx, θ_off) in obj_data)
 
             con_data = [(i, j, (i - 1) * nv + j) for i in 1:ns for j in 1:nv]
-            @add_con(core, (v[v_idx] + d[1] for (i, j, v_idx) in con_data), EachScenario())
+            @add_con(core, EachScenario(), (v[v_idx] + d[1] for (i, j, v_idx) in con_data))
 
             model = ExaModel(core)
 
@@ -41,8 +40,8 @@ function runtests()
             ns, nv, nd = 2, 3, 2
 
             core = TwoStageExaCore(ns)
-            v = @add_var(core, nv, EachScenario())
-            d = @add_var(core, nd)
+            v = @add_var(core, EachScenario(), nv)
+            core, d = add_var(core, nd)
 
             model = ExaModel(core)
             vtags = get_var_scen(model)
@@ -63,20 +62,20 @@ function runtests()
             θ_vals = [2.0, 3.0]
 
             core = TwoStageExaCore(ns)
-            v = @add_var(core, nv, EachScenario())
-            d = @add_var(core, nd)
-            θ = @add_par(core, θ_vals)
+            v = @add_var(core, EachScenario(), nv)
+            core, d = add_var(core, nd)
+            core, θ = add_par(core, θ_vals)
 
             obj_data = [(i, j, (i - 1) * nv + j, i) for i in 1:ns for j in 1:nv]
             @add_obj(core, θ[θi] * v[v_idx]^2 for (i, j, v_idx, θi) in obj_data)
 
             con_data = [(i, j, (i - 1) * nv + j) for i in 1:ns for j in 1:nv]
-            @add_con(core, (v[v_idx] for (i, j, v_idx) in con_data), EachScenario())
+            @add_con(core, EachScenario(), (v[v_idx] for (i, j, v_idx) in con_data))
 
             model = ExaModel(core)
 
             x_global = [1.0, 2.0, 3.0, 4.0, 0.5]
-            total_obj = obj(model, x_global)
+            total_obj = NLPModels.obj(model, x_global)
             @test total_obj ≈ 85.0
         end
 
@@ -85,15 +84,15 @@ function runtests()
             θ_vals = [1.0, 2.0]
 
             core = TwoStageExaCore(ns)
-            v = @add_var(core, nv, EachScenario())
-            d = @add_var(core, nd)
-            θ = @add_par(core, θ_vals)
+            v = @add_var(core, EachScenario(), nv)
+            core, d = add_var(core, nd)
+            core, θ = add_par(core, θ_vals)
 
             obj_data = [(i, j, (i - 1) * nv + j) for i in 1:ns for j in 1:nv]
             @add_obj(core, v[v_idx]^2 for (i, j, v_idx) in obj_data)
 
             con_data = [(i, j, (i - 1) * nv + j, i) for i in 1:ns for j in 1:nv]
-            @add_con(core, (v[v_idx] + d[1] - θ[θi] for (i, j, v_idx, θi) in con_data), EachScenario())
+            @add_con(core, EachScenario(), (v[v_idx] + d[1] - θ[θi] for (i, j, v_idx, θi) in con_data))
 
             model = ExaModel(core)
 
@@ -113,15 +112,15 @@ function runtests()
             θ_vals = [2.0, 3.0]
 
             core = TwoStageExaCore(ns)
-            v = @add_var(core, nv, EachScenario())
-            d = @add_var(core, nd)
-            θ = @add_par(core, θ_vals)
+            v = @add_var(core, EachScenario(), nv)
+            core, d = add_var(core, nd)
+            core, θ = add_par(core, θ_vals)
 
             obj_data = [(i, j, (i - 1) * nv + j, i) for i in 1:ns for j in 1:nv]
             @add_obj(core, θ[θi] * v[v_idx]^2 for (i, j, v_idx, θi) in obj_data)
 
             con_data = [(i, j, (i - 1) * nv + j) for i in 1:ns for j in 1:nv]
-            @add_con(core, (v[v_idx] for (i, j, v_idx) in con_data), EachScenario())
+            @add_con(core, EachScenario(), (v[v_idx] for (i, j, v_idx) in con_data))
 
             model = ExaModel(core)
 
@@ -140,14 +139,14 @@ function runtests()
             ns, nv, nd = 2, 2, 1
 
             core = TwoStageExaCore(ns)
-            v = @add_var(core, nv, EachScenario())
-            d = @add_var(core, nd)
+            v = @add_var(core, EachScenario(), nv)
+            core, d = add_var(core, nd)
 
             obj_data = [(i, j, (i - 1) * nv + j) for i in 1:ns for j in 1:nv]
             @add_obj(core, v[v_idx]^2 for (i, j, v_idx) in obj_data)
 
             con_data = [(i, j, (i - 1) * nv + j) for i in 1:ns for j in 1:nv]
-            @add_con(core, (v[v_idx] + d[1] for (i, j, v_idx) in con_data), EachScenario())
+            @add_con(core, EachScenario(), (v[v_idx] + d[1] for (i, j, v_idx) in con_data))
 
             model = ExaModel(core)
 
@@ -173,15 +172,15 @@ function runtests()
             θ_vals = [2.0, 3.0]
 
             core = TwoStageExaCore(ns)
-            v = @add_var(core, nv, EachScenario())
-            d = @add_var(core, nd)
-            θ = @add_par(core, θ_vals)
+            v = @add_var(core, EachScenario(), nv)
+            core, d = add_var(core, nd)
+            core, θ = add_par(core, θ_vals)
 
             obj_data = [(i, j, (i - 1) * nv + j, i) for i in 1:ns for j in 1:nv]
             @add_obj(core, θ[θi] * v[v_idx]^2 for (i, j, v_idx, θi) in obj_data)
 
             con_data = [(i, j, (i - 1) * nv + j) for i in 1:ns for j in 1:nv]
-            @add_con(core, (v[v_idx] + d[1] for (i, j, v_idx) in con_data), EachScenario())
+            @add_con(core, EachScenario(), (v[v_idx] + d[1] for (i, j, v_idx) in con_data))
 
             model = ExaModel(core)
 
@@ -213,16 +212,16 @@ function runtests()
             weight = 1.0 / ns
 
             core = TwoStageExaCore(ns)
-            v = @add_var(core, nv, EachScenario())
-            d = @add_var(core, nd)
-            θ = @add_par(core, θ_vals)
+            v = @add_var(core, EachScenario(), nv)
+            core, d = add_var(core, nd)
+            core, θ = add_par(core, θ_vals)
 
             @add_obj(core, d[1]^2)
             @add_obj(core, weight * (v[i] - θ[i])^2 for i in 1:ns)
 
             @add_con(core,
-                (v[i] - d[1] for i in 1:ns),
-                EachScenario();
+                EachScenario(),
+                (v[i] - d[1] for i in 1:ns);
                 lcon = 0.0,
             )
 
@@ -249,9 +248,9 @@ function runtests()
             θ_vals = [1.0, 3.0, 2.0, 2.0]
 
             core = TwoStageExaCore(ns)
-            v = @add_var(core, nv, EachScenario(); lvar = 0.0)
-            d = @add_var(core, nd; lvar = 0.0)
-            θ = @add_par(core, θ_vals)
+            v = @add_var(core, EachScenario(), nv; lvar = 0.0)
+            core, d = add_var(core, nd; lvar = 0.0)
+            core, θ = add_par(core, θ_vals)
 
             @add_obj(core, d[1]^2 + d[2]^2)
             obj_data = [(i, j, (i - 1) * nv + j, (i - 1) * nθ + j) for i in 1:ns for j in 1:nv]
@@ -259,8 +258,8 @@ function runtests()
 
             con_data = [(i, (i - 1) * nv + 1, (i - 1) * nv + 2) for i in 1:ns]
             @add_con(core,
-                (v[v1] + v[v2] - d[1] - d[2] for (i, v1, v2) in con_data),
-                EachScenario();
+                EachScenario(),
+                (v[v1] + v[v2] - d[1] - d[2] for (i, v1, v2) in con_data);
                 lcon = 0.0, ucon = 0.0,
             )
 
@@ -286,16 +285,16 @@ function runtests()
             θ_vals = [4.0, 6.0, 8.0]
 
             core = TwoStageExaCore(ns)
-            v = @add_var(core, nv, EachScenario())
-            d = @add_var(core, nd)
-            θ = @add_par(core, θ_vals)
+            v = @add_var(core, EachScenario(), nv)
+            core, d = add_var(core, nd)
+            core, θ = add_par(core, θ_vals)
 
             @add_obj(core, d[1]^2)
             @add_obj(core, v[i]^2 for i in 1:ns)
 
             @add_con(core,
-                (2 * v[i] + d[1] - θ[i] for i in 1:ns),
-                EachScenario();
+                EachScenario(),
+                (2 * v[i] + d[1] - θ[i] for i in 1:ns);
                 lcon = 0.0, ucon = 0.0,
             )
 
@@ -320,9 +319,9 @@ function runtests()
             ns, nv, nd = 2, 2, 2
 
             core = TwoStageExaCore(ns)
-            v = @add_var(core, nv, EachScenario();
+            v = @add_var(core, EachScenario(), nv;
                 start = [0.1, 0.2, 0.3, 0.4], lvar = 0.0, uvar = 10.0)
-            d = @add_var(core, nd;
+            core, d = add_var(core, nd;
                 start = [0.5, 0.8], lvar = 0.0, uvar = 1.0)
 
             obj_data = [(i, j, (i - 1) * nv + j) for i in 1:ns for j in 1:nv]
@@ -330,8 +329,8 @@ function runtests()
 
             con_data = [(i, j, (i - 1) * nv + j) for i in 1:ns for j in 1:nv]
             @add_con(core,
-                (v[v_idx] + d[1] for (i, j, v_idx) in con_data),
-                EachScenario();
+                EachScenario(),
+                (v[v_idx] + d[1] for (i, j, v_idx) in con_data);
                 lcon = 0.0, ucon = 100.0,
             )
 
@@ -360,8 +359,8 @@ function runtests()
             ns, nv, nd = 3, 2, 2
             core = TwoStageExaCore(ns)
 
-            v = @add_var(core, nv, EachScenario())
-            d = @add_var(core, nd)
+            v = @add_var(core, EachScenario(), nv)
+            core, d = add_var(core, nd)
 
             @test core.nvar == ns * nv + nd
 
@@ -374,11 +373,11 @@ function runtests()
         @testset "Constraint creation with EachScenario" begin
             ns, nv, nd = 3, 2, 1
             core = TwoStageExaCore(ns)
-            v = @add_var(core, nv, EachScenario())
-            d = @add_var(core, nd)
+            v = @add_var(core, EachScenario(), nv)
+            core, d = add_var(core, nd)
 
             con_data = [(i, j, (i - 1) * nv + j) for i in 1:ns for j in 1:nv]
-            @add_con(core, (v[v_idx] + d[1] for (i, j, v_idx) in con_data), EachScenario())
+            @add_con(core, EachScenario(), (v[v_idx] + d[1] for (i, j, v_idx) in con_data))
 
             tags = core.tags
             @test length(tags.con_scen) == ns * nv
@@ -390,16 +389,16 @@ function runtests()
             θ_vals = [4.0, 6.0, 8.0]
 
             core = TwoStageExaCore(ns)
-            v = @add_var(core, nv, EachScenario())
-            d = @add_var(core, nd)
-            θ = @add_par(core, θ_vals)
+            v = @add_var(core, EachScenario(), nv)
+            core, d = add_var(core, nd)
+            core, θ = add_par(core, θ_vals)
 
             @add_obj(core, d[1]^2)
             @add_obj(core, v[i]^2 for i in 1:ns*nv)
 
             @add_con(core,
-                (2 * v[i] + d[1] - θ[i] for i in 1:ns),
-                EachScenario();
+                EachScenario(),
+                (2 * v[i] + d[1] - θ[i] for i in 1:ns);
                 lcon = 0.0, ucon = 0.0,
             )
 
@@ -421,9 +420,9 @@ function runtests()
             ns = 2
             core = TwoStageExaCore(ns)
 
-            y = @add_var(core, 3, EachScenario())
-            z = @add_var(core, 2, EachScenario())
-            d = @add_var(core, 1)
+            y = @add_var(core, EachScenario(), 3)
+            z = @add_var(core, EachScenario(), 2)
+            core, d = add_var(core, 1)
 
             @test core.nvar == ns * 3 + ns * 2 + 1
 

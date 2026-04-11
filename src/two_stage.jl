@@ -14,8 +14,8 @@ scenario.
 ```julia
 c = TwoStageExaCore(ns; concrete = Val(true))
 c, d = add_var(c, nd)                                               # design variables (shared)
-c, v = add_var(c, nv, EachScenario())                               # nv recourse vars per scen
-c, g = add_con(c, (v[i] + d[1] for i in data), EachScenario())     # constraints per scen
+c, v = add_var(c, EachScenario(), nv)                               # nv recourse vars per scen
+c, g = add_con(c, EachScenario(), (v[i] + d[1] for i in data))     # constraints per scen
 ```
 """
 struct EachScenario end
@@ -40,7 +40,7 @@ end
 const TwoStageExaCore{T,VT,B} = ExaCore{T,VT,B,S} where {S<:TwoStageTags}
 
 """
-    TwoStageExaCore(ns; backend = nothing, concrete = Val(false), kwargs...)
+    TwoStageExaCore(ns; backend = nothing, concrete = Val(true), kwargs...)
 
 Create an [`ExaCore`](@ref) for a two-stage stochastic program with `ns` scenarios.
 
@@ -48,7 +48,7 @@ Variables and constraints added with [`EachScenario`](@ref) are replicated for
 each scenario and tagged 1 … ns.  Design variables (shared across all scenarios)
 are added without `EachScenario` and receive tag 0.
 """
-function TwoStageExaCore(ns::Integer; backend = nothing, concrete = Val(false), kwargs...)
+function TwoStageExaCore(ns::Integer; backend = nothing, concrete = Val(true), kwargs...)
     return ExaCore(;
         backend,
         concrete,
@@ -63,64 +63,33 @@ end
 
 # --- add_var with EachScenario ---
 #
-# One overload per dimensionality to match the explicit overloads in nlp.jl.
-# EachScenario is placed after the dimension arguments.
+# EachScenario is placed before the dimension arguments, allowing any number
+# of dimensions via ns... without conflicting with the base add_var dispatch.
 
 """
-    add_var(core::TwoStageExaCore, n, EachScenario(); kwargs...)
-    add_var(core::TwoStageExaCore, n1, n2, EachScenario(); kwargs...)
-    add_var(core::TwoStageExaCore, n1, n2, n3, EachScenario(); kwargs...)
+    add_var(core::TwoStageExaCore, EachScenario(), ns...; kwargs...)
 
 Add variables to a two-stage core, replicated for each scenario.
-The total variables created is `ns * prod(dims)`, automatically tagged
-1 … ns.  All keyword arguments accepted by [`add_var`](@ref) are forwarded.
+The total variables created is `get_nscen(core) * prod(ns)`, automatically
+tagged 1 … ns.  All keyword arguments accepted by [`add_var`](@ref) are
+forwarded.
+
+# Examples
+```julia
+c, v  = add_var(c, EachScenario(), nv)          # 1-D: nv vars per scenario
+c, v2 = add_var(c, EachScenario(), n1, n2)      # 2-D block per scenario
+```
 """
 function add_var(
     c::C,
-    n,
-    ::EachScenario;
+    ::EachScenario,
+    ns...;
     kwargs...,
 ) where {T,VT<:AbstractVector{T},B,S<:TwoStageTags,C<:ExaCore{T,VT,B,S}}
-    ns = c.tags.ns
-    len = total((n,))
-    scen_tags = [k for k in 1:ns for _ in 1:len]
-    return add_var(c, ns * len; scen = scen_tags, kwargs...)
-end
-
-function add_var(
-    c::C,
-    n1::N1,
-    n2::N2,
-    ::EachScenario;
-    kwargs...,
-) where {
-    T,VT<:AbstractVector{T},B,S<:TwoStageTags,C<:ExaCore{T,VT,B,S},
-    N1<:Union{Integer,AbstractUnitRange},
-    N2<:Union{Integer,AbstractUnitRange},
-}
-    ns = c.tags.ns
-    len = total((n1, n2))
-    scen_tags = [k for k in 1:ns for _ in 1:len]
-    return add_var(c, ns * len; scen = scen_tags, kwargs...)
-end
-
-function add_var(
-    c::C,
-    n1::N1,
-    n2::N2,
-    n3::N3,
-    ::EachScenario;
-    kwargs...,
-) where {
-    T,VT<:AbstractVector{T},B,S<:TwoStageTags,C<:ExaCore{T,VT,B,S},
-    N1<:Union{Integer,AbstractUnitRange},
-    N2<:Union{Integer,AbstractUnitRange},
-    N3<:Union{Integer,AbstractUnitRange},
-}
-    ns = c.tags.ns
-    len = total((n1, n2, n3))
-    scen_tags = [k for k in 1:ns for _ in 1:len]
-    return add_var(c, ns * len; scen = scen_tags, kwargs...)
+    nscen = c.tags.ns
+    len = total(ns)
+    scen_tags = [k for k in 1:nscen for _ in 1:len]
+    return add_var(c, nscen * len; scen = scen_tags, kwargs...)
 end
 
 # --- add_con with EachScenario ---
@@ -133,10 +102,10 @@ function _scen_tags(ns, nitr)
 end
 
 """
-    add_con(core::TwoStageExaCore, gen, EachScenario(); kwargs...)
-    add_con(core::TwoStageExaCore, gen, EachScenario(), gens...; kwargs...)
-    add_con(core::TwoStageExaCore, expr::AbstractNode, pars, EachScenario(); kwargs...)
-    add_con(core::TwoStageExaCore, n, EachScenario(); kwargs...)
+    add_con(core::TwoStageExaCore, EachScenario(), gen; kwargs...)
+    add_con(core::TwoStageExaCore, EachScenario(), gen, gens...; kwargs...)
+    add_con(core::TwoStageExaCore, EachScenario(), expr::AbstractNode, pars; kwargs...)
+    add_con(core::TwoStageExaCore, EachScenario(), n; kwargs...)
 
 Add constraints to a two-stage core, automatically assigning scenario tags.
 
@@ -151,8 +120,8 @@ All keyword arguments accepted by [`add_con`](@ref) are forwarded.
 """
 function add_con(
     c::C,
-    gen::Base.Generator,
-    ::EachScenario;
+    ::EachScenario,
+    gen::Base.Generator;
     kwargs...,
 ) where {T,VT<:AbstractVector{T},B,S<:TwoStageTags,C<:ExaCore{T,VT,B,S}}
     scen_tags = _scen_tags(c.tags.ns, length(gen.iter))
@@ -161,12 +130,12 @@ end
 
 function add_con(
     c::C,
-    gen::Base.Generator,
     ::EachScenario,
+    gen::Base.Generator,
     gens::Base.Generator...;
     kwargs...,
 ) where {T,VT<:AbstractVector{T},B,S<:TwoStageTags,C<:ExaCore{T,VT,B,S}}
-    c, con = add_con(c, gen, EachScenario(); kwargs...)
+    c, con = add_con(c, EachScenario(), gen; kwargs...)
     for g in gens
         c, _ = add_con!(c, con, g)
     end
@@ -175,9 +144,9 @@ end
 
 function add_con(
     c::C,
+    ::EachScenario,
     expr::N,
-    pars,
-    ::EachScenario;
+    pars;
     kwargs...,
 ) where {T,VT<:AbstractVector{T},B,S<:TwoStageTags,C<:ExaCore{T,VT,B,S},N<:AbstractNode}
     scen_tags = _scen_tags(c.tags.ns, length(pars))
@@ -186,8 +155,8 @@ end
 
 function add_con(
     c::C,
-    n::Integer,
-    ::EachScenario;
+    ::EachScenario,
+    n::Integer;
     kwargs...,
 ) where {T,VT<:AbstractVector{T},B,S<:TwoStageTags,C<:ExaCore{T,VT,B,S}}
     ns = c.tags.ns
