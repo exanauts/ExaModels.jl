@@ -107,10 +107,11 @@ A block of constraints added to an [`ExaCore`](@ref) via [`add_con`](@ref) /
 Row `k` of this block maps to global constraint index `offset + k`. Dual
 solution values can be retrieved with [`multipliers`](@ref).
 """
-struct Constraint{F,I,O} <: AbstractConstraint
+struct Constraint{F,I,O,S} <: AbstractConstraint
     f::F
     itr::I
     offset::O
+    size::S
 end
 Base.show(io::IO, v::Constraint) = print(
     io,
@@ -178,15 +179,14 @@ const _AUGMENT_CONSTRAINT_REF = Ref{Any}(nothing)
 # preserve the exact type expected by SIMDFunction/offset0.
 Base.getindex(c::Constraint, i) = begin
     _AUGMENT_CONSTRAINT_REF[] = c
-    s = _con_start1(c.itr)
+    s = _start(c.size[1])
     ConstraintSlot(c, s == 1 ? i : i - (s - 1))
 end
 # For multi-dim constraints: tuple indices, adjust each for its range start.
 # Uses recursive tuple construction (not ntuple) for GPU compatibility.
 Base.getindex(c::Constraint, idx::Vararg{Any,N}) where {N} = begin
     _AUGMENT_CONSTRAINT_REF[] = c
-    starts = _con_starts(c.itr)
-    ConstraintSlot(c, _adjust_tuple(idx, starts))
+    ConstraintSlot(c, _adjust_tuple(idx, c.size))
 end
 Base.getindex(c::ConstraintAugmentation, idx...) = begin
     _AUGMENT_CONSTRAINT_REF[] = c
@@ -198,22 +198,18 @@ Base.setindex!(::Constraint, val, idx...) = val
 Base.setindex!(::ConstraintAugmentation, val, idx...) = val
 
 # Recursive tuple adjustment — avoids ntuple/getindex(::Tuple,::Int) for GPU compat.
-@inline _adjust_tuple(idx::Tuple{}, starts::Tuple{}) = ()
-@inline _adjust_tuple(idx::Tuple, starts::Tuple) =
-    (_con_adjust(first(idx), first(starts)), _adjust_tuple(Base.tail(idx), Base.tail(starts))...)
+# `dims` is the constraint's size tuple (ints or ranges); _start extracts the start.
+@inline _adjust_tuple(idx::Tuple{}, dims::Tuple{}) = ()
+@inline _adjust_tuple(idx::Tuple, dims::Tuple) = begin
+    s = _start(first(dims))
+    (_con_adjust(first(idx), s), _adjust_tuple(Base.tail(idx), Base.tail(dims))...)
+end
 
 # Adjust a single index for the range start.
 # When start == 1, pass through unchanged to preserve the original type.
 # Literal integers are wrapped in Constant so they remain callable by `coord`.
 @inline _con_adjust(idx, start) = start == 1 ? idx : idx - (start - 1)
 @inline _con_adjust(idx::Integer, start) = Constant(idx - start + 1)
-
-# Extract range starts from constraint iterators.
-@inline _con_start1(itr::AbstractRange) = first(itr)
-@inline _con_start1(itr::AbstractArray{<:Tuple}) = itr[1][1]
-@inline _con_start1(itr) = 1
-@inline _con_starts(itr::AbstractArray{<:Tuple}) = itr[1]
-@inline _con_starts(itr) = ntuple(_ -> 1, ndims(itr))
 
 abstract type AbstractExaCore{T,VT,B,S} end
 
@@ -860,11 +856,12 @@ Constraint
     kwargs...
 ) where {T,C<:ExaCore{T}}
 
+    dims = _infer_subexpr_dims(gen.iter)
     gen = _adapt_gen(gen)
     f = SIMDFunction(T, gen, c.ncon, c.nnzj, c.nnzh)
     pars = gen.iter
 
-    _add_con(c, f, pars, start, lcon, ucon, name; kwargs...)
+    _add_con(c, f, pars, dims, start, lcon, ucon, name; kwargs...)
 end
 
 """
@@ -926,8 +923,9 @@ is intended for code that builds expression trees programmatically.
 ) where {T,C<:ExaCore{T},N<:AbstractNode}
 
     f = _simdfunction(T,expr, c.ncon, c.nnzj, c.nnzh)
+    dims = _infer_subexpr_dims(pars)
 
-    _add_con(c, f, pars, start, lcon, ucon, name; kwargs...)
+    _add_con(c, f, pars, dims, start, lcon, ucon, name; kwargs...)
 end
 
 """
@@ -979,7 +977,7 @@ Constraint
     f = _simdfunction(T, Null(nothing), c.ncon, c.nnzj, c.nnzh)
     pars = _empty_con_itr(ns)
 
-    _add_con(c, f, pars, start, lcon, ucon, name; kwargs...)
+    _add_con(c, f, pars, ns, start, lcon, ucon, name; kwargs...)
 end
 
 # Build an iterator for empty constraints: 1:n for 1D, collected ProductIterator for multi-dim.
@@ -987,7 +985,7 @@ _empty_con_itr(ns::Tuple{Any}) = 1:_length(ns[1])
 _empty_con_itr(ns::Tuple) = collect(Iterators.product(map(n -> 1:_length(n), ns)...))
 
 
-function _add_con(c::C, f, pars, start, lcon, ucon, name = nothing; kwargs...) where {C<:ExaCore}
+function _add_con(c::C, f, pars, dims, start, lcon, ucon, name = nothing; kwargs...) where {C<:ExaCore}
     nitr = length(pars)
     o = c.ncon
     ncon = c.ncon + nitr
@@ -999,7 +997,7 @@ function _add_con(c::C, f, pars, start, lcon, ucon, name = nothing; kwargs...) w
     ucon = append!(c.backend, c.ucon, ucon, nitr)
     append_con_tags(c.tags, c.backend, nitr; kwargs...)
 
-    con = Constraint(f, convert_array(pars, c.backend), o)
+    con = Constraint(f, convert_array(pars, c.backend), o, dims)
 
     (ExaCore(c; ncon=ncon, nnzj=nnzj, nnzh=nnzh, y0=y0, lcon=lcon, ucon=ucon, cons=(con, c.cons...), refs = add_refs(c.refs, name, con)), con)
 end
@@ -1117,7 +1115,7 @@ c, _ = add_con!(c, g[i] += x[i] + x[i+1] for i = 1:9)
 end
 
 # Extract the dimensions of the original constraint's iterator
-_constraint_dims(c::Constraint) = Base.size(c.itr)
+_constraint_dims(c::Constraint) = Tuple(_length(n) for n in c.size)
 _constraint_dims(c::ConstraintAugmentation) = c.dims
 
 function _add_con!(c, f, pars, dims)
@@ -1546,8 +1544,8 @@ true
 """
 function multipliers(result::SolverCore.AbstractExecutionStats, y::Constraint)
     o = y.offset
-    len = length(y.itr)
-    s = Base.size(y.itr)
+    len = total(y.size)
+    s = size(y.size)
     return reshape(view(result.multipliers, (o+1):(o+len)), s...)
 end
 
