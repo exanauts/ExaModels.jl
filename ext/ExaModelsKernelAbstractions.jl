@@ -488,7 +488,7 @@ function ExaModels.sjacobian!(
     adj,
 ) where {B<:KernelAbstractions.Backend}
     if !isempty(f.itr)
-        kerj(backend)(y1, y2, f.f, f.itr, x, θ, adj; ndrange = length(f.itr))
+        kerj(backend)(y1, y2, f.f, f.itr, x, θ, adj, ExaModels._constraint_dims(f); ndrange = length(f.itr))
     end
 end
 
@@ -518,7 +518,7 @@ function ExaModels.shessian!(
     adj2,
 ) where {B<:KernelAbstractions.Backend,V<:AbstractVector}
     if !isempty(f.itr)
-        kerh2(backend)(y1, y2, f.f, f.itr, x, θ, adj, adj2; ndrange = length(f.itr))
+        kerh2(backend)(y1, y2, f.f, f.itr, x, θ, adj, adj2, ExaModels._constraint_dims(f); ndrange = length(f.itr))
     end
 end
 
@@ -553,7 +553,8 @@ end
     @Const(x),
     @Const(θ),
     @Const(adjs1),
-    @Const(adj2)
+    @Const(adj2),
+    @Const(dims)
 )
     I = @index(Global)
     @inbounds ExaModels.hrpass0(
@@ -563,17 +564,17 @@ end
         y2,
         ExaModels.offset2(f, I),
         0,
-        adjs1[ExaModels.offset0(f, itr, I)],
+        adjs1[ExaModels.offset0(f, itr, I, dims)],
         adj2,
     )
 end
 
-@kernel function kerj(y1, y2, @Const(f), @Const(itr), @Const(x), @Const(θ), @Const(adj))
+@kernel function kerj(y1, y2, @Const(f), @Const(itr), @Const(x), @Const(θ), @Const(adj), @Const(dims))
     I = @index(Global)
     @inbounds ExaModels.jrpass(
         f(itr[I], ExaModels.AdjointNodeSource(x), θ),
         f.comp1,
-        ExaModels.offset0(f, itr, I),
+        ExaModels.offset0(f, itr, I, dims),
         y1,
         y2,
         ExaModels.offset1(f, I),
