@@ -67,8 +67,8 @@ jobs:
       run: |
         julia --startup-file=no --color=yes --project=./test -e '
           push!(ARGS, "EXAMODELS_NO_TEST_CPU")
-          push!(ARGS, "EXAMODELS_TEST_KA"))
-          push!(ARGS, "EXAMODELS_TEST_POCL"))
+          push!(ARGS, "EXAMODELS_TEST_KA")
+          push!(ARGS, "EXAMODELS_TEST_POCL")
           include("test/runtests.jl")'
     
   gpu:
