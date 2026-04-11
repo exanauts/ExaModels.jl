@@ -51,6 +51,7 @@ include("register.jl")
 include("specialization.jl")
 include("functionlist.jl")
 include("simdfunction.jl")
+include("prettyprint.jl")
 include("gradient.jl")
 include("jacobian.jl")
 include("hessian.jl")
@@ -87,7 +88,6 @@ export ExaModel,
     exa_sum,
     exa_prod,
     @register_univariate,
-    @register_bivariate,
-    fulltype
+    @register_bivariate
 
 end # module ExaModels
