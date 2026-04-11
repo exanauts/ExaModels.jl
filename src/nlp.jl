@@ -588,53 +588,6 @@ function add_var(
     (ExaCore(c; var = (v, c.var...), nvar=nvar, x0=x0, lvar=lvar, uvar=uvar, refs = add_refs(c.refs, name, v)), v)
 end
 
-# Explicit 2D overload — prevents juliac from widening ns to Tuple{T,Vararg{T}}
-function add_var(
-    c::C,
-    n1::N1,
-    n2::N2;
-    name = nothing,
-    start = zero(T),
-    lvar = T(-Inf),
-    uvar = T(Inf),
-    kwargs...
-) where {T, C<:ExaCore{T}, N1<:Union{Integer,AbstractUnitRange}, N2<:Union{Integer,AbstractUnitRange}}
-    ns = (n1, n2)
-    o = c.nvar
-    len = total(ns)
-    nvar = c.nvar + len
-    x0 = append!(c.backend, c.x0, start, len)
-    lvar = append!(c.backend, c.lvar, lvar, len)
-    uvar = append!(c.backend, c.uvar, uvar, len)
-    append_var_tags(c.tags, c.backend, len; kwargs...)
-    v = Variable(ns, len, o)
-    (ExaCore(c; var = (v, c.var...), nvar=nvar, x0=x0, lvar=lvar, uvar=uvar, refs = add_refs(c.refs, name, v)), v)
-end
-
-# Explicit 3D overload — prevents juliac from widening ns to Tuple{T,Vararg{T}}
-function add_var(
-    c::C,
-    n1::N1,
-    n2::N2,
-    n3::N3;
-    name = nothing,
-    start = zero(T),
-    lvar = T(-Inf),
-    uvar = T(Inf),
-    kwargs...
-) where {T, C<:ExaCore{T}, N1<:Union{Integer,AbstractUnitRange}, N2<:Union{Integer,AbstractUnitRange}, N3<:Union{Integer,AbstractUnitRange}}
-    ns = (n1, n2, n3)
-    o = c.nvar
-    len = total(ns)
-    nvar = c.nvar + len
-    x0 = append!(c.backend, c.x0, start, len)
-    lvar = append!(c.backend, c.lvar, lvar, len)
-    uvar = append!(c.backend, c.uvar, uvar, len)
-    append_var_tags(c.tags, c.backend, len; kwargs...)
-    v = Variable(ns, len, o)
-    (ExaCore(c; var = (v, c.var...), nvar=nvar, x0=x0, lvar=lvar, uvar=uvar, refs = add_refs(c.refs, name, v)), v)
-end
-
 @inline add_refs(refs, ::Nothing, var) = refs
 @inline add_refs(refs, ::Val{N}, var) where {N} = (; refs..., N => var)
 
