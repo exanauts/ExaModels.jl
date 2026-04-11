@@ -1,5 +1,24 @@
 # Pretty printing for node types
 
+const _FULLTYPE_DISPLAY = Ref(false)
+
+"""
+    fulltype_display!(enabled::Bool)
+
+Globally enable or disable full-type display for ExaModels node types.
+
+When enabled, `typeof(node)` and error messages (MethodErrors, stacktraces)
+show the complete parametric type instead of the abbreviated `…` form.
+
+```julia
+ExaModels.fulltype_display!(true)   # enable — e.g. typeof(x) → Node2{+,Var{Int64},Var{Int64}}
+ExaModels.fulltype_display!(false)  # disable — e.g. typeof(x) → Node2{+,…}
+```
+
+For one-off inspection without changing the global setting, use [`fulltype`](@ref).
+"""
+fulltype_display!(v::Bool) = (_FULLTYPE_DISPLAY[] = v)
+
 function _opname(::Type{F}) where {F}
     if F <: Function && hasmethod(nameof, Tuple{F})
         return string(nameof(F.instance))
@@ -268,30 +287,40 @@ end
     fulltype(node)
     fulltype(io::IO, node)
 
-Print the full unabbreviated type of a node. By default, node types display
-with short names (e.g. `Node2{+,…}`). Use `fulltype` to see the complete
-parametric type.
+Print the full unabbreviated type of a node.
+
+By default, `show` for ExaModels node types abbreviates inner graph-structure
+parameters with `…` to keep output readable (e.g. `Node2{+,…}` instead of
+`Node2{typeof(+),Var{Int64},Var{Int64}}`).  `fulltype` bypasses this by
+passing the `IOContext` key `:fulltype => true`, which all `show(::IO,
+::Type{...})` overloads in this file respect.
+
+## Examples
+
+```julia
+node = Var(1) + Var(2)          # Node2{typeof(+),Var{Int64},Var{Int64}}
+show(stdout, typeof(node))      # → Node2{+,…}          (default)
+fulltype(node)                  # → Node2{+,Var{Int64},Var{Int64}}
+
+# Equivalent manual form:
+show(IOContext(stdout, :fulltype => true), typeof(node))
+```
+
+## IOContext flag
+
+Any `show` call that passes `:fulltype => true` in its `IOContext` will render
+the complete parametric type.  This is useful when you need full type output
+programmatically without calling `fulltype` directly:
+
+```julia
+io = IOContext(stderr, :fulltype => true)
+show(io, typeof(node))
+```
 """
 fulltype(node) = fulltype(stdout, node)
 function fulltype(io::IO, node)
-    _print_fulltype(io, typeof(node))
+    show(IOContext(io, :fulltype => true), typeof(node))
     println(io)
-end
-function _print_fulltype(io::IO, @nospecialize(T::Type))
-    if T isa DataType && !isempty(T.parameters)
-        print(io, T.name.name, "{")
-        for (k, p) in enumerate(T.parameters)
-            k > 1 && print(io, ", ")
-            if p isa Type
-                _print_fulltype(io, p)
-            else
-                print(io, p)
-            end
-        end
-        print(io, "}")
-    else
-        print(io, T)
-    end
 end
 
 _short_type(::Null{Nothing}) = "Null"
@@ -317,62 +346,67 @@ _short_type(::SecondAdjointNode2{F}) where {F} = "SecondAdjointNode2{$(_opname(F
 _short_type(::SecondAdjointNodeSource) = "SecondAdjointNodeSource"
 
 # --- Short type printing (for stacktraces, MethodErrors, etc.) ---
+#
+# Each overload checks `get(io, :fulltype, _FULLTYPE_DISPLAY[])`.  When false (the default),
+# inner graph-structure parameters are replaced with `…` for readability.
+# When true (set by `fulltype(node)` or `IOContext(io, :fulltype => true)`),
+# the complete parametric type is printed instead.
 
 function Base.show(io::IO, ::Type{Null{T}}) where {T}
     T === Nothing ? print(io, "Null") : print(io, "Null{", T, "}")
 end
 function Base.show(io::IO, ::Type{Var{I}}) where {I}
-    print(io, "Var{…}")
+    get(io, :fulltype, _FULLTYPE_DISPLAY[]) ? print(io, "Var{", I, "}") : print(io, "Var{…}")
 end
 function Base.show(io::IO, ::Type{ParameterNode{I}}) where {I}
-    print(io, "ParameterNode{…}")
+    get(io, :fulltype, _FULLTYPE_DISPLAY[]) ? print(io, "ParameterNode{", I, "}") : print(io, "ParameterNode{…}")
 end
 function Base.show(io::IO, ::Type{ParIndexed{I,J}}) where {I,J}
-    print(io, "ParIndexed{…}")
+    get(io, :fulltype, _FULLTYPE_DISPLAY[]) ? print(io, "ParIndexed{", I, ",", J, "}") : print(io, "ParIndexed{…}")
 end
 function Base.show(io::IO, ::Type{Node1{F,I}}) where {F,I}
-    print(io, "Node1{", _opname(F), ",…}")
+    get(io, :fulltype, _FULLTYPE_DISPLAY[]) ? print(io, "Node1{", _opname(F), ",", I, "}") : print(io, "Node1{", _opname(F), ",…}")
 end
 function Base.show(io::IO, ::Type{Node2{F,I1,I2}}) where {F,I1,I2}
-    print(io, "Node2{", _opname(F), ",…}")
+    get(io, :fulltype, _FULLTYPE_DISPLAY[]) ? print(io, "Node2{", _opname(F), ",", I1, ",", I2, "}") : print(io, "Node2{", _opname(F), ",…}")
 end
 
 function Base.show(io::IO, ::Type{AdjointNull{V}}) where {V}
     print(io, "AdjointNull{", V, "}")
 end
 function Base.show(io::IO, ::Type{AdjointNodeVar{I,T}}) where {I,T}
-    print(io, "AdjointNodeVar{…,", T, "}")
+    get(io, :fulltype, _FULLTYPE_DISPLAY[]) ? print(io, "AdjointNodeVar{", I, ",", T, "}") : print(io, "AdjointNodeVar{…,", T, "}")
 end
 function Base.show(io::IO, ::Type{AdjointNode1{F,T,I}}) where {F,T,I}
-    print(io, "AdjointNode1{", _opname(F), ",", T, ",…}")
+    get(io, :fulltype, _FULLTYPE_DISPLAY[]) ? print(io, "AdjointNode1{", _opname(F), ",", T, ",", I, "}") : print(io, "AdjointNode1{", _opname(F), ",", T, ",…}")
 end
 function Base.show(io::IO, ::Type{AdjointNode2{F,T,I1,I2}}) where {F,T,I1,I2}
-    print(io, "AdjointNode2{", _opname(F), ",", T, ",…}")
+    get(io, :fulltype, _FULLTYPE_DISPLAY[]) ? print(io, "AdjointNode2{", _opname(F), ",", T, ",", I1, ",", I2, "}") : print(io, "AdjointNode2{", _opname(F), ",", T, ",…}")
 end
 function Base.show(io::IO, ::Type{AdjointNodeSource{VT}}) where {VT}
-    print(io, "AdjointNodeSource{…}")
+    get(io, :fulltype, _FULLTYPE_DISPLAY[]) ? print(io, "AdjointNodeSource{", VT, "}") : print(io, "AdjointNodeSource{…}")
 end
 
 function Base.show(io::IO, ::Type{SecondAdjointNull{V}}) where {V}
     print(io, "SecondAdjointNull{", V, "}")
 end
 function Base.show(io::IO, ::Type{SecondAdjointNodeVar{I,T}}) where {I,T}
-    print(io, "SecondAdjointNodeVar{…,", T, "}")
+    get(io, :fulltype, _FULLTYPE_DISPLAY[]) ? print(io, "SecondAdjointNodeVar{", I, ",", T, "}") : print(io, "SecondAdjointNodeVar{…,", T, "}")
 end
 function Base.show(io::IO, ::Type{SecondAdjointNode1{F,T,I}}) where {F,T,I}
-    print(io, "SecondAdjointNode1{", _opname(F), ",", T, ",…}")
+    get(io, :fulltype, _FULLTYPE_DISPLAY[]) ? print(io, "SecondAdjointNode1{", _opname(F), ",", T, ",", I, "}") : print(io, "SecondAdjointNode1{", _opname(F), ",", T, ",…}")
 end
 function Base.show(io::IO, ::Type{SecondAdjointNode2{F,T,I1,I2}}) where {F,T,I1,I2}
-    print(io, "SecondAdjointNode2{", _opname(F), ",", T, ",…}")
+    get(io, :fulltype, _FULLTYPE_DISPLAY[]) ? print(io, "SecondAdjointNode2{", _opname(F), ",", T, ",", I1, ",", I2, "}") : print(io, "SecondAdjointNode2{", _opname(F), ",", T, ",…}")
 end
 function Base.show(io::IO, ::Type{SecondAdjointNodeSource{VT}}) where {VT}
-    print(io, "SecondAdjointNodeSource{…}")
+    get(io, :fulltype, _FULLTYPE_DISPLAY[]) ? print(io, "SecondAdjointNodeSource{", VT, "}") : print(io, "SecondAdjointNodeSource{…}")
 end
 
 # --- MIME "text/plain" for detailed display ---
 
 function Base.show(io::IO, ::MIME"text/plain", node::AbstractNode)
-    println(io, _short_type(node), "  (use fulltype(node) for full type)")
+    println(io, _short_type(node), "  (use fulltype(node) or IOContext(io, :fulltype => true) for full type)")
     print(io, "  ", _expr_string(node))
 end
 
