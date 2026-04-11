@@ -31,6 +31,8 @@ else
 end
 
 if "EXAMODELS_TEST_ONEAPI" in ARGS
+    # on Julia 1.9, oneAPI causes the CI to stall indefinitely
+    Pkg.add("oneAPI")
     @eval using oneAPI
     @eval push!(BACKENDS, oneAPIBackend())
     @info "including oneAPI"
