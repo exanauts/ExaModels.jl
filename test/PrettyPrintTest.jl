@@ -11,7 +11,7 @@ function runtests()
             @test sprint(show, sin(x[1]))      == "sin(x[1])"
             @test sprint(show, x[1] + x[2])    == "x[1] + x[2]"
             @test sprint(show, x[1] * x[2])    == "x[1] * x[2]"
-            @test sprint(show, x[1]^2)          == "x[1]^2"
+            @test sprint(show, x[1]^2)           == "x[1]^2"  # abs2 specialization
             @test sprint(show, x[1] - x[2])     == "x[1] - x[2]"
             @test sprint(show, x[1] / x[2])     == "(x[1] / x[2])"
         end

@@ -75,6 +75,11 @@ end
 function _print_tree(io::IO, node::ParameterSource, indent::Int)
     print(io, " "^indent, "θ")
 end
+function _print_tree(io::IO, node::Node1{typeof(abs2)}, indent::Int)
+    print(io, " "^indent)
+    _print_tree(io, node.inner, 0)
+    print(io, "^2")
+end
 function _print_tree(io::IO, node::Node1{F}, indent::Int) where {F}
     print(io, " "^indent, _opname(F), "(")
     _print_tree(io, node.inner, 0)
