@@ -46,7 +46,7 @@ jobs:
         julia-version: ['1', 'lts']
         julia-arch: [x64]
         os: [ubuntu-latest]
-    runs-on: ['self-hosted', '${{ matrix.backend }}']
+    runs-on: ['self-hosted']
     steps:
     - name: Checkout code
       uses: actions/checkout@v2
