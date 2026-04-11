@@ -173,9 +173,17 @@ end
 
 const _AUGMENT_CONSTRAINT_REF = Ref{Any}(nothing)
 
-Base.getindex(c::Constraint, idx...) = begin
+# For 1D constraints: single index, adjust for range start.
+Base.getindex(c::Constraint, i) = begin
     _AUGMENT_CONSTRAINT_REF[] = c
-    ConstraintSlot(c, length(idx) == 1 ? idx[1] : idx)
+    ConstraintSlot(c, i - (_con_start1(c.itr) - 1))
+end
+# For multi-dim constraints: tuple indices, adjust each for its range start.
+# Integer results are wrapped in Constant so they remain callable by `coord`.
+Base.getindex(c::Constraint, idx::Vararg{Any,N}) where {N} = begin
+    _AUGMENT_CONSTRAINT_REF[] = c
+    starts = _con_starts(c.itr)
+    ConstraintSlot(c, ntuple(k -> _con_adjust(idx[k], starts[k]), Val(N)))
 end
 Base.getindex(c::ConstraintAugmentation, idx...) = begin
     _AUGMENT_CONSTRAINT_REF[] = c
@@ -185,6 +193,19 @@ Base.:+(slot::ConstraintSlot, expr::AbstractNode) = Pair(slot.idx, expr)
 Base.:+(expr::AbstractNode, slot::ConstraintSlot) = Pair(slot.idx, expr)
 Base.setindex!(::Constraint, val, idx...) = val
 Base.setindex!(::ConstraintAugmentation, val, idx...) = val
+
+# Adjust a single index for the range start.
+# Symbolic nodes: arithmetic produces a Node2 (callable by coord).
+# Literal integers: wrap in Constant so coord can call it.
+@inline _con_adjust(idx, start) = idx - (start - 1)
+@inline _con_adjust(idx::Integer, start) = Constant(idx - start + 1)
+
+# Extract range starts from constraint iterators.
+@inline _con_start1(itr::AbstractRange) = first(itr)
+@inline _con_start1(itr::AbstractArray{<:Tuple}) = itr[1][1]
+@inline _con_start1(itr) = 1
+@inline _con_starts(itr::AbstractArray{<:Tuple}) = itr[1]
+@inline _con_starts(itr) = ntuple(_ -> 1, ndims(itr))
 
 abstract type AbstractExaCore{T,VT,B,S} end
 
@@ -1518,7 +1539,8 @@ true
 function multipliers(result::SolverCore.AbstractExecutionStats, y::Constraint)
     o = y.offset
     len = length(y.itr)
-    return view(result.multipliers, (o+1):(o+len))
+    s = Base.size(y.itr)
+    return reshape(view(result.multipliers, (o+1):(o+len)), s...)
 end
 
 _adapt_gen(gen) = Base.Generator(gen.f, collect(gen.iter))
