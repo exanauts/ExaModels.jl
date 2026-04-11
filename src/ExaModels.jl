@@ -90,12 +90,9 @@ export ExaModel,
     @register_univariate,
     @register_bivariate,
     EachScenario,
-    design_var_indices,
-    scenario_var_indices,
-    scenario_con_indices,
+    TwoStageExaModel,
     num_scenarios,
-    num_design_vars,
-    num_recourse_vars_per_scenario,
-    num_cons_per_scenario
+    scenario_var_tags,
+    scenario_con_tags
 
 end # module ExaModels

@@ -32,9 +32,9 @@ function runtests()
             @test NLPModels.get_nvar(model) == ns * nv + nd
             @test NLPModels.get_ncon(model) == ns * nv
             @test num_scenarios(model) == ns
-            @test num_design_vars(model) == nd
-            @test num_recourse_vars_per_scenario(model) == nv
-            @test num_cons_per_scenario(model) == nv
+            @test count(==(0), scenario_var_tags(model)) == nd
+            @test count(==(1), scenario_var_tags(model)) == nv
+            @test count(==(1), scenario_con_tags(model)) == nv
         end
 
         @testset "Variable and constraint tagging" begin
@@ -45,16 +45,17 @@ function runtests()
             d = @add_var(core, nd)
 
             model = ExaModel(core)
+            vtags = scenario_var_tags(model)
 
-            @test scenario_var_indices(model, 1) == [1, 2, 3]
-            @test scenario_var_indices(model, 2) == [4, 5, 6]
-            @test design_var_indices(model) == [7, 8]
+            @test findall(==(1), vtags) == [1, 2, 3]
+            @test findall(==(2), vtags) == [4, 5, 6]
+            @test findall(==(0), vtags) == [7, 8]
 
             x_global = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0]
 
-            @test x_global[scenario_var_indices(model, 1)] == [1.0, 2.0, 3.0]
-            @test x_global[scenario_var_indices(model, 2)] == [4.0, 5.0, 6.0]
-            @test x_global[design_var_indices(model)] == [7.0, 8.0]
+            @test x_global[findall(==(1), vtags)] == [1.0, 2.0, 3.0]
+            @test x_global[findall(==(2), vtags)] == [4.0, 5.0, 6.0]
+            @test x_global[findall(==(0), vtags)] == [7.0, 8.0]
         end
 
         @testset "Objective evaluation" begin
@@ -102,8 +103,9 @@ function runtests()
 
             @test c_global ≈ [0.5, 1.5, 1.5, 2.5]
 
-            @test c_global[scenario_con_indices(model, 1)] ≈ [0.5, 1.5]
-            @test c_global[scenario_con_indices(model, 2)] ≈ [1.5, 2.5]
+            ctags = scenario_con_tags(model)
+            @test c_global[findall(==(1), ctags)] ≈ [0.5, 1.5]
+            @test c_global[findall(==(2), ctags)] ≈ [1.5, 2.5]
         end
 
         @testset "Gradient evaluation" begin
@@ -129,8 +131,9 @@ function runtests()
 
             @test g_global ≈ [4.0, 8.0, 18.0, 24.0, 0.0]
 
-            @test g_global[scenario_var_indices(model, 1)] ≈ [4.0, 8.0]
-            @test g_global[design_var_indices(model)] ≈ [0.0]
+            vtags = scenario_var_tags(model)
+            @test g_global[findall(==(1), vtags)] ≈ [4.0, 8.0]
+            @test g_global[findall(==(0), vtags)] ≈ [0.0]
         end
 
         @testset "Jacobian structure and evaluation" begin
@@ -229,12 +232,13 @@ function runtests()
             @test result.status == :first_order
 
             x_sol = result.solution
+            vtags = scenario_var_tags(model)
             θ_bar = sum(θ_vals) / ns
             d_expected = θ_bar / 2
 
-            @test x_sol[design_var_indices(model)][1] ≈ d_expected atol = 1e-5
+            @test x_sol[findall(==(0), vtags)][1] ≈ d_expected atol = 1e-5
             for i in 1:ns
-                @test x_sol[scenario_var_indices(model, i)][1] ≈ d_expected atol = 1e-5
+                @test x_sol[findall(==(i), vtags)][1] ≈ d_expected atol = 1e-5
             end
         end
 
@@ -266,9 +270,10 @@ function runtests()
             @test result.status == :first_order
 
             x_sol = result.solution
-            d_sol = x_sol[design_var_indices(model)]
-            v1_sol = x_sol[scenario_var_indices(model, 1)]
-            v2_sol = x_sol[scenario_var_indices(model, 2)]
+            vtags = scenario_var_tags(model)
+            d_sol  = x_sol[findall(==(0), vtags)]
+            v1_sol = x_sol[findall(==(1), vtags)]
+            v2_sol = x_sol[findall(==(2), vtags)]
 
             @test v1_sol[1] + v1_sol[2] ≈ d_sol[1] + d_sol[2] atol = 1e-5
             @test v2_sol[1] + v2_sol[2] ≈ d_sol[1] + d_sol[2] atol = 1e-5
@@ -300,13 +305,14 @@ function runtests()
             @test result.status == :first_order
 
             x_sol = result.solution
+            vtags = scenario_var_tags(model)
             d_expected = sum(θ_vals) / (4 + ns)
 
-            @test x_sol[design_var_indices(model)][1] ≈ d_expected atol = 1e-5
+            @test x_sol[findall(==(0), vtags)][1] ≈ d_expected atol = 1e-5
 
             for (i, θ) in enumerate(θ_vals)
                 v_expected = (θ - d_expected) / 2
-                @test x_sol[scenario_var_indices(model, i)][1] ≈ v_expected atol = 1e-5
+                @test x_sol[findall(==(i), vtags)][1] ≈ v_expected atol = 1e-5
             end
         end
 
@@ -330,11 +336,12 @@ function runtests()
             )
 
             model = ExaModel(core)
+            vtags = scenario_var_tags(model)
 
             x0 = model.meta.x0
-            @test x0[scenario_var_indices(model, 1)] ≈ [0.1, 0.2]
-            @test x0[scenario_var_indices(model, 2)] ≈ [0.3, 0.4]
-            @test x0[design_var_indices(model)] ≈ [0.5, 0.8]
+            @test x0[findall(==(1), vtags)] ≈ [0.1, 0.2]
+            @test x0[findall(==(2), vtags)] ≈ [0.3, 0.4]
+            @test x0[findall(==(0), vtags)] ≈ [0.5, 0.8]
 
             lvar = model.meta.lvar
             uvar = model.meta.uvar
@@ -379,7 +386,6 @@ function runtests()
         end
 
         @testset "Full model structure with EachScenario" begin
-            # Verify tags and index accessors; no Ipopt solve needed
             ns, nv, nd = 3, 1, 1
             θ_vals = [4.0, 6.0, 8.0]
 
@@ -398,15 +404,17 @@ function runtests()
             )
 
             model = ExaModel(core)
+            vtags = scenario_var_tags(model)
+            ctags = scenario_con_tags(model)
 
             @test num_scenarios(model) == 3
-            @test scenario_var_indices(model, 1) == [1]
-            @test scenario_var_indices(model, 2) == [2]
-            @test scenario_var_indices(model, 3) == [3]
-            @test design_var_indices(model) == [4]
-            @test scenario_con_indices(model, 1) == [1]
-            @test scenario_con_indices(model, 2) == [2]
-            @test scenario_con_indices(model, 3) == [3]
+            @test findall(==(1), vtags) == [1]
+            @test findall(==(2), vtags) == [2]
+            @test findall(==(3), vtags) == [3]
+            @test findall(==(0), vtags) == [4]
+            @test findall(==(1), ctags) == [1]
+            @test findall(==(2), ctags) == [2]
+            @test findall(==(3), ctags) == [3]
         end
 
         @testset "Multiple variable blocks with EachScenario" begin
@@ -420,10 +428,13 @@ function runtests()
             @test core.nvar == ns * 3 + ns * 2 + 1
 
             tags = core.tags
-            @test tags.var_scenario == [1,1,1, 2,2,2, 1,1, 2,2, 0]
-            @test scenario_var_indices(ExaModel(core), 1) == [1,2,3, 7,8]
-            @test scenario_var_indices(ExaModel(core), 2) == [4,5,6, 9,10]
-            @test design_var_indices(ExaModel(core)) == [11]
+            @test tags.var_scenario == [1, 1, 1, 2, 2, 2, 1, 1, 2, 2, 0]
+
+            model = ExaModel(core)
+            vtags = scenario_var_tags(model)
+            @test findall(==(1), vtags) == [1, 2, 3, 7, 8]
+            @test findall(==(2), vtags) == [4, 5, 6, 9, 10]
+            @test findall(==(0), vtags) == [11]
         end
 
     end

@@ -1,70 +1,58 @@
-# --- Index accessors (ExaModel with TwoStageTags) ---
-"""
-    scenario_var_indices(model::ExaModel, s::Int)
+# --- TwoStageExaModel type alias ---
 
-Return indices of variables belonging to scenario `s` (from `TwoStageTags`).
 """
-function scenario_var_indices(model::ExaModel, s::Int)
-    tags = model.tags::TwoStageTags
-    return findall(==(s), Array(tags.var_scenario))
+    TwoStageExaModel
+
+Type alias for an [`ExaModel`](@ref) whose `tags` field is a [`TwoStageTags`](@ref).
+All two-stage accessor functions (`num_scenarios`, `scenario_var_tags`,
+`scenario_con_tags`) are defined on this type.
+"""
+const TwoStageExaModel{T,VT,E,V,P,O,C,S<:TwoStageTags,R} =
+    ExaModel{T,VT,E,V,P,O,C,S,R}
+
+# --- Accessors ---
+
+"""
+    num_scenarios(model::TwoStageExaModel)
+
+Return the total number of scenarios.
+"""
+function num_scenarios(model::TwoStageExaModel)
+    return model.tags.ns
 end
 
 """
-    design_var_indices(model::ExaModel)
+    scenario_var_tags(model::TwoStageExaModel)
 
-Return indices of design variables (scenario tag 0) from `TwoStageTags`.
+Return the scenario-index vector for variables.  Entry `k` holds the scenario
+number of the `k`-th variable (0 = design variable shared across all scenarios).
+
+Users can derive any partition from this vector, e.g.:
+
+```julia
+# indices of design variables
+findall(==(0), scenario_var_tags(model))
+
+# indices belonging to scenario s
+findall(==(s), scenario_var_tags(model))
+```
 """
-function design_var_indices(model::ExaModel)
-    tags = model.tags::TwoStageTags
-    return findall(==(0), Array(tags.var_scenario))
+function scenario_var_tags(model::TwoStageExaModel)
+    return model.tags.var_scenario
 end
 
 """
-    scenario_con_indices(model::ExaModel, s::Int)
+    scenario_con_tags(model::TwoStageExaModel)
 
-Return indices of constraints belonging to scenario `s` (from `TwoStageTags`).
-"""
-function scenario_con_indices(model::ExaModel, s::Int)
-    tags = model.tags::TwoStageTags
-    return findall(==(s), Array(tags.con_scenario))
-end
+Return the scenario-index vector for constraints.  Entry `k` holds the scenario
+number of the `k`-th constraint (0 = shared constraint).
 
-"""
-    num_scenarios(model::ExaModel)
+Users can derive any partition from this vector, e.g.:
 
-Return the number of scenarios from `TwoStageTags`.
+```julia
+findall(==(s), scenario_con_tags(model))
+```
 """
-function num_scenarios(model::ExaModel)
-    tags = model.tags::TwoStageTags
-    return tags.ns
-end
-
-"""
-    num_design_vars(model::ExaModel)
-
-Return the number of design variables (tagged with scenario 0).
-"""
-function num_design_vars(model::ExaModel)
-    tags = model.tags::TwoStageTags
-    return count(==(0), Array(tags.var_scenario))
-end
-
-"""
-    num_recourse_vars_per_scenario(model::ExaModel)
-
-Return the number of recourse variables per scenario (counted from scenario 1).
-"""
-function num_recourse_vars_per_scenario(model::ExaModel)
-    tags = model.tags::TwoStageTags
-    return count(==(1), Array(tags.var_scenario))
-end
-
-"""
-    num_cons_per_scenario(model::ExaModel)
-
-Return the number of constraints per scenario (counted from scenario 1).
-"""
-function num_cons_per_scenario(model::ExaModel)
-    tags = model.tags::TwoStageTags
-    return count(==(1), Array(tags.con_scenario))
+function scenario_con_tags(model::TwoStageExaModel)
+    return model.tags.con_scenario
 end
