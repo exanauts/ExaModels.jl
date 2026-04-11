@@ -8,7 +8,7 @@ Performs dense gradient evaluation via the reverse pass on the computation (sub)
 - `y`: result vector
 - `adj`: adjoint propagated up to the current node
 """
-@inline function drpass(d::D, y, adj) where {D<:AdjointNull}
+@inline function drpass(d::D, y, adj) where {D<:Union{Real,AdjointNull}}
     nothing
 end
 @inline function drpass(d::D, y, adj) where {D<:AdjointNode1}
@@ -84,9 +84,65 @@ end
     @inbounds y[o1+comp(cnt+=1)] += adj
     return cnt
 end
-@inline function grpass(d::AdjointNodeVar, comp::Nothing, y, o1, cnt, adj) # despecialization
-    push!(y, d.i)
-    return (cnt += 1)
+@inline function grpass(d::AdjointNodeVar, comp::Nothing, y, o1, cnt::Vector, adj)
+    push!(cnt, d.i)
+    return cnt
+end
+
+# Tuple-based sparsity detection: cnt = (mapping_acc::Tuple, unique_acc::Tuple)
+# Returns (mapping_tuple, unique_tuple) without any mutable state.
+@inline _grpass_find_ident(x, ::Tuple{}, i) = 0
+@inline function _grpass_find_ident(x, t::Tuple, i)
+    t[1] === x && return i
+    return _grpass_find_ident(x, Base.tail(t), i + 1)
+end
+
+@inline function grpass(
+    d::D,
+    comp::Nothing,
+    y,
+    o1,
+    cnt::Tuple{<:Tuple,<:Tuple},
+    adj,
+) where {D<:Union{AdjointNull,ParIndexed,Real}}
+    return cnt
+end
+@inline function grpass(
+    d::D,
+    comp::Nothing,
+    y,
+    o1,
+    cnt::Tuple{<:Tuple,<:Tuple},
+    adj,
+) where {D<:AdjointNode1}
+    return grpass(d.inner, nothing, y, o1, cnt, adj * d.y)
+end
+@inline function grpass(
+    d::D,
+    comp::Nothing,
+    y,
+    o1,
+    cnt::Tuple{<:Tuple,<:Tuple},
+    adj,
+) where {D<:AdjointNode2}
+    cnt = grpass(d.inner1, nothing, y, o1, cnt, adj * d.y1)
+    return grpass(d.inner2, nothing, y, o1, cnt, adj * d.y2)
+end
+@inline function grpass(
+    d::D,
+    comp::Nothing,
+    y,
+    o1,
+    cnt::Tuple{<:Tuple,<:Tuple},
+    adj,
+) where {D<:AdjointNodeVar}
+    mapping, uniques = cnt
+    idx = _grpass_find_ident(d.i, uniques, 1)
+    if idx === 0
+        return ((mapping..., length(uniques) + 1), (uniques..., d.i))
+    else
+        return ((mapping..., idx), uniques)
+    end
 end
 @inline function grpass(
     d::D,

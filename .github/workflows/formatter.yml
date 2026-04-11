@@ -46,7 +46,21 @@ jobs:
         run: |
           set +e
           MERGE_BASE=$(git merge-base upstream/${{ github.base_ref }} HEAD) || exit 1
-          DIFF=$(git runic --diff $MERGE_BASE)
+
+          # Get changed .jl files, excluding AOT apps that use @main (unsupported by Runic)
+          FILES=$(git diff --name-only $MERGE_BASE -- '*.jl' \
+            | grep -v 'test/COPSApp.jl/' \
+            | grep -v 'test/LuksanVlcekApp.jl/' \
+            | tr '\n' ' ')
+
+          if [ -z "$FILES" ]; then
+            echo "exit_code=0" >> $GITHUB_OUTPUT
+            echo "diff<<EOF" >> $GITHUB_OUTPUT
+            echo "EOF" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          DIFF=$(julia --project=@runic -e "using Runic; exit(Runic.main(ARGS))" -- --diff $FILES)
           EXIT_CODE=$?
 
           echo "exit_code=$EXIT_CODE" >> $GITHUB_OUTPUT
@@ -75,18 +89,17 @@ jobs:
             <!-- runic-format-summary -->
 
             Your PR requires formatting changes to meet the project's style guidelines.
-            Please consider running [Runic](https://github.com/fredrikekre/Runic.jl) (`git runic ${{ github.base_ref }}`) to apply these changes.
 
-            <details>
-            <summary>Click here to view the suggested changes.</summary>
-
-            ```diff
-            ${{ steps.runic.outputs.diff }}
+            Please run:
+            ```sh
+            julia --project=@runic -e 'using Pkg; Pkg.add("Runic")'
+            julia --project=@runic -e "using Runic; exit(Runic.main(ARGS))" -- --fix <files>
             ```
+            (or `git runic ${{ github.base_ref }}` if you have the git wrapper installed)
 
-            </details>
+            Note: the full diff is omitted because it can exceed GitHub Actions input limits.
           edit-mode: replace
-
+          
       - name: Update stale comment
         if: steps.runic.outputs.exit_code == 0 && steps.find-comment.outputs.comment-id
         uses: peter-evans/create-or-update-comment@v4
