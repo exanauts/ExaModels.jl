@@ -122,11 +122,11 @@ _conaug_structure!(T, backend, ::Tuple{}, sparsity) = nothing
 function _conaug_structure!(T, backend, (con, cons...), sparsity)
     _conaug_structure!(T, backend, cons, sparsity)
     con isa ExaModels.ConstraintAugmentation && !isempty(con.itr) &&
-        kers(backend)(sparsity, con.f, con.itr, con.oa; ndrange = length(con.itr))
+        kers(backend)(sparsity, con.f, con.itr, con.oa, con.dims; ndrange = length(con.itr))
 end
-@kernel function kers(sparsity, @Const(f), @Const(itr), @Const(oa))
+@kernel function kers(sparsity, @Const(f), @Const(itr), @Const(oa), @Const(dims))
     I = @index(Global)
-    @inbounds sparsity[oa+I] = (ExaModels.offset0(f, itr, I), oa + I)
+    @inbounds sparsity[oa+I] = (ExaModels.offset0(f, itr, I, dims), oa + I)
 end
 
 
@@ -242,11 +242,10 @@ function ExaModels.grad!(
 ) where {T,VT,E<:KAExtension,V<:AbstractVector}
     gradbuffer = m.ext.gradbuffer
 
+    fill!(y, zero(eltype(y)))
     if !isempty(gradbuffer)
         fill!(gradbuffer, zero(eltype(gradbuffer)))
         _grad!(m.ext.backend, m.ext.gradbuffer, m.objs, x, m.θ)
-
-        fill!(y, zero(eltype(y)))
         compress_to_dense(m.ext.backend)(
             y,
             gradbuffer,
@@ -254,7 +253,7 @@ function ExaModels.grad!(
             m.ext.gsparsity;
             ndrange = length(m.ext.gptr) - 1,
         )
-        end
+    end
 
     return y
 end
