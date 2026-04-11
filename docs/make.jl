@@ -18,6 +18,7 @@ if !(@isdefined _PAGES)
             "quad.md",
             "distillation.md",
             "opf.md",
+            "upgrade.md",
         ],
         "JuMP Interface (experimental)" => "jump.md",
         "API Manual" => "core.md",
