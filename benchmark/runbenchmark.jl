@@ -77,10 +77,8 @@ end
 
 # ── Timing helpers ─────────────────────────────────────────────────────────────
 
-function belapsed(ex; warmup = 10, samples = 1000)
-    for _ in 1:warmup  # ensure JIT is done and CPU frequency is ramped up
-        ex()
-    end
+function belapsed(ex; samples = 1000)
+    ex()  # one warmup to avoid JIT / kernel-compile overhead in the timed window
     GC.gc()
     GC.enable(false)
     t = minimum(@elapsed ex() for _ in 1:samples)
