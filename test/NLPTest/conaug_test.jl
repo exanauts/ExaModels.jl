@@ -42,7 +42,7 @@ function test_conaug_1d(backend)
 
         m = ExaModel(c)
         x0 = ExaModels.convert_array(ones(N + 1), backend)
-        g_vals = NLPModels.cons(m, x0)
+        g_vals = Array(NLPModels.cons(m, x0))
         @test all(≈(2.0), g_vals)
     end
 end
