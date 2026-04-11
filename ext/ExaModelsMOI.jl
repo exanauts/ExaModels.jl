@@ -84,7 +84,7 @@ function ExaModels.ExaModel(
     moim::MOI.ModelLike;
     backend = nothing,
     prod = false,
-    T = Float64,
+    T = ExaModels.default_T(backend),
     )
 
     c, _ = to_exacore(moim; backend = backend, T = T)
@@ -94,11 +94,11 @@ end
 function to_exacore(moim::MOI.ModelLike; backend = nothing, T = Float64)
     minimize = check_supported(T, moim)
 
-    c = ExaModels.ExaCore(T; backend = backend, minimize = minimize)
+    c = ExaModels.ExaCore(T; backend = backend, minimize = minimize, concrete = Val(true))
 
-    var_to_idx = copy_variables!(c, moim, T)
-    con_to_idx = copy_constraints!(c, moim, var_to_idx, T)
-    copy_objective!(c, moim, var_to_idx)
+    c, var_to_idx = copy_variables!(c, moim, T)
+    c, con_to_idx = copy_constraints!(c, moim, var_to_idx, T)
+    c = copy_objective!(c, moim, var_to_idx)
 
     return c, (var_to_idx, con_to_idx)
 end
@@ -166,7 +166,7 @@ function copy_variables!(c, moim, T)
     uvar = fill(T(Inf), nvar)
     fill_variable_bounds!(moim, lvar, uvar, var_to_idx, T)
 
-    ExaModels.variable(c, nvar; start = x0, lvar = lvar, uvar = uvar)
+    c, _ = ExaModels.add_var(c, nvar; start = x0, lvar = lvar, uvar = uvar)
 
     varpar_to_idx = Dict()
     for (vi, i) in var_to_idx
@@ -179,10 +179,10 @@ function copy_variables!(c, moim, T)
             p0[i] = T(set.value)
             varpar_to_idx[vi] = (type = :parameter, idx = i)
         end
-        ExaModels.parameter(c, p0)
+        c, _ = ExaModels.add_par(c, p0)
     end
 
-    return varpar_to_idx
+    return c, varpar_to_idx
 end
 
 function copy_objective!(c, moim, var_to_idx)
@@ -191,7 +191,7 @@ function copy_objective!(c, moim, var_to_idx)
     bin = BinNull()
     bin = exafy_obj(MOI.get(moim, MOI.ObjectiveFunction{obj_type}()), bin, var_to_idx)
 
-    build_objective!(c, bin)
+    return build_objective!(c, bin)
 end
 
 function copy_constraints!(c, moim, var_to_idx, T)
@@ -218,10 +218,10 @@ function copy_constraints!(c, moim, var_to_idx, T)
         bin, offset =
             exafy_con(moim, cis, bin, offset, lcon, ucon, y0, var_to_idx, con_to_idx)
     end
-    cons = ExaModels.constraint(c, offset; start = y0, lcon = lcon, ucon = ucon)
-    build_constraint!(c, cons, bin)
+    c, cons = ExaModels.add_con(c, offset; start = y0, lcon = lcon, ucon = ucon)
+    c = build_constraint!(c, cons, bin)
 
-    return con_to_idx
+    return c, con_to_idx
 end
 
 function _exafy_con(
@@ -382,18 +382,24 @@ end
 
 
 function build_constraint!(c, cons, bin)
-    build_constraint!(c, cons, bin.inner)
-    ExaModels.constraint!(c, cons, bin.head, bin.data)
+    c = build_constraint!(c, cons, bin.inner)
+    c, _ = ExaModels.add_con!(c, cons, Base.Generator(_ -> bin.head, bin.data))
+    return c
 end
 
-function build_constraint!(c, cons, ::BinNull) end
+function build_constraint!(c, cons, ::BinNull)
+    return c
+end
 
 function build_objective!(c, bin)
-    build_objective!(c, bin.inner)
-    ExaModels.objective(c, bin.head, bin.data)
+    c = build_objective!(c, bin.inner)
+    c, _ = ExaModels.add_obj(c, bin.head, bin.data)
+    return c
 end
 
-function build_objective!(c, ::BinNull) end
+function build_objective!(c, ::BinNull)
+    return c
+end
 
 function exafy_obj(o::Nothing, bin, var_to_idx)
     return bin

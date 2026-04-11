@@ -2,6 +2,17 @@
 # This is useful when you want to use a solver that does not support non-stardard array data types.
 # TODO: make this as an independent package
 
+"""
+    WrapperNLPModel
+
+An `NLPModels.AbstractNLPModel` wrapper that bridges a model whose internal array
+type differs from the host array type (e.g. a GPU-backed `ExaModel` wrapped for a
+CPU-only solver).  All NLP callbacks are forwarded to the inner model through
+intermediate copy buffers.
+
+Use [`WrapperNLPModel(m)`](@ref) or [`WrapperNLPModel(VT, m)`](@ref) rather than
+constructing this struct directly.
+"""
 struct WrapperNLPModel{
     T,
     VT,
@@ -40,7 +51,8 @@ end
 """
     WrapperNLPModel(m)
 
-Returns a `WrapperModel{Float64,Vector{64}}` wrapping `m`
+Returns a `WrapperNLPModel{Float64,Vector{Float64}}` wrapping `m`, forwarding
+all NLP callbacks through `Float64` CPU copy buffers.
 """
 WrapperNLPModel(m) = WrapperNLPModel(Vector{Float64}, m)
 
@@ -187,7 +199,7 @@ function NLPModels.hess_coord!(
         m.x_buffer,
         m.y_buffer,
         m.hess_buffer;
-        obj_weight = obj_weight,
+        obj_weight = eltype(m.hess_buffer)(obj_weight),
     )
     copyto!(m.hess_buffer2, m.hess_buffer)
     copyto!(hess, m.hess_buffer2)
@@ -247,7 +259,7 @@ function NLPModels.hprod!(
         m.y_buffer,
         m.grad_buffer,
         m.v_buffer;
-        obj_weight = obj_weight,
+        obj_weight = eltype(m.x_buffer)(obj_weight),
     )
 
     buffered_copyto!(Hv, m.x_result, m.v_buffer)
@@ -273,6 +285,16 @@ Base.@kwdef mutable struct CallbackStats
     hess_structure_time::Float64 = 0.0
 end
 
+"""
+    TimedNLPModel
+
+A transparent wrapper around any `AbstractNLPModel` that records wall-clock
+timings and call counts for each NLP callback (`obj`, `cons!`, `grad!`,
+`jac_coord!`, `hess_coord!`, `jac_structure!`, `hess_structure!`).
+
+Statistics accumulate in the `stats` field and can be printed with `print(m)`.
+Construct via [`TimedNLPModel(m)`](@ref).
+"""
 struct TimedNLPModel{T,VT,I<:NLPModels.AbstractNLPModel{T,VT}} <:
        NLPModels.AbstractNLPModel{T,VT}
     inner::I
@@ -281,9 +303,21 @@ struct TimedNLPModel{T,VT,I<:NLPModels.AbstractNLPModel{T,VT}} <:
     counters::NLPModels.Counters
 end
 
+"""
+    TimedNLPModel(m)
+
+Wraps `m` in a [`TimedNLPModel`](@ref) with all counters and timers reset to zero.
+"""
 function TimedNLPModel(m)
     return TimedNLPModel(m, m.meta, CallbackStats(), NLPModels.Counters())
 end
+
+"""
+    TimedNLPModel(core::ExaCore; kwargs...)
+
+Builds an [`ExaModel`](@ref) from `core` (forwarding `kwargs...`) and wraps it in
+a [`TimedNLPModel`](@ref).
+"""
 function TimedNLPModel(c::ExaModels.ExaCore; kwargs...)
     m = ExaModels.Model(c; kwargs...)
     return TimedNLPModel(m)
@@ -374,8 +408,20 @@ end
 Base.show(io::IO, ::MIME"text/plain", e::TimedNLPModel) = Base.print(io, e);
 
 
-# CompressedNLPModels
+"""
+    CompressedNLPModel
 
+A wrapper around an `AbstractNLPModel` that sums duplicate `(row, col)` entries
+in the sparse Jacobian and Hessian.
+
+Duplicates arise when multiple constraint or objective patterns contribute to the
+same matrix position (e.g. after augmentation via [`add_con!`](@ref)).
+`CompressedNLPModel` detects them once at construction and accumulates them on
+every subsequent `jac_coord!` / `hess_coord!` call, so callers receive a matrix
+with no repeated coordinates.
+
+Construct via [`CompressedNLPModel(m)`](@ref).
+"""
 struct CompressedNLPModel{
     T,
     VT<:AbstractVector{T},
@@ -404,6 +450,15 @@ function getptr(backend::Nothing, array; cmp = (x, y) -> x != y)
     )
 end
 
+"""
+    CompressedNLPModel(m)
+
+Wraps `m` in a [`CompressedNLPModel`](@ref).
+
+Queries the full Jacobian and Hessian sparsity patterns from `m`, identifies
+duplicate `(row, col)` pairs, builds pointer arrays for O(nnz) accumulation on
+subsequent `jac_coord!` / `hess_coord!` calls.
+"""
 function CompressedNLPModel(m)
 
     nnzj = NLPModels.get_nnzj(m)
@@ -483,7 +538,7 @@ function NLPModels.hess_coord!(
     x::AbstractVector,
     y::AbstractVector,
     h::AbstractVector;
-    obj_weight = 1.0,
+    obj_weight = one(eltype(x)),
 )
     NLPModels.hess_coord!(m.inner, x, y, m.buffer; obj_weight = obj_weight)
     _compress!(h, m.buffer, m.hptr, m.hsparsity, m.backend)

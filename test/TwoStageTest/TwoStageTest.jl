@@ -3,8 +3,6 @@ module TwoStageTest
 using Test
 using ExaModels
 import NLPModels
-import NLPModels: obj, cons!, cons_nln!, grad!, jac_coord!, hess_coord!, jac_structure!, hess_structure!
-
 import NLPModelsIpopt: ipopt
 
 function runtests()
@@ -431,4 +429,4 @@ function runtests()
     end
 end
 
-end # module
+end # module TwoStageTest

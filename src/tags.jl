@@ -29,16 +29,11 @@ function append_con_tags(tags::TwoStageTags, backend, len; scenario = 0)
     append!(backend, tags.con_scenario, scenario, len)
 end
 const TwoStageExaCore{T,VT,B} = ExaCore{T,VT,B,S} where S <: TwoStageTags
-
-"""
-    TwoStageExaCore(ns; backend=nothing)
-
-Create an `ExaCore` with `TwoStageTags` for building two-stage stochastic models
-with `ns` scenarios.
-"""
-function TwoStageExaCore(ns::Int = 0; backend = nothing, kwargs...)
-    return ExaCore(;
+function TwoStageExaCore(args...; backend = nothing, concrete = Val(false), kwargs...)
+    return ExaCore(
+        args...;
         backend,
+        concrete,
         tags = TwoStageTags(
             ns,
             convert_array(zeros(Int, 0), backend),

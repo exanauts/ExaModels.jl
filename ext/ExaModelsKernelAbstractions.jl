@@ -37,7 +37,7 @@ function ExaModels.build_extension(
 
     gsparsity = similar(c.x0, Tuple{Int,Int}, c.nnzg)
 
-    _grad_structure!(c.backend, c.obj, gsparsity)
+    _grad_structure!(T, c.backend, c.obj, gsparsity)
 
     if !isempty(gsparsity)
         ExaModels.sort!(gsparsity; lt = ((i, j), (k, l)) -> i < k)
@@ -45,7 +45,7 @@ function ExaModels.build_extension(
     gptr = ExaModels.getptr(c.backend, gsparsity; cmp = (x, y) -> x[1] != y[1])
 
     conaugsparsity = similar(c.x0, Tuple{Int,Int}, c.nconaug)
-    _conaug_structure!(c.backend, c.con, conaugsparsity)
+    _conaug_structure!(T, c.backend, c.cons, conaugsparsity)
     if !isempty(conaugsparsity)
         ExaModels.sort!(conaugsparsity; lt = ((i, j), (k, l)) -> i < k)
     end
@@ -58,11 +58,11 @@ function ExaModels.build_extension(
         jacsparsityi = similar(c.x0, Tuple{Tuple{Int,Int},Int}, c.nnzj)
         hesssparsityi = similar(c.x0, Tuple{Tuple{Int,Int},Int}, c.nnzh)
 
-        _jac_structure!(c.backend, c.con, jacsparsityi, nothing)
+        _jac_structure!(T, c.backend, c.cons, jacsparsityi, nothing)
 
         jacsparsityj = copy(jacsparsityi)
-        _obj_hess_structure!(c.backend, c.obj, hesssparsityi, nothing)
-        _con_hess_structure!(c.backend, c.con, hesssparsityi, nothing)
+        _obj_hess_structure!(T, c.backend, c.obj, hesssparsityi, nothing)
+        _con_hess_structure!(T, c.backend, c.cons, hesssparsityi, nothing)
         hesssparsityj = copy(hesssparsityi)
 
         if !isempty(jacsparsityi)
@@ -118,16 +118,12 @@ function ExaModels.build_extension(
     )
 end
 
-function _conaug_structure!(backend, cons, sparsity)
-    if !isempty(cons.itr)
-        kers(backend)(sparsity, cons.f, cons.itr, cons.oa; ndrange = length(cons.itr))
-    end
-    _conaug_structure!(backend, cons.inner, sparsity)
+_conaug_structure!(T, backend, ::Tuple{}, sparsity) = nothing
+function _conaug_structure!(T, backend, (con, cons...), sparsity)
+    _conaug_structure!(T, backend, cons, sparsity)
+    con isa ExaModels.ConstraintAugmentation && !isempty(con.itr) &&
+        kers(backend)(sparsity, con.f, con.itr, con.oa; ndrange = length(con.itr))
 end
-function _conaug_structure!(backend, cons::ExaModels.Constraint, sparsity)
-    _conaug_structure!(backend, cons.inner, sparsity)
-end
-function _conaug_structure!(backend, cons::ExaModels.ConstraintNull, sparsity) end
 @kernel function kers(sparsity, @Const(f), @Const(itr), @Const(oa))
     I = @index(Global)
     @inbounds sparsity[oa+I] = (ExaModels.offset0(f, itr, I), oa + I)
@@ -135,11 +131,11 @@ end
 
 
 
-function _grad_structure!(backend, objs, gsparsity)
-    ExaModels.sgradient!(backend, gsparsity, objs, nothing, nothing, NaN)
-    _grad_structure!(backend, objs.inner, gsparsity)
+_grad_structure!(T, backend, ::Tuple{}, gsparsity) = nothing
+function _grad_structure!(T, backend, (obj, objs...), gsparsity)
+    _grad_structure!(T, backend, objs, gsparsity)
+    ExaModels.sgradient!(backend, gsparsity, obj, ExaModels.NaNSource{T}(), ExaModels.NaNSource{T}(), T(NaN))
 end
-function _grad_structure!(backend, objs::ExaModels.ObjectiveNull, gsparsity) end
 
 function ExaModels.jac_structure!(
     m::ExaModels.AbstractExaModel{T,VT,E},
@@ -147,15 +143,15 @@ function ExaModels.jac_structure!(
     cols::V,
 ) where {T,VT,E<:KAExtension,V<:AbstractVector}
     if !isempty(rows)
-        _jac_structure!(m.ext.backend, m.cons, rows, cols)
+        _jac_structure!(T, m.ext.backend, m.cons, rows, cols)
     end
     return rows, cols
 end
-function _jac_structure!(backend, cons, rows, cols)
-    ExaModels.sjacobian!(backend, rows, cols, cons, nothing, nothing, NaN)
-    _jac_structure!(backend, cons.inner, rows, cols)
+_jac_structure!(T, backend, ::Tuple{}, rows, cols) = nothing
+function _jac_structure!(T, backend, (con, cons...), rows, cols)
+    _jac_structure!(T, backend, cons, rows, cols)
+    ExaModels.sjacobian!(backend, rows, cols, con, ExaModels.NaNSource{T}(), ExaModels.NaNSource{T}(), T(NaN))
 end
-function _jac_structure!(backend, cons::ExaModels.ConstraintNull, rows, cols) end
 
 
 function ExaModels.hess_structure!(
@@ -164,22 +160,22 @@ function ExaModels.hess_structure!(
     cols::V,
 ) where {T,VT,E<:KAExtension,V<:AbstractVector}
     if !isempty(rows)
-        _obj_hess_structure!(m.ext.backend, m.objs, rows, cols)
-        _con_hess_structure!(m.ext.backend, m.cons, rows, cols)
+        _obj_hess_structure!(T, m.ext.backend, m.objs, rows, cols)
+        _con_hess_structure!(T, m.ext.backend, m.cons, rows, cols)
         end
     return rows, cols
 end
 
-function _obj_hess_structure!(backend, objs, rows, cols)
-    ExaModels.shessian!(backend, rows, cols, objs, nothing, nothing, NaN, NaN)
-    _obj_hess_structure!(backend, objs.inner, rows, cols)
+_obj_hess_structure!(T, backend, ::Tuple{}, rows, cols) = nothing
+function _obj_hess_structure!(T, backend, (obj, objs...), rows, cols)
+    _obj_hess_structure!(T, backend, objs, rows, cols)
+    ExaModels.shessian!(backend, rows, cols, obj, ExaModels.NaNSource{T}(), ExaModels.NaNSource{T}(), T(NaN), T(NaN))
 end
-function _obj_hess_structure!(backend, objs::ExaModels.ObjectiveNull, rows, cols) end
-function _con_hess_structure!(backend, cons, rows, cols)
-    ExaModels.shessian!(backend, rows, cols, cons, nothing, nothing, NaN, NaN)
-    _con_hess_structure!(backend, cons.inner, rows, cols)
+_con_hess_structure!(T, backend, ::Tuple{}, rows, cols) = nothing
+function _con_hess_structure!(T, backend, (con, cons...), rows, cols)
+    _con_hess_structure!(T, backend, cons, rows, cols)
+    ExaModels.shessian!(backend, rows, cols, con, ExaModels.NaNSource{T}(), ExaModels.NaNSource{T}(), T(NaN), T(NaN))
 end
-function _con_hess_structure!(backend, cons::ExaModels.ConstraintNull, rows, cols) end
 
 
 function ExaModels.obj(
@@ -194,13 +190,13 @@ function ExaModels.obj(
         return zero(T)
     end
 end
-function _obj(backend, objbuffer, obj, x, θ)
+_obj(backend, objbuffer, ::Tuple{}, x, θ) = nothing
+function _obj(backend, objbuffer, (obj, objs...), x, θ)
+    _obj(backend, objbuffer, objs, x, θ)
     if !isempty(obj.itr)
         kerf(backend)(objbuffer, obj.f, obj.itr, x, θ; ndrange = length(obj.itr))
     end
-    _obj(backend, objbuffer, obj.inner, x, θ)
 end
-function _obj(backend, objbuffer, f::ExaModels.ObjectiveNull, x, θ) end
 
 function ExaModels.cons_nln!(
     m::ExaModels.AbstractExaModel{T,VT,E},
@@ -221,29 +217,23 @@ function ExaModels.cons_nln!(
         end
     return y
 end
-function _cons_nln!(backend, y, con::ExaModels.Constraint, x, θ)
-    if !isempty(con.itr)
+_cons_nln!(backend, y, ::Tuple{}, x, θ) = nothing
+function _cons_nln!(backend, y, (con, cons...), x, θ)
+    _cons_nln!(backend, y, cons, x, θ)
+    if con isa ExaModels.Constraint && !isempty(con.itr)
         kerf(backend)(y, con.f, con.itr, x, θ; ndrange = length(con.itr))
     end
-    _cons_nln!(backend, y, con.inner, x, θ)
-end
-function _cons_nln!(backend, y, con::ExaModels.ConstraintNull, x, θ) end
-function _cons_nln!(backend, y, con::ExaModels.ConstraintAug, x, θ)
-    _cons_nln!(backend, y, con.inner, x, θ)
 end
 
 
 
-function _conaugs!(backend, y, con::ExaModels.ConstraintAug, x, θ)
-    if !isempty(con.itr)
+_conaugs!(backend, y, ::Tuple{}, x, θ) = nothing
+function _conaugs!(backend, y, (con, cons...), x, θ)
+    _conaugs!(backend, y, cons, x, θ)
+    if con isa ExaModels.ConstraintAugmentation && !isempty(con.itr)
         kerf2(backend)(y, con.f, con.itr, x, θ, con.oa; ndrange = length(con.itr))
     end
-    _conaugs!(backend, y, con.inner, x, θ)
 end
-function _conaugs!(backend, y, con::ExaModels.Constraint, x, θ)
-    _conaugs!(backend, y, con.inner, x, θ)
-end
-function _conaugs!(backend, y, con::ExaModels.ConstraintNull, x, θ) end
 
 function ExaModels.grad!(
     m::ExaModels.AbstractExaModel{T,VT,E},
@@ -268,11 +258,11 @@ function ExaModels.grad!(
 
     return y
 end
-function _grad!(backend, y, objs, x, θ)
-    ExaModels.sgradient!(backend, y, objs, x, θ, one(eltype(y)))
-    _grad!(backend, y, objs.inner, x, θ)
+_grad!(backend, y, ::Tuple{}, x, θ) = nothing
+function _grad!(backend, y, (obj, objs...), x, θ)
+    _grad!(backend, y, objs, x, θ)
+    ExaModels.sgradient!(backend, y, obj, x, θ, one(eltype(y)))
 end
-function _grad!(backend, y, objs::ExaModels.ObjectiveNull, x, θ) end
 
 function ExaModels.jac_coord!(
     m::ExaModels.AbstractExaModel{T,VT,E},
@@ -283,11 +273,11 @@ function ExaModels.jac_coord!(
     _jac_coord!(m.ext.backend, y, m.cons, x, m.θ)
     return y
 end
-function _jac_coord!(backend, y, cons, x, θ)
-    ExaModels.sjacobian!(backend, y, nothing, cons, x, θ, one(eltype(y)))
-    _jac_coord!(backend, y, cons.inner, x, θ)
+_jac_coord!(backend, y, ::Tuple{}, x, θ) = nothing
+function _jac_coord!(backend, y, (con, cons...), x, θ)
+    _jac_coord!(backend, y, cons, x, θ)
+    ExaModels.sjacobian!(backend, y, nothing, con, x, θ, one(eltype(y)))
 end
-function _jac_coord!(backend, y, cons::ExaModels.ConstraintNull, x, θ) end
 
 function ExaModels.jprod_nln!(
     m::ExaModels.AbstractExaModel{T,VT,E},
@@ -463,16 +453,16 @@ function ExaModels.hess_coord!(
     _con_hess_coord!(m.ext.backend, hess, m.cons, x, m.θ, y)
     return hess
 end
-function _obj_hess_coord!(backend, hess, objs, x, θ, obj_weight)
-    ExaModels.shessian!(backend, hess, nothing, objs, x, θ, obj_weight, zero(eltype(hess)))
-    _obj_hess_coord!(backend, hess, objs.inner, x, θ, obj_weight)
+_obj_hess_coord!(backend, hess, ::Tuple{}, x, θ, obj_weight) = nothing
+function _obj_hess_coord!(backend, hess, (obj, objs...), x, θ, obj_weight)
+    _obj_hess_coord!(backend, hess, objs, x, θ, obj_weight)
+    ExaModels.shessian!(backend, hess, nothing, obj, x, θ, obj_weight, zero(eltype(hess)))
 end
-function _obj_hess_coord!(backend, hess, objs::ExaModels.ObjectiveNull, x, θ, obj_weight) end
-function _con_hess_coord!(backend, hess, cons, x, θ, y)
-    ExaModels.shessian!(backend, hess, nothing, cons, x, θ, y, zero(eltype(hess)))
-    _con_hess_coord!(backend, hess, cons.inner, x, θ, y)
+_con_hess_coord!(backend, hess, ::Tuple{}, x, θ, y) = nothing
+function _con_hess_coord!(backend, hess, (con, cons...), x, θ, y)
+    _con_hess_coord!(backend, hess, cons, x, θ, y)
+    ExaModels.shessian!(backend, hess, nothing, con, x, θ, y, zero(eltype(hess)))
 end
-function _con_hess_coord!(backend, hess, cons::ExaModels.ConstraintNull, x, θ, y) end
 
 
 function ExaModels.sgradient!(
