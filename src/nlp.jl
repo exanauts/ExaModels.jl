@@ -174,16 +174,19 @@ end
 const _AUGMENT_CONSTRAINT_REF = Ref{Any}(nothing)
 
 # For 1D constraints: single index, adjust for range start.
+# When start == 1 (the common case), pass idx through unchanged to
+# preserve the exact type expected by SIMDFunction/offset0.
 Base.getindex(c::Constraint, i) = begin
     _AUGMENT_CONSTRAINT_REF[] = c
-    ConstraintSlot(c, i - (_con_start1(c.itr) - 1))
+    s = _con_start1(c.itr)
+    ConstraintSlot(c, s == 1 ? i : i - (s - 1))
 end
 # For multi-dim constraints: tuple indices, adjust each for its range start.
-# Integer results are wrapped in Constant so they remain callable by `coord`.
+# Uses recursive tuple construction (not ntuple) for GPU compatibility.
 Base.getindex(c::Constraint, idx::Vararg{Any,N}) where {N} = begin
     _AUGMENT_CONSTRAINT_REF[] = c
     starts = _con_starts(c.itr)
-    ConstraintSlot(c, ntuple(k -> _con_adjust(idx[k], starts[k]), Val(N)))
+    ConstraintSlot(c, _adjust_tuple(idx, starts))
 end
 Base.getindex(c::ConstraintAugmentation, idx...) = begin
     _AUGMENT_CONSTRAINT_REF[] = c
@@ -194,10 +197,15 @@ Base.:+(expr::AbstractNode, slot::ConstraintSlot) = Pair(slot.idx, expr)
 Base.setindex!(::Constraint, val, idx...) = val
 Base.setindex!(::ConstraintAugmentation, val, idx...) = val
 
+# Recursive tuple adjustment — avoids ntuple/getindex(::Tuple,::Int) for GPU compat.
+@inline _adjust_tuple(idx::Tuple{}, starts::Tuple{}) = ()
+@inline _adjust_tuple(idx::Tuple, starts::Tuple) =
+    (_con_adjust(first(idx), first(starts)), _adjust_tuple(Base.tail(idx), Base.tail(starts))...)
+
 # Adjust a single index for the range start.
-# Symbolic nodes: arithmetic produces a Node2 (callable by coord).
-# Literal integers: wrap in Constant so coord can call it.
-@inline _con_adjust(idx, start) = idx - (start - 1)
+# When start == 1, pass through unchanged to preserve the original type.
+# Literal integers are wrapped in Constant so they remain callable by `coord`.
+@inline _con_adjust(idx, start) = start == 1 ? idx : idx - (start - 1)
 @inline _con_adjust(idx::Integer, start) = Constant(idx - start + 1)
 
 # Extract range starts from constraint iterators.
