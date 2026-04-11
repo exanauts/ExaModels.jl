@@ -7,7 +7,7 @@ import ..ad_tolerance, ..sol_tolerance, ..solver_tolerance
 
 const JUMP_INTERFACE_INSTANCES = [
     (:jump_luksan_vlcek_model, [3, 10]),
-    (:jump_ac_power_model, ["pglib_opf_case3_lmbd.m"]),
+    (:jump_ac_power_model, ["pglib_opf_case3_lmbd.m", "pglib_opf_case14_ieee.m"]),
 ]
 
 function jump_luksan_vlcek_model(N)
