@@ -11,7 +11,7 @@ else
     error("Please specify either 'main' or 'current' as an argument to select the environment.")
 end
 
-using ExaModels, Printf, JLD2, ExaPowerIO, Random
+using ExaModels, Printf, ExaPowerIO, Random
 
 # ── Backend selection ──────────────────────────────────────────────────────────
 # Usage: julia runbenchmark.jl (main|current) [nothing] [cuda] [amdgpu] [oneapi] [all]
@@ -68,7 +68,10 @@ end
 
 if isempty(BENCH_BACKENDS)
     @warn "No functional backends available for the requested selection: $(_extra) — skipping benchmark"
-    JLD2.@save joinpath(@__DIR__, "benchmark-results-$rev.jld2") results=Dict()
+    outfile = joinpath(@__DIR__, "benchmark-results-$rev-none.csv")
+    open(outfile, "w") do io
+        println(io, "backend,instance,param,nvar,ncon,tobj,tcon,tgrad,tjac,thess")
+    end
     exit(0)
 end
 
@@ -76,7 +79,11 @@ end
 
 function belapsed(ex; samples = 1000)
     ex()  # one warmup to avoid JIT / kernel-compile overhead in the timed window
-    minimum(@elapsed ex() for _ in 1:samples)
+    GC.gc()
+    GC.enable(false)
+    t = minimum(@elapsed ex() for _ in 1:samples)
+    GC.enable(true)
+    return t
 end
 
 function benchmark_callbacks(m, sync = () -> nothing; samples = 10)
@@ -107,14 +114,14 @@ end
 
 function print_header(title)
     println()
-    println("=" ^ 90)
-    @printf("  %-26s  %6s %6s | %8s %8s %8s %8s %8s\n",
+    println("=" ^ 94)
+    @printf("  %-30s  %6s %6s | %8s %8s %8s %8s %8s\n",
         title, "nvar", "ncon", "obj", "cons", "grad", "jac", "hess")
-    println("=" ^ 90)
+    println("=" ^ 94)
 end
 
 function print_row(name, r)
-    @printf("  %-26s  %6s %6s | %8.2e %8s %8.2e %8s %8.2e\n",
+    @printf("  %-30s  %6s %6s | %8.2e %8s %8.2e %8s %8.2e\n",
         name,
         r.nvar < 1_000_000 ? @sprintf("%6d", r.nvar) : @sprintf("%5.0fk", r.nvar/1000),
         r.ncon < 1_000_000 ? @sprintf("%6d", r.ncon) : @sprintf("%5.0fk", r.ncon/1000),
@@ -413,32 +420,41 @@ end
 
 # ── Benchmark loop ─────────────────────────────────────────────────────────────
 
-results = Dict()
-print_header("name")
+results = Dict{Tuple{String,String,String}, NamedTuple}()
+print_header("backend-instance-param")
 
 for (bname, backend, sync) in BENCH_BACKENDS
-    for (name, thunk) in [
-        ("rosenrock-1000",   () -> exa_rosenrock_model(backend, 1000)),
-        ("rosenrock-10000",  () -> exa_rosenrock_model(backend, 10000)),
-        ("rosenrock-100000", () -> exa_rosenrock_model(backend, 100000)),
-        ("OPF-case14",       () -> exa_opf_model(backend, "pglib_opf_case14_ieee.m")),
-        ("OPF-case1354",     () -> exa_opf_model(backend, "pglib_opf_case1354_pegase.m")),
-        ("OPF-case30000",    () -> exa_opf_model(backend, "pglib_opf_case30000_goc.m")),
-        ("chain-10",         () -> cops_chain_model(backend, 10)),
-        ("chain-100",        () -> cops_chain_model(backend, 100)),
-        ("chain-1000",       () -> cops_chain_model(backend, 1000)),
-        ("elec-10",          () -> cops_elec_model(backend, 10)),
-        ("elec-100",         () -> cops_elec_model(backend, 100)),
-        ("elec-1000",        () -> cops_elec_model(backend, 1000)),
+    for (instance, param, thunk) in [
+        ("rosenrock", "1000",      () -> exa_rosenrock_model(backend, 1000)),
+        ("rosenrock", "10000",     () -> exa_rosenrock_model(backend, 10000)),
+        ("rosenrock", "100000",    () -> exa_rosenrock_model(backend, 100000)),
+        ("OPF",       "case14",    () -> exa_opf_model(backend, "pglib_opf_case14_ieee.m")),
+        ("OPF",       "case1354",  () -> exa_opf_model(backend, "pglib_opf_case1354_pegase.m")),
+        ("OPF",       "case30000", () -> exa_opf_model(backend, "pglib_opf_case30000_goc.m")),
+        ("chain",     "10",        () -> cops_chain_model(backend, 10)),
+        ("chain",     "100",       () -> cops_chain_model(backend, 100)),
+        ("chain",     "1000",      () -> cops_chain_model(backend, 1000)),
+        ("elec",      "10",        () -> cops_elec_model(backend, 10)),
+        ("elec",      "100",       () -> cops_elec_model(backend, 100)),
+        ("elec",      "1000",      () -> cops_elec_model(backend, 1000)),
         ]
-        key = "$name-$bname"
+        key = (bname, instance, param)
         m = thunk()
         r = benchmark_callbacks(m, sync)
-        print_row(key, r)
+        print_row("$bname-$instance-$param", r)
         results[key] = r
     end
 end
 
-JLD2.@save joinpath(@__DIR__, "benchmark-results-$rev.jld2") results
+# Save as delimited text (CSV)
+const _bnames = join([b[1] for b in BENCH_BACKENDS], "-")
+outfile = joinpath(@__DIR__, "benchmark-results-$rev-$(_bnames).csv")
+open(outfile, "w") do io
+    println(io, "backend,instance,param,nvar,ncon,tobj,tcon,tgrad,tjac,thess")
+    for ((bname, inst, param), r) in sort(collect(results); by = x -> x[1])
+        @printf(io, "%s,%s,%s,%d,%d,%.6e,%.6e,%.6e,%.6e,%.6e\n",
+            bname, inst, param, r.nvar, r.ncon, r.tobj, r.tcon, r.tgrad, r.tjac, r.thess)
+    end
+end
 
 println()
