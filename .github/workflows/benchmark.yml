@@ -13,7 +13,7 @@ permissions:
   pull-requests: write
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.issue.number || github.event.workflow_run.pull_requests[0].number }}
+  group: benchmark-${{ github.event.issue.number || github.event.workflow_run.pull_requests[0].number || github.run_id }}
   cancel-in-progress: true
 
 jobs:
@@ -40,19 +40,41 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
+            let pr_sha, pr_number;
             if (context.eventName === 'workflow_run') {
               const run = context.payload.workflow_run;
-              core.setOutput('pr_sha',    run.head_sha);
-              core.setOutput('pr_number', String(run.pull_requests[0]?.number ?? ''));
+              pr_sha = run.head_sha;
+              if (run.pull_requests && run.pull_requests.length > 0) {
+                pr_number = String(run.pull_requests[0].number);
+              } else {
+                // Fallback: find the open PR matching this head SHA
+                const { data: prs } = await github.rest.pulls.list({
+                  owner: context.repo.owner,
+                  repo:  context.repo.repo,
+                  state: 'open',
+                  sort:  'updated',
+                  direction: 'desc',
+                  per_page: 100,
+                });
+                const match = prs.find(pr => pr.head.sha === pr_sha);
+                pr_number = match ? String(match.number) : '';
+              }
             } else {
               const pr = await github.rest.pulls.get({
                 owner: context.repo.owner,
                 repo:  context.repo.repo,
                 pull_number: context.issue.number,
               });
-              core.setOutput('pr_sha',    pr.data.head.sha);
-              core.setOutput('pr_number', String(context.issue.number));
+              pr_sha = pr.data.head.sha;
+              pr_number = String(context.issue.number);
             }
+
+            if (!pr_number) {
+              core.setFailed('Could not determine PR number');
+              return;
+            }
+            core.setOutput('pr_sha',    pr_sha);
+            core.setOutput('pr_number', pr_number);
 
       - name: React to comment
         if: github.event_name == 'issue_comment'
@@ -65,6 +87,44 @@ jobs:
               comment_id: context.payload.comment.id,
               content: 'eyes',
             });
+
+      - name: Post pending status
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const marker = '<!-- benchmark-bot -->';
+            const pr_number = parseInt('${{ steps.info.outputs.pr_number }}');
+            const sha = '${{ steps.info.outputs.pr_sha }}'.substring(0, 7);
+            const body = [
+              marker,
+              '## Benchmark Status',
+              '',
+              `Benchmarks are running for \`${sha}\` vs \`main\`...`,
+              '',
+              '_Results will appear here when complete._',
+            ].join('\n');
+
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo:  context.repo.repo,
+              issue_number: pr_number,
+            });
+            const existing = comments.find(c => c.body.startsWith(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner:      context.repo.owner,
+                repo:       context.repo.repo,
+                comment_id: existing.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner:        context.repo.owner,
+                repo:         context.repo.repo,
+                issue_number: pr_number,
+                body,
+              });
+            }
 
       - name: Parse backends
         id: parse
@@ -271,7 +331,20 @@ jobs:
             const fs = require('fs');
             const output = fs.readFileSync('benchmark/comparison.txt', 'utf8');
             const marker = '<!-- benchmark-bot -->';
-            const body = `${marker}\n## Benchmark Results\n\`\`\`\n${output}\`\`\``;
+            const sha = '${{ needs.parse.outputs.pr_sha }}'.substring(0, 7);
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const body = [
+              marker,
+              '## Benchmark Results',
+              '',
+              `Comparison of \`${sha}\` vs \`main\` (ratio = current / main; values **< 1.0** are improvements).`,
+              '',
+              '```',
+              output.trimEnd(),
+              '```',
+              '',
+              `[Full workflow run](${runUrl})`,
+            ].join('\n');
             const pr_number = parseInt('${{ needs.parse.outputs.pr_number }}');
 
             const { data: comments } = await github.rest.issues.listComments({
@@ -286,13 +359,62 @@ jobs:
                 owner:      context.repo.owner,
                 repo:       context.repo.repo,
                 comment_id: existing.id,
-                body:       body,
+                body,
               });
             } else {
               await github.rest.issues.createComment({
                 owner:        context.repo.owner,
                 repo:         context.repo.repo,
                 issue_number: pr_number,
-                body:         body,
+                body,
+              });
+            }
+
+  # ── Update comment on failure ─────────────────────────────────────────────────
+  report-failure:
+    needs: [parse, bench-nothing, bench-cuda, bench-amdgpu, bench-oneapi]
+    if: |
+      always() &&
+      (contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')) &&
+      needs.parse.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Post failure notice
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const marker = '<!-- benchmark-bot -->';
+            const sha = '${{ needs.parse.outputs.pr_sha }}'.substring(0, 7);
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const body = [
+              marker,
+              '## Benchmark Failed',
+              '',
+              `Benchmarks for \`${sha}\` did not complete successfully.`,
+              '',
+              `[See workflow logs](${runUrl})`,
+            ].join('\n');
+            const pr_number = parseInt('${{ needs.parse.outputs.pr_number }}');
+
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo:  context.repo.repo,
+              issue_number: pr_number,
+            });
+
+            const existing = comments.find(c => c.body.startsWith(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner:      context.repo.owner,
+                repo:       context.repo.repo,
+                comment_id: existing.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner:        context.repo.owner,
+                repo:         context.repo.repo,
+                issue_number: pr_number,
+                body,
               });
             }
