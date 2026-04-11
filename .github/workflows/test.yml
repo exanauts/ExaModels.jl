@@ -30,7 +30,8 @@ jobs:
         run: |
           julia --startup-file=no --color=yes --project=./test -e '
             using Pkg
-            Pkg.develop(path=".")
+            Pkg.Registry.update()
+            Pkg.update()
             Pkg.instantiate()
             push!(ARGS, "EXAMODELS_TEST_POCL")
             include("test/runtests.jl")'
@@ -68,7 +69,7 @@ jobs:
         julia --startup-file=no --color=yes --project=./test -e '
           using Pkg
           Pkg.Registry.update()
-          Pkg.develop(path=".")
+          Pkg.update()
           Pkg.instantiate()'
     - name: Run tests
       env:
@@ -99,7 +100,7 @@ jobs:
           julia --startup-file=no --color=yes --project=./test -e '
             using Pkg
             Pkg.Registry.update()
-            Pkg.develop(path=".")
+            Pkg.update()
             Pkg.instantiate()'
       - name: Show platform info
         run: |
