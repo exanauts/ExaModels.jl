@@ -56,7 +56,6 @@ include("jacobian.jl")
 include("hessian.jl")
 include("nlp.jl")
 include("deprecated.jl")
-include("tags.jl")
 include("utils.jl")
 include("two_stage.jl")
 
@@ -89,7 +88,7 @@ export ExaModel,
     exa_prod,
     @register_univariate,
     @register_bivariate,
-    EachScen,
+    EachScenario,
     TwoStageExaModel,
     get_nscen,
     get_var_scen,
