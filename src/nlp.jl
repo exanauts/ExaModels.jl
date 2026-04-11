@@ -920,11 +920,16 @@ is intended for code that builds expression trees programmatically.
 end
 
 """
-    add_con(core, n; start = 0, lcon = 0, ucon = 0, name = nothing)
+    add_con(core, dims...; start = 0, lcon = 0, ucon = 0, name = nothing)
 
-Adds `n` empty constraints to `core` and returns `(core, Constraint)`.
-No expression is attached initially — use [`add_con!`](@ref) / [`@add_con!`](@ref)
-to accumulate terms into the rows afterwards.
+Adds empty constraints with dimensions specified by `dims` to `core` and returns
+`(core, Constraint)`.  No expression is attached initially — use
+[`add_con!`](@ref) / [`@add_con!`](@ref) to accumulate terms into the rows
+afterwards.
+
+`dims` can be a single integer (`add_con(c, 9)`), multiple integers
+(`add_con(c, 3, 4)` for a 3×4 grid), or `AbstractUnitRange` values
+(`add_con(c, 1:3, 2:5)`) — matching the convention used by [`add_var`](@ref).
 
 When `name` is given as `Val(:name)`, the constraint is also accessible as
 `core.name` or `model.name`.
@@ -952,7 +957,7 @@ Constraint
 """
 @inline function add_con(
     c::C,
-    n;
+    ns...;
     name = nothing,
     start = zero(T),
     lcon = zero(T),
@@ -962,39 +967,6 @@ Constraint
 
     f = _simdfunction(T, Null(nothing), c.ncon, c.nnzj, c.nnzh)
 
-    _add_con(c, f, 1:n, start, lcon, ucon, name; kwargs...)
-end
-
-# Explicit 2D overload for empty multi-dimensional constraints
-function add_con(
-    c::C,
-    n1::N1,
-    n2::N2;
-    name = nothing,
-    start = zero(T),
-    lcon = zero(T),
-    ucon = zero(T),
-    kwargs...
-) where {T, C<:ExaCore{T}, N1<:Union{Integer,AbstractUnitRange}, N2<:Union{Integer,AbstractUnitRange}}
-    ns = (n1, n2)
-    f = _simdfunction(T, Null(nothing), c.ncon, c.nnzj, c.nnzh)
-    _add_con(c, f, ConstraintDims(ns), start, lcon, ucon, name; kwargs...)
-end
-
-# Explicit 3D overload for empty multi-dimensional constraints
-function add_con(
-    c::C,
-    n1::N1,
-    n2::N2,
-    n3::N3;
-    name = nothing,
-    start = zero(T),
-    lcon = zero(T),
-    ucon = zero(T),
-    kwargs...
-) where {T, C<:ExaCore{T}, N1<:Union{Integer,AbstractUnitRange}, N2<:Union{Integer,AbstractUnitRange}, N3<:Union{Integer,AbstractUnitRange}}
-    ns = (n1, n2, n3)
-    f = _simdfunction(T, Null(nothing), c.ncon, c.nnzj, c.nnzh)
     _add_con(c, f, ConstraintDims(ns), start, lcon, ucon, name; kwargs...)
 end
 
@@ -1107,7 +1079,7 @@ c, g = add_con(c, 9; lcon = -1.0, ucon = 1.0)
 c, _ = add_con!(c, g[i] += x[i] + x[i+1] for i = 1:9)
 ```
 """
-function add_con!(c::ExaCore{T}, gen::Base.Generator) where T
+@inline function add_con!(c::ExaCore{T}, gen::Base.Generator) where T
     gen = _adapt_gen(gen)
 
     # Probe the generator to extract the target constraint.
