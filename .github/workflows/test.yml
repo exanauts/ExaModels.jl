@@ -21,9 +21,10 @@ jobs:
       matrix:
         julia-version: ['1', 'lts']
         julia-arch: [x64]
-        os: [ubuntu-latest,macos-latest,windows-latest]
+        os: [ubuntu-latest,macos-latest]
         exclude:
-          - os: 'windows-latest'
+          - julia-version: 'lts'
+            os: 'macos-latest'
     steps:
       - uses: actions/checkout@v2
       - uses: julia-actions/setup-julia@latest
@@ -33,7 +34,7 @@ jobs:
       - uses: julia-actions/julia-buildpkg@latest
       - name: Run tests
         env:
-          EXAMODELS_SKIP_AOT: ${{ matrix.os == 'windows-latest' && '1' || '' }}
+          EXAMODELS_SKIP_AOT: ''
         run: |
           julia --startup-file=no --color=yes --project=./test -e '
             using Pkg

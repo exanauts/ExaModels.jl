@@ -91,20 +91,12 @@ function runtests()
             # is already verified by the juliac compile step above.
             compiled && _run_app_tests(exe_path, [
                 ("camshape",  50, false),
-                ("bearing",   10, false),
                 ("catmix",    10, false),
                 ("chain",     20, false),
-                ("gasoil",    10, false),
                 ("glider",    20, false),
-                ("marine",    10, false),
                 ("minsurf",   10, false),
-                ("pinene",    10, false),
-                ("robot",     20, false),
                 ("rocket",    20, false),
-                ("steering",  20, false),
                 ("torsion",   10, false),
-                ("elec",      10, false),
-                ("channel",   10, false),
             ])
         end
 

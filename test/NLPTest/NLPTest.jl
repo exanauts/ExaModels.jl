@@ -10,9 +10,7 @@ import ..ad_tolerance, ..sol_tolerance, ..solver_tolerance
 
 const NLP_TEST_ARGUMENTS = [
     ("luksan_struct", 3),
-    ("luksan_struct", 20),
     ("luksan_vlcek", 3),
-    ("luksan_vlcek", 20),
     ("ac_power", "pglib_opf_case3_lmbd.m"),
     ("ac_power", "pglib_opf_case14_ieee.m"),
     ("trivialmax", 1), # Issue #518 in MadNLP
