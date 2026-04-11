@@ -534,6 +534,13 @@ end
 @inline _start(n::Int) = 1
 @inline _start(n::UnitRange) = n.start
 
+function _check_length(val, expected, name)
+    val isa Number && return
+    actual = val isa Base.Generator ? length(val.iter) : length(val)
+    actual == expected && return
+    throw(DimensionMismatch("$name length mismatch: expected $expected, got $actual"))
+end
+
 """
     add_var(core, dims...; start = 0, lvar = -Inf, uvar = Inf, name = nothing, kwargs...)
 
@@ -581,12 +588,15 @@ Variable
 
     o = c.nvar
     len = total(ns)
+    _check_length(start, len, "start")
+    _check_length(lvar, len, "lvar")
+    _check_length(uvar, len, "uvar")
     nvar = c.nvar + len
-    x0 = append!(c.backend, c.x0, start, total(ns))
-    lvar = append!(c.backend, c.lvar, lvar, total(ns))
-    uvar = append!(c.backend, c.uvar, uvar, total(ns))
+    x0 = append!(c.backend, c.x0, start, len)
+    lvar = append!(c.backend, c.lvar, lvar, len)
+    uvar = append!(c.backend, c.uvar, uvar, len)
 
-    append_var_tags(c.tags, c.backend, total(ns); kwargs...)
+    append_var_tags(c.tags, c.backend, len; kwargs...)
     v = Variable(ns, len, o)
 
     (ExaCore(c; var = (v, c.var...), nvar=nvar, x0=x0, lvar=lvar, uvar=uvar, refs = add_refs(c.refs, name, v)), v)
@@ -918,6 +928,9 @@ end
 
 function _add_con(c::C, f, pars, start, lcon, ucon, name = nothing; kwargs...) where {C<:ExaCore}
     nitr = length(pars)
+    _check_length(start, nitr, "start")
+    _check_length(lcon, nitr, "lcon")
+    _check_length(ucon, nitr, "ucon")
     o = c.ncon
     ncon = c.ncon + nitr
     nnzj = c.nnzj + nitr * f.o1step

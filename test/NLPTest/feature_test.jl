@@ -83,6 +83,66 @@ function test_named_var_access(backend)
     end
 end
 
+function test_dim_checks(backend)
+    @testset "add_var dimension checks" begin
+        c = ExaCore(; backend, concrete = Val(true))
+
+        # Correct dimensions should work
+        c, x = add_var(c, 5; start = ones(5), lvar = zeros(5), uvar = 2 * ones(5))
+        @test x isa ExaModels.Variable
+
+        # Scalar bounds always work (broadcast)
+        c, y = add_var(c, 3; start = 0.0, lvar = -1.0, uvar = 1.0)
+        @test y isa ExaModels.Variable
+
+        # Generator bounds with correct length should work
+        c, z = add_var(c, 4; start = (Float64(i) for i in 1:4))
+        @test z isa ExaModels.Variable
+
+        # Wrong array length for start
+        @test_throws DimensionMismatch add_var(c, 5; start = ones(3))
+
+        # Wrong array length for lvar
+        @test_throws DimensionMismatch add_var(c, 5; lvar = zeros(3))
+
+        # Wrong array length for uvar
+        @test_throws DimensionMismatch add_var(c, 5; uvar = ones(3))
+
+        # Wrong generator length for start
+        @test_throws DimensionMismatch add_var(c, 5; start = (Float64(i) for i in 1:3))
+
+        # Multi-dimensional: wrong array length
+        @test_throws DimensionMismatch add_var(c, 2, 3; start = ones(5))
+    end
+
+    @testset "add_con dimension checks" begin
+        c = ExaCore(; backend, concrete = Val(true))
+        c, x = add_var(c, 10)
+
+        # Correct dimensions should work
+        c, g = add_con(c, x[i] for i in 1:5; lcon = -ones(5), ucon = ones(5))
+        @test g isa ExaModels.Constraint
+
+        # Scalar bounds always work (broadcast)
+        c, g2 = add_con(c, x[i] for i in 1:3; lcon = 0.0, ucon = 1.0)
+        @test g2 isa ExaModels.Constraint
+
+        # Wrong array length for lcon
+        @test_throws DimensionMismatch add_con(c, x[i] for i in 1:5; lcon = zeros(3))
+
+        # Wrong array length for ucon
+        @test_throws DimensionMismatch add_con(c, x[i] for i in 1:5; ucon = ones(3))
+
+        # Wrong array length for start (dual initial guess)
+        @test_throws DimensionMismatch add_con(c, x[i] for i in 1:5; start = ones(3))
+
+        # Wrong generator length for ucon
+        @test_throws DimensionMismatch add_con(
+            c, x[i] for i in 1:5; ucon = (Float64(i) for i in 1:3)
+        )
+    end
+end
+
 function test_features(backend)
     @testset "Const" begin
         test_const(backend)
@@ -92,5 +152,8 @@ function test_features(backend)
     end
     @testset "Named variable/constraint access" begin
         test_named_var_access(backend)
+    end
+    @testset "Dimension checks" begin
+        test_dim_checks(backend)
     end
 end
