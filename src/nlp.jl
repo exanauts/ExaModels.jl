@@ -523,7 +523,8 @@ function append!(backend, a, b::Number, lb)
     return a
 end
 
-total(ns::NTuple{N,Any}) where {N} = prod(ntuple(i -> _length(ns[i]), Val(N)))
+total(::Tuple{}) = 1
+total((n, ns...)::Tuple) = _length(n) * total(ns)
 _length(n::Int) = n
 _length(n::UnitRange) = length(n)
 size(ns) = Tuple(_length(n) for n in ns)
