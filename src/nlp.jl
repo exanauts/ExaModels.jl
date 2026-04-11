@@ -154,6 +154,56 @@ Constraint Augmentation
 """,
 )
 
+"""
+    ConstraintDims{T}
+
+A lightweight iterator-like wrapper around dimension specifications for
+multi-dimensional empty constraints created via `add_con(core, dims...)`.
+Stores the dimension tuple and supports `Base.size`, `length`, and linear
+indexing.
+"""
+struct ConstraintDims{T}
+    ns::T
+end
+Base.size(d::ConstraintDims) = Tuple(_length(n) for n in d.ns)
+Base.length(d::ConstraintDims) = prod(_length(n) for n in d.ns)
+Base.getindex(d::ConstraintDims, i) = i
+Base.firstindex(::ConstraintDims) = 1
+Base.lastindex(d::ConstraintDims) = length(d)
+convert_array(d::ConstraintDims, _) = d
+
+"""
+    ConstraintSlot{C, I}
+
+A lightweight handle returned by `getindex` on a [`Constraint`](@ref) or
+[`ConstraintAugmentation`](@ref).  When added to an expression node via `+`,
+it produces a `Pair(idx, expr)` suitable for constraint augmentation.
+
+This enables the `g[idx] += expr for ...` syntactic sugar:
+```julia
+c, _ = add_con!(c, g[i] += sin(x[i]) for i in 1:N)
+```
+"""
+struct ConstraintSlot{C, I}
+    con::C
+    idx::I
+end
+
+const _AUGMENT_CONSTRAINT_REF = Ref{Any}(nothing)
+
+Base.getindex(c::Constraint, idx...) = begin
+    _AUGMENT_CONSTRAINT_REF[] = c
+    ConstraintSlot(c, length(idx) == 1 ? idx[1] : idx)
+end
+Base.getindex(c::ConstraintAugmentation, idx...) = begin
+    _AUGMENT_CONSTRAINT_REF[] = c
+    ConstraintSlot(c, length(idx) == 1 ? idx[1] : idx)
+end
+Base.:+(slot::ConstraintSlot, expr::AbstractNode) = Pair(slot.idx, expr)
+Base.:+(expr::AbstractNode, slot::ConstraintSlot) = Pair(slot.idx, expr)
+Base.setindex!(::Constraint, val, idx...) = val
+Base.setindex!(::ConstraintAugmentation, val, idx...) = val
+
 abstract type AbstractExaCore{T,VT,B,S} end
 
 """
@@ -915,6 +965,39 @@ Constraint
     _add_con(c, f, 1:n, start, lcon, ucon, name; kwargs...)
 end
 
+# Explicit 2D overload for empty multi-dimensional constraints
+function add_con(
+    c::C,
+    n1::N1,
+    n2::N2;
+    name = nothing,
+    start = zero(T),
+    lcon = zero(T),
+    ucon = zero(T),
+    kwargs...
+) where {T, C<:ExaCore{T}, N1<:Union{Integer,AbstractUnitRange}, N2<:Union{Integer,AbstractUnitRange}}
+    ns = (n1, n2)
+    f = _simdfunction(T, Null(nothing), c.ncon, c.nnzj, c.nnzh)
+    _add_con(c, f, ConstraintDims(ns), start, lcon, ucon, name; kwargs...)
+end
+
+# Explicit 3D overload for empty multi-dimensional constraints
+function add_con(
+    c::C,
+    n1::N1,
+    n2::N2,
+    n3::N3;
+    name = nothing,
+    start = zero(T),
+    lcon = zero(T),
+    ucon = zero(T),
+    kwargs...
+) where {T, C<:ExaCore{T}, N1<:Union{Integer,AbstractUnitRange}, N2<:Union{Integer,AbstractUnitRange}, N3<:Union{Integer,AbstractUnitRange}}
+    ns = (n1, n2, n3)
+    f = _simdfunction(T, Null(nothing), c.ncon, c.nnzj, c.nnzh)
+    _add_con(c, f, ConstraintDims(ns), start, lcon, ucon, name; kwargs...)
+end
+
 
 function _add_con(c::C, f, pars, start, lcon, ucon, name = nothing; kwargs...) where {C<:ExaCore}
     nitr = length(pars)
@@ -1005,6 +1088,44 @@ add_con!(c, bus, gen.bus => -pg[gen.i] for gen in data.gen)            # subtrac
     pars = gen.iter
 
     _add_con!(c, f, pars, _constraint_dims(c1))
+end
+
+"""
+    add_con!(core::ExaCore, gen::Base.Generator)
+
+Two-argument form of [`add_con!`](@ref) supporting the `constraint[idx] += expr` sugar.
+The generator must use the pattern `g[idx] += expr for ... in itr`, where `g` is an
+existing [`Constraint`](@ref) or [`ConstraintAugmentation`](@ref).
+
+Equivalent to `add_con!(core, g, idx => expr for ... in itr)`.
+
+## Example
+```julia
+c = ExaCore(concrete = Val(true))
+c, x = add_var(c, 10)
+c, g = add_con(c, 9; lcon = -1.0, ucon = 1.0)
+c, _ = add_con!(c, g[i] += x[i] + x[i+1] for i = 1:9)
+```
+"""
+function add_con!(c::ExaCore{T}, gen::Base.Generator) where T
+    gen = _adapt_gen(gen)
+
+    # Probe the generator to extract the target constraint.
+    # getindex on Constraint/ConstraintAugmentation records the constraint
+    # in _AUGMENT_CONSTRAINT_REF as a side effect.
+    _AUGMENT_CONSTRAINT_REF[] = nothing
+    gen.f(ParSource())
+    con = _AUGMENT_CONSTRAINT_REF[]
+    _AUGMENT_CONSTRAINT_REF[] = nothing
+
+    con === nothing && error(
+        "add_con! two-argument form requires `constraint[idx] += expr` syntax " *
+        "in the generator body"
+    )
+
+    # The generator already yields Pair(idx, expr) thanks to the
+    # ConstraintSlot + AbstractNode → Pair overload, so delegate directly.
+    return add_con!(c, con, gen)
 end
 
 # Extract the dimensions of the original constraint's iterator
@@ -1670,13 +1791,20 @@ end
 
 """
     @add_con!(core, c1, generator; kwargs...)
+    @add_con!(core, c1[idx] += expr for ...; kwargs...)
 
 Macro interface for [`add_con!`](@ref). Updates `core` in the calling scope and returns the
-new `ConstraintAugmentation`. Equivalent to `c, aug = add_con!(c, c1, generator)`.
+new `ConstraintAugmentation`.
 
-The generator must yield `idx => expr` pairs, where `idx` is an index into `c1` and `expr`
-is the scalar term to accumulate into that constraint row.  See [`add_con!`](@ref) for full
-semantics and usage notes.
+Two calling conventions are supported:
+
+- **Three-argument** (`@add_con!(core, c1, idx => expr for ...)`): the constraint `c1` is
+  passed explicitly and the generator yields `idx => expr` pairs.
+- **Two-argument** (`@add_con!(core, c1[idx] += expr for ...)`): the constraint and index
+  are embedded in the generator via `+=` syntax.  This form delegates to the function-level
+  [`add_con!(core, gen)`](@ref), which extracts the target constraint automatically.
+
+See [`add_con!`](@ref) for full semantics and usage notes.
 
 ## Example
 ```julia
@@ -1684,18 +1812,36 @@ c = ExaCore(concrete = Val(true))
 @add_var(c, x, 10)
 @add_con(c, g, x[i] + x[i+1] for i in 1:9; lcon = -1, ucon = 1)
 
-## Append sin(x[i+1]) to rows 4–6 of g:
+## Three-argument form:
 aug = @add_con!(c, g, i => sin(x[i+1]) for i in 4:6)
 
-## Power-flow pattern — multiple augmentations on the same base constraint:
-## @add_con!(c, bus_balance, arc.bus => p[arc.i]   for arc in data.arc)
-## @add_con!(c, bus_balance, gen.bus => -pg[gen.i] for gen in data.gen)
+## Two-argument form (equivalent):
+aug = @add_con!(c, g[i] += sin(x[i+1]) for i in 4:6)
 ```
 """
 macro add_con!(exs...)
-    isempty(exs) && error("@add_con! requires core, existing constraint, and generator arguments")
+    isempty(exs) && error("@add_con! requires core and generator arguments")
     parts, kwargs = _split_macro_args(exs)
     core  = parts[1]
+
+    if length(parts) == 2
+        # Two-argument form: @add_con!(core, g[idx] += expr for ...)
+        # Delegate to function-level add_con!(core, gen) which extracts
+        # the constraint automatically via the ConstraintSlot mechanism.
+        gen_expr = _auto_const_gen(parts[2])
+        con = gensym(:con)
+        return quote
+            local $con
+            $(esc(core)), $con = add_con!(
+                $(esc(core)),
+                $(esc(gen_expr));
+                $(map(esc, kwargs.args)...),
+            )
+            $con
+        end
+    end
+
+    # Three-argument form: @add_con!(core, c1, idx => expr for ...)
     c1    = parts[2]
     args  = [_auto_const_gen(a) for a in parts[3:end]]
 

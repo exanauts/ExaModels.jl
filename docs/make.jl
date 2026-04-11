@@ -11,6 +11,7 @@ if !(@isdefined _PAGES)
         "Tutorial" => [
             "guide.md",
             "patterns.md",
+            "constraint_augmentation.md",
             "performance.md",
             "gpu.md",
             "parameters.md",
