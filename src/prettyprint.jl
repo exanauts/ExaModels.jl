@@ -18,6 +18,9 @@ _opname(::Type{typeof(^)}) = "^"
 function _print_tree(io::IO, node::Constant{T}, indent::Int) where {T}
     print(io, " "^indent, T)
 end
+function _print_tree(io::IO, node::Val{T}, indent::Int) where {T}
+    print(io, " "^indent, T)
+end
 function _print_tree(io::IO, node::Null{Nothing}, indent::Int)
     print(io, " "^indent, "0")
 end
@@ -63,6 +66,8 @@ _is_zero(::Null{Nothing}) = true
 _is_zero(n::Null) = n.value == 0
 _is_zero(::Constant{0}) = true
 _is_zero(::Constant) = false
+_is_zero(::Val{0}) = true
+_is_zero(::Val) = false
 _is_zero(n::Real) = n == 0
 _is_zero(_) = false
 
@@ -70,6 +75,8 @@ _is_zero(_) = false
 _is_one(n::Null) = n.value == 1
 _is_one(::Constant{1}) = true
 _is_one(::Constant) = false
+_is_one(::Val{1}) = true
+_is_one(::Val) = false
 _is_one(n::Real) = n == 1
 _is_one(_) = false
 
@@ -162,8 +169,12 @@ function Base.show(io::IO, node::Constant{T}) where {T}
     print(io, T)
 end
 # Type show for new types
-function Base.show(io::IO, ::Type{Constant{T}}) where {T}
-    print(io, "Constant{", T, "}")
+function Base.show(io::IO, t::Type{<:Constant})
+    if t isa DataType && !isempty(t.parameters)
+        print(io, "Constant{", t.parameters[1], "}")
+    else
+        print(io, "Constant")
+    end
 end
 
 function Base.show(io::IO, node::Null{Nothing})
