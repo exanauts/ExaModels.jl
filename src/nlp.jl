@@ -1365,6 +1365,7 @@ _con_hprod!(cons::Tuple{}, x, θ, y, v, Hv, obj_weight) = nothing
 end
 
 @inbounds @inline offset0(a, i) = offset0(a.f, i)
+@inbounds @inline offset0(a::Constraint, i) = offset0(a.f, a.itr, i, _constraint_dims(a))
 @inbounds @inline offset1(a, i) = offset1(a.f, i)
 @inbounds @inline offset2(a, i) = offset2(a.f, i)
 @inbounds @inline offset0(f, itr, i) = offset0(f, i)
@@ -1372,20 +1373,14 @@ end
 @inbounds @inline offset1(f::F, i) where {F<:SIMDFunction} = f.o1 + f.o1step * (i - 1)
 @inbounds @inline offset2(f::F, i) where {F<:SIMDFunction} = f.o2 + f.o2step * (i - 1)
 @inbounds @inline offset0(a::C, i) where {C<:ConstraintAugmentation} = offset0(a.f, a.itr, i, a.dims)
-@inbounds @inline offset0(f::F, itr, i) where {P<:Pair,F<:SIMDFunction{P}} =
-    f.o0 + f.f.first(itr[i], nothing, nothing)
-@inbounds @inline offset0(f::F, itr, i) where {I<:Integer,P<:Pair{I},F<:SIMDFunction{P}} =
-    f.o0 + f.f.first
-@inbounds @inline offset0(f::F, itr, i) where {T<:Tuple,P<:Pair{T},F<:SIMDFunction{P}} =
-    f.o0 + idxx(coord(itr, i, f.f.first), Base.size(itr))
-# 4-arg variant used by ConstraintAugmentation to pass original constraint dims
-@inbounds @inline offset0(f, itr, i, dims) = offset0(f, i)
 @inbounds @inline offset0(f::F, itr, i, dims) where {P<:Pair,F<:SIMDFunction{P}} =
     f.o0 + f.f.first(itr[i], nothing, nothing)
 @inbounds @inline offset0(f::F, itr, i, dims) where {I<:Integer,P<:Pair{I},F<:SIMDFunction{P}} =
     f.o0 + f.f.first
 @inbounds @inline offset0(f::F, itr, i, dims) where {T<:Tuple,P<:Pair{T},F<:SIMDFunction{P}} =
     f.o0 + idxx(coord(itr, i, f.f.first), dims)
+# Non-Pair fallback: plain linear offset (used by Objective, non-Pair Constraint)
+@inbounds @inline offset0(f::F, itr, i, dims) where {F<:SIMDFunction} = f.o0 + i
 
 @inline idx(itr, I) = @inbounds itr[I]
 @inline idx(itr::Base.Iterators.ProductIterator{V}, I) where {V} =
