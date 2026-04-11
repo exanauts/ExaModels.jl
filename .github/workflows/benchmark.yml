@@ -1,16 +1,12 @@
 name: benchmark
 
 on:
-  pull_request:
+  workflow_call:
 
 permissions:
   contents: read
   issues: write
   pull-requests: write
-
-concurrency:
-  group: benchmark-${{ github.ref }}
-  cancel-in-progress: true
 
 jobs:
   bench-nothing:
