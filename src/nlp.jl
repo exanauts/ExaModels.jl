@@ -1116,8 +1116,11 @@ c, _ = add_con!(c, g[i] += x[i] + x[i+1] for i = 1:9)
     return add_con!(c, con, gen)
 end
 
-# Extract the dimensions of the original constraint's iterator
-_constraint_dims(c::Constraint) = Tuple(_length(n) for n in c.size)
+# Extract the dimensions of the original constraint's iterator.
+# Use Base.size(c.itr) rather than transforming c.size: the itr is always shaped
+# correctly (1D range or N-dim array), and Base.size returns concrete Int lengths
+# which is required for type-stable dispatch in juliac AOT compilation.
+_constraint_dims(c::Constraint) = Base.size(c.itr)
 _constraint_dims(c::ConstraintAugmentation) = c.dims
 
 function _add_con!(c, f, pars, dims)
