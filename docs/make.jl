@@ -10,6 +10,7 @@ if !(@isdefined _PAGES)
         "Mathematical Abstraction" => "simd.md",
         "Tutorial" => [
             "guide.md",
+            "patterns.md",
             "performance.md",
             "gpu.md",
             "parameters.md",
