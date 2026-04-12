@@ -237,6 +237,76 @@ end
 @inline _con_adjust(idx, start) = start == 1 ? idx : idx - (start - 1)
 @inline _con_adjust(idx::Integer, start) = Constant(idx - start + 1)
 
+"""
+    ConstraintSlot{C, I}
+
+A lightweight handle returned by `getindex` on a [`Constraint`](@ref) or
+[`ConstraintAugmentation`](@ref).  When added to an expression node via `+`,
+it produces a `Pair(idx, expr)` suitable for constraint augmentation.
+
+This enables the `g[idx] += expr for ...` syntactic sugar:
+```julia
+c, _ = add_con!(c, g[i] += sin(x[i]) for i in 1:N)
+```
+"""
+struct ConstraintSlot{C, I}
+    con::C
+    idx::I
+end
+
+"""
+    ConAugPair{C, P}
+
+Carries a constraint reference (`con`) alongside its `Pair(idx, expr)` during
+the probe phase of `add_con!(core, g[i] += expr for ...)`.  The `replace_T`
+method unwraps to the inner `Pair`, so `SIMDFunction` stores a plain `Pair`
+and all existing `offset0` dispatches remain unchanged.
+"""
+struct ConAugPair{C, P}
+    con::C
+    pair::P
+end
+
+# Unwrap to the inner Pair when SIMDFunction does type-conversion on literals.
+# After this, SIMDFunction.f is a plain Pair — no new offset0 dispatches needed.
+@inline replace_T(t, cap::ConAugPair) = replace_T(t, cap.pair)
+
+# For 1D constraints: single index, adjusted for the range start (always
+# computes i - (s-1) for a uniform return type regardless of start value).
+Base.getindex(c::Constraint, i) = begin
+    s = _start(c.size[1])
+    ConstraintSlot(c, i - (s - 1))
+end
+# For multi-dim constraints: tuple indices, adjust each for its range start.
+# Uses recursive tuple construction (not ntuple) for GPU compatibility.
+Base.getindex(c::Constraint, idx::Vararg{Any,N}) where {N} =
+    ConstraintSlot(c, _adjust_tuple(idx, c.size))
+Base.getindex(c::ConstraintAugmentation, idx...) =
+    ConstraintSlot(c, idx)
+
+Base.:+(slot::ConstraintSlot, expr::AbstractNode) = ConAugPair(slot.con, Pair(slot.idx, expr))
+Base.:+(expr::AbstractNode, slot::ConstraintSlot) = ConAugPair(slot.con, Pair(slot.idx, expr))
+Base.:+(slot::ConstraintSlot, expr::Real) = ConAugPair(slot.con, Pair(slot.idx, Null(expr)))
+Base.:+(expr::Real, slot::ConstraintSlot) = ConAugPair(slot.con, Pair(slot.idx, Null(expr)))
+Base.:-(slot::ConstraintSlot, expr::AbstractNode) = ConAugPair(slot.con, Pair(slot.idx, -expr))
+Base.:-(slot::ConstraintSlot, expr::Real) = ConAugPair(slot.con, Pair(slot.idx, Null(-expr)))
+Base.setindex!(::Constraint, val, idx...) = val
+Base.setindex!(::ConstraintAugmentation, val, idx...) = val
+
+# Recursive tuple adjustment — avoids ntuple/getindex(::Tuple,::Int) for GPU compat.
+# `dims` is the constraint's size tuple (ints or ranges); _start extracts the start.
+@inline _adjust_tuple(idx::Tuple{}, dims::Tuple{}) = ()
+@inline _adjust_tuple(idx::Tuple, dims::Tuple) = begin
+    s = _start(first(dims))
+    (_con_adjust(first(idx), s), _adjust_tuple(Base.tail(idx), Base.tail(dims))...)
+end
+
+# Adjust a single index for the range start.
+# Always computes idx - (start-1) for a uniform return type (type-stable).
+# Literal integers are wrapped in Constant so they remain callable by `coord`.
+@inline _con_adjust(idx, start) = idx - (start - 1)
+@inline _con_adjust(idx::Integer, start) = Constant(idx - start + 1)
+
 abstract type AbstractExaCore{T,VT,B,S} end
 
 """
@@ -1180,21 +1250,17 @@ c, _ = add_con!(c, g[i] += x[i] + x[i+1] for i = 1:9)
 @inline function add_con!(c::ExaCore{T}, gen::Base.Generator) where T
     gen = _adapt_gen(gen)
 
-    # Probe the generator to extract the target constraint.
-    # getindex on Constraint/ConstraintAugmentation records the constraint
-    # in _AUGMENT_CONSTRAINT_REF as a side effect.
-    _AUGMENT_CONSTRAINT_REF[] = nothing
-    gen.f(DataSource())
-    con = _AUGMENT_CONSTRAINT_REF[]
-    _AUGMENT_CONSTRAINT_REF[] = nothing
-
-    con === nothing && error(
+    # Probe the generator: the result is a ConAugPair which carries the target
+    # constraint alongside the index/expression pair.
+    probe = gen.f(DataSource())
+    probe isa ConAugPair || error(
         "add_con! two-argument form requires `constraint[idx] += expr` syntax " *
         "in the generator body"
     )
+    con = probe.con
 
-    # The generator already yields Pair(idx, expr) thanks to the
-    # ConstraintSlot + AbstractNode → Pair overload, so delegate directly.
+    # The generator yields ConAugPair values; replace_T unwraps them to plain
+    # Pairs before SIMDFunction stores them, so offset0 dispatch is unchanged.
     return add_con!(c, con, gen)
 end
 
