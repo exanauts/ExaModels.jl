@@ -62,10 +62,10 @@ end
 function _print_tree(io::IO, node::ParameterNode{I}, indent::Int) where {I}
     print(io, " "^indent, "θ[", node.i, "]")
 end
-function _print_tree(io::IO, node::ParSource, indent::Int)
+function _print_tree(io::IO, node::DataSource, indent::Int)
     print(io, " "^indent, "i")
 end
-function _print_tree(io::IO, node::ParIndexed{I,n}, indent::Int) where {I,n}
+function _print_tree(io::IO, node::DataIndexed{I,n}, indent::Int) where {I,n}
     _print_tree(io, getfield(node, :inner), 0)  # getfield bypasses getproperty override
     print(io, ".", n)
 end
@@ -224,11 +224,11 @@ function Base.show(io::IO, node::ParameterNode{I}) where {I}
     print(io, _expr_string(node))
 end
 
-function Base.show(io::IO, node::ParSource)
+function Base.show(io::IO, node::DataSource)
     print(io, "i")
 end
 
-function Base.show(io::IO, node::ParIndexed{I,n}) where {I,n}
+function Base.show(io::IO, node::DataIndexed{I,n}) where {I,n}
     print(io, _expr_string(node))
 end
 
@@ -334,8 +334,8 @@ _short_type(::Var) = "Var"
 _short_type(::VarSource) = "VarSource"
 _short_type(::ParameterSource) = "ParameterSource"
 _short_type(::ParameterNode) = "ParameterNode"
-_short_type(::ParSource) = "ParSource"
-_short_type(::ParIndexed) = "ParIndexed"
+_short_type(::DataSource) = "DataSource"
+_short_type(::DataIndexed) = "DataIndexed"
 _short_type(::Constant{T}) where {T} = "Constant{$T}"
 _short_type(::Node1{F}) where {F} = "Node1{$(_opname(F))}"
 _short_type(::Node2{F}) where {F} = "Node2{$(_opname(F))}"
@@ -383,8 +383,8 @@ function Base.show(io::IO, t::Type{<:ParameterNode})
         print(io, "ParameterNode{…}")
     end
 end
-function Base.show(io::IO, ::Type{<:ParIndexed})
-    print(io, "ParIndexed{…}")
+function Base.show(io::IO, ::Type{<:DataIndexed})
+    print(io, "DataIndexed{…}")
 end
 function Base.show(io::IO, t::Type{<:Node1})
     if t isa DataType && !isempty(t.parameters)

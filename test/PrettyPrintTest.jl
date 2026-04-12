@@ -26,9 +26,9 @@ function runtests()
         end
 
         @testset "Iteration variable" begin
-            ps = ExaModels.ParSource()
+            ps = ExaModels.DataSource()
             @test sprint(show, ps) == "i"
-            pi = ExaModels.ParIndexed(ps, :cost)
+            pi = ExaModels.DataIndexed(ps, :cost)
             @test sprint(show, pi) == "i.cost"
         end
 
