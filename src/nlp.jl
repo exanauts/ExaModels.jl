@@ -197,42 +197,6 @@ struct ConstraintSlot{C, I}
 end
 
 
-# For 1D constraints: single index, adjust for range start.
-# When start == 1 (the common case), pass idx through unchanged to
-# preserve the exact type expected by SIMDFunction/offset0.
-Base.getindex(c::Constraint, i) = begin
-    s = _start(c.size[1])
-    ConstraintSlot(c, i - (s - 1))
-end
-# For multi-dim constraints: tuple indices, adjust each for its range start.
-# Uses recursive tuple construction (not ntuple) for GPU compatibility.
-Base.getindex(c::Constraint, idx::Vararg{Any,N}) where {N} = begin
-    ConstraintSlot(c, _adjust_tuple(idx, c.size))
-end
-Base.getindex(c::ConstraintAugmentation, idx...) = begin
-    ConstraintSlot(c, idx)
-end
-Base.:+(slot::ConstraintSlot, expr::AbstractNode) = Pair(slot.idx, expr)
-Base.:+(expr::AbstractNode, slot::ConstraintSlot) = Pair(slot.idx, expr)
-Base.:+(slot::ConstraintSlot, expr::Real) = Pair(slot.idx, Null(expr))
-Base.:+(expr::Real, slot::ConstraintSlot) = Pair(slot.idx, Null(expr))
-Base.setindex!(::Constraint, val, idx...) = val
-Base.setindex!(::ConstraintAugmentation, val, idx...) = val
-
-# Recursive tuple adjustment — avoids ntuple/getindex(::Tuple,::Int) for GPU compat.
-# `dims` is the constraint's size tuple (ints or ranges); _start extracts the start.
-@inline _adjust_tuple(idx::Tuple{}, dims::Tuple{}) = ()
-@inline _adjust_tuple(idx::Tuple, dims::Tuple) = begin
-    s = _start(first(dims))
-    (_con_adjust(first(idx), s), _adjust_tuple(Base.tail(idx), Base.tail(dims))...)
-end
-
-# Adjust a single index for the range start.
-# When start == 1, pass through unchanged to preserve the original type.
-# Literal integers are wrapped in Constant so they remain callable by `coord`.
-@inline _con_adjust(idx, start) = idx - (start - 1)
-@inline _con_adjust(idx::Integer, start) = Constant(idx - start + 1)
-
 """
     ConAugPair{C, P}
 
