@@ -251,7 +251,7 @@ jobs:
 
   compare:
     needs: [bench-nothing, bench-cuda, bench-amdgpu, bench-oneapi]
-    if: always() && contains(needs.*.result, 'success')
+    if: always() && github.event_name == 'pull_request' && contains(needs.*.result, 'success')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
