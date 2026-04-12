@@ -22,6 +22,7 @@ include("JuMPTest/JuMPTest.jl")
 include("UtilsTest/UtilsTest.jl")
 include("JuliaCTest/JuliaCTest.jl")
 include("TwoStageTest/TwoStageTest.jl")
+include("PrettyPrintTest.jl")
 # include("OptimalControlTest/OptimalControlTest.jl")
 
 @testset verbose = true "ExaModels test" begin
@@ -45,6 +46,9 @@ include("TwoStageTest/TwoStageTest.jl")
 
     @info "Running TwoStage Test"
     TwoStageTest.runtests()
+
+    @info "Running PrettyPrint Test"
+    PrettyPrintTest.runtests()
 
     # @info "Running OptimalControl Test"
     # OptimalControlTest.runtests()
