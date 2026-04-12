@@ -58,6 +58,7 @@ include("hessian.jl")
 include("nlp.jl")
 include("deprecated.jl")
 include("utils.jl")
+include("tags.jl")
 include("two_stage.jl")
 
 export ExaModel,
