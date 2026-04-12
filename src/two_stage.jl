@@ -20,6 +20,44 @@ c, g = add_con(c, EachScenario(), (v[i] + d[1] for i in data))     # constraints
 """
 struct EachScenario end
 
+# --- SecondStageVariable ---
+
+"""
+    SecondStageVariable{V, Ndim} <: AbstractVariable
+
+Wrapper returned by `add_var(core, EachScenario(), dims...)`.  `Ndim` is the
+total number of dimensions of the underlying variable, including the scenario
+dimension appended at the end.
+
+**Indexing**:
+- `v[idx...]` with `length(idx) == Ndim` — full access, passed directly to the
+  underlying variable.
+- `v[idx...]` with fewer indices — partial access: the scenario index is
+  auto-injected from the current iterator element, so `v[j]` inside
+  `(expr for j=1:nv, k=1:ns)` resolves to `v.var[j, k]`.
+
+This makes `x[j]` in an `EachScenario` generator body transparently refer to
+the j-th variable of the current scenario without any extra bookkeeping.
+"""
+struct SecondStageVariable{V<:AbstractVariable, Ndim} <: AbstractVariable
+    var::V
+end
+
+# Forward property lookups (e.g. .offset, .size) so that solution(),
+# multipliers_L(), multipliers_U() work transparently on SecondStageVariable.
+@inline function Base.getproperty(h::SecondStageVariable, name::Symbol)
+    name === :var && return getfield(h, :var)
+    return getproperty(getfield(h, :var), name)
+end
+
+# Full indexing (exactly Ndim args): direct passthrough.
+@inline Base.getindex(h::SecondStageVariable{V, Ndim}, idx::Vararg{Any, Ndim}) where {V, Ndim} =
+    h.var[idx...]
+
+# Partial indexing (fewer args): auto-append the scenario from iterator position Ndim.
+@inline Base.getindex(h::SecondStageVariable{V, Ndim}, idx...) where {V, Ndim} =
+    h.var[idx..., DataIndexed(DataSource(), Ndim)]
+
 # --- Tags struct ---
 
 struct TwoStageTags{VI<:AbstractVector{Int}}
@@ -89,7 +127,9 @@ function add_var(
     nscen = c.tags.ns
     len = total(ns)
     scen_tags = [k for k in 1:nscen for _ in 1:len]
-    return add_var(c, nscen * len; scen = scen_tags, kwargs...)
+    c, v = add_var(c, ns..., nscen; scen = scen_tags, kwargs...)
+    Ndim = length(ns) + 1   # scenario is the last dimension
+    return c, SecondStageVariable{typeof(v), Ndim}(v)
 end
 
 # --- add_con with EachScenario ---
@@ -105,7 +145,7 @@ end
     add_con(core::TwoStageExaCore, EachScenario(), gen; kwargs...)
     add_con(core::TwoStageExaCore, EachScenario(), gen, gens...; kwargs...)
     add_con(core::TwoStageExaCore, EachScenario(), expr::AbstractNode, pars; kwargs...)
-    add_con(core::TwoStageExaCore, EachScenario(), n; kwargs...)
+    add_con(core::TwoStageExaCore, EachScenario(), dims...; kwargs...)
 
 Add constraints to a two-stage core, automatically assigning scenario tags.
 
@@ -113,8 +153,9 @@ Add constraints to a two-stage core, automatically assigning scenario tags.
   are tagged 1 … ns in order.  Additional generators `gens...` are appended via
   [`add_con!`](@ref) without scenario tagging.
 - **AbstractNode form**: `pars` must have length divisible by `ns`.
-- **Integer form**: allocates `ns * n` empty constraint rows tagged 1 … ns; use
-  [`add_con!`](@ref) to fill them in.
+- **Dims form**: allocates empty constraint rows for a `(dims..., nscen)`-shaped
+  block — mirroring the `add_con(core, dims...)` signature in [`add_con`](@ref).
+  Use [`add_con!`](@ref) to fill in terms afterwards.
 
 All keyword arguments accepted by [`add_con`](@ref) are forwarded.
 """
@@ -156,12 +197,13 @@ end
 function add_con(
     c::C,
     ::EachScenario,
-    n::Integer;
+    dims...;
     kwargs...,
 ) where {T,VT<:AbstractVector{T},B,S<:TwoStageTags,C<:ExaCore{T,VT,B,S}}
-    ns = c.tags.ns
-    scen_tags = [k for k in 1:ns for _ in 1:n]
-    return add_con(c, ns * n; scen = scen_tags, kwargs...)
+    nscen = c.tags.ns
+    n = total(dims)
+    scen_tags = [k for k in 1:nscen for _ in 1:n]
+    return add_con(c, dims..., nscen; scen = scen_tags, kwargs...)
 end
 
 # --- TwoStageExaModel type alias ---
@@ -216,4 +258,6 @@ function get_con_scen(model::TwoStageExaModel)
     return model.tags.con_scen
 end
 
-export EachScenario, TwoStageExaCore, TwoStageExaModel, get_nscen, get_var_scen, get_con_scen
+export EachScenario, SecondStageVariable,
+       TwoStageExaCore, TwoStageExaModel,
+       get_nscen, get_var_scen, get_con_scen
