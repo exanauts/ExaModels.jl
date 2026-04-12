@@ -21,7 +21,6 @@ struct Variable{S,O} <: AbstractVariable
     length::O
     offset::O
     name::Symbol
-    Variable(size::S, length::O, offset::O, name::Symbol = :x) where {S, O} = new{S,O}(size, length, offset, name)
 end
 Base.show(io::IO, v::Variable) = print(
     io,
@@ -689,7 +688,7 @@ Variable
 end
 
 @inline _val_name(::Val{N}) where {N} = N
-@inline _val_name(::Nothing) = nothing
+@inline _val_name(::Nothing) = :x
 @inline add_refs(refs, ::Nothing, var) = refs
 @inline add_refs(refs, ::Val{N}, var) where {N} = (; refs..., N => var)
 
