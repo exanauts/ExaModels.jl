@@ -107,10 +107,11 @@ A block of constraints added to an [`ExaCore`](@ref) via [`add_con`](@ref) /
 Row `k` of this block maps to global constraint index `offset + k`. Dual
 solution values can be retrieved with [`multipliers`](@ref).
 """
-struct Constraint{F,I,O} <: AbstractConstraint
+struct Constraint{F,I,O,S} <: AbstractConstraint
     f::F
     itr::I
     offset::O
+    size::S
 end
 Base.show(io::IO, v::Constraint) = print(
     io,
@@ -153,6 +154,76 @@ Constraint Augmentation
   where |P| = $(length(v.itr))
 """,
 )
+
+"""
+    ConstraintSlot{C, I}
+
+A lightweight handle returned by `getindex` on a [`Constraint`](@ref) or
+[`ConstraintAugmentation`](@ref).  When added to an expression node via `+`,
+it produces a `Pair(idx, expr)` suitable for constraint augmentation.
+
+This enables the `g[idx] += expr for ...` syntactic sugar:
+```julia
+c, _ = add_con!(c, g[i] += sin(x[i]) for i in 1:N)
+```
+"""
+struct ConstraintSlot{C, I}
+    con::C
+    idx::I
+end
+
+"""
+    ConAugPair{C, P}
+
+Carries a constraint reference (`con`) alongside its `Pair(idx, expr)` during
+the probe phase of `add_con!(core, g[i] += expr for ...)`.  The `replace_T`
+method unwraps to the inner `Pair`, so `SIMDFunction` stores a plain `Pair`
+and all existing `offset0` dispatches remain unchanged.
+"""
+struct ConAugPair{C, P}
+    con::C
+    pair::P
+end
+
+# Unwrap to the inner Pair when SIMDFunction does type-conversion on literals.
+# After this, SIMDFunction.f is a plain Pair — no new offset0 dispatches needed.
+@inline replace_T(t, cap::ConAugPair) = replace_T(t, cap.pair)
+
+# For 1D constraints: single index, adjusted for the range start (always
+# computes i - (s-1) for a uniform return type regardless of start value).
+Base.getindex(c::Constraint, i) = begin
+    s = _start(c.size[1])
+    ConstraintSlot(c, i - (s - 1))
+end
+# For multi-dim constraints: tuple indices, adjust each for its range start.
+# Uses recursive tuple construction (not ntuple) for GPU compatibility.
+Base.getindex(c::Constraint, idx::Vararg{Any,N}) where {N} =
+    ConstraintSlot(c, _adjust_tuple(idx, c.size))
+Base.getindex(c::ConstraintAugmentation, idx...) =
+    ConstraintSlot(c, idx)
+
+Base.:+(slot::ConstraintSlot, expr::AbstractNode) = ConAugPair(slot.con, Pair(slot.idx, expr))
+Base.:+(expr::AbstractNode, slot::ConstraintSlot) = ConAugPair(slot.con, Pair(slot.idx, expr))
+Base.:+(slot::ConstraintSlot, expr::Real) = ConAugPair(slot.con, Pair(slot.idx, Null(expr)))
+Base.:+(expr::Real, slot::ConstraintSlot) = ConAugPair(slot.con, Pair(slot.idx, Null(expr)))
+Base.:-(slot::ConstraintSlot, expr::AbstractNode) = ConAugPair(slot.con, Pair(slot.idx, -expr))
+Base.:-(slot::ConstraintSlot, expr::Real) = ConAugPair(slot.con, Pair(slot.idx, Null(-expr)))
+Base.setindex!(::Constraint, val, idx...) = val
+Base.setindex!(::ConstraintAugmentation, val, idx...) = val
+
+# Recursive tuple adjustment — avoids ntuple/getindex(::Tuple,::Int) for GPU compat.
+# `dims` is the constraint's size tuple (ints or ranges); _start extracts the start.
+@inline _adjust_tuple(idx::Tuple{}, dims::Tuple{}) = ()
+@inline _adjust_tuple(idx::Tuple, dims::Tuple) = begin
+    s = _start(first(dims))
+    (_con_adjust(first(idx), s), _adjust_tuple(Base.tail(idx), Base.tail(dims))...)
+end
+
+# Adjust a single index for the range start.
+# Always computes idx - (start-1) for a uniform return type (type-stable).
+# Literal integers are wrapped in Constant so they remain callable by `coord`.
+@inline _con_adjust(idx, start) = idx - (start - 1)
+@inline _con_adjust(idx::Integer, start) = Constant(idx - start + 1)
 
 abstract type AbstractExaCore{T,VT,B,S} end
 
@@ -799,11 +870,12 @@ Constraint
     kwargs...
 ) where {T,C<:ExaCore{T}}
 
+    dims = _infer_subexpr_dims(gen.iter)
     gen = _adapt_gen(gen)
     f = SIMDFunction(T, gen, c.ncon, c.nnzj, c.nnzh)
     pars = gen.iter
 
-    _add_con(c, f, pars, start, lcon, ucon, name; kwargs...)
+    _add_con(c, f, pars, dims, start, lcon, ucon, name; kwargs...)
 end
 
 """
@@ -865,16 +937,22 @@ is intended for code that builds expression trees programmatically.
 ) where {T,C<:ExaCore{T},N<:AbstractNode}
 
     f = _simdfunction(T,expr, c.ncon, c.nnzj, c.nnzh)
+    dims = _infer_subexpr_dims(pars)
 
-    _add_con(c, f, pars, start, lcon, ucon, name; kwargs...)
+    _add_con(c, f, pars, dims, start, lcon, ucon, name; kwargs...)
 end
 
 """
-    add_con(core, n; start = 0, lcon = 0, ucon = 0, name = nothing)
+    add_con(core, dims...; start = 0, lcon = 0, ucon = 0, name = nothing)
 
-Adds `n` empty constraints to `core` and returns `(core, Constraint)`.
-No expression is attached initially — use [`add_con!`](@ref) / [`@add_con!`](@ref)
-to accumulate terms into the rows afterwards.
+Adds empty constraints with dimensions specified by `dims` to `core` and returns
+`(core, Constraint)`.  No expression is attached initially — use
+[`add_con!`](@ref) / [`@add_con!`](@ref) to accumulate terms into the rows
+afterwards.
+
+`dims` can be a single integer (`add_con(c, 9)`), multiple integers
+(`add_con(c, 3, 4)` for a 3×4 grid), or `AbstractUnitRange` values
+(`add_con(c, 1:3, 2:5)`) — matching the convention used by [`add_var`](@ref).
 
 When `name` is given as `Val(:name)`, the constraint is also accessible as
 `core.name` or `model.name`.
@@ -902,7 +980,7 @@ Constraint
 """
 @inline function add_con(
     c::C,
-    n;
+    ns...;
     name = nothing,
     start = zero(T),
     lcon = zero(T),
@@ -911,12 +989,17 @@ Constraint
 ) where {T,C<:ExaCore{T}}
 
     f = _simdfunction(T, Null(nothing), c.ncon, c.nnzj, c.nnzh)
+    pars = _empty_con_itr(ns)
 
-    _add_con(c, f, 1:n, start, lcon, ucon, name; kwargs...)
+    _add_con(c, f, pars, ns, start, lcon, ucon, name; kwargs...)
 end
 
+# Build an iterator for empty constraints: 1:n for 1D, collected ProductIterator for multi-dim.
+_empty_con_itr(ns::Tuple{Any}) = 1:_length(ns[1])
+_empty_con_itr(ns::Tuple) = collect(Iterators.product(map(n -> 1:_length(n), ns)...))
 
-function _add_con(c::C, f, pars, start, lcon, ucon, name = nothing; kwargs...) where {C<:ExaCore}
+
+function _add_con(c::C, f, pars, dims, start, lcon, ucon, name = nothing; kwargs...) where {C<:ExaCore}
     nitr = length(pars)
     o = c.ncon
     ncon = c.ncon + nitr
@@ -928,7 +1011,7 @@ function _add_con(c::C, f, pars, start, lcon, ucon, name = nothing; kwargs...) w
     ucon = append!(c.backend, c.ucon, ucon, nitr)
     append_con_tags(c.tags, c.backend, nitr; kwargs...)
 
-    con = Constraint(f, convert_array(pars, c.backend), o)
+    con = Constraint(f, convert_array(pars, c.backend), o, dims)
 
     (ExaCore(c; ncon=ncon, nnzj=nnzj, nnzh=nnzh, y0=y0, lcon=lcon, ucon=ucon, cons=(con, c.cons...), refs = add_refs(c.refs, name, con)), con)
 end
@@ -1007,7 +1090,44 @@ add_con!(c, bus, gen.bus => -pg[gen.i] for gen in data.gen)            # subtrac
     _add_con!(c, f, pars, _constraint_dims(c1))
 end
 
-# Extract the dimensions of the original constraint's iterator
+"""
+    add_con!(core::ExaCore, gen::Base.Generator)
+
+Two-argument form of [`add_con!`](@ref) supporting the `constraint[idx] += expr` sugar.
+The generator must use the pattern `g[idx] += expr for ... in itr`, where `g` is an
+existing [`Constraint`](@ref) or [`ConstraintAugmentation`](@ref).
+
+Equivalent to `add_con!(core, g, idx => expr for ... in itr)`.
+
+## Example
+```julia
+c = ExaCore(concrete = Val(true))
+c, x = add_var(c, 10)
+c, g = add_con(c, 9; lcon = -1.0, ucon = 1.0)
+c, _ = add_con!(c, g[i] += x[i] + x[i+1] for i = 1:9)
+```
+"""
+@inline function add_con!(c::ExaCore{T}, gen::Base.Generator) where T
+    gen = _adapt_gen(gen)
+
+    # Probe the generator: the result is a ConAugPair which carries the target
+    # constraint alongside the index/expression pair.
+    probe = gen.f(DataSource())
+    probe isa ConAugPair || error(
+        "add_con! two-argument form requires `constraint[idx] += expr` syntax " *
+        "in the generator body"
+    )
+    con = probe.con
+
+    # The generator yields ConAugPair values; replace_T unwraps them to plain
+    # Pairs before SIMDFunction stores them, so offset0 dispatch is unchanged.
+    return add_con!(c, con, gen)
+end
+
+# Extract the dimensions of the original constraint's iterator.
+# Use Base.size(c.itr) rather than transforming c.size: the itr is always shaped
+# correctly (1D range or N-dim array), and Base.size returns concrete Int lengths
+# which is required for type-stable dispatch in juliac AOT compilation.
 _constraint_dims(c::Constraint) = Base.size(c.itr)
 _constraint_dims(c::ConstraintAugmentation) = c.dims
 
@@ -1258,27 +1378,27 @@ _con_hprod!(cons::Tuple{}, x, θ, y, v, Hv, obj_weight) = nothing
 end
 
 @inbounds @inline offset0(a, i) = offset0(a.f, i)
+@inbounds @inline offset0(a::Constraint, i) = offset0(a.f, a.itr, i, _constraint_dims(a))
 @inbounds @inline offset1(a, i) = offset1(a.f, i)
 @inbounds @inline offset2(a, i) = offset2(a.f, i)
+# 3-arg form: used by KA extension kernels which receive (f::SIMDFunction, itr, i)
 @inbounds @inline offset0(f, itr, i) = offset0(f, i)
-@inbounds @inline offset0(f::F, i) where {F<:SIMDFunction} = f.o0 + i
-@inbounds @inline offset1(f::F, i) where {F<:SIMDFunction} = f.o1 + f.o1step * (i - 1)
-@inbounds @inline offset2(f::F, i) where {F<:SIMDFunction} = f.o2 + f.o2step * (i - 1)
-@inbounds @inline offset0(a::C, i) where {C<:ConstraintAugmentation} = offset0(a.f, a.itr, i, a.dims)
 @inbounds @inline offset0(f::F, itr, i) where {P<:Pair,F<:SIMDFunction{P}} =
     f.o0 + f.f.first(itr[i], nothing, nothing)
 @inbounds @inline offset0(f::F, itr, i) where {I<:Integer,P<:Pair{I},F<:SIMDFunction{P}} =
     f.o0 + f.f.first
-@inbounds @inline offset0(f::F, itr, i) where {T<:Tuple,P<:Pair{T},F<:SIMDFunction{P}} =
-    f.o0 + idxx(coord(itr, i, f.f.first), Base.size(itr))
-# 4-arg variant used by ConstraintAugmentation to pass original constraint dims
-@inbounds @inline offset0(f, itr, i, dims) = offset0(f, i)
+@inbounds @inline offset0(f::F, i) where {F<:SIMDFunction} = f.o0 + i
+@inbounds @inline offset1(f::F, i) where {F<:SIMDFunction} = f.o1 + f.o1step * (i - 1)
+@inbounds @inline offset2(f::F, i) where {F<:SIMDFunction} = f.o2 + f.o2step * (i - 1)
+@inbounds @inline offset0(a::C, i) where {C<:ConstraintAugmentation} = offset0(a.f, a.itr, i, a.dims)
+# 4-arg form: used when dims are available (from Constraint.size or ConstraintAugmentation.dims)
 @inbounds @inline offset0(f::F, itr, i, dims) where {P<:Pair,F<:SIMDFunction{P}} =
     f.o0 + f.f.first(itr[i], nothing, nothing)
 @inbounds @inline offset0(f::F, itr, i, dims) where {I<:Integer,P<:Pair{I},F<:SIMDFunction{P}} =
     f.o0 + f.f.first
 @inbounds @inline offset0(f::F, itr, i, dims) where {T<:Tuple,P<:Pair{T},F<:SIMDFunction{P}} =
     f.o0 + idxx(coord(itr, i, f.f.first), dims)
+@inbounds @inline offset0(f::F, itr, i, dims) where {F<:SIMDFunction} = f.o0 + i
 
 @inline idx(itr, I) = @inbounds itr[I]
 @inline idx(itr::Base.Iterators.ProductIterator{V}, I) where {V} =
@@ -1437,8 +1557,9 @@ true
 """
 function multipliers(result::SolverCore.AbstractExecutionStats, y::Constraint)
     o = y.offset
-    len = length(y.itr)
-    return view(result.multipliers, (o+1):(o+len))
+    len = total(y.size)
+    s = size(y.size)
+    return reshape(view(result.multipliers, (o+1):(o+len)), s...)
 end
 
 _adapt_gen(gen) = Base.Generator(gen.f, collect(gen.iter))
@@ -1670,13 +1791,20 @@ end
 
 """
     @add_con!(core, c1, generator; kwargs...)
+    @add_con!(core, c1[idx] += expr for ...; kwargs...)
 
 Macro interface for [`add_con!`](@ref). Updates `core` in the calling scope and returns the
-new `ConstraintAugmentation`. Equivalent to `c, aug = add_con!(c, c1, generator)`.
+new `ConstraintAugmentation`.
 
-The generator must yield `idx => expr` pairs, where `idx` is an index into `c1` and `expr`
-is the scalar term to accumulate into that constraint row.  See [`add_con!`](@ref) for full
-semantics and usage notes.
+Two calling conventions are supported:
+
+- **Three-argument** (`@add_con!(core, c1, idx => expr for ...)`): the constraint `c1` is
+  passed explicitly and the generator yields `idx => expr` pairs.
+- **Two-argument** (`@add_con!(core, c1[idx] += expr for ...)`): the constraint and index
+  are embedded in the generator via `+=` syntax.  This form delegates to the function-level
+  [`add_con!(core, gen)`](@ref), which extracts the target constraint automatically.
+
+See [`add_con!`](@ref) for full semantics and usage notes.
 
 ## Example
 ```julia
@@ -1684,18 +1812,36 @@ c = ExaCore(concrete = Val(true))
 @add_var(c, x, 10)
 @add_con(c, g, x[i] + x[i+1] for i in 1:9; lcon = -1, ucon = 1)
 
-## Append sin(x[i+1]) to rows 4–6 of g:
+## Three-argument form:
 aug = @add_con!(c, g, i => sin(x[i+1]) for i in 4:6)
 
-## Power-flow pattern — multiple augmentations on the same base constraint:
-## @add_con!(c, bus_balance, arc.bus => p[arc.i]   for arc in data.arc)
-## @add_con!(c, bus_balance, gen.bus => -pg[gen.i] for gen in data.gen)
+## Two-argument form (equivalent):
+aug = @add_con!(c, g[i] += sin(x[i+1]) for i in 4:6)
 ```
 """
 macro add_con!(exs...)
-    isempty(exs) && error("@add_con! requires core, existing constraint, and generator arguments")
+    isempty(exs) && error("@add_con! requires core and generator arguments")
     parts, kwargs = _split_macro_args(exs)
     core  = parts[1]
+
+    if length(parts) == 2
+        # Two-argument form: @add_con!(core, g[idx] += expr for ...)
+        # Delegate to function-level add_con!(core, gen) which extracts
+        # the constraint automatically via the ConstraintSlot mechanism.
+        gen_expr = _auto_const_gen(parts[2])
+        con = gensym(:con)
+        return quote
+            local $con
+            $(esc(core)), $con = add_con!(
+                $(esc(core)),
+                $(esc(gen_expr));
+                $(map(esc, kwargs.args)...),
+            )
+            $con
+        end
+    end
+
+    # Three-argument form: @add_con!(core, c1, idx => expr for ...)
     c1    = parts[2]
     args  = [_auto_const_gen(a) for a in parts[3:end]]
 
