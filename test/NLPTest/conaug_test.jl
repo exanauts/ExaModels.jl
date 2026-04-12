@@ -45,6 +45,29 @@ function test_conaug_1d(backend)
         g_vals = Array(NLPModels.cons(m, x0))
         @test all(≈(2.0), g_vals)
     end
+
+    @testset "add_con! with -= syntax (1D)" begin
+        N = 9
+        # g[i] -= expr should be equivalent to g[i] += (-expr)
+        c1 = ExaCore(; backend, concrete = Val(true))
+        c1, x1 = add_var(c1, N + 1)
+        c1, g1 = add_con(c1, N; lcon = -1.0, ucon = 1.0)
+        c1, _ = add_con!(c1, g1[i] -= x1[i] + x1[i+1] for i = 1:N)
+
+        # Reference: same result via +=(-expr)
+        c2 = ExaCore(; backend, concrete = Val(true))
+        c2, x2 = add_var(c2, N + 1)
+        c2, g2 = add_con(c2, N; lcon = -1.0, ucon = 1.0)
+        c2, _ = add_con!(c2, g2[i] += -(x2[i] + x2[i+1]) for i = 1:N)
+
+        m1 = ExaModel(c1)
+        m2 = ExaModel(c2)
+        @test m1.meta.nnzj == m2.meta.nnzj
+        @test m1.meta.nnzh == m2.meta.nnzh
+        x0 = ExaModels.convert_array(rand(N + 1), backend)
+        @test NLPModels.cons(m1, x0) ≈ NLPModels.cons(m2, x0)
+        @test NLPModels.grad(m1, x0) ≈ NLPModels.grad(m2, x0)
+    end
 end
 
 function test_conaug_2d(backend)
