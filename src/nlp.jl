@@ -21,7 +21,6 @@ struct Variable{S,O} <: AbstractVariable
     length::O
     offset::O
     name::Symbol
-    Variable(size::S, length::O, offset::O, name::Symbol = :x) where {S, O} = new{S,O}(size, length, offset, name)
 end
 Base.show(io::IO, v::Variable) = print(
     io,
@@ -196,63 +195,6 @@ struct ConstraintSlot{C, I}
     idx::I
 end
 
-const _AUGMENT_CONSTRAINT_REF = Ref{Any}(nothing)
-
-# For 1D constraints: single index, adjust for range start.
-# When start == 1 (the common case), pass idx through unchanged to
-# preserve the exact type expected by SIMDFunction/offset0.
-Base.getindex(c::Constraint, i) = begin
-    _AUGMENT_CONSTRAINT_REF[] = c
-    s = _start(c.size[1])
-    ConstraintSlot(c, s == 1 ? i : i - (s - 1))
-end
-# For multi-dim constraints: tuple indices, adjust each for its range start.
-# Uses recursive tuple construction (not ntuple) for GPU compatibility.
-Base.getindex(c::Constraint, idx::Vararg{Any,N}) where {N} = begin
-    _AUGMENT_CONSTRAINT_REF[] = c
-    ConstraintSlot(c, _adjust_tuple(idx, c.size))
-end
-Base.getindex(c::ConstraintAugmentation, idx...) = begin
-    _AUGMENT_CONSTRAINT_REF[] = c
-    ConstraintSlot(c, length(idx) == 1 ? idx[1] : idx)
-end
-Base.:+(slot::ConstraintSlot, expr::AbstractNode) = Pair(slot.idx, expr)
-Base.:+(expr::AbstractNode, slot::ConstraintSlot) = Pair(slot.idx, expr)
-Base.:+(slot::ConstraintSlot, expr::Real) = Pair(slot.idx, Null(expr))
-Base.:+(expr::Real, slot::ConstraintSlot) = Pair(slot.idx, Null(expr))
-Base.setindex!(::Constraint, val, idx...) = val
-Base.setindex!(::ConstraintAugmentation, val, idx...) = val
-
-# Recursive tuple adjustment — avoids ntuple/getindex(::Tuple,::Int) for GPU compat.
-# `dims` is the constraint's size tuple (ints or ranges); _start extracts the start.
-@inline _adjust_tuple(idx::Tuple{}, dims::Tuple{}) = ()
-@inline _adjust_tuple(idx::Tuple, dims::Tuple) = begin
-    s = _start(first(dims))
-    (_con_adjust(first(idx), s), _adjust_tuple(Base.tail(idx), Base.tail(dims))...)
-end
-
-# Adjust a single index for the range start.
-# When start == 1, pass through unchanged to preserve the original type.
-# Literal integers are wrapped in Constant so they remain callable by `coord`.
-@inline _con_adjust(idx, start) = start == 1 ? idx : idx - (start - 1)
-@inline _con_adjust(idx::Integer, start) = Constant(idx - start + 1)
-
-"""
-    ConstraintSlot{C, I}
-
-A lightweight handle returned by `getindex` on a [`Constraint`](@ref) or
-[`ConstraintAugmentation`](@ref).  When added to an expression node via `+`,
-it produces a `Pair(idx, expr)` suitable for constraint augmentation.
-
-This enables the `g[idx] += expr for ...` syntactic sugar:
-```julia
-c, _ = add_con!(c, g[i] += sin(x[i]) for i in 1:N)
-```
-"""
-struct ConstraintSlot{C, I}
-    con::C
-    idx::I
-end
 
 """
     ConAugPair{C, P}
@@ -740,63 +682,13 @@ Variable
     uvar = append!(c.backend, c.uvar, uvar, total(ns))
 
     append_var_tags(c.tags, c.backend, total(ns); kwargs...)
-    vname = name isa Val ? _val_name(name) : :x
-    v = Variable(ns, len, o, vname)
+    v = Variable(ns, len, o, _val_name(name))
 
     (ExaCore(c; var = (v, c.var...), nvar=nvar, x0=x0, lvar=lvar, uvar=uvar, refs = add_refs(c.refs, name, v)), v)
 end
 
-# Explicit 2D overload — prevents juliac from widening ns to Tuple{T,Vararg{T}}
-function add_var(
-    c::C,
-    n1::N1,
-    n2::N2;
-    name = nothing,
-    start = zero(T),
-    lvar = T(-Inf),
-    uvar = T(Inf),
-    kwargs...
-) where {T, C<:ExaCore{T}, N1<:Union{Integer,AbstractUnitRange}, N2<:Union{Integer,AbstractUnitRange}}
-    ns = (n1, n2)
-    o = c.nvar
-    len = total(ns)
-    nvar = c.nvar + len
-    x0 = append!(c.backend, c.x0, start, len)
-    lvar = append!(c.backend, c.lvar, lvar, len)
-    uvar = append!(c.backend, c.uvar, uvar, len)
-    append_var_tags(c.tags, c.backend, len; kwargs...)
-    vname = name isa Val ? _val_name(name) : :x
-    v = Variable(ns, len, o, vname)
-    (ExaCore(c; var = (v, c.var...), nvar=nvar, x0=x0, lvar=lvar, uvar=uvar, refs = add_refs(c.refs, name, v)), v)
-end
-
-# Explicit 3D overload — prevents juliac from widening ns to Tuple{T,Vararg{T}}
-function add_var(
-    c::C,
-    n1::N1,
-    n2::N2,
-    n3::N3;
-    name = nothing,
-    start = zero(T),
-    lvar = T(-Inf),
-    uvar = T(Inf),
-    kwargs...
-) where {T, C<:ExaCore{T}, N1<:Union{Integer,AbstractUnitRange}, N2<:Union{Integer,AbstractUnitRange}, N3<:Union{Integer,AbstractUnitRange}}
-    ns = (n1, n2, n3)
-    o = c.nvar
-    len = total(ns)
-    nvar = c.nvar + len
-    x0 = append!(c.backend, c.x0, start, len)
-    lvar = append!(c.backend, c.lvar, lvar, len)
-    uvar = append!(c.backend, c.uvar, uvar, len)
-    append_var_tags(c.tags, c.backend, len; kwargs...)
-    vname = name isa Val ? _val_name(name) : :x
-    v = Variable(ns, len, o, vname)
-    (ExaCore(c; var = (v, c.var...), nvar=nvar, x0=x0, lvar=lvar, uvar=uvar, refs = add_refs(c.refs, name, v)), v)
-end
-
-_val_name(::Val{N}) where {N} = N
-
+@inline _val_name(::Val{N}) where {N} = N
+@inline _val_name(::Nothing) = :x
 @inline add_refs(refs, ::Nothing, var) = refs
 @inline add_refs(refs, ::Val{N}, var) where {N} = (; refs..., N => var)
 
