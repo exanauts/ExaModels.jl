@@ -8,7 +8,7 @@ for SIMD-parallel evaluation of nonlinear programs on CPUs and GPUs.
 
 Expressions are represented as trees of [`AbstractNode`](@ref) subtypes:
 
-- [`Var`](@ref) / [`ParIndexed`](@ref) — decision variables and data fields
+- [`Var`](@ref) / [`DataIndexed`](@ref) — decision variables and data fields
 - [`Node1`](@ref) / [`Node2`](@ref) — unary / binary operations
 - [`Constant{T}`](@ref) — compile-time scalar constant; the value `T` is
   stored as a **type parameter** so it is visible to the compiler and to

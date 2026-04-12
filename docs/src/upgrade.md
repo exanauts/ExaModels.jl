@@ -91,20 +91,7 @@ c = ExaCore(concrete = Val(true))
 c, x = add_var(c, ...)
 ```
 
-### 4. `ExaModelsLinearAlgebra` renamed to `ExaModelsOptimalControl`
-
-The extension that provides LinearAlgebra operations (`dot`, `cross`, `det`,
-`norm`, `tr`, `diagm`, `diag`, matrix–vector products) on ExaModels expression
-nodes was called `ExaModelsLinearAlgebra` in v0.9.  It is now
-`ExaModelsOptimalControl` and is triggered by loading `LinearAlgebra`:
-
-```julia
-using ExaModels, LinearAlgebra   # triggers ExaModelsOptimalControl automatically
-```
-
-No import of a separate package is needed.
-
-### 5. Complete before/after example
+### 4. Complete before/after example
 
 ```julia
 # ── v0.9 ────────────────────────────────────────────────────────────────────
