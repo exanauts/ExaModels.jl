@@ -30,8 +30,6 @@ jobs:
       - uses: julia-actions/cache@v3
       - uses: julia-actions/julia-buildpkg@latest
       - name: Run tests
-        env:
-          EXAMODELS_SKIP_AOT: ${{ matrix.os == 'windows-latest' && '1' || '' }}
         run: |
           julia --startup-file=no --color=yes --project=./test -e '
             using Pkg
@@ -141,8 +139,6 @@ jobs:
           uname -a
           julia --startup-file=no -e 'println(Sys.ARCH); println(Sys.KERNEL)'
       - name: Run tests
-        env:
-          EXAMODELS_SKIP_AOT: ${{ matrix.os == 'windows-latest' && '1' || '' }}
         run: |
           julia --startup-file=no --color=yes --project=./test -e '
             push!(ARGS, "EXAMODELS_NO_TEST_CPU")
