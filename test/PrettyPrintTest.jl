@@ -13,7 +13,7 @@ function runtests()
             @test sprint(show, x[1] * x[2])    == "x[1] * x[2]"
             @test sprint(show, x[1]^2)           == "x[1]^2"  # abs2 specialization
             @test sprint(show, x[1] - x[2])     == "x[1] - x[2]"
-            @test sprint(show, x[1] / x[2])     == "(x[1] / x[2])"
+            @test sprint(show, x[1] / x[2])     == "x[1] / x[2]"
         end
 
         @testset "Identity simplification" begin
