@@ -20,13 +20,14 @@ struct Variable{S,O} <: AbstractVariable
     size::S
     length::O
     offset::O
+    name::Symbol
 end
 Base.show(io::IO, v::Variable) = print(
     io,
     """
 Variable
 
-  x ∈ R^{$(join(size(v.size)," × "))}
+  $(v.name) ∈ R^{$(join(size(v.size)," × "))}
 """,
 )
 
@@ -45,14 +46,23 @@ struct Expression{S, F, I}
     f::F           # The generator function
     iter::I        # The collected iterator (for indexing)
 end
-Base.show(io::IO, s::Expression) = print(
-    io,
-    """
+Base.show(io::IO, s::Expression) = _show_expression(io, s)
+function _show_expression(io::IO, s::Expression)
+    expr = try
+        _expr_string(s.f(ParSource()))
+    catch
+        "(?)"
+    end
+    print(
+        io,
+        """
 Subexpression (reduced)
 
   s ∈ R^{$(join(size(s.size), " × "))}
+  s(x,i) = $expr
 """,
-)
+    )
+end
 
 """
     Parameter
@@ -87,16 +97,21 @@ struct Objective{F,I} <: AbstractObjective
     f::F
     itr::I
 end
-Base.show(io::IO, v::Objective) = print(
-    io,
-    """
+function Base.show(io::IO, v::Objective)
+    expr = try _expr_string(v.f.f) catch; "(?)" end
+    print(
+        io,
+        """
 Objective
 
-  min (...) + ∑_{p ∈ P} f(x,θ,p)
+  ∑_{i ∈ I} f(x,i)
 
-  where |P| = $(length(v.itr))
+  f(x,i) = $expr
+
+  where |I| = $(length(v.itr))
 """,
-)
+    )
+end
 
 
 """
@@ -113,17 +128,21 @@ struct Constraint{F,I,O,S} <: AbstractConstraint
     offset::O
     size::S
 end
-Base.show(io::IO, v::Constraint) = print(
-    io,
-    """
+function Base.show(io::IO, v::Constraint)
+    expr = try _expr_string(v.f.f) catch; "(?)" end
+    print(
+        io,
+        """
 Constraint
 
-  s.t. (...)
-       g♭ ≤ [g(x,θ,p)]_{p ∈ P} ≤ g♯
+  g♭ ≤ [g(x,i)]_{i ∈ I} ≤ g♯
 
-  where |P| = $(length(v.itr))
+  g(x,i) = $expr
+
+  where |I| = $(length(v.itr))
 """,
-)
+    )
+end
 
 
 """
@@ -143,17 +162,92 @@ struct ConstraintAugmentation{F,I,D} <: AbstractConstraint
     dims::D  # dimensions of the original constraint (for Pair{Tuple} offset computation)
 end
 
-Base.show(io::IO, v::ConstraintAugmentation) = print(
-    io,
-    """
+function Base.show(io::IO, v::ConstraintAugmentation)
+    expr = try _expr_string(v.f.f) catch; "(?)" end
+    print(
+        io,
+        """
 Constraint Augmentation
 
-  s.t. (...)
-       g♭ ≤ (...) + ∑_{p ∈ P} h(x,θ,p) ≤ g♯
+  g♭ ≤ (...) + ∑_{i ∈ I} h(x,i) ≤ g♯
 
-  where |P| = $(length(v.itr))
+  h(x,i) = $expr
+
+  where |I| = $(length(v.itr))
 """,
-)
+    )
+end
+
+"""
+    ConstraintSlot{C, I}
+
+A lightweight handle returned by `getindex` on a [`Constraint`](@ref) or
+[`ConstraintAugmentation`](@ref).  When added to an expression node via `+`,
+it produces a `Pair(idx, expr)` suitable for constraint augmentation.
+
+This enables the `g[idx] += expr for ...` syntactic sugar:
+```julia
+c, _ = add_con!(c, g[i] += sin(x[i]) for i in 1:N)
+```
+"""
+struct ConstraintSlot{C, I}
+    con::C
+    idx::I
+end
+
+
+"""
+    ConAugPair{C, P}
+
+Carries a constraint reference (`con`) alongside its `Pair(idx, expr)` during
+the probe phase of `add_con!(core, g[i] += expr for ...)`.  The `replace_T`
+method unwraps to the inner `Pair`, so `SIMDFunction` stores a plain `Pair`
+and all existing `offset0` dispatches remain unchanged.
+"""
+struct ConAugPair{C, P}
+    con::C
+    pair::P
+end
+
+# Unwrap to the inner Pair when SIMDFunction does type-conversion on literals.
+# After this, SIMDFunction.f is a plain Pair — no new offset0 dispatches needed.
+@inline replace_T(t, cap::ConAugPair) = replace_T(t, cap.pair)
+
+# For 1D constraints: single index, adjusted for the range start (always
+# computes i - (s-1) for a uniform return type regardless of start value).
+Base.getindex(c::Constraint, i) = begin
+    s = _start(c.size[1])
+    ConstraintSlot(c, i - (s - 1))
+end
+# For multi-dim constraints: tuple indices, adjust each for its range start.
+# Uses recursive tuple construction (not ntuple) for GPU compatibility.
+Base.getindex(c::Constraint, idx::Vararg{Any,N}) where {N} =
+    ConstraintSlot(c, _adjust_tuple(idx, c.size))
+Base.getindex(c::ConstraintAugmentation, idx...) =
+    ConstraintSlot(c, idx)
+
+Base.:+(slot::ConstraintSlot, expr::AbstractNode) = ConAugPair(slot.con, Pair(slot.idx, expr))
+Base.:+(expr::AbstractNode, slot::ConstraintSlot) = ConAugPair(slot.con, Pair(slot.idx, expr))
+Base.:+(slot::ConstraintSlot, expr::Real) = ConAugPair(slot.con, Pair(slot.idx, Null(expr)))
+Base.:+(expr::Real, slot::ConstraintSlot) = ConAugPair(slot.con, Pair(slot.idx, Null(expr)))
+Base.:-(slot::ConstraintSlot, expr::AbstractNode) = ConAugPair(slot.con, Pair(slot.idx, -expr))
+Base.:-(slot::ConstraintSlot, expr::Real) = ConAugPair(slot.con, Pair(slot.idx, Null(-expr)))
+Base.setindex!(::Constraint, val, idx...) = val
+Base.setindex!(::ConstraintAugmentation, val, idx...) = val
+
+# Recursive tuple adjustment — avoids ntuple/getindex(::Tuple,::Int) for GPU compat.
+# `dims` is the constraint's size tuple (ints or ranges); _start extracts the start.
+@inline _adjust_tuple(idx::Tuple{}, dims::Tuple{}) = ()
+@inline _adjust_tuple(idx::Tuple, dims::Tuple) = begin
+    s = _start(first(dims))
+    (_con_adjust(first(idx), s), _adjust_tuple(Base.tail(idx), Base.tail(dims))...)
+end
+
+# Adjust a single index for the range start.
+# Always computes idx - (start-1) for a uniform return type (type-stable).
+# Literal integers are wrapped in Constant so they remain callable by `coord`.
+@inline _con_adjust(idx, start) = idx - (start - 1)
+@inline _con_adjust(idx::Integer, start) = Constant(idx - start + 1)
 
 """
     ConstraintSlot{C, I}
@@ -659,11 +753,13 @@ Variable
     uvar = append!(c.backend, c.uvar, uvar, len)
 
     append_var_tags(c.tags, c.backend, len; kwargs...)
-    v = Variable(ns, len, o)
+    v = Variable(ns, len, o, _val_name(name))
 
     (ExaCore(c; var = (v, c.var...), nvar=nvar, x0=x0, lvar=lvar, uvar=uvar, refs = add_refs(c.refs, name, v)), v)
 end
 
+@inline _val_name(::Val{N}) where {N} = N
+@inline _val_name(::Nothing) = :x
 @inline add_refs(refs, ::Nothing, var) = refs
 @inline add_refs(refs, ::Val{N}, var) where {N} = (; refs..., N => var)
 
@@ -776,7 +872,7 @@ Adds objective terms specified by a `generator` to `core`, and returns `(core, O
 - `name`: When given as `Val(:name)`, registers the objective in `core` for later retrieval as `core.name` or `model.name`. See [`@add_obj`](@ref) for the idiomatic named interface.
 
 ## Example
-```jldoctest
+```julia
 julia> using ExaModels
 
 julia> c = ExaCore(concrete = Val(true));
@@ -788,9 +884,11 @@ julia> c, obj = add_obj(c, x[i]^2 for i=1:10);
 julia> obj
 Objective
 
-  min (...) + ∑_{p ∈ P} f(x,θ,p)
+  ∑_{i ∈ I} f(x,i)
 
-  where |P| = 10
+  f(x,i) = x[i]^2
+
+  where |I| = 10
 ```
 """
 @inline function add_obj(c::C, gen; name = nothing) where {T, C<:ExaCore{T}}
@@ -843,7 +941,7 @@ Adds constraints specified by a `generator` to `core`, and returns `(core, Const
 - `kwargs...`: Additional keyword arguments for constraint tags (e.g., `scenario` for two-stage models)
 
 ## Example
-```jldoctest
+```julia
 julia> using ExaModels
 
 julia> c = ExaCore(concrete = Val(true));
@@ -855,10 +953,11 @@ julia> c, con = add_con(c, x[i] + x[i+1] for i=1:9; lcon = -1, ucon = (1+i for i
 julia> con
 Constraint
 
-  s.t. (...)
-       g♭ ≤ [g(x,θ,p)]_{p ∈ P} ≤ g♯
+  g♭ ≤ [g(x,i)]_{i ∈ I} ≤ g♯
 
-  where |P| = 9
+  g(x,i) = x[i] + x[i + 1]
+
+  where |I| = 9
 ```
 """
 @inline function add_con(
@@ -973,10 +1072,11 @@ julia> c, _ = add_con!(c, g, i => x[i] + x[i+1] for i = 1:9);
 julia> g
 Constraint
 
-  s.t. (...)
-       g♭ ≤ [g(x,θ,p)]_{p ∈ P} ≤ g♯
+  g♭ ≤ [g(x,i)]_{i ∈ I} ≤ g♯
 
-  where |P| = 9
+  g(x,i) = 0
+
+  where |I| = 9
 ```
 """
 @inline function add_con(
@@ -1051,9 +1151,10 @@ via `add_con!`.
 
 ## Example
 
+
 Single-index augmentation — add `sin(x[i+1])` to constraint rows 4, 5, 6:
 
-```jldoctest
+```julia
 julia> using ExaModels
 
 julia> c = ExaCore(concrete = Val(true));
@@ -1067,10 +1168,11 @@ julia> c, c2 = add_con!(c, c1, i => sin(x[i+1]) for i=4:6);
 julia> c2
 Constraint Augmentation
 
-  s.t. (...)
-       g♭ ≤ (...) + ∑_{p ∈ P} h(x,θ,p) ≤ g♯
+  g♭ ≤ (...) + ∑_{i ∈ I} h(x,i) ≤ g♯
 
-  where |P| = 3
+  h(x,i) = sin(x[i.1 + 1])
+
+  where |I| = 3
 ```
 
 Multi-source augmentation (typical power-flow use case) — accumulate arc flows into bus
@@ -1159,7 +1261,7 @@ variables or constraints are added to the problem.
 - `name`: When given as `Val(:name)`, registers the subexpression in `core` for later retrieval as `core.name` or `model.name`. See [`@add_expr`](@ref) for the idiomatic named interface.
 
 ## Example
-```jldoctest
+```julia
 julia> using ExaModels
 
 julia> c = ExaCore(concrete = Val(true));
@@ -1172,6 +1274,7 @@ julia> s
 Subexpression (reduced)
 
   s ∈ R^{10}
+  s(x,i) = x[i]^2
 
 julia> c, _ = add_obj(c, s[i] + s[i+1] for i in 1:9);
 ```
