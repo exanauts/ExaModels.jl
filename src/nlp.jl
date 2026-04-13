@@ -1017,7 +1017,14 @@ Constraint
     ucon = zero(T),
     kwargs...
 ) where {T,C<:ExaCore{T}}
-    _add_con(c, _get_generator(ns), start, lcon, ucon, name, tag)
+
+    gen = _get_generator(ns)
+    dims = _infer_subexpr_dims(gen.iter)
+    gen = _adapt_gen(gen)
+    f = _simdfunction(T, gen.f(DataSource()), c.ncon, c.nnzj, c.nnzh)
+    pars = gen.iter
+    
+    _add_con(c, f, pars, dims, start, lcon, ucon, name, tag)
 end
 
 @inline _get_generator(ns) = (0 for _ in _empty_con_itr(ns))
@@ -1028,11 +1035,8 @@ _empty_con_itr(ns::Tuple{Any}) = 1:_length(ns[1])
 _empty_con_itr(ns::Tuple) = collect(Iterators.product(map(n -> 1:_length(n), ns)...))
 
 
-function _add_con(c::C, gen, start, lcon, ucon, name, tag) where {T, C<:ExaCore{T}}
-    dims = _infer_subexpr_dims(gen.iter)
-    gen = _adapt_gen(gen)
-    f = SIMDFunction(T, gen, c.ncon, c.nnzj, c.nnzh)
-    pars = gen.iter
+function _add_con(c, f, pars, dims, start, lcon, ucon, name, tag)
+    # pars = gen.iter
     
     nitr = length(pars)
     o = c.ncon
