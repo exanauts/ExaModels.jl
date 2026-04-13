@@ -1029,6 +1029,7 @@ end
 
 @inline _get_generator(ns) = (0 for _ in _empty_con_itr(ns))
 @inline _get_generator(gen::Tuple{G}) where G <: Base.Generator = gen[1]
+@inline _get_generator(n::Tuple{N}) where N <: AbstractNode = (n[1] for _ in 1:1)
 
 # Build an iterator for empty constraints: 1:n for 1D, collected ProductIterator for multi-dim.
 _empty_con_itr(ns::Tuple{Any}) = 1:_length(ns[1])
@@ -1120,13 +1121,13 @@ add_con!(c, bus, arc.bus => p[arc.i] for arc in data.arc)              # add arc
 add_con!(c, bus, gen.bus => -pg[gen.i] for gen in data.gen)            # subtract generation
 ```
 """
-@inline function add_con!(c::C, c1, gen::Base.Generator) where {T, C<:ExaCore{T}}
+@inline function add_con!(c::C, c1, gen::Base.Generator; tag = nothing) where {T, C<:ExaCore{T}}
 
     gen = _adapt_gen(gen)
     f = SIMDFunction(T, gen, offset0(c1, 0), c.nnzj, c.nnzh)
     pars = gen.iter
 
-    _add_con!(c, f, pars, _constraint_dims(c1))
+    _add_con!(c, f, pars, _constraint_dims(c1), tag)
 end
 
 """
@@ -1146,7 +1147,7 @@ c, g = add_con(c, 9; lcon = -1.0, ucon = 1.0)
 c, _ = add_con!(c, g[i] += x[i] + x[i+1] for i = 1:9)
 ```
 """
-@inline function add_con!(c::ExaCore{T}, gen::Base.Generator) where T
+@inline function add_con!(c::ExaCore{T}, gen::Base.Generator; tag = nothing) where T
     gen = _adapt_gen(gen)
 
     # Probe the generator: the result is a ConAugPair which carries the target
@@ -1160,7 +1161,7 @@ c, _ = add_con!(c, g[i] += x[i] + x[i+1] for i = 1:9)
 
     # The generator yields ConAugPair values; replace_T unwraps them to plain
     # Pairs before SIMDFunction stores them, so offset0 dispatch is unchanged.
-    return add_con!(c, con, gen)
+    return add_con!(c, con, gen; tag)
 end
 
 # Extract the dimensions of the original constraint's iterator.
@@ -1170,13 +1171,13 @@ end
 _constraint_dims(c::Constraint) = Base.size(c.itr)
 _constraint_dims(c::ConstraintAugmentation) = c.dims
 
-function _add_con!(c, f, pars, dims)
+function _add_con!(c, f, pars, dims, tag)
     oa = c.nconaug
     nitr = length(pars)
     nconaug = c.nconaug + nitr
     nnzj = c.nnzj + nitr * f.o1step
     nnzh = c.nnzh + nitr * f.o2step
-    con = ConstraintAugmentation(f, convert_array(pars, c.backend), oa, dims)
+    con = ConstraintAugmentation(f, convert_array(pars, c.backend), oa, dims, tag)
     (ExaCore(c; nconaug=nconaug, nnzj=nnzj, nnzh=nnzh, cons=(con, c.cons...)), con)
 end
 

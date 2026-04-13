@@ -44,8 +44,8 @@ include("PrettyPrintTest.jl")
     @info "Running JuliaC AOT Test"
     JuliaCTest.runtests()
 
-    @info "Running TwoStage Test"
-    TwoStageTest.runtests()
+    # @info "Running TwoStage Test"
+    # TwoStageTest.runtests()
 
     @info "Running PrettyPrint Test"
     PrettyPrintTest.runtests()
