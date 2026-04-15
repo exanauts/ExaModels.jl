@@ -20,7 +20,7 @@ SpecialFunctions = "276daf66-3868-5448-9aa4-cd146d93841b"
 oneAPI = "8f75cd03-7ff8-4ecb-9b8f-daf728133b1b"
 
 [extensions]
-ExaModelsGenOpt = "GenOpt"
+ExaModelsGenOpt = ["GenOpt", "MathOptInterface"]
 ExaModelsJuMP = "JuMP"
 ExaModelsKernelAbstractions = "KernelAbstractions"
 ExaModelsMOI = "MathOptInterface"
