@@ -58,14 +58,8 @@ include("GenOptTest/GenOptTest.jl")
     # @info "Running OptimalControl Test"
     # OptimalControlTest.runtests()
 
-<<<<<<< HEAD
-=======
-    @info "Running LinAlg Test"
-    LinAlgTest.runtests()
-
     @info "Running GenOpt Test"
     GenOptTest.runtests()
->>>>>>> 06a0248a (Add extension to GenOpt)
 end
 
 # Force full GC before Julia exits so that OpenCL/PoCL objects are finalized
