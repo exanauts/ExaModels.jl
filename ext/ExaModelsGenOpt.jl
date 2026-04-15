@@ -20,8 +20,9 @@ function ExaModels.copy_extra_constraints!(c, moim, var_to_idx, con_to_idx, T)
     for (F, S) in con_types
         F <: FunctionGenerator || continue
         cis = MOI.get(moim, MOI.ListOfConstraintIndices{F,S}())
-        _copy_generator_constraints!(c, moim, cis, var_to_idx, con_to_idx, T, S)
+        c = _copy_generator_constraints!(c, moim, cis, var_to_idx, con_to_idx, T, S)
     end
+    return c
 end
 
 function _copy_generator_constraints!(c, moim, cis, var_to_idx, con_to_idx, T, ::Type{S}) where {S}
@@ -31,8 +32,9 @@ function _copy_generator_constraints!(c, moim, cis, var_to_idx, con_to_idx, T, :
         set = MOI.get(moim, MOI.ConstraintSet(), ci)
         con_to_idx[ci] = c.ncon
         expr, pars = _exagen(func.func, func.iterators)
-        ExaModels.constraint(c, expr, pars; lcon = _lower_bounds(set, T), ucon = _upper_bounds(set, T))
+        c, _ = ExaModels.add_con(c, expr, pars; lcon = _lower_bounds(set, T), ucon = _upper_bounds(set, T))
     end
+    return c
 end
 
 # Convert GenOpt expression trees to ExaModels format
@@ -57,9 +59,9 @@ function exagen(f::MOI.ScalarNonlinearFunction, offsets)
             @assert f.args[2] isa Integer
             if isnothing(offsets)
                 @assert isone(f.args[2])
-                return ExaModels.ParSource()
+                return ExaModels.DataSource()
             else
-                return ExaModels.ParIndexed(ExaModels.ParSource(), offsets[v.value] + f.args[2])
+                return ExaModels.DataIndexed(ExaModels.DataSource(), offsets[v.value] + f.args[2])
             end
         else
             error("Unexpected the first operand of `getindex` to be of type `$(typeof(v))`")
