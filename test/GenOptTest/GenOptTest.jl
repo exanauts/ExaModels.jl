@@ -48,6 +48,11 @@ function quadrotor_test()
     return model
 end
 
+function _get_exa_model(model)
+    be = backend(model)
+    return be.optimizer.model.optimizer.model
+end
+
 function runtests()
     @testset "GenOpt extension test" begin
         @testset "Quadrotor with ExaModels.Optimizer" begin
@@ -59,6 +64,22 @@ function runtests()
 
             obj = objective_value(model)
             @test isapprox(obj, 8.1797, atol = 1e-3)
+
+            # Verify that FunctionGenerator structure is retained in ExaModels
+            # (not dismantled into individual scalar constraints).
+            # The test has 10 @constraint calls with `container = GenOpt.ParametrizedArray`:
+            #  - 1 start constraint with n=9 iterations
+            #  - 9 dynamics constraints each with N=3 iterations
+            # Plus 1 empty block for standard (non-generator) constraints.
+            # If structure were lost, we'd see 36 entries each with 1 iteration.
+            m = _get_exa_model(model)
+            @test m.meta.ncon == 36
+            cons = m.cons
+            # Filter out the empty standard-constraint block
+            nonempty = filter(c -> length(c.itr) > 0, cons)
+            @test length(nonempty) == 10
+            itr_lengths = sort([length(c.itr) for c in nonempty])
+            @test itr_lengths == [3, 3, 3, 3, 3, 3, 3, 3, 3, 9]
         end
     end
 end
