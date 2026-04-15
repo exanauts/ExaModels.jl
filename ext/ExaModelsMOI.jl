@@ -220,7 +220,7 @@ function copy_constraints!(c, moim, var_to_idx, T)
 
     # Hook for extensions (e.g. GenOpt) to add their constraint types
     if applicable(ExaModels.copy_extra_constraints!, c, moim, var_to_idx, con_to_idx, T)
-        ExaModels.copy_extra_constraints!(c, moim, var_to_idx, con_to_idx, T)
+        c = ExaModels.copy_extra_constraints!(c, moim, var_to_idx, con_to_idx, T)
     end
 
     return c, con_to_idx
