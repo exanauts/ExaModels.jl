@@ -24,7 +24,7 @@ oneAPI = "8f75cd03-7ff8-4ecb-9b8f-daf728133b1b" # oneAPI version >= 2.6 is neede
 # OptimalControl = "5f98b655-cc9a-415a-b60e-744165666948"
 
 [extensions]
-ExaModelsGenOpt = "GenOpt"
+ExaModelsGenOpt = ["GenOpt", "MathOptInterface"]
 ExaModelsIpopt = ["MathOptInterface", "NLPModelsIpopt"]
 ExaModelsJuMP = "JuMP"
 ExaModelsKernelAbstractions = "KernelAbstractions"
