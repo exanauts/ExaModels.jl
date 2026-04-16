@@ -38,7 +38,7 @@ ExaModelsSpecialFunctions = "SpecialFunctions"
 
 [compat]
 Adapt = "4"
-GenOpt = "0.1"
+GenOpt = "0.2"
 Ipopt = "1.11"
 JuMP = "1"
 KernelAbstractions = "0.9"
