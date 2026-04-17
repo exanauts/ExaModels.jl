@@ -18,13 +18,14 @@ function is_extension_type end
 is_extension_type(::Type) = false
 
 """
-    exafy_extension_obj_arg(m) -> Union{Nothing, Tuple}
+    exafy_extension_obj_arg(m, var_to_idx) -> Union{Nothing, Tuple}
 
 Try to convert an objective function argument `m` to an `(expr, pars)` tuple
-for ExaModels. Returns `nothing` if the type is not handled by any extension.
+for ExaModels. `var_to_idx` maps `MOI.VariableIndex` to `(type, idx)` named tuples.
+Returns `nothing` if the type is not handled by any extension.
 """
 function exafy_extension_obj_arg end
-exafy_extension_obj_arg(m) = nothing
+exafy_extension_obj_arg(m, var_to_idx) = nothing
 
 """
     op(s::Symbol)
