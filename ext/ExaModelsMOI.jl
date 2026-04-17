@@ -743,7 +743,7 @@ function _make_index_map(model::MOI.ModelLike, var_to_idx, con_to_idx)
         end
     end
     for (F, S) in MOI.get(model, MOI.ListOfConstraintTypesPresent())
-        _make_constraints_map(model, map.con_map[F, S], con_to_idx)
+        _make_constraints_map(model, map.con_map[F, S], con_to_idx, var_to_idx)
     end
     return map
 end
@@ -751,10 +751,26 @@ function _make_constraints_map(
     model,
     map::MOI.Utilities.DoubleDicts.IndexDoubleDictInner{F,S},
     con_to_idx,
+    var_to_idx,
 ) where {F,S}
     for c in MOI.get(model, MOI.ListOfConstraintIndices{F,S}())
         if haskey(con_to_idx, c)
             map[c] = typeof(c)(con_to_idx[c])
+        end
+    end
+    return
+end
+function _make_constraints_map(
+    model,
+    map::MOI.Utilities.DoubleDicts.IndexDoubleDictInner{MOI.VariableIndex,S},
+    con_to_idx,
+    var_to_idx,
+) where {S}
+    for c in MOI.get(model, MOI.ListOfConstraintIndices{MOI.VariableIndex,S}())
+        vi = MOI.get(model, MOI.ConstraintFunction(), c)
+        entry = var_to_idx[vi]
+        if entry.type === :variable
+            map[c] = typeof(c)(entry.idx)
         end
     end
     return
