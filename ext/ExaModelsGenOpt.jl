@@ -19,7 +19,7 @@ function ExaModels.copy_extra_constraints!(c, moim, var_to_idx, con_to_idx, T)
     con_types = MOI.get(moim, MOI.ListOfConstraintTypesPresent())
     for (F, S) in con_types
         F <: FunctionGenerator || continue
-        cis = MOI.get(moim, MOI.ListOfConstraintIndices{F,S}())
+        cis = MOI.get(moim, MOI.ListOfConstraintIndices{F, S}())
         c = _copy_generator_constraints!(c, moim, cis, var_to_idx, con_to_idx, T, S)
     end
     return c
@@ -53,7 +53,7 @@ function exagen(f::MOI.ScalarNonlinearFunction, offsets, var_to_idx)
             end
             cp = cumprod(v.size)
             for i in 3:length(f.args)
-                idx += cp[i-2] * (exagen(f.args[i], offsets, var_to_idx) - 1)
+                idx += cp[i - 2] * (exagen(f.args[i], offsets, var_to_idx) - 1)
             end
             return ExaModels.Var(idx)
         elseif v isa IteratorIndex
@@ -79,19 +79,21 @@ function _exagen(func::MOI.ScalarNonlinearFunction, iterators, var_to_idx)
         cs = nothing
         pars = only.(iterators[].values)
     else
-        cs = [0; cumsum(lengths)[1:end-1]]
-        pars = vec(map(Base.Iterators.ProductIterator(ntuple(i -> iterators[i].values, length(iterators)))) do I
-            reduce((i, j) -> tuple(i..., j...), I)
-        end)
+        cs = [0; cumsum(lengths)[1:(end - 1)]]
+        pars = vec(
+            map(Base.Iterators.ProductIterator(ntuple(i -> iterators[i].values, length(iterators)))) do I
+                reduce((i, j) -> tuple(i..., j...), I)
+            end
+        )
     end
     expr = exagen(func, cs, var_to_idx)
     return expr, pars
 end
 
 # Bound helpers for vector sets used by FunctionGenerator constraints
-_lower_bounds(::Union{MOI.Zeros,MOI.Nonnegatives}, T) = zero(T)
+_lower_bounds(::Union{MOI.Zeros, MOI.Nonnegatives}, T) = zero(T)
 _lower_bounds(::MOI.Nonpositives, T) = typemin(T)
-_upper_bounds(::Union{MOI.Zeros,MOI.Nonpositives}, T) = zero(T)
+_upper_bounds(::Union{MOI.Zeros, MOI.Nonpositives}, T) = zero(T)
 _upper_bounds(::MOI.Nonnegatives, T) = typemax(T)
 
 end # module
