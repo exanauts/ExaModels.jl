@@ -53,7 +53,7 @@ end
 Base.show(io::IO, s::Expression) = _show_expression(io, s)
 function _show_expression(io::IO, s::Expression)
     expr = try
-        _expr_string(s.f(ParSource()))
+        _expr_string(s.f(DataSource()))
     catch
         "(?)"
     end
@@ -963,7 +963,7 @@ Constraint
     _add_con(c, f, pars, dims, start, lcon, ucon, name, tag)
 end
 
-@inline _get_generator(ns) = (0 for _ in _empty_con_itr(ns))
+@inline _get_generator(ns) = (Null(nothing) for _ in _empty_con_itr(ns))
 @inline _get_generator(gen::Tuple{G}) where G <: Base.Generator = gen[1]
 @inline _get_generator(n::Tuple{N}) where N <: AbstractNode = (n[1] for _ in 1:1)
 
