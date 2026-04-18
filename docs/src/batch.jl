@@ -84,10 +84,9 @@ for i in 1:ns
     println("Instance $i: v* = ", round(v_sol[1], digits = 4))
 end
 
-# ## Per-Instance Parameters
-# Each instance can have different parameter values.
-# Parameters are stored as a matrix `(nθ, ns)`. You can set different values
-# per instance using `set_parameter!`:
+# ## Updating Parameters
+# Parameters can be updated on the core using `set_parameter!` and then
+# rebuilding the model. The updated values apply to all instances:
 
 c2 = BatchExaCore(2)
 @add_var(c2, x, 2)
@@ -95,7 +94,7 @@ c2 = BatchExaCore(2)
 @add_obj(c2, (x[j] - p[j])^2 for j in 1:2)
 model2 = ExaModel(c2)
 
-# Update parameters for instance 2:
+# Update parameters (applies to all instances):
 ExaModels.set_parameter!(c2, p, [10.0, 20.0])
 model2 = ExaModel(c2)
 println("\nParameter matrix shape: ", size(model2.θ))

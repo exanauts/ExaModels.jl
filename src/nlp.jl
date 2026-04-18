@@ -1836,6 +1836,14 @@ BatchExaCore(nbatch::Integer; kwargs...) = ExaCore(; concrete = Val(true), nbatc
 # get_model — defined after BatchNLPModels is loaded (see ExaModels.jl)
 # ============================================================================
 
+"""
+    get_model(model)
+
+Return a solver-ready NLP model. For a [`BatchExaModel`](@ref), returns a
+[`FlattenNLPModel`](@ref) that presents all instances as a single flat
+`AbstractNLPModel{T, Vector{T}}`. For a regular [`ExaModel`](@ref), returns
+the model itself.
+"""
 get_model(model::ExaModel) = model
 
 """
