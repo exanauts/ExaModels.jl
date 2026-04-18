@@ -348,7 +348,7 @@ An ExaCore
   number of constraint patterns: ... 0
 ```
 """
-struct ExaCore{T,VT<:AbstractVector{T}, B, S, V, P, O, C, R} <: AbstractExaCore{T,VT,B,S}
+struct ExaCore{T,VT<:AbstractVector{T}, B, S, V, P, O, C, R, OR, SOR} <: AbstractExaCore{T,VT,B,S}
     name::Symbol
     backend::B
     var::V
@@ -374,8 +374,8 @@ struct ExaCore{T,VT<:AbstractVector{T}, B, S, V, P, O, C, R} <: AbstractExaCore{
     minimize::Bool
     tag::S  # For storing variable/constraint tag (e.g., scenario tag for two-stage models)
     refs::R
-    oracles::Vector{Any}       # VectorNonlinearOracle support
-    scalar_oracles::Vector{Any} # ScalarNonlinearOracle support
+    oracles::OR                # Tuple of VectorNonlinearOracle
+    scalar_oracles::SOR        # Tuple of ScalarNonlinearOracle
 end
 
 @inline function _exa_core(
@@ -405,8 +405,8 @@ end
     minimize = true,
     tag = nothing,
     refs = (;),
-    oracles = Any[],
-    scalar_oracles = Any[],
+    oracles = (),
+    scalar_oracles = (),
     )
 
     return ExaCore(
@@ -538,8 +538,8 @@ julia> result = ipopt(m; print_level=0)    # solve the problem
 
 ```
 """
-function ExaModel(c::C; prod = false, kwargs...) where {C<:ExaCore}
-    (isempty(c.oracles) && isempty(c.scalar_oracles)) || return _build_with_oracle(c; prod, kwargs...)
+# No-oracle path: always returns ExaModel (type-stable for juliac --trim=safe).
+function ExaModel(c::ExaCore{T,VT,B,S,V,P,O,C,R,Tuple{},Tuple{}}; prod = false, kwargs...) where {T,VT,B,S,V,P,O,C,R}
     return ExaModel(
         c.name,
         c.var,
@@ -565,6 +565,11 @@ function ExaModel(c::C; prod = false, kwargs...) where {C<:ExaCore}
         c.tag,
         c.refs,
     )
+end
+
+# Oracle path: always returns ExaModelWithOracle (type-stable for juliac --trim=safe).
+function ExaModel(c::ExaCore; prod = false, kwargs...)
+    return _build_with_oracle(c; prod, kwargs...)
 end
 
 build_extension(c::ExaCore; kwargs...) = nothing

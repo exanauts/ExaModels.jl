@@ -260,8 +260,7 @@ _oracle_input(oracle::ScalarNonlinearOracle, x) =
 Register a scalar objective oracle with `core`.
 """
 function objective(c::ExaCore, oracle::ScalarNonlinearOracle)
-    push!(c.scalar_oracles, oracle)
-    return oracle
+    return ExaCore(c; scalar_oracles = (c.scalar_oracles..., oracle))
 end
 
 
@@ -286,12 +285,10 @@ constraints and all registered oracles.
 Returns the oracle (for indexing convenience).
 """
 function constraint(c::ExaCore, oracle::VectorNonlinearOracle)
-    push!(c.oracles, oracle)
-    # All count updates (ncon, nnzj, nnzh) are deferred to _build_with_oracle
-    # so that SIMD constraints added *after* the oracle still get contiguous
-    # offsets starting from 0.  Bounds are also deferred and appended in
-    # _build_with_oracle (oracle constraints always come after SIMD constraints).
-    return oracle
+    # Immutable functional style: return a new ExaCore with the oracle appended.
+    # Count updates (ncon, nnzj, nnzh) are deferred to _build_with_oracle so that
+    # SIMD constraints added *after* the oracle still get contiguous offsets.
+    return ExaCore(c; oracles = (c.oracles..., oracle))
 end
 
 # ── Model type ────────────────────────────────────────────────────────────────
@@ -435,8 +432,8 @@ end
 # ── Internal constructor ───────────────────────────────────────────────────────
 
 function _build_with_oracle(c::ExaCore; kwargs...)
-    oracles = c.oracles                          # Vector{Any} of VectorNonlinearOracle
-    s_oracles = c.scalar_oracles                 # Vector{Any} of ScalarNonlinearOracle
+    oracles = c.oracles                          # Tuple of VectorNonlinearOracle
+    s_oracles = c.scalar_oracles                 # Tuple of ScalarNonlinearOracle
 
     # SIMD-only counts (oracle contributions deferred to here)
     n_simd_ncon = c.ncon
