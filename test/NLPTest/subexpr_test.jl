@@ -42,7 +42,8 @@ function test_subexpr_basic(backend)
     x_vals = solution(result2, x2)
     return @test subexpr_vals ≈ x_vals .^ 2 atol = sol_tolerance(eltype(c1.x0)) rtol = sol_tolerance(eltype(c1.x0))
 end
- 
+
+"""
 Test multi-dimensional subexpressions with automatic dimension inference.
 """
 function test_subexpr_multidim(backend)
@@ -78,6 +79,7 @@ function test_subexpr_multidim(backend)
         @test dx_sol[t, i] ≈ expected atol = sol_tolerance(eltype(c.x0)) rtol = sol_tolerance(eltype(c.x0))
     end
     return
+end
 
 """
 Test subexpression with automatic dimension inference from Cartesian product.
@@ -127,6 +129,7 @@ function test_subexpr_in_obj_and_con(backend)
     # sqrt(x) = 1 at optimum, so x = 1
     @test solution(result, x) ≈ ones(5) atol = sol_tolerance(eltype(c.x0)) rtol = sol_tolerance(eltype(c.x0))
     return @test solution(result, s) ≈ ones(5) atol = sol_tolerance(eltype(c.x0)) rtol = sol_tolerance(eltype(c.x0))
+end
 
 # """
 # Test that lifted subexpressions inherit start values from main variables.
