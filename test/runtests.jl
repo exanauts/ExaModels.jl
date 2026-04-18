@@ -23,6 +23,8 @@ include("UtilsTest/UtilsTest.jl")
 include("JuliaCTest/JuliaCTest.jl")
 include("TwoStageTest/TwoStageTest.jl")
 # include("OptimalControlTest/OptimalControlTest.jl")
+include("LinAlgTest/LinAlgTest.jl")
+include("OracleTest/OracleTest.jl")
 
 @testset verbose = true "ExaModels test" begin
     @info "Running Deprecated API Test"
@@ -49,4 +51,9 @@ include("TwoStageTest/TwoStageTest.jl")
     # @info "Running OptimalControl Test"
     # OptimalControlTest.runtests()
 
+    @info "Running LinAlg Test"
+    LinAlgTest.runtests()
+
+    @info "Running Oracle Test"
+    OracleTest.runtests()
 end

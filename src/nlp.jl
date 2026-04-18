@@ -224,6 +224,7 @@ struct ExaCore{T,VT<:AbstractVector{T}, B, S, V, P, O, C, R} <: AbstractExaCore{
     minimize::Bool
     tags::S  # For storing variable/constraint tags (e.g., scenario tags for two-stage models)
     refs::R
+    oracles::Vector{Any}  # VectorNonlinearOracle support
 end
 
 @inline function _exa_core(
@@ -252,7 +253,8 @@ end
     ucon = similar(x0),
     minimize = true,
     tags = nothing,
-    refs = (;)
+    refs = (;),
+    oracles = Any[],
     )
 
     return ExaCore(
@@ -280,7 +282,8 @@ end
         ucon,
         minimize,
         tags,
-        refs
+        refs,
+        oracles,
     )
 end
 
@@ -385,6 +388,7 @@ julia> result = ipopt(m; print_level=0)    # solve the problem
 ```
 """
 function ExaModel(c::C; prod = false, kwargs...) where {C<:ExaCore}
+    isempty(c.oracles) || return _build_with_oracle(c; kwargs...)
     return ExaModel(
         c.name,
         c.var,
@@ -404,12 +408,11 @@ function ExaModel(c::C; prod = false, kwargs...) where {C<:ExaCore}
             lcon = (c.lcon),
             ucon = (c.ucon),
             minimize = c.minimize,
-        )
-        ,
+        ),
         NLPModels.Counters(),
         build_extension(c; prod),
         c.tags,
-        c.refs
+        c.refs,
     )
 end
 

@@ -56,6 +56,7 @@ include("jacobian.jl")
 include("hessian.jl")
 include("nlp.jl")
 include("deprecated.jl")
+include("oracle.jl")
 include("tags.jl")
 include("utils.jl")
 
@@ -87,6 +88,11 @@ export ExaModel,
     exa_sum,
     exa_prod,
     @register_univariate,
-    @register_bivariate
+    @register_bivariate,
+    VectorNonlinearOracle,
+    ExaModelWithOracle,
+    has_matfree_jac,
+    has_matfree_hess,
+    embed_oracle
 
 end # module ExaModels
