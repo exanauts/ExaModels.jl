@@ -67,7 +67,11 @@ function _print_tree(io::IO, node::DataSource, indent::Int)
 end
 function _print_tree(io::IO, node::DataIndexed{I,n}, indent::Int) where {I,n}
     _print_tree(io, getfield(node, :inner), 0)  # getfield bypasses getproperty override
-    print(io, ".", n)
+    if n isa Integer
+        print(io, "[", n, "]")
+    else
+        print(io, ".", n)
+    end
 end
 function _print_tree(io::IO, node::VarSource, indent::Int)
     print(io, " "^indent, "x")
@@ -104,9 +108,32 @@ _is_one(::Val) = false
 _is_one(n::Real) = n == 1
 _is_one(_) = false
 
+# Operator precedence for parenthesization
+_op_prec(::Type{typeof(+)}) = 1
+_op_prec(::Type{typeof(-)}) = 1
+_op_prec(::Type{typeof(*)}) = 2
+_op_prec(::Type{typeof(/)}) = 2
+_op_prec(::Type{typeof(^)}) = 3
+_op_prec(::Type) = 0
+
+_node_prec(::Node2{F}) where {F} = _op_prec(F)
+_node_prec(_) = 10  # leaves / function calls never need parens
+
+# Print child, wrapping in parens if its precedence is lower than the parent's.
+function _print_child(io::IO, child, parent_prec::Int)
+    if _node_prec(child) < parent_prec
+        print(io, "(")
+        _print_tree(io, child, 0)
+        print(io, ")")
+    else
+        _print_tree(io, child, 0)
+    end
+end
+
 function _print_tree(io::IO, node::Node2{F}, indent::Int) where {F}
     op = _opname(F)
     a, b = node.inner1, node.inner2
+    prec = _op_prec(F)
     # Simplify identity operations
     if op == "+" && _is_zero(b)
         return _print_tree(io, a, indent)
@@ -127,20 +154,14 @@ function _print_tree(io::IO, node::Node2{F}, indent::Int) where {F}
     end
     if op == "^"
         print(io, " "^indent)
-        _print_tree(io, a, 0)
+        _print_child(io, a, prec)
         print(io, "^")
-        _print_tree(io, b, 0)
-    elseif op in ("*", "+", "-")
+        _print_child(io, b, prec)
+    elseif op in ("*", "/", "+", "-")
         print(io, " "^indent)
-        _print_tree(io, a, 0)
+        _print_child(io, a, prec)
         print(io, " ", op, " ")
-        _print_tree(io, b, 0)
-    elseif op == "/"
-        print(io, " "^indent, "(")
-        _print_tree(io, a, 0)
-        print(io, " / ")
-        _print_tree(io, b, 0)
-        print(io, ")")
+        _print_child(io, b, prec)
     else
         print(io, " "^indent, op, "(")
         _print_tree(io, a, 0)
