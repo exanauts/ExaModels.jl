@@ -187,6 +187,16 @@ Constraint Batch
 """,
 )
 
+"""
+    ConstraintAugBatch
+
+Batches multiple `add_con!` augmentation calls that share the same `SIMDFunction`
+**type** into a single node of the constraint linked list.
+"""
+struct ConstraintAugBatch{R,F,I} <: AbstractConstraint
+    inner::R
+    entries::Vector{ConEntry{F,I}}
+end
 
 """
     ConstraintAugmentation
