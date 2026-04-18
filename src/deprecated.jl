@@ -21,7 +21,7 @@ legacy mutating API (`variable`, `constraint`, etc.).
 `ExaCore(concrete = Val(true))` to obtain the bare immutable `ExaCore`
 required for AOT compilation.
 """
-mutable struct LegacyExaCore{T, VT <: AbstractVector{T}, B, S} <: AbstractExaCore{T,VT,B,S}
+mutable struct LegacyExaCore{T, VT <: AbstractArray{T}, B, S} <: AbstractExaCore{T,VT,B,S}
     inner::Any  # ExaCore{T,VT,B,S,...} — type erased so the tuple type params can grow
 end
 

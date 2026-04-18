@@ -303,7 +303,7 @@ An ExaCore
   number of constraint patterns: ... 0
 ```
 """
-struct ExaCore{T,VT<:AbstractVector{T}, B, S, V, P, O, C, R} <: AbstractExaCore{T,VT,B,S}
+struct ExaCore{T,VT<:AbstractArray{T}, B, S, V, P, O, C, R} <: AbstractExaCore{T,VT,B,S}
     name::Symbol
     backend::B
     var::V
@@ -427,18 +427,29 @@ An abstract type for ExaModel, which is a subtype of `NLPModels.AbstractNLPModel
 """
 abstract type AbstractExaModel{T,VT,E} <: NLPModels.AbstractNLPModel{T,VT} end
 
-struct ExaModel{T,VT,E,V,P,O,C,S,R} <: AbstractExaModel{T,VT,E}
+struct ExaModel{T,VT,E,V,P,O,C,S,R,M} <: AbstractExaModel{T,VT,E}
     name::Symbol
     vars::V
     pars::P
     objs::O
     cons::C
     θ::VT
-    meta::NLPModels.NLPModelMeta{T,VT}
+    meta::M
     counters::NLPModels.Counters
     ext::E
     tag::S
     refs::R
+end
+
+function ExaModel(
+    name::Symbol, vars, pars, objs, cons, θ::VT,
+    meta::M,
+    counters, ext, tag, refs,
+) where {T, VT <: AbstractArray{T}, M <: NLPModels.AbstractNLPModelMeta{T}}
+    ExaModel{T, VT, typeof(ext), typeof(vars), typeof(pars), typeof(objs),
+             typeof(cons), typeof(tag), typeof(refs), M}(
+        name, vars, pars, objs, cons, θ, meta, counters, ext, tag, refs,
+    )
 end
 
 function Base.show(io::IO, c::AbstractExaModel{T,VT}) where {T,VT}
@@ -488,6 +499,7 @@ julia> result = ipopt(m; print_level=0)    # solve the problem
 ```
 """
 function ExaModel(c::C; prod = false, kwargs...) where {C<:ExaCore}
+    nvar, ncon, nnzj, nnzh = _meta_dims(c)
     return ExaModel(
         c.name,
         c.var,
@@ -495,20 +507,19 @@ function ExaModel(c::C; prod = false, kwargs...) where {C<:ExaCore}
         c.obj,
         c.cons,
         c.θ,
-        NLPModels.NLPModelMeta(
-            c.nvar,
-            ncon = c.ncon,
-            nnzj = c.nnzj,
-            nnzh = c.nnzh,
-            x0 = (c.x0),
-            lvar = (c.lvar),
-            uvar = (c.uvar),
-            y0 = (c.y0),
-            lcon = (c.lcon),
-            ucon = (c.ucon),
+        BatchNLPModelMeta(
+            nvar,
+            c.x0,
+            c.lvar,
+            c.uvar,
+            ncon,
+            c.y0,
+            c.lcon,
+            c.ucon;
+            nnzj = nnzj,
+            nnzh = nnzh,
             minimize = c.minimize,
-        )
-        ,
+        ),
         NLPModels.Counters(),
         build_extension(c; prod),
         c.tag,
@@ -516,6 +527,7 @@ function ExaModel(c::C; prod = false, kwargs...) where {C<:ExaCore}
     )
 end
 
+_meta_dims(c::ExaCore) = (c.nvar, c.ncon, c.nnzj, c.nnzh)
 build_extension(c::ExaCore; kwargs...) = nothing
 
 @inline function Base.getindex(v::V, i) where {V<:AbstractVariable}
@@ -589,41 +601,38 @@ function __bound_check(a::UnitRange{Int}, b::I) where {I<:Integer}
 end
 
 
-function append!(backend, a, b::Base.Generator, lb)
-    if lb != 0
-        b = _adapt_gen(b)
-        la = length(a)
-        resize!(a, la + lb)
-        map!(b.f, view(a, (la+1):(la+lb)), convert_array(b.iter, backend))
-    end
-    return a
-end
+# Unified append! — works for both Vector and Matrix.
+# For Vector: grows length by lb.
+# For Matrix: grows rows by lb, broadcasting across columns.
+# The trailing dimensions (columns for Matrix, nothing for Vector) are preserved.
 
-function append!(backend, a, b::Base.Generator{UnitRange{I}}, lb) where {I}
-    if lb != 0
-        la = length(a)
-        resize!(a, la + lb)
-        map!(b.f, view(a, (la+1):(la+lb)), b.iter)
-    end
-    return a
-end
+@inline _trailing_dims(a) = Base.size(a)[2:end]
 
-function append!(backend, a, b::AbstractArray, lb)
-    if lb != 0
-        la = length(a)
-        resize!(a, la + lb)
-        map!(identity, view(a, (la+1):(la+lb)), convert_array(b, backend))
-    end
-    return a
+function _expand_to_shape(col::AbstractVector{T}, trailing::Tuple{}) where {T}
+    return col  # Vector target — no expansion needed
+end
+function _expand_to_shape(col::AbstractVector{T}, trailing::Tuple) where {T}
+    return repeat(reshape(col, :, ntuple(_ -> 1, length(trailing))...), 1, trailing...)
 end
 
 function append!(backend, a, b::Number, lb)
-    if lb != 0
-        la = length(a)
-        resize!(a, la + lb)
-        fill!(view(a, (la+1):(la+lb)), eltype(a)(b))
-    end
-    return a
+    lb == 0 && return a
+    new_part = fill(eltype(a)(b), lb, _trailing_dims(a)...)
+    return cat(a, new_part; dims = 1)
+end
+
+function append!(backend, a, b::AbstractArray, lb)
+    lb == 0 && return a
+    col = vec(convert_array(b, backend))
+    return cat(a, _expand_to_shape(col, _trailing_dims(a)); dims = 1)
+end
+
+function append!(backend, a, b::Base.Generator, lb)
+    lb == 0 && return a
+    b = _adapt_gen(b)
+    col = Vector{eltype(a)}(undef, lb)
+    map!(b.f, col, convert_array(b.iter, backend))
+    return cat(a, _expand_to_shape(col, _trailing_dims(a)); dims = 1)
 end
 
 @inline total(ns) = _total(ns...)

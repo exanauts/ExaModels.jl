@@ -59,8 +59,10 @@ include("hessian.jl")
 include("nlp.jl")
 include("deprecated.jl")
 include("utils.jl")
-include("batch.jl")
 include("tags.jl")
+include("BatchNLPModels.jl")
+using .BatchNLPModels
+include("batch.jl")
 
 export ExaModel,
     ExaCore,
@@ -90,6 +92,14 @@ export ExaModel,
     exa_prod,
     @register_univariate,
     @register_bivariate,
-    BatchExaModel
+    AbstractBatchNLPModel,
+    BatchNLPModelMeta,
+    BatchExaCore,
+    BatchExaModel,
+    EachInstance,
+    get_nbatch,
+    get_model,
+    var_indices,
+    cons_block_indices
 
 end # module ExaModels

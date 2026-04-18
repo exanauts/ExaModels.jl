@@ -1,62 +1,390 @@
 # ============================================================================
-# BatchExaModel — single-scenario builder + NLPModels matrix batch API
+# Batch ExaModel — dispatch on VT <: AbstractMatrix
+# ============================================================================
+#
+# Following the same pattern as TwoStageExaModel:
+# - BatchExaModelTag stored in ExaCore's tag field
+# - BatchExaCore = ExaCore{T, <:AbstractMatrix, B, <:BatchExaModelTag}
+# - EachInstance() marker for per-instance declarations
+# - ExaModel(c) handles both batch and non-batch via dispatch
+
+import .BatchNLPModels: obj!
+
+# ============================================================================
+# Tag and marker types
 # ============================================================================
 
 """
-    BatchExaModel{T, VT, MT, M} <: NLPModels.AbstractBatchNLPModel{T, MT}
+    EachInstance
 
-Parametric optimization model where multiple fully independent scenarios are fused
-into a single ExaModel and evaluated simultaneously using shared compiled expression
-patterns.
+Marker type used with [`add_var`](@ref), [`add_par`](@ref), and [`add_con`](@ref)
+to indicate that the declaration is replicated for each instance in a batch model.
 
-All scenarios share identical sparsity structures. The builder defines expressions
-for **one scenario**; `BatchExaModel` calls it `ns` times internally with offset
-variable/parameter handles.
-
-# Dimensions
-
-- `ns`: number of scenarios (batch size)
-- `nv`: number of variables per scenario
-- `nc`: number of constraints per scenario
-- `nθ`: number of parameters per scenario
+## Example
+```julia
+core = BatchExaCore(3)
+c, v = add_var(core, EachInstance(), 10)
+c, _ = add_obj(c, v[i, s]^2 for i in 1:10, s in 1:3)
+```
 """
-struct BatchExaModel{T, VT <: AbstractVector{T}, MT <: AbstractMatrix{T}, M} <:
-    NLPModels.AbstractBatchNLPModel{T, MT}
-    meta::NLPModels.BatchNLPModelMeta{T, MT}
-    model::M
-    objbuffer::VT
-    hess_perm::Vector{Int}
-    hess_buffer::VT
-    ns::Int
-    nv::Int
-    nc::Int
-    nθ::Int
-    nobj_per::Int
-    nnzj_per::Int
-    nnzh_per::Int
-    nnzh_obj_per::Int
-    nnzh_con_per::Int
+struct EachInstance end
+
+struct BatchExaModelTag <: AbstractExaModelTag
+    nbatch::Int
 end
+
+# ============================================================================
+# Type aliases
+# ============================================================================
+
+"""
+    BatchExaCore{T,VT,B}
+
+Type alias for an [`ExaCore`](@ref) whose `tag` is a [`BatchExaModelTag`]
+and whose storage arrays are matrices (columns = instances).
+"""
+const BatchExaCore{T,VT,B} = ExaCore{T,VT,B,<:BatchExaModelTag}
+
+"""
+    BatchExaModel{T,VT,E,V,P,O,C,R,M}
+
+Type alias for an [`ExaModel`](@ref) built from a [`BatchExaCore`](@ref).
+"""
+const BatchExaModel{T,VT,E,V,P,O,C,R,M} = ExaModel{T,VT,E,V,P,O,C,<:BatchExaModelTag,R,M}
+
+# ============================================================================
+# get_nbatch
+# ============================================================================
+
+get_nbatch(m::BatchExaModel) = m.tag.nbatch
+get_nbatch(c::BatchExaCore) = c.tag.nbatch
+get_nbatch(m::AbstractExaModel) = 1
+
+# ============================================================================
+# _meta_dims — per-instance dimensions for batch
+# ============================================================================
+
+function _meta_dims(c::C) where {T, VT <: AbstractArray{T}, C <: BatchExaCore{T, VT}}
+    nb = c.tag.nbatch
+    return (c.nvar ÷ nb, c.ncon ÷ nb, c.nnzj ÷ nb, c.nnzh ÷ nb)
+end
+
+# ============================================================================
+# BatchExaCore constructor
+# ============================================================================
+
+"""
+    BatchExaCore(nbatch; T = Float64, backend = nothing, kwargs...)
+
+Create an [`ExaCore`](@ref) for building batch optimization models with
+`nbatch` independent instances.
+
+Storage arrays (`x0`, `lvar`, `uvar`, `θ`, `y0`, `lcon`, `ucon`) are
+`Matrix{T}` with `nbatch` columns. Use [`add_var`](@ref), [`add_par`](@ref),
+[`add_obj`](@ref), and [`add_con`](@ref) with [`EachInstance()`](@ref) to
+declare per-instance components.
+
+## Example
+```julia
+core = BatchExaCore(3)
+c, v = add_var(core, EachInstance(), 10; start = 1.0, lvar = 0.0, uvar = 10.0)
+nb = get_nbatch(c)
+c, _ = add_obj(c, v[i, s]^2 for i in 1:10, s in 1:nb)
+model = ExaModel(c)
+```
+"""
+function BatchExaCore(nbatch::Integer; T::Type{<:AbstractFloat} = Float64, backend = nothing, kwargs...)
+    x0 = convert_array(zeros(T, 0, nbatch), backend)
+    return ExaCore(
+        :Generic,
+        backend,
+        (),   # var
+        (),   # par
+        (),   # obj
+        (),   # cons
+        0, 0, 0, 0, 0,  # nvar, npar, ncon, nconaug, nobj
+        0, 0, 0, 0,     # nnzc, nnzg, nnzj, nnzh
+        x0,
+        similar(x0),    # θ
+        similar(x0),    # lvar
+        similar(x0),    # uvar
+        similar(x0),    # y0
+        similar(x0),    # lcon
+        similar(x0),    # ucon
+        true,           # minimize
+        BatchExaModelTag(nbatch),
+        (;),            # refs
+    )
+end
+
+# ============================================================================
+# add_var / add_par / add_con for BatchExaCore
+# ============================================================================
+
+"""
+    add_var(core::BatchExaCore, ::EachInstance, dims...; start = 0, lvar = -Inf, uvar = Inf, name = nothing)
+
+Add per-instance variables to a batch core. Creates `prod(dims) * nbatch`
+variables total — one copy of the block per instance. The returned `Variable`
+has dimensions `(dims..., nbatch)`.
+"""
+function add_var(
+    c::C,
+    ::EachInstance,
+    ns...;
+    name = nothing,
+    start = zero(T),
+    lvar = T(-Inf),
+    uvar = T(Inf),
+) where {T, VT <: AbstractArray{T}, C <: BatchExaCore{T, VT}}
+    nbatch = c.tag.nbatch
+    len_per = total(ns)       # per-instance count
+    len_total = len_per * nbatch  # fused total
+    nvar = c.nvar + len_total
+
+    # Append per-instance rows to matrix storage
+    x0 = append!(c.backend, c.x0, start, len_per)
+    lv = append!(c.backend, c.lvar, lvar, len_per)
+    uv = append!(c.backend, c.uvar, uvar, len_per)
+
+    v = Variable((ns..., nbatch), len_total, c.nvar, _val_name(name), nothing)
+    (ExaCore(c; var = (v, c.var...), nvar = nvar, x0 = x0, lvar = lv, uvar = uv,
+             refs = add_refs(c.refs, name, v)), v)
+end
+
+"""
+    add_par(core::BatchExaCore, ::EachInstance, value::AbstractArray; name = nothing)
+    add_par(core::BatchExaCore, ::EachInstance, dims...; name = nothing, start = 0)
+
+Add per-instance parameters to a batch core. The parameter values are
+replicated for each instance.
+"""
+function add_par(
+    c::C,
+    ::EachInstance,
+    value::AbstractArray;
+    name = nothing,
+) where {T, VT <: AbstractArray{T}, C <: BatchExaCore{T, VT}}
+    nbatch = c.tag.nbatch
+    len_per = length(value)
+    len_total = len_per * nbatch
+    npar = c.npar + len_total
+    θ = append!(c.backend, c.θ, value, len_per)
+    p = Parameter((Base.size(value)..., nbatch), len_total, c.npar, nothing)
+    (ExaCore(c; par = (p, c.par...), θ = θ, npar = npar, refs = add_refs(c.refs, name, p)), p)
+end
+
+function add_par(
+    c::C,
+    ::EachInstance,
+    ns...;
+    name = nothing,
+    start = zero(T),
+) where {T, VT <: AbstractArray{T}, C <: BatchExaCore{T, VT}}
+    nbatch = c.tag.nbatch
+    len_per = total(ns)
+    len_total = len_per * nbatch
+    npar = c.npar + len_total
+    θ = append!(c.backend, c.θ, start, len_per)
+    p = Parameter((ns..., nbatch), len_total, c.npar, nothing)
+    (ExaCore(c; par = (p, c.par...), θ = θ, npar = npar, refs = add_refs(c.refs, name, p)), p)
+end
+
+"""
+    add_con(core::BatchExaCore, ::EachInstance, gen; start = 0, lcon = 0, ucon = 0, name = nothing)
+
+Add per-instance constraints to a batch core.
+"""
+function add_con(
+    c::C,
+    ::EachInstance,
+    ns...;
+    name = nothing,
+    tag = nothing,
+    start = zero(T),
+    lcon = zero(T),
+    ucon = zero(T),
+) where {T, VT <: AbstractArray{T}, C <: BatchExaCore{T, VT}}
+    gen = _get_generator(ns)
+    dims = _get_con_dims(ns)
+    gen = _adapt_gen(gen)
+    f = _simdfunction(T, gen.f(DataSource()), c.ncon, c.nnzj, c.nnzh)
+    pars = gen.iter
+
+    nitr = length(pars)
+    o = c.ncon
+    ncon = c.ncon + nitr
+    nnzj = c.nnzj + nitr * f.o1step
+    nnzh = c.nnzh + nitr * f.o2step
+
+    # Append per-instance rows to matrix storage
+    nbatch = c.tag.nbatch
+    nitr_per = nitr ÷ nbatch
+    y0 = append!(c.backend, c.y0, start, nitr_per)
+    lc = append!(c.backend, c.lcon, lcon, nitr_per)
+    uc = append!(c.backend, c.ucon, ucon, nitr_per)
+
+    con = Constraint(f, convert_array(pars, c.backend), o, dims, nothing)
+    (ExaCore(c; ncon = ncon, nnzj = nnzj, nnzh = nnzh, y0 = y0, lcon = lc, ucon = uc,
+             cons = (con, c.cons...), refs = add_refs(c.refs, name, con)), con)
+end
+
+# ============================================================================
+# Batch show
+# ============================================================================
 
 function Base.show(io::IO, m::BatchExaModel{T, VT}) where {T, VT}
-    println(io, "BatchExaModel{$T, $VT}")
-    println(io, "  Scenarios: $(m.ns)")
-    println(io, "  Variables per scenario: $(m.nv)")
-    println(io, "  Constraints per scenario: $(m.nc)")
-    println(io, "  Parameters per scenario: $(m.nθ)")
-    println(io, "  Total variables: $(m.ns * m.nv)")
-    println(io, "  Total constraints: $(m.ns * m.nc)")
-    println(io, "  Jacobian nnz per scenario: $(m.nnzj_per)")
-    return println(io, "  Hessian nnz per scenario: $(m.nnzh_per)")
+    nb = get_nbatch(m)
+    nv = NLPModels.get_nvar(m)
+    nc = NLPModels.get_ncon(m)
+    println(io, "An ExaModel{$T, $VT, ...} (batch)")
+    println(io, "  Instances: $nb")
+    println(io, "  Variables per instance: $nv")
+    println(io, "  Constraints per instance: $nc")
+    println(io, "  Total variables: $(nb * nv)")
+    return println(io, "  Total constraints: $(nb * nc)")
 end
 
 # ============================================================================
-# Helpers
+# Accessors
 # ============================================================================
 
-_count_hess_nnz(::ObjectiveNull) = 0
-_count_hess_nnz(::ConstraintNull) = 0
-_count_hess_nnz(node) = _count_hess_nnz(node.inner) + node.f.o2step * length(node.itr)
+"""
+    get_model(model)
+
+For batch models, returns a flat (Vector-based) ExaModel for direct NLPModels
+interface usage (e.g. MadNLP/Ipopt). For regular models, returns self.
+"""
+get_model(model::ExaModel) = model
+function get_model(model::BatchExaModel)
+    nb = get_nbatch(model)
+    nvar = NLPModels.get_nvar(model) * nb
+    ncon = NLPModels.get_ncon(model) * nb
+    nnzj = NLPModels.get_nnzj(model) * nb
+    nnzh = NLPModels.get_nnzh(model) * nb
+    meta = BatchNLPModelMeta(
+        nvar, vec(model.meta.x0), vec(model.meta.lvar), vec(model.meta.uvar),
+        ncon, vec(model.meta.y0), vec(model.meta.lcon), vec(model.meta.ucon);
+        nnzj = nnzj, nnzh = nnzh, minimize = model.meta.minimize,
+    )
+    return ExaModel(
+        model.name, model.vars, model.pars, model.objs, model.cons,
+        vec(model.θ), meta, NLPModels.Counters(), nothing, nothing, model.refs,
+    )
+end
+
+"""
+    var_indices(model, i) -> UnitRange
+
+Variable index range for instance `i` in the fused model's global variable vector.
+"""
+var_indices(model::BatchExaModel, i::Int) =
+    ((i - 1) * NLPModels.get_nvar(model) + 1):(i * NLPModels.get_nvar(model))
+
+"""
+    cons_block_indices(model, i) -> UnitRange
+
+Constraint index range for instance `i` in the fused model's global constraint vector.
+"""
+cons_block_indices(model::BatchExaModel, i::Int) =
+    ((i - 1) * NLPModels.get_ncon(model) + 1):(i * NLPModels.get_ncon(model))
+
+# ============================================================================
+# Objective buffer evaluation
+# ============================================================================
+
+_count_nobj(::Tuple{}) = 0
+_count_nobj(objs::Tuple) = length(first(objs).itr) + _count_nobj(Base.tail(objs))
+
+function _eval_objbuffer!(objbuffer, objs::Tuple, x, θ)
+    _eval_objbuffer!(objbuffer, Base.tail(objs), x, θ)
+    o = first(objs)
+    for i in eachindex(o.itr)
+        objbuffer[offset0(o, i)] = o.f(o.itr[i], x, θ)
+    end
+    return
+end
+_eval_objbuffer!(objbuffer, ::Tuple{}, x, θ) = nothing
+
+# ============================================================================
+# Batch API: obj / obj!
+# ============================================================================
+
+function obj!(m::BatchExaModel{T}, bx::AbstractMatrix, bf::AbstractVector) where {T}
+    nb = get_nbatch(m)
+    nobj_total = _count_nobj(m.objs)
+    nobj_per = nobj_total ÷ nb
+    objbuffer = Vector{T}(undef, nobj_total)
+    _eval_objbuffer!(objbuffer, m.objs, vec(bx), vec(m.θ))
+    obj_mat = reshape(objbuffer, nobj_per, nb)
+    bf .= vec(sum(obj_mat; dims = 1))
+    return bf
+end
+
+function obj(m::BatchExaModel{T}, bx::AbstractMatrix) where {T}
+    bf = Vector{T}(undef, get_nbatch(m))
+    obj!(m, bx, bf)
+    return bf
+end
+
+# ============================================================================
+# Batch API: grad!
+# ============================================================================
+
+function NLPModels.grad!(m::BatchExaModel{T}, bx::AbstractMatrix, bg::AbstractMatrix) where {T}
+    fill!(vec(bg), zero(T))
+    _grad!(m.objs, vec(bx), vec(m.θ), vec(bg))
+    return bg
+end
+
+# ============================================================================
+# Batch API: cons!
+# ============================================================================
+
+function NLPModels.cons!(m::BatchExaModel{T}, bx::AbstractMatrix, bc::AbstractMatrix) where {T}
+    fill!(vec(bc), zero(T))
+    _cons_nln!(m.cons, vec(bx), vec(m.θ), vec(bc))
+    return bc
+end
+
+# ============================================================================
+# Batch API: jac_structure! / jac_coord!
+# ============================================================================
+
+function NLPModels.jac_structure!(
+    m::BatchExaModel{T},
+    rows::AbstractVector{<:Integer},
+    cols::AbstractVector{<:Integer},
+) where {T}
+    nb = get_nbatch(m)
+    nnzj_per = NLPModels.get_nnzj(m)
+    total_nnzj = nnzj_per * nb
+    full_rows = zeros(Int, total_nnzj)
+    full_cols = zeros(Int, total_nnzj)
+    _jac_structure!(T, m.cons, full_rows, full_cols)
+    for k in 1:nnzj_per
+        rows[k] = full_rows[k]
+        cols[k] = full_cols[k]
+    end
+    return rows, cols
+end
+
+function NLPModels.jac_coord!(m::BatchExaModel{T}, bx::AbstractMatrix, jvals::AbstractVector) where {T}
+    fill!(jvals, zero(T))
+    _jac_coord!(m.cons, vec(bx), vec(m.θ), jvals)
+    return jvals
+end
+
+# ============================================================================
+# Batch API: hess_structure! / hess_coord!
+# ============================================================================
+
+# Helpers for hess permutation
+_count_hess_nnz(::Tuple{}) = 0
+function _count_hess_nnz(objs::Tuple)
+    o = first(objs)
+    return o.f.o2step * length(o.itr) + _count_hess_nnz(Base.tail(objs))
+end
 
 function _build_hess_perm(ns, nnzh_obj_per, nnzh_con_per)
     nnzh_per = nnzh_obj_per + nnzh_con_per
@@ -67,369 +395,115 @@ function _build_hess_perm(ns, nnzh_obj_per, nnzh_con_per)
             perm[base + k] = (s - 1) * nnzh_obj_per + k
         end
         for k in 1:nnzh_con_per
-            perm[base + nnzh_obj_per + k] = ns * nnzh_obj_per + (s - 1) * nnzh_con_per + k
+            perm[base + nnzh_obj_per + k] =
+                ns * nnzh_obj_per + (s - 1) * nnzh_con_per + k
         end
     end
     return perm
 end
 
-function _to_matrix(v::AbstractVector, nrows::Int, ncols::Int)
-    mat = similar(v, nrows, ncols)
-    copyto!(vec(mat), v)
-    return mat
+function _batch_hess_perm(m::BatchExaModel)
+    nb = get_nbatch(m)
+    nnzh_obj_per = _count_hess_nnz(m.objs) ÷ nb
+    nnzh_con_per = _count_hess_nnz(m.cons) ÷ nb
+    return _build_hess_perm(nb, nnzh_obj_per, nnzh_con_per)
 end
 
-# ============================================================================
-# Constructor
-# ============================================================================
-
-"""
-    BatchExaModel(build, c::ExaCore, ns::Int, θ_data::AbstractMatrix)
-
-Build a batch model from a single-scenario builder function.
-
-The user creates an `ExaCore` and passes parameter data as a matrix of size `(nθ, ns)`.
-The builder defines a **single scenario** — creating variables, objectives, and
-constraints using standard ExaModels calls. `BatchExaModel` invokes it `ns` times,
-each time with a per-scenario parameter handle `θ`. Variable creation via
-`variable(c, ...)` works normally and automatically gets the correct offsets.
-
-# Arguments
-- `build::Function`: Function `(c, θ) -> nothing`
-  - `c`: ExaCore — use `variable(c, ...)`, `objective(c, ...)`, `constraint(c, ...)` as usual
-  - `θ`: Parameter handle for this scenario's parameters (indices 1:nθ)
-- `c::ExaCore`: ExaCore instance (parameters will be registered internally)
-- `ns::Int`: Number of scenarios
-- `θ_data::AbstractMatrix`: Parameter matrix of size `(nθ, ns)`
-
-# Example
-```julia
-ns, nθ = 100, 3
-θ_data = rand(nθ, ns)
-
-c = ExaCore()
-model = BatchExaModel(c, ns, θ_data) do c, θ
-    v = variable(c, 5; start = 1.0, lvar = 0.0, uvar = 10.0)
-    objective(c, θ[j] * v[j]^2 for j in 1:5)
-    constraint(c, v[j] - θ[j] for j in 1:3)
-end
-```
-"""
-function BatchExaModel(
-        build::Function,
-        c::ExaCore,
-        ns::Int,
-        θ_data::AbstractMatrix,
-    )
-    Base.size(θ_data, 2) == ns || throw(
-        ArgumentError("θ_data must have ns=$ns columns, got $(Base.size(θ_data, 2))"),
-    )
-    nθ = Base.size(θ_data, 1)
-
-    # Register parameters as a flat vector (column-major: scenario 1, scenario 2, ...)
-    parameter(c, vec(θ_data))
-
-    # Call builder once per scenario with per-scenario θ handle.
-    # The builder calls variable(c, ...) itself — offsets are automatic.
-    for s in 1:ns
-        θ_s = Parameter(nθ, nθ, (s - 1) * nθ)
-        build(c, θ_s)
-    end
-
-    # Infer per-scenario dimensions
-    nv = c.nvar ÷ ns
-    nv * ns != c.nvar && throw(
-        DimensionMismatch(
-            "Total variables ($(c.nvar)) not evenly divisible by ns ($ns)",
-        ),
-    )
-
-    nc_total = c.ncon
-    nc = nc_total ÷ ns
-    nc * ns != nc_total && throw(
-        DimensionMismatch(
-            "Total constraints ($nc_total) not evenly divisible by ns ($ns)",
-        ),
-    )
-
-    nobj_total = c.nobj
-    nobj_per = nobj_total ÷ ns
-    nobj_per * ns != nobj_total && throw(
-        DimensionMismatch(
-            "Total objective entries ($nobj_total) not evenly divisible by ns ($ns)",
-        ),
-    )
-
-    objbuffer = similar(c.x0, nobj_total)
-
-    model = ExaModel(c)
-
-    # Per-scenario sparsity counts
-    total_nnzj = NLPModels.get_nnzj(model)
-    total_nnzh = NLPModels.get_nnzh(model)
-    nnzj_per = total_nnzj ÷ ns
-    nnzh_per = total_nnzh ÷ ns
-
-    # Obj/con hessian split
-    nnzh_obj_total = _count_hess_nnz(model.objs)
-    nnzh_con_total = _count_hess_nnz(model.cons)
-    nnzh_obj_per = nnzh_obj_total ÷ ns
-    nnzh_con_per = nnzh_con_total ÷ ns
-
-    # Hessian permutation
-    hess_perm = _build_hess_perm(ns, nnzh_obj_per, nnzh_con_per)
-
-    # Hessian buffer
-    hess_buffer = similar(c.x0, total_nnzh)
-
-    # Build BatchNLPModelMeta with matrices
-    T = eltype(c.x0)
-    x0_mat = _to_matrix(model.meta.x0, nv, ns)
-    lvar_mat = _to_matrix(model.meta.lvar, nv, ns)
-    uvar_mat = _to_matrix(model.meta.uvar, nv, ns)
-    y0_mat = _to_matrix(model.meta.y0, nc, ns)
-    lcon_mat = _to_matrix(model.meta.lcon, nc, ns)
-    ucon_mat = _to_matrix(model.meta.ucon, nc, ns)
-
-    MT = typeof(x0_mat)
-    meta = NLPModels.BatchNLPModelMeta{T, MT}(
-        ns,
-        nv;
-        x0 = x0_mat,
-        lvar = lvar_mat,
-        uvar = uvar_mat,
-        ncon = nc,
-        y0 = y0_mat,
-        lcon = lcon_mat,
-        ucon = ucon_mat,
-        nnzj = nnzj_per,
-        nnzh = nnzh_per,
-        minimize = model.meta.minimize,
-    )
-
-    VT = typeof(c.x0)
-    return BatchExaModel{T, VT, MT, typeof(model)}(
-        meta,
-        model,
-        objbuffer,
-        hess_perm,
-        hess_buffer,
-        ns,
-        nv,
-        nc,
-        nθ,
-        nobj_per,
-        nnzj_per,
-        nnzh_per,
-        nnzh_obj_per,
-        nnzh_con_per,
-    )
-end
-
-# ============================================================================
-# Accessors
-# ============================================================================
-
-"""
-    get_model(model::BatchExaModel)
-
-Get the underlying fused ExaModel for direct NLPModels interface usage (e.g. Ipopt).
-"""
-get_model(model::BatchExaModel) = model.model
-
-"""
-    var_indices(model::BatchExaModel, i) -> UnitRange
-
-Index range for variables of scenario `i` in the global (fused) variable vector.
-"""
-function var_indices(model::BatchExaModel, i::Int)
-    nv = model.nv
-    return ((i - 1) * nv + 1):(i * nv)
-end
-
-"""
-    cons_block_indices(model::BatchExaModel, i) -> UnitRange
-
-Index range for constraints of scenario `i` in the global (fused) constraint vector.
-"""
-function cons_block_indices(model::BatchExaModel, i::Int)
-    nc = model.nc
-    return ((i - 1) * nc + 1):(i * nc)
-end
-
-# ============================================================================
-# Parameter Updates
-# ============================================================================
-
-function set_scenario_parameters!(model::BatchExaModel, i::Int, θ_new::AbstractVector)
-    nθ = model.nθ
-    length(θ_new) != nθ && throw(
-        DimensionMismatch("Parameter size mismatch: expected $nθ, got $(length(θ_new))"),
-    )
-    θ_start = (i - 1) * nθ + 1
-    θ_end = i * nθ
-    copyto!(view(model.model.θ, θ_start:θ_end), θ_new)
-    return nothing
-end
-
-function set_all_scenario_parameters!(
-        model::BatchExaModel,
-        θ_sets::Vector{<:AbstractVector},
-    )
-    length(θ_sets) == model.ns ||
-        throw(ArgumentError("θ_sets must have length $(model.ns)"))
-    for i in 1:(model.ns)
-        set_scenario_parameters!(model, i, θ_sets[i])
-    end
-    return nothing
-end
-
-# ============================================================================
-# Objective buffer evaluation (CPU)
-# ============================================================================
-
-function _eval_objbuffer!(objbuffer, objs, x, θ)
-    _eval_objbuffer!(objbuffer, objs.inner, x, θ)
-    for i in eachindex(objs.itr)
-        objbuffer[offset0(objs, i)] = objs.f(objs.itr[i], x, θ)
-    end
-    return
-end
-_eval_objbuffer!(objbuffer, ::ObjectiveNull, x, θ) = nothing
-
-function _eval_objbuffer!(objbuffer, m::ExaModel, x)
-    return _eval_objbuffer!(objbuffer, m.objs, x, m.θ)
-end
-
-# ============================================================================
-# Batch API: obj!
-# ============================================================================
-
-function obj!(m::BatchExaModel, bx::AbstractMatrix, bf::AbstractVector)
-    _eval_objbuffer!(m.objbuffer, m.model, vec(bx))
-    obj_mat = reshape(m.objbuffer, m.nobj_per, m.ns)
-    bf .= vec(sum(obj_mat; dims = 1))
-    return bf
-end
-
-# ============================================================================
-# Batch API: grad!
-# ============================================================================
-
-function grad!(m::BatchExaModel, bx::AbstractMatrix, bg::AbstractMatrix)
-    grad!(m.model, vec(bx), vec(bg))
-    return bg
-end
-
-# ============================================================================
-# Batch API: cons!
-# ============================================================================
-
-function cons!(m::BatchExaModel, bx::AbstractMatrix, bc::AbstractMatrix)
-    cons_nln!(m.model, vec(bx), vec(bc))
-    return bc
-end
-
-# ============================================================================
-# Batch API: jac_structure!
-# ============================================================================
-
-function jac_structure!(
-        m::BatchExaModel,
-        rows::AbstractVector{<:Integer},
-        cols::AbstractVector{<:Integer},
-    )
-    total_nnzj = NLPModels.get_nnzj(m.model)
-    full_rows = zeros(Int, total_nnzj)
-    full_cols = zeros(Int, total_nnzj)
-    jac_structure!(m.model, full_rows, full_cols)
-
-    # Scenario 1 uses zero offset → its entries are already local (1:nc, 1:nv)
-    for k in 1:(m.nnzj_per)
-        rows[k] = full_rows[k]
-        cols[k] = full_cols[k]
-    end
-    return rows, cols
-end
-
-# ============================================================================
-# Batch API: jac_coord!
-# ============================================================================
-
-function jac_coord!(m::BatchExaModel, bx::AbstractMatrix, bjvals::AbstractMatrix)
-    jac_coord!(m.model, vec(bx), vec(bjvals))
-    return bjvals
-end
-
-# ============================================================================
-# Batch API: hess_structure!
-# ============================================================================
-
-function hess_structure!(
-        m::BatchExaModel,
-        rows::AbstractVector{<:Integer},
-        cols::AbstractVector{<:Integer},
-    )
-    total_nnzh = NLPModels.get_nnzh(m.model)
+function NLPModels.hess_structure!(
+    m::BatchExaModel{T},
+    rows::AbstractVector{<:Integer},
+    cols::AbstractVector{<:Integer},
+) where {T}
+    nb = get_nbatch(m)
+    nnzh_per = NLPModels.get_nnzh(m)
+    total_nnzh = nnzh_per * nb
     full_rows = zeros(Int, total_nnzh)
     full_cols = zeros(Int, total_nnzh)
-    hess_structure!(m.model, full_rows, full_cols)
-
-    # Extract scenario 1's entries using hess_perm (interleaves obj+con)
-    for k in 1:(m.nnzh_per)
-        idx = m.hess_perm[k]
+    _obj_hess_structure!(T, m.objs, full_rows, full_cols)
+    _con_hess_structure!(T, m.cons, full_rows, full_cols)
+    perm = _batch_hess_perm(m)
+    for k in 1:nnzh_per
+        idx = perm[k]
         rows[k] = full_rows[idx]
         cols[k] = full_cols[idx]
     end
     return rows, cols
 end
 
-# ============================================================================
-# Batch API: hess_coord!
-# ============================================================================
-
-function hess_coord!(
-        m::BatchExaModel,
-        bx::AbstractMatrix,
-        by::AbstractMatrix,
-        bobj_weight::AbstractVector,
-        bhvals::AbstractMatrix,
-    )
+function NLPModels.hess_coord!(
+    m::BatchExaModel{T},
+    bx::AbstractMatrix,
+    by::AbstractMatrix,
+    bobj_weight::AbstractVector,
+    hvals::AbstractVector,
+) where {T}
     x_flat = vec(bx)
     y_flat = vec(by)
-    nh = m.nnzh_per
-    perm = m.hess_perm
-
-    # Move perm to device for GPU-compatible gather indexing
-    perm_dev = similar(m.hess_buffer, Int, length(perm))
-    copyto!(perm_dev, perm)
+    nb = get_nbatch(m)
+    nh = NLPModels.get_nnzh(m)
+    total_nnzh = nh * nb
+    perm = _batch_hess_perm(m)
+    hess_buffer = Vector{T}(undef, total_nnzh)
 
     bobj_weight_cpu = Array(bobj_weight)
     if allequal(bobj_weight_cpu)
-        # Common case: uniform obj_weight → single fused call + permute
-        w = bobj_weight_cpu[1]
-        hess_coord!(m.model, x_flat, y_flat, m.hess_buffer; obj_weight = w)
-        bhvals_flat = vec(bhvals)
-        bhvals_flat .= m.hess_buffer[perm_dev]
+        w = first(bobj_weight_cpu)
+        fill!(hess_buffer, zero(T))
+        _obj_hess_coord!(m.objs, x_flat, m.θ, hess_buffer, w)
+        _con_hess_coord!(m.cons, x_flat, m.θ, y_flat, hess_buffer, w)
+        hvals .= hess_buffer[perm]
     else
-        # Varying weights: 2-pass approach
-        # Pass 1: objective hessian only (y=0, obj_weight=1)
-        y_zero = similar(y_flat)
-        fill!(y_zero, zero(eltype(y_flat)))
-        hess_obj = similar(m.hess_buffer)
-        hess_coord!(m.model, x_flat, y_zero, hess_obj; obj_weight = one(eltype(x_flat)))
-
-        # Pass 2: constraint hessian only (obj_weight=0)
-        hess_coord!(m.model, x_flat, y_flat, m.hess_buffer; obj_weight = zero(eltype(x_flat)))
-
-        # Build per-element weight vector: element i belongs to scenario (i-1)÷nh+1
-        w_cpu = [bobj_weight_cpu[(i - 1) ÷ nh + 1] for i in 1:length(perm)]
-        w_dev = similar(bobj_weight, length(perm))
-        copyto!(w_dev, w_cpu)
-
-        # Combine per scenario (vectorized for GPU)
-        bhvals_flat = vec(bhvals)
-        bhvals_flat .= w_dev .* hess_obj[perm_dev] .+ m.hess_buffer[perm_dev]
+        hess_obj = Vector{T}(undef, total_nnzh)
+        fill!(hess_obj, zero(T))
+        _obj_hess_coord!(m.objs, x_flat, m.θ, hess_obj, one(T))
+        fill!(hess_buffer, zero(T))
+        _con_hess_coord!(m.cons, x_flat, m.θ, y_flat, hess_buffer, zero(T))
+        w = [bobj_weight_cpu[(i - 1) ÷ nh + 1] for i in 1:length(perm)]
+        hvals .= w .* hess_obj[perm] .+ hess_buffer[perm]
     end
-    return bhvals
+    return hvals
+end
+
+# ============================================================================
+# Error guards: vector-argument NLPModels API on batch models
+# ============================================================================
+
+_batch_vector_error(name, m) = throw(ArgumentError(
+    "$name on batch ExaModel requires matrix arguments. " *
+    "Use the batch API or get_model(m) for the fused model.",
+))
+
+function obj(m::BatchExaModel, x::AbstractVector)
+    _batch_vector_error("obj", m)
+end
+
+function cons_nln!(m::BatchExaModel, x::AbstractVector, c::AbstractVector)
+    _batch_vector_error("cons_nln!", m)
+end
+
+function NLPModels.grad!(m::BatchExaModel, x::AbstractVector, g::AbstractVector)
+    _batch_vector_error("grad!", m)
+end
+
+function NLPModels.jac_coord!(m::BatchExaModel, x::AbstractVector, jac::AbstractVector)
+    _batch_vector_error("jac_coord!", m)
+end
+
+function NLPModels.hess_coord!(
+    m::BatchExaModel,
+    x::AbstractVector,
+    y::AbstractVector,
+    hess::AbstractVector;
+    obj_weight = one(eltype(x)),
+)
+    _batch_vector_error("hess_coord!", m)
+end
+
+function NLPModels.hess_coord!(
+    m::BatchExaModel,
+    x::AbstractVector,
+    hess::AbstractVector;
+    obj_weight = one(eltype(x)),
+)
+    _batch_vector_error("hess_coord!", m)
 end
