@@ -95,6 +95,7 @@ export ExaModel,
     get_var_scen,
     get_con_scen,
     AbstractVariableTag,
-    AbstractConstraintTag
+    AbstractConstraintTag,
+    get_parameter
 
 end # module ExaModels

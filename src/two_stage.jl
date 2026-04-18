@@ -286,8 +286,57 @@ function get_con_scen(model::TwoStageExaModel)
     return model.tag.con_scen
 end
 
+"""
+    get_parameter(model, param)
+
+Return a view of all values for `param` in `model.θ`.
+
+Works for both first-stage and second-stage parameters.  For second-stage
+parameters use `get_parameter(model, param, scen)` to extract a single scenario.
+"""
+function get_parameter(model::ExaModel, param::Parameter)
+    return view(model.θ, param.offset+1 : param.offset+param.length)
+end
+
+"""
+    get_parameter(model::TwoStageExaModel, param::SecondStageParameter, scen)
+
+Return a view of the values for `param` in scenario `scen`.
+
+The parameter must have been added with `EachScenario`.  `scen` must be an
+integer in `1:get_nscen(model)`.
+"""
+function get_parameter(model::TwoStageExaModel, param::SecondStageParameter, scen::Integer)
+    n_per_scen = param.length ÷ get_nscen(model)
+    start_idx  = param.offset + (scen - 1) * n_per_scen + 1
+    end_idx    = param.offset + scen * n_per_scen
+    return view(model.θ, start_idx:end_idx)
+end
+
+"""
+    set_parameter!(model::TwoStageExaModel, param::SecondStageParameter, scen, values)
+
+Update the values for `param` in scenario `scen` to `values`.
+
+The parameter must have been added with `EachScenario`.  `values` must have
+`param.length ÷ get_nscen(model)` elements.
+"""
+function set_parameter!(model::TwoStageExaModel, param::SecondStageParameter, scen::Integer, values)
+    n_per_scen = param.length ÷ get_nscen(model)
+    if length(values) != n_per_scen
+        throw(DimensionMismatch(
+            "expected $n_per_scen elements for scenario $scen, got $(length(values))"
+        ))
+    end
+    start_idx = param.offset + (scen - 1) * n_per_scen + 1
+    end_idx   = param.offset + scen * n_per_scen
+    copyto!(view(model.θ, start_idx:end_idx), values)
+    return nothing
+end
+
 export EachScenario, SecondStageVariable,
        FirstStageTag, SecondStageTag,
        FirstStageConstraintTag, SecondStageConstraintTag,
        TwoStageExaCore, TwoStageExaModel,
-       get_nscen, get_var_scen, get_con_scen
+       get_nscen, get_var_scen, get_con_scen,
+       get_parameter
