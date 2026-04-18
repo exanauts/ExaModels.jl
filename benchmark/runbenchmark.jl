@@ -32,7 +32,7 @@ if "cuda" in _extra || _all
     try
         @eval using CUDA
         if CUDA.functional()
-            push!(BENCH_BACKENDS, ("CUDA"))
+            push!(BENCH_BACKENDS, ("CUDA", CUDABackend()))
         else
             @warn "CUDA loaded but not functional — skipping"
         end
