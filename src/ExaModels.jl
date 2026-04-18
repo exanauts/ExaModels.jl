@@ -64,7 +64,6 @@ include("two_stage.jl")
 export ExaModel,
     ExaCore,
     LegacyExaCore,
-    TwoStageExaCore,
     Expression,
     add_var,
     add_par,

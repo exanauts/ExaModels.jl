@@ -56,6 +56,15 @@ function runtests()
             @test occursin("Node2{+}", s)
             @test occursin("sin(x[1])", s)
         end
+        
+        @testset "Expression show" begin
+            c3 = ExaCore(concrete = Val(true))
+            c3, y = add_var(c3, 3)
+            c3, expr = add_expr(c3, y[i]^2 for i in 1:3)
+            s = sprint(show, expr)
+            @test occursin("Subexpression", s)
+            @test occursin("x[i]^2", s)
+        end
     end
 end
 
