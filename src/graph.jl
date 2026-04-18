@@ -138,6 +138,9 @@ the index is itself a node).
 struct Var{I} <: AbstractNode
     i::I
 end
+struct Exp{I} <: AbstractNode
+    i::I
+end
 
 struct ParameterSource <: AbstractNode end
 struct ParameterNode{I} <: AbstractNode
@@ -216,13 +219,11 @@ end
 @inline Base.getindex(v::DataIndexed{I, n}, i) where {I, n} = DataIndexed(v, i)
 @inline Base.indexed_iterate(v::DataIndexed{I, n}, idx, start = 1) where {I, n} = (DataIndexed(v, idx), idx + 1)
 
-
 @inline Base.getindex(n::VarSource, i) = Var(i)
 @inline Base.getindex(::ParameterSource, i) = ParameterNode(i)
 
 @inline Node1(f::F, inner::I) where {F,I} = Node1{F,I}(inner)
 @inline Node2(f::F, inner1::I1, inner2::I2) where {F,I1,I2} = Node2{F,I1,I2}(inner1, inner2)
-
 
 struct Identity end
 
@@ -230,6 +231,9 @@ struct Identity end
 @inline (v::Var{I})(i, x, θ) where {I} = @inbounds x[v.i]
 @inline (v::Var{I})(i::Identity, x, θ) where {I <: AbstractNode} = x[v]
 @inline (v::Var{I})(i::Identity, x, θ) where {I <: Real} = x[v]
+
+@inline (e::Exp{I})(i, x, θ) where {I<:AbstractNode} = @inbounds x[e.i(i, x, θ)]
+@inline (e::Exp{I})(i, x, θ) where {I} = @inbounds x[e.i]
 
 @inline (v::ParameterNode{I})(i, x, θ) where {I<:AbstractNode} = @inbounds θ[v.i(i, x, θ)]
 @inline (v::ParameterNode{I})(::Any, x, θ) where {I} = @inbounds θ[v.i]
@@ -294,6 +298,11 @@ struct AdjointNodeVar{I,T} <: AbstractAdjointNode
     x::T
 end
 
+struct AdjointNodeExpr{I,T} <: AbstractAdjointNode
+    i::I
+    x::T
+end
+
 """
     AdjointNodeSource{VT}
 
@@ -304,8 +313,9 @@ primal value.
 # Fields
 - `inner::VT`: primal variable vector (or `nothing` for a zero-valued seed)
 """
-struct AdjointNodeSource{VT}
+struct AdjointNodeSource{VT,OE}
     inner::VT
+    offset_exps::OE
 end
 
 @inline AdjointNode1(f::F, x::T, y, inner::I) where {F,T,I} =
@@ -317,7 +327,6 @@ end
     AdjointNodeVar(i, 0)
 @inline Base.getindex(x::I, i) where {I<:AdjointNodeSource} =
     @inbounds AdjointNodeVar(i, x.inner[i])
-
 
 """
     SecondAdjointNode1{F, T, I} <: AbstractSecondAdjointNode
@@ -379,8 +388,13 @@ struct SecondAdjointNodeVar{I,T} <: AbstractSecondAdjointNode
     x::T
 end
 
+struct SecondAdjointNodeExpr{I,T} <: AbstractSecondAdjointNode
+    i::I
+    x::T
+end
+
 """
-    SecondAdjointNodeSource{VT}
+    SecondAdjointNodeSource{VT,VTI}
 
 Factory for [`SecondAdjointNodeVar`](@ref) leaves.  Indexing with `i` returns
 `SecondAdjointNodeVar(i, inner[i])`, seeding the Hessian-pass tree.
@@ -388,8 +402,9 @@ Factory for [`SecondAdjointNodeVar`](@ref) leaves.  Indexing with `i` returns
 # Fields
 - `inner::VT`: primal variable vector (or `nothing` for a zero-valued seed)
 """
-struct SecondAdjointNodeSource{VT}
+struct SecondAdjointNodeSource{VT,OE}
     inner::VT
+    offset_exps::OE
 end
 
 @inline SecondAdjointNode1(f::F, x::T, y, h, inner::I) where {F,T,I} =

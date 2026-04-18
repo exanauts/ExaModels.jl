@@ -36,6 +36,9 @@ include("PrettyPrintTest.jl")
     @info "Running NLP Test"
     NLPTest.runtests()
 
+    @info "Running AD Test"
+    ADTest.runtests()
+
     @info "Running JuMP Test"
     JuMPTest.runtests()
 

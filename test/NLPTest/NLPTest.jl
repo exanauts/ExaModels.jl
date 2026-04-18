@@ -9,10 +9,10 @@ import ..BACKENDS
 import ..ad_tolerance, ..sol_tolerance, ..solver_tolerance
 
 const NLP_TEST_ARGUMENTS = [
-    ("luksan_struct", 3),
-    ("luksan_struct", 20),
     ("luksan_vlcek", 3),
     ("luksan_vlcek", 20),
+    ("luksan_struct", 3),
+    ("luksan_struct", 20),
     ("ac_power", "pglib_opf_case3_lmbd.m"),
     ("ac_power", "pglib_opf_case14_ieee.m"),
     ("trivialmax", 1), # Issue #518 in MadNLP
@@ -47,7 +47,11 @@ include("conaug_test.jl")
 
 function test_nlp(m1, m2; full = false, tol = sol_tolerance(eltype(m1.meta.x0), eltype(m2.meta.x0)))
     @testset "NLP meta tests" begin
-        list = [:nvar, :ncon, :x0, :lvar, :uvar, :y0, :lcon, :ucon]
+        list = [:ncon, :y0, :lcon, :ucon]
+        @test length(varis1) == length(varis2)
+        @test m1.meta.lvar[varis1] == m2.meta.lvar[varis2]
+        @test m1.meta.uvar[varis1] == m2.meta.uvar[varis2]
+        @test m1.meta.x0[varis1] == m2.meta.x0[varis2]
 
         if full
             append!(list, [:nnzj, :nnzh])
@@ -67,10 +71,6 @@ function test_nlp(m1, m2; full = false, tol = sol_tolerance(eltype(m1.meta.x0), 
     end
 
     @testset "NLP callback tests" begin
-        x0 = copy(m2.meta.x0)
-        y0 = randn(eltype(m2.meta.x0), m2.meta.ncon)
-        u = randn(eltype(m2.meta.x0), m2.meta.nvar)
-        v = randn(eltype(m2.meta.x0), m2.meta.ncon)
 
         @test NLPModels.obj(m1, x0) ≈ NLPModels.obj(m2, x0) atol = tol rtol = tol
         @test NLPModels.cons(m1, x0) ≈ NLPModels.cons(m2, x0) atol = tol rtol = tol
@@ -86,7 +86,6 @@ function test_nlp(m1, m2; full = false, tol = sol_tolerance(eltype(m1.meta.x0), 
             jac_I_buffer2 = zeros(Int, m2.meta.nnzj)
             jac_J_buffer1 = zeros(Int, m1.meta.nnzj)
             jac_J_buffer2 = zeros(Int, m2.meta.nnzj)
-
             hess_buffer1 = zeros(m1.meta.nnzh)
             hess_buffer2 = zeros(m2.meta.nnzh)
             hess_I_buffer1 = zeros(Int, m1.meta.nnzh)
@@ -94,10 +93,10 @@ function test_nlp(m1, m2; full = false, tol = sol_tolerance(eltype(m1.meta.x0), 
             hess_J_buffer1 = zeros(Int, m1.meta.nnzh)
             hess_J_buffer2 = zeros(Int, m2.meta.nnzh)
 
-            NLPModels.jac_coord!(m1, x0, jac_buffer1)
-            NLPModels.jac_coord!(m2, x0, jac_buffer2)
-            NLPModels.hess_coord!(m1, x0, y0, hess_buffer1)
-            NLPModels.hess_coord!(m2, x0, y0, hess_buffer2)
+            NLPModels.jac_coord!(m1, x01, jac_buffer1)
+            NLPModels.jac_coord!(m2, x02, jac_buffer2)
+            NLPModels.hess_coord!(m1, x01, y0, hess_buffer1)
+            NLPModels.hess_coord!(m2, x02, y0, hess_buffer2)
             NLPModels.jac_structure!(m1, jac_I_buffer1, jac_J_buffer1)
             NLPModels.jac_structure!(m2, jac_I_buffer2, jac_J_buffer2)
             NLPModels.hess_structure!(m1, hess_I_buffer1, hess_J_buffer1)
@@ -114,10 +113,9 @@ function test_nlp(m1, m2; full = false, tol = sol_tolerance(eltype(m1.meta.x0), 
 end
 
 function test_nlp_solution(result1, result2; tol = sol_tolerance(eltype(result1.solution),eltype(result2.solution)))
-
     @testset "solution test" begin
         @test result1.status == result2.status
-        for field in [:solution, :multipliers, :multipliers_L, :multipliers_U]
+        for field in [:multipliers, :multipliers_L, :multipliers_U]
             @testset "$field" begin
                 @test getfield(result1, field) ≈ getfield(result2, field) atol = tol rtol = tol
             end
@@ -149,6 +147,9 @@ function runtests()
     @testset "NLP test" begin
         for backend in BACKENDS
             @testset "$backend" begin
+                @testset "Subexpr Test" begin
+                    test_subexpr(backend)
+                end
                 for (name, args) in NLP_TEST_ARGUMENTS
                     @testset "$name $args" begin
 
@@ -156,16 +157,19 @@ function runtests()
                         jump_model = getfield(@__MODULE__, Symbol("_jump_$(name)_model"))
 
                         m, vars0, cons0 = exa_model(nothing, args)
+                        varis0 = m.varis
                         m0 = WrapperNLPModel(m)
 
                         m, vars2, cons2 = jump_model(nothing, args)
                         m2 = MathOptNLPModel(m)
+                        varis2 = [x for x in 1:m2.meta.nvar]
 
                         set_optimizer(m, MadNLP.Optimizer)
                         set_optimizer_attribute(m, "print_level", MadNLP.ERROR)
                         optimize!(m)
 
                         m, vars1, cons1 = exa_model(backend, args)
+                        varis1 = m.varis
                         m1 = WrapperNLPModel(m)
 
                         @testset "Backend test" begin
@@ -183,7 +187,7 @@ function runtests()
                                 result2 = solver(m2)
 
                                 @testset "$sname" begin
-                                    test_nlp_solution(result1, result2)
+                                    test_nlp_solution((result1, varis1), (result2, varis2))
                                 end
                             end
                         end

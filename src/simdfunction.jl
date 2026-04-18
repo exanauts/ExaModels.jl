@@ -25,7 +25,7 @@ struct SIMDFunction{F,C1,C2}
 end
 
 @inline (sf::SIMDFunction{F,C1,C2})(i, x, θ) where {F,C1,C2} = sf.f(i, x, θ)
-@inline (sf::SIMDFunction{F,C1,C2})(i, x, θ) where {F <: Real,C1,C2} = sf.f
+@inline (sf::SIMDFunction{F,C1,C2})(i, x, θ) where {F<:Real,C1,C2} = sf.f
 
 """
     SIMDFunction(gen::Base.Generator, o0 = 0, o1 = 0, o2 = 0)
@@ -73,13 +73,13 @@ end
 @inline function _simdfunction(T, f, o0, o1, o2)
     f = replace_T(T, f)
 
-    d = f(Identity(), AdjointNodeSource(NaNSource{T}()), NaNSource{T}())
+    d = f(Identity(), AdjointNodeSource(NaNSource{T}(), nothing), NaNSource{T}())
     raw1 = Any[]
     ExaModels.grpass(d, nothing, nothing, nothing, raw1, T(NaN))
 
-    t = f(Identity(), SecondAdjointNodeSource(NaNSource{T}()), NaNSource{T}())
+    t = f(Identity(), SecondAdjointNodeSource(NaNSource{T}(), nothing), NaNSource{T}())
     raw2 = Any[]
-    ExaModels.hrpass0(t, nothing, nothing, nothing, nothing, raw2, T(NaN), T(NaN))
+    ExaModels.hrpass0(nothing, nothing, nothing, nothing, nothing, nothing, t, nothing, nothing, nothing, nothing, raw2, T(NaN), T(NaN))
 
     unique1 = _ident_unique(raw1)
     o1step = length(unique1)
@@ -91,7 +91,8 @@ end
     mapping2 = Int[findfirst(y -> y === x, unique2) for x in raw2]
     c2 = Compressor(ntuple(i -> mapping2[i], _hr0_val(typeof(t))))
 
-    SIMDFunction(f, c1, c2, o0, o1, o2, o1step, o2step)
+    f = SIMDFunction(f, c1, c2, o0, o1, o2, o1step, o2step)
+    return f
 end
 
 # === Val-based compile-time NTuple size computation (juliac-compatible, no @generated) ===

@@ -1,13 +1,13 @@
 abstract type AbstractVariable end
 abstract type AbstractParameter end
 abstract type AbstractConstraint end
+abstract type AbstractExpression end
 abstract type AbstractObjective end
 
 struct NaNSource{T} end
 Base.getindex(::NaNSource{T}, i) where {T} = T(NaN)
 Base.eltype(::NaNSource{T}) where {T} = T
 Base.eltype(::Type{NaNSource{T}}) where {T} = T
-
 """
     Variable
 
@@ -152,6 +152,12 @@ Constraint
     )
 end
 
+struct ExpressionAug{R,F,I} <: AbstractConstraint
+    inner::R
+    f::F
+    itr::I
+    oa::Int
+end
 
 """
     ConstraintAugmentation
@@ -405,7 +411,6 @@ end
 )
 @inline default_T(backend) = Float64
 
-
 Base.show(io::IO, c::ExaCore{T,VT,B}) where {T,VT,B} = print(
     io,
     """
@@ -507,8 +512,7 @@ function ExaModel(c::C; prod = false, kwargs...) where {C<:ExaCore}
             lcon = (c.lcon),
             ucon = (c.ucon),
             minimize = c.minimize,
-        )
-        ,
+        ),
         NLPModels.Counters(),
         build_extension(c; prod),
         c.tag,
@@ -587,7 +591,6 @@ end
 function __bound_check(a::UnitRange{Int}, b::I) where {I<:Integer}
     @assert(b in a, "Variable index bound error")
 end
-
 
 function append!(backend, a, b::Base.Generator, lb)
     if lb != 0
@@ -812,7 +815,6 @@ function set_value!(model::ExaModel, param::Parameter, values)
     copyto!(view(model.θ, param.offset+1:param.offset+param.length), values)
     return nothing
 end
-
 @inline _var_range(v::Variable) = v.offset+1 : v.offset+v.length
 @inline _con_range(c::Constraint) = c.offset+1 : c.offset+total(c.size)
 
@@ -1193,7 +1195,6 @@ add_con!(c, bus, gen.bus => -pg[gen.i] for gen in data.gen)            # subtrac
 
     gen = _adapt_gen(gen)
     f = SIMDFunction(T, gen, offset0(c1, 0), c.nnzj, c.nnzh)
-    pars = gen.iter
 
     _add_con!(c, f, pars, _constraint_dims(c1), tag)
 end
@@ -1217,7 +1218,6 @@ c, _ = add_con!(c, g[i] += x[i] + x[i+1] for i = 1:9)
 """
 @inline function add_con!(c::ExaCore{T}, gen::Base.Generator; tag = nothing) where T
     gen = _adapt_gen(gen)
-
     # Probe the generator: the result is a ConAugPair which carries the target
     # constraint alongside the index/expression pair.
     probe = gen.f(DataSource())
@@ -1303,6 +1303,64 @@ c, s = add_expr(c, x[i, k]^2 for (i, k) in itr)
 
     ex = Expression(ns, n, gen.f, collect(gen.iter), tag)
     return (ExaCore(c; refs = add_refs(c.refs, name, ex)), ex)
+end
+
+# ── Functional-style aliases (PR #215 API) ────────────────────────────────────
+# These provide a functional style API alternative to the @add_* macros.
+# They delegate to add_var / add_obj / add_con / add_expr but discard the
+# updated core (mutations are not visible since ExaCore is immutable).
+# NOTE: These work correctly only when ExaCore is used with `concrete = Val(false)`
+# (the LegacyExaCore mutable path) or when the caller captures the returned core.
+# For the immutable ExaCore, prefer the @add_var / @add_obj / @add_con / @add_expr macros.
+
+"""
+    variable(core, dims...; kwargs...)
+
+Functional alias for [`add_var`](@ref). Returns the `Variable` object.
+"""
+@inline function variable(c::C, ns...; kwargs...) where {C<:ExaCore}
+    _, v = add_var(c, ns...; kwargs...)
+    return v
+end
+
+"""
+    objective(core, gen; kwargs...)
+
+Functional alias for [`add_obj`](@ref). Returns the `Objective` object.
+"""
+@inline function objective(c::C, gen; kwargs...) where {C<:ExaCore}
+    _, o = add_obj(c, gen; kwargs...)
+    return o
+end
+
+"""
+    constraint(core, gen; kwargs...)
+
+Functional alias for [`add_con`](@ref). Returns the `Constraint` object.
+"""
+@inline function constraint(c::C, gen; kwargs...) where {C<:ExaCore}
+    _, con = add_con(c, gen; kwargs...)
+    return con
+end
+
+"""
+    constraint!(core, c1, gen; kwargs...)
+
+Functional alias for [`add_con!`](@ref). Returns the `ConstraintAugmentation` object.
+"""
+@inline function constraint!(c::C, c1, gen; kwargs...) where {C<:ExaCore}
+    _, ca = add_con!(c, c1, gen; kwargs...)
+    return ca
+end
+
+"""
+    subexpr(core, gen; kwargs...)
+
+Functional alias for [`add_expr`](@ref). Returns the `Expression` object.
+"""
+@inline function subexpr(c::C, gen; kwargs...) where {C<:ExaCore}
+    _, ex = add_expr(c, gen; kwargs...)
+    return ex
 end
 
 function jac_structure!(m::AbstractExaModel{T}, rows::AbstractVector, cols::AbstractVector) where T
@@ -1417,7 +1475,7 @@ function hess_coord!(
     m::AbstractExaModel,
     x::AbstractVector,
     hess::AbstractVector;
-    obj_weight = one(eltype(x)),
+    obj_weight=one(eltype(x)),
 )
     fill!(hess, zero(eltype(hess)))
     _obj_hess_coord!(m.objs, x, m.θ, hess, obj_weight)
@@ -1429,11 +1487,11 @@ function hess_coord!(
     x::AbstractVector,
     y::AbstractVector,
     hess::AbstractVector;
-    obj_weight = one(eltype(x)),
+    obj_weight=one(eltype(x)),
 )
     fill!(hess, zero(eltype(hess)))
     _obj_hess_coord!(m.objs, x, m.θ, hess, obj_weight)
-    _con_hess_coord!(m.cons, x, m.θ, y, hess, obj_weight)
+    _con_hess_coord!(m.cons, x, m.θ, y, hess)
     return hess
 end
 
@@ -1443,9 +1501,9 @@ _obj_hess_coord!(objs::Tuple{}, x, θ, hess, obj_weight) = nothing
     shessian!(hess, nothing, first(objs), x, θ, obj_weight, zero(eltype(hess)))
 end
 
-_con_hess_coord!(cons::Tuple{}, x, θ, y, hess, obj_weight) = nothing
-@inline function _con_hess_coord!(cons::Tuple, x, θ, y, hess, obj_weight)
-    _con_hess_coord!(Base.tail(cons), x, θ, y, hess, obj_weight)
+_con_hess_coord!(cons::Tuple{}, x, θ, y, hess) = nothing
+@inline function _con_hess_coord!(cons::Tuple, x, θ, y, hess)
+    _con_hess_coord!(Base.tail(cons), x, θ, y, hess)
     shessian!(hess, nothing, first(cons), x, θ, y, zero(eltype(hess)))
 end
 
@@ -1454,7 +1512,7 @@ function hprod!(
     x::AbstractVector,
     v::AbstractVector,
     Hv::AbstractVector;
-    obj_weight = one(eltype(x)),
+    obj_weight=one(eltype(x)),
 )
     fill!(Hv, zero(eltype(Hv)))
     _obj_hprod!(m.objs, x, m.θ, v, Hv, obj_weight)
@@ -1467,11 +1525,11 @@ function hprod!(
     y::AbstractVector,
     v::AbstractVector,
     Hv::AbstractVector;
-    obj_weight = one(eltype(x)),
+    obj_weight=one(eltype(x)),
 )
     fill!(Hv, zero(eltype(Hv)))
     _obj_hprod!(m.objs, x, m.θ, v, Hv, obj_weight)
-    _con_hprod!(m.cons, x, m.θ, y, v, Hv, obj_weight)
+    _con_hprod!(m.cons, x, m.θ, y, v, Hv)
     return Hv
 end
 
@@ -1481,9 +1539,9 @@ _obj_hprod!(objs::Tuple{}, x, θ, v, Hv, obj_weight) = nothing
     shessian!((Hv, v), nothing, first(objs), x, θ, obj_weight, zero(eltype(Hv)))
 end
 
-_con_hprod!(cons::Tuple{}, x, θ, y, v, Hv, obj_weight) = nothing
-@inline function _con_hprod!(cons::Tuple, x, θ, y, v, Hv, obj_weight)
-    _con_hprod!(Base.tail(cons), x, θ, y, v, Hv, obj_weight)
+_con_hprod!(cons::Tuple{}, x, θ, y, v, Hv) = nothing
+@inline function _con_hprod!(cons::Tuple, x, θ, y, v, Hv)
+    _con_hprod!(Base.tail(cons), x, θ, y, v, Hv)
     shessian!((Hv, v), nothing, first(cons), x, θ, y, zero(eltype(Hv)))
 end
 
