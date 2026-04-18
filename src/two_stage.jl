@@ -135,17 +135,18 @@ function add_var(
 end
 
 """
-    add_par(core::TwoStageExaCore, start; name = nothing)
+    add_par(core::TwoStageExaCore, start::AbstractArray; name = nothing)
+    add_par(core::TwoStageExaCore, n::AbstractRange; name = nothing, start = 0)
+    add_par(core::TwoStageExaCore, dims...; name = nothing, start = 0)
 
-Add first-stage parameters to a two-stage core.  Tagged with `FirstStageTag()`.
+Add first-stage parameters to a two-stage core, tagged with `FirstStageTag()`.
+
+Mirrors the [`add_par`](@ref) convention from `ExaCore`:
+- Pass `start::AbstractArray` as the first positional argument to use its values
+  and infer dimensions from `size(start)`.
+- Pass dimensions (`Integer` or `AbstractRange`) as positional arguments and
+  supply the uniform initial value via the `start` keyword.
 """
-function add_par(
-    c::TwoStageExaCore{T,VT,B},
-    start;
-    name = nothing,
-    ) where {T,VT<:AbstractVector{T},B}
-    return _add_par(c, FirstStageTag(), name, start, Base.size(start)...)
-end
 function add_par(
     c::TwoStageExaCore{T,VT,B},
     start::AbstractArray;
@@ -153,11 +154,28 @@ function add_par(
     ) where {T,VT<:AbstractVector{T},B}
     return _add_par(c, FirstStageTag(), name, start, Base.size(start)...)
 end
+function add_par(
+    c::TwoStageExaCore{T,VT,B},
+    n::AbstractRange;
+    name = nothing,
+    start = zero(T),
+    ) where {T,VT<:AbstractVector{T},B}
+    return _add_par(c, FirstStageTag(), name, start, n)
+end
+function add_par(
+    c::TwoStageExaCore{T,VT,B},
+    ns...;
+    name = nothing,
+    start = zero(T),
+    ) where {T,VT<:AbstractVector{T},B}
+    return _add_par(c, FirstStageTag(), name, start, ns...)
+end
+
 """
     add_par(core::TwoStageExaCore, ::EachScenario, start::AbstractVector; name = nothing)
 
 Add second-stage parameters to a two-stage core.  The parameter vector `start`
-is replicated for each scenario.  Tagged with `SecondStageTag()`.
+is replicated for each scenario, tagged with `SecondStageTag()`.
 """
 function add_par(
     c::TwoStageExaCore{T,VT,B},
