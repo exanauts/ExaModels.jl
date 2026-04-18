@@ -21,9 +21,7 @@ jobs:
       matrix:
         julia-version: ['1', 'lts']
         julia-arch: [x64]
-        os: [ubuntu-latest,macos-latest,windows-latest]
-        exclude:
-          - os: 'windows-latest'
+        os: [ubuntu-latest,windows-latest]
     steps:
       - uses: actions/checkout@v2
       - uses: julia-actions/setup-julia@latest
@@ -32,8 +30,6 @@ jobs:
       - uses: julia-actions/cache@v3
       - uses: julia-actions/julia-buildpkg@latest
       - name: Run tests
-        env:
-          EXAMODELS_SKIP_AOT: ${{ matrix.os == 'windows-latest' && '1' || '' }}
         run: |
           julia --startup-file=no --color=yes --project=./test -e '
             using Pkg
@@ -143,8 +139,6 @@ jobs:
           uname -a
           julia --startup-file=no -e 'println(Sys.ARCH); println(Sys.KERNEL)'
       - name: Run tests
-        env:
-          EXAMODELS_SKIP_AOT: "1"
         run: |
           julia --startup-file=no --color=yes --project=./test -e '
             push!(ARGS, "EXAMODELS_NO_TEST_CPU")
@@ -257,7 +251,7 @@ jobs:
 
   compare:
     needs: [bench-nothing, bench-cuda, bench-amdgpu, bench-oneapi]
-    if: always() && contains(needs.*.result, 'success')
+    if: always() && github.event_name == 'pull_request' && contains(needs.*.result, 'success')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

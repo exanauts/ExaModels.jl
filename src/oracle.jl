@@ -426,7 +426,7 @@ function _build_with_oracle(c::ExaCore; kwargs...)
         meta,
         NLPModels.Counters(),
         build_extension(c; kwargs...),
-        c.tags,
+        c.tag,
         Tuple(oracles),
         oracle_con_offsets,
         oracle_jac_offsets,

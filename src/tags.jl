@@ -1,26 +1,6 @@
-# Twostage models
-struct TwoStageTags{VI <: AbstractVector{Int}}
-    var_scenario::VI
-    con_scenario::VI
-end
-function append_var_tags(tags::TwoStageTags, backend, len; scenario = 0)
-    append!(backend, tags.var_scenario, scenario, len)
-end
-function append_con_tags(tags::TwoStageTags, backend, len; scenario = 0)
-    append!(backend, tags.con_scenario, scenario, len)
-end
-const TwoStageExaCore{T,VT,B} = ExaCore{T,VT,B,S} where S <: TwoStageTags
-function TwoStageExaCore(args...; backend = nothing, concrete = Val(false), kwargs...)
-    return ExaCore(
-        args...;
-        backend,
-        concrete,
-        tags = TwoStageTags(
-            convert_array(zeros(Int, 0), backend),
-            convert_array(zeros(Int, 0), backend)
-        ),
-        kwargs...
-    )
-end
-
-export TwoStageExaCore
+abstract type AbstractTag end
+abstract type AbstractVariableTag <: AbstractTag end
+abstract type AbstractConstraintTag <: AbstractTag end
+abstract type AbstractExaModelTag end
+@inline append_var_tags(::Nothing, backend, len) = nothing
+@inline append_con_tags(::Nothing, backend, len) = nothing

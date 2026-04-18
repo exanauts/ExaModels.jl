@@ -1,17 +1,19 @@
 import Pkg
 if "main" in ARGS
     Pkg.activate(joinpath(@__DIR__, "main"))
+    Pkg.update()
     Pkg.instantiate()
     const rev = "main"
 elseif "current" in ARGS
     Pkg.activate(joinpath(@__DIR__, "current"))
+    Pkg.update()
     Pkg.instantiate()
     const rev = "current"
 else
     error("Please specify either 'main' or 'current' as an argument to select the environment.")
 end
 
-using ExaModels, Printf, ExaPowerIO, Random
+using ExaModels, Printf, ExaPowerIO, Random, BenchmarkTools
 
 # ── Backend selection ──────────────────────────────────────────────────────────
 # Usage: julia runbenchmark.jl (main|current) [nothing] [cuda] [amdgpu] [oneapi] [all]
@@ -20,18 +22,17 @@ using ExaModels, Printf, ExaPowerIO, Random
 const _extra = filter(a -> a ∉ ("main", "current"), ARGS)
 const _all   = "all" in _extra
 
-# Each entry: (label, backend_object, sync_fn)
-const BENCH_BACKENDS = Tuple{String, Any, Function}[]
+const BENCH_BACKENDS = []
 
 if isempty(_extra) || "nothing" in _extra || _all
-    push!(BENCH_BACKENDS, ("nothing", nothing, () -> nothing))
+    push!(BENCH_BACKENDS, ("nothing", nothing))
 end
 
 if "cuda" in _extra || _all
     try
         @eval using CUDA
         if CUDA.functional()
-            push!(BENCH_BACKENDS, ("CUDA", CUDABackend(), CUDA.synchronize))
+            push!(BENCH_BACKENDS, ("CUDA", CUDABackend()))
         else
             @warn "CUDA loaded but not functional — skipping"
         end
@@ -44,7 +45,7 @@ if "amdgpu" in _extra || _all
     try
         @eval using AMDGPU
         if AMDGPU.functional()
-            push!(BENCH_BACKENDS, ("AMDGPU", ROCBackend(), AMDGPU.synchronize))
+            push!(BENCH_BACKENDS, ("AMDGPU", ROCBackend()))
         else
             @warn "AMDGPU loaded but not functional — skipping"
         end
@@ -57,7 +58,7 @@ if "oneapi" in _extra || _all
     try
         @eval using oneAPI
         if oneAPI.functional()
-            push!(BENCH_BACKENDS, ("oneAPI", oneAPIBackend(), oneAPI.synchronize))
+            push!(BENCH_BACKENDS, ("oneAPI", oneAPIBackend()))
         else
             @warn "oneAPI loaded but not functional — skipping"
         end
@@ -75,18 +76,7 @@ if isempty(BENCH_BACKENDS)
     exit(0)
 end
 
-# ── Timing helpers ─────────────────────────────────────────────────────────────
-
-function belapsed(ex; samples = 1000)
-    ex()  # one warmup to avoid JIT / kernel-compile overhead in the timed window
-    GC.gc()
-    GC.enable(false)
-    t = minimum(@elapsed ex() for _ in 1:samples)
-    GC.enable(true)
-    return t
-end
-
-function benchmark_callbacks(m, sync = () -> nothing; samples = 10)
+function benchmark_callbacks(m)
     nvar = m.meta.nvar
     ncon = m.meta.ncon
     nnzj = m.meta.nnzj
@@ -101,13 +91,11 @@ function benchmark_callbacks(m, sync = () -> nothing; samples = 10)
     jac  = similar(x, nnzj)
     hess = similar(x, nnzh)
 
-    # sync() blocks until all GPU kernels enqueued by the callback have
-    # completed, so @elapsed measures real compute time, not just launch time.
-    tobj  = belapsed(() -> (ExaModels.obj(m, x);          sync()); samples)
-    tcon  = belapsed(() -> (ExaModels.cons!(m, x, c);     sync()); samples)
-    tgrad = belapsed(() -> (ExaModels.grad!(m, x, g);     sync()); samples)
-    tjac  = belapsed(() -> (ExaModels.jac_coord!(m, x, jac);      sync()); samples)
-    thess = belapsed(() -> (ExaModels.hess_coord!(m, x, y, hess); sync()); samples)
+    tobj  = @belapsed ExaModels.obj($m, $x)
+    tcon  = @belapsed ExaModels.cons!($m, $x, $c)
+    tgrad = @belapsed ExaModels.grad!($m, $x, $g)
+    tjac  = @belapsed ExaModels.jac_coord!($m, $x, $jac)
+    thess = @belapsed ExaModels.hess_coord!($m, $x, $y, $hess)
 
     return (nvar=nvar, ncon=ncon, tobj=tobj, tcon=tcon, tgrad=tgrad, tjac=tjac, thess=thess)
 end
@@ -423,7 +411,7 @@ end
 results = Dict{Tuple{String,String,String}, NamedTuple}()
 print_header("backend-instance-param")
 
-for (bname, backend, sync) in BENCH_BACKENDS
+for (bname, backend) in BENCH_BACKENDS
     for (instance, param, thunk) in [
         ("rosenrock", "1000",      () -> exa_rosenrock_model(backend, 1000)),
         ("rosenrock", "10000",     () -> exa_rosenrock_model(backend, 10000)),
@@ -440,7 +428,7 @@ for (bname, backend, sync) in BENCH_BACKENDS
         ]
         key = (bname, instance, param)
         m = thunk()
-        r = benchmark_callbacks(m, sync)
+        r = benchmark_callbacks(m)
         print_row("$bname-$instance-$param", r)
         results[key] = r
     end

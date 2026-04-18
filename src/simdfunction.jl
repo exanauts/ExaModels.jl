@@ -39,7 +39,7 @@ Returns a `SIMDFunction` using the `gen`.
 - `o2`: offset for the second-order derivative evalution
 """
 @inline function SIMDFunction(T, gen::Base.Generator, o0 = 0, o1 = 0, o2 = 0)
-    _simdfunction(T, gen.f(ParSource()), o0, o1, o2)
+    _simdfunction(T, gen.f(DataSource()), o0, o1, o2)
 end
 
 @inline function _simdfunction(T, f::F, o0, o1, o2) where {F<:Real}
@@ -104,7 +104,7 @@ end
 _gr_val(::Type{<:AdjointNodeVar}) = Val(1)
 _gr_val(::Type{<:AdjointNull}) = Val(0)
 _gr_val(::Type{<:Real}) = Val(0)
-_gr_val(::Type{<:ParIndexed}) = Val(0)
+_gr_val(::Type{<:DataIndexed}) = Val(0)
 _gr_val(::Type{AdjointNode1{F,T,I}}) where {F,T,I} = _gr_val(I)
 _gr_val(::Type{AdjointNode2{F,T,I1,I2}}) where {F,T,I1,I2} =
     _add_vals(_gr_val(I1), _gr_val(I2))

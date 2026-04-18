@@ -8,7 +8,7 @@ for SIMD-parallel evaluation of nonlinear programs on CPUs and GPUs.
 
 Expressions are represented as trees of [`AbstractNode`](@ref) subtypes:
 
-- [`Var`](@ref) / [`ParIndexed`](@ref) — decision variables and data fields
+- [`Var`](@ref) / [`DataIndexed`](@ref) — decision variables and data fields
 - [`Node1`](@ref) / [`Node2`](@ref) — unary / binary operations
 - [`Constant{T}`](@ref) — compile-time scalar constant; the value `T` is
   stored as a **type parameter** so it is visible to the compiler and to
@@ -51,19 +51,20 @@ include("register.jl")
 include("specialization.jl")
 include("functionlist.jl")
 include("simdfunction.jl")
+include("prettyprint.jl")
 include("gradient.jl")
 include("jacobian.jl")
 include("hessian.jl")
 include("nlp.jl")
 include("deprecated.jl")
 include("oracle.jl")
-include("tags.jl")
 include("utils.jl")
+include("tags.jl")
+include("two_stage.jl")
 
 export ExaModel,
     ExaCore,
     LegacyExaCore,
-    TwoStageExaCore,
     Expression,
     add_var,
     add_par,
@@ -93,6 +94,25 @@ export ExaModel,
     ExaModelWithOracle,
     has_matfree_jac,
     has_matfree_hess,
-    embed_oracle
+    embed_oracle,
+    EachScenario,
+    TwoStageExaModel,
+    get_nscen,
+    get_var_scen,
+    get_con_scen,
+    AbstractVariableTag,
+    AbstractConstraintTag,
+    get_value,
+    set_value!,
+    get_start,
+    set_start!,
+    get_lvar,
+    set_lvar!,
+    get_uvar,
+    set_uvar!,
+    get_lcon,
+    set_lcon!,
+    get_ucon,
+    set_ucon!
 
 end # module ExaModels

@@ -22,6 +22,8 @@ include("JuMPTest/JuMPTest.jl")
 include("UtilsTest/UtilsTest.jl")
 include("JuliaCTest/JuliaCTest.jl")
 include("TwoStageTest/TwoStageTest.jl")
+include("GetterSetterTest/GetterSetterTest.jl")
+include("PrettyPrintTest.jl")
 # include("OptimalControlTest/OptimalControlTest.jl")
 include("LinAlgTest/LinAlgTest.jl")
 include("OracleTest/OracleTest.jl")
@@ -48,6 +50,12 @@ include("OracleTest/OracleTest.jl")
     @info "Running TwoStage Test"
     TwoStageTest.runtests()
 
+    @info "Running Getter/Setter Test"
+    GetterSetterTest.runtests()
+
+    @info "Running PrettyPrint Test"
+    PrettyPrintTest.runtests()
+
     # @info "Running OptimalControl Test"
     # OptimalControlTest.runtests()
 
@@ -57,3 +65,8 @@ include("OracleTest/OracleTest.jl")
     @info "Running Oracle Test"
     OracleTest.runtests()
 end
+
+# Force full GC before Julia exits so that OpenCL/PoCL objects are finalized
+# in the correct order, preventing segfaults during Julia's atexit teardown.
+GC.gc(true)
+GC.gc(true)

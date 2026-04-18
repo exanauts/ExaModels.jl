@@ -60,7 +60,7 @@ function fixed_variable_e2etest()
         typeof(*),
         ExaModels.Var{T1},
         T2,
-    } where {T1<:ExaModels.ParIndexed,T2<:ExaModels.ParIndexed}
+    } where {T1<:ExaModels.DataIndexed,T2<:ExaModels.DataIndexed}
 
     @test em.cons[3] isa ExaModels.Constraint
     @test em.cons[3].f.f isa ExaModels.Null{Nothing}
@@ -70,7 +70,7 @@ function fixed_variable_e2etest()
         typeof(*),
         T1,
         ExaModels.Node1{typeof(abs2),ExaModels.Var{T2}},
-    } where {T1<:ExaModels.ParIndexed,T2<:ExaModels.ParIndexed}
+    } where {T1<:ExaModels.DataIndexed,T2<:ExaModels.DataIndexed}
 
     jm = JuMP.Model()
 
@@ -91,14 +91,14 @@ function fixed_variable_e2etest()
         typeof(*),
         ExaModels.ParameterNode{T1},
         T2,
-    } where {T1<:ExaModels.ParIndexed,T2<:ExaModels.ParIndexed}
+    } where {T1<:ExaModels.DataIndexed,T2<:ExaModels.DataIndexed}
     @test em.cons[3] isa ExaModels.ConstraintAugmentation
     @test em.cons[3].f.f isa Pair
     @test typeof(em.cons[3].f.f.second) <: ExaModels.Node2{
         typeof(*),
         ExaModels.Var{T1},
         T2,
-    } where {T1<:ExaModels.ParIndexed,T2<:ExaModels.ParIndexed}
+    } where {T1<:ExaModels.DataIndexed,T2<:ExaModels.DataIndexed}
     @test em.cons[4] isa ExaModels.Constraint
     @test em.cons[4].f.f isa ExaModels.Null{Nothing}
 
@@ -121,7 +121,7 @@ function no_constraints_e2etest()
 
     @test em.objs[1].f.f isa ExaModels.Null
     @test typeof(em.objs[2].f.f) <:
-          ExaModels.Node1{typeof(sin),ExaModels.Var{T1}} where {T1<:ExaModels.ParIndexed}
+          ExaModels.Node1{typeof(sin),ExaModels.Var{T1}} where {T1<:ExaModels.DataIndexed}
 
     N=5
     jm = JuMP.Model()

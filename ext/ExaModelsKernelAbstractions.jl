@@ -193,11 +193,11 @@ _conaug_structure!(T, backend, ::Tuple{}, sparsity) = nothing
 function _conaug_structure!(T, backend, (con, cons...), sparsity)
     _conaug_structure!(T, backend, cons, sparsity)
     con isa ExaModels.ConstraintAugmentation && !isempty(con.itr) &&
-        kers(backend)(sparsity, con.f, con.itr, con.oa; ndrange = length(con.itr))
+        kers(backend)(sparsity, con.f, con.itr, con.oa, con.dims; ndrange = length(con.itr))
 end
-@kernel function kers(sparsity, @Const(f), @Const(itr), @Const(oa))
+@kernel function kers(sparsity, @Const(f), @Const(itr), @Const(oa), @Const(dims))
     I = @index(Global)
-    @inbounds sparsity[oa+I] = (ExaModels.offset0(f, itr, I), oa + I)
+    @inbounds sparsity[oa+I] = (ExaModels.offset0(f, itr, I, dims), oa + I)
 end
 
 
@@ -313,11 +313,10 @@ function ExaModels.grad!(
 ) where {T,VT,E<:KAExtension,V<:AbstractVector}
     gradbuffer = m.ext.gradbuffer
 
+    fill!(y, zero(eltype(y)))
     if !isempty(gradbuffer)
         fill!(gradbuffer, zero(eltype(gradbuffer)))
         _grad!(m.ext.backend, m.ext.gradbuffer, m.objs, x, m.θ)
-
-        fill!(y, zero(eltype(y)))
         compress_to_dense(m.ext.backend)(
             y,
             gradbuffer,
@@ -325,7 +324,7 @@ function ExaModels.grad!(
             m.ext.gsparsity;
             ndrange = length(m.ext.gptr) - 1,
         )
-        end
+    end
 
     return y
 end
@@ -571,7 +570,7 @@ function ExaModels.sjacobian!(
     adj,
 ) where {B<:KernelAbstractions.Backend}
     if !isempty(f.itr)
-        kerj(backend)(y1, y2, f.f, f.itr, x, θ, adj; ndrange = length(f.itr))
+        kerj(backend)(y1, y2, f.f, f.itr, x, θ, adj, ExaModels._constraint_dims(f); ndrange = length(f.itr))
     end
 end
 
@@ -601,7 +600,7 @@ function ExaModels.shessian!(
     adj2,
 ) where {B<:KernelAbstractions.Backend,V<:AbstractVector}
     if !isempty(f.itr)
-        kerh2(backend)(y1, y2, f.f, f.itr, x, θ, adj, adj2; ndrange = length(f.itr))
+        kerh2(backend)(y1, y2, f.f, f.itr, x, θ, adj, adj2, ExaModels._constraint_dims(f); ndrange = length(f.itr))
     end
 end
 
@@ -636,7 +635,8 @@ end
     @Const(x),
     @Const(θ),
     @Const(adjs1),
-    @Const(adj2)
+    @Const(adj2),
+    @Const(dims)
 )
     I = @index(Global)
     @inbounds ExaModels.hrpass0(
@@ -646,17 +646,17 @@ end
         y2,
         ExaModels.offset2(f, I),
         0,
-        adjs1[ExaModels.offset0(f, itr, I)],
+        adjs1[ExaModels.offset0(f, itr, I, dims)],
         adj2,
     )
 end
 
-@kernel function kerj(y1, y2, @Const(f), @Const(itr), @Const(x), @Const(θ), @Const(adj))
+@kernel function kerj(y1, y2, @Const(f), @Const(itr), @Const(x), @Const(θ), @Const(adj), @Const(dims))
     I = @index(Global)
     @inbounds ExaModels.jrpass(
         f(itr[I], ExaModels.AdjointNodeSource(x), θ),
         f.comp1,
-        ExaModels.offset0(f, itr, I),
+        ExaModels.offset0(f, itr, I, dims),
         y1,
         y2,
         ExaModels.offset1(f, I),

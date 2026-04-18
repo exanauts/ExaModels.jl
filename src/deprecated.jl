@@ -29,7 +29,7 @@ end
 @inline function _make_exacore(::Val{false}, ::Type{T}, backend; kwargs...) where {T}
     @warn "`ExaCore()` is deprecated, and will be removed in v0.11. Use `ExaCore(concrete = Val(true))` for the immutable ExaCore. The default behavior for `ExaCore()` will change to return the immutable ExaCore in v0.11."
     inner = _exa_core(; x0 = convert_array(zeros(T, 0), backend), backend, kwargs...)
-    return LegacyExaCore{T, typeof(inner.x0), typeof(backend), typeof(inner.tags)}(inner)
+    return LegacyExaCore{T, typeof(inner.x0), typeof(backend), typeof(inner.tag)}(inner)
 end
 
 # ---------------------------------------------------------------------------
@@ -121,6 +121,49 @@ function subexpr(c::LegacyExaCore, args...; kwargs...)
     new_core, ex = add_expr(c.inner, args...; kwargs...)
     c.inner = new_core
     return ex
+end
+
+# ---------------------------------------------------------------------------
+# Forwarding add_* methods for LegacyExaCore so that @add_var/@add_con/etc.
+# macros (which expand to `core, v = add_*(core, ...)`) work with the legacy
+# mutable wrapper.  Each method delegates to the inner ExaCore, mutates
+# c.inner in place, and returns (c, result) to match the functional API.
+# ---------------------------------------------------------------------------
+
+function add_var(c::LegacyExaCore, args...; kwargs...)
+    new_core, v = add_var(c.inner, args...; kwargs...)
+    c.inner = new_core
+    return (c, v)
+end
+
+function add_par(c::LegacyExaCore, args...; kwargs...)
+    new_core, p = add_par(c.inner, args...; kwargs...)
+    c.inner = new_core
+    return (c, p)
+end
+
+function add_obj(c::LegacyExaCore, args...; kwargs...)
+    new_core, o = add_obj(c.inner, args...; kwargs...)
+    c.inner = new_core
+    return (c, o)
+end
+
+function add_con(c::LegacyExaCore, args...; kwargs...)
+    new_core, con = add_con(c.inner, args...; kwargs...)
+    c.inner = new_core
+    return (c, con)
+end
+
+function add_con!(c::LegacyExaCore, args...; kwargs...)
+    new_core, aug = add_con!(c.inner, args...; kwargs...)
+    c.inner = new_core
+    return (c, aug)
+end
+
+function add_expr(c::LegacyExaCore, args...; kwargs...)
+    new_core, ex = add_expr(c.inner, args...; kwargs...)
+    c.inner = new_core
+    return (c, ex)
 end
 
 export LegacyExaCore, variable, parameter, objective, constraint, constraint!, subexpr
