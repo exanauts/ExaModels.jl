@@ -56,7 +56,7 @@ function runtests()
             @test occursin("Node2{+}", s)
             @test occursin("sin(x[1])", s)
         end
-
+        
         @testset "Expression show" begin
             c3 = ExaCore(concrete = Val(true))
             c3, y = add_var(c3, 3)

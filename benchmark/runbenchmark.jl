@@ -1,10 +1,12 @@
 import Pkg
 if "main" in ARGS
     Pkg.activate(joinpath(@__DIR__, "main"))
+    Pkg.update()
     Pkg.instantiate()
     const rev = "main"
 elseif "current" in ARGS
     Pkg.activate(joinpath(@__DIR__, "current"))
+    Pkg.update()
     Pkg.instantiate()
     const rev = "current"
 else
@@ -81,7 +83,7 @@ function belapsed(ex; samples = 1000)
     ex()  # one warmup to avoid JIT / kernel-compile overhead in the timed window
     GC.gc()
     GC.enable(false)
-    t = minimum(@elapsed ex() for _ in 1:samples)
+    t = sum(@elapsed ex() for _ in 1:samples)/samples
     GC.enable(true)
     return t
 end
