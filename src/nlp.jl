@@ -882,8 +882,17 @@ end
 
 """
     add_con(core, generator; start = 0, lcon = 0, ucon = 0, name = nothing, tag = nothing)
+    add_con(core, dims...; start = 0, lcon = 0, ucon = 0, name = nothing, tag = nothing)
 
-Adds constraints specified by a `generator` to `core`, and returns `(core, Constraint)`.
+Adds constraints to `core` and returns `(core, Constraint)`.
+
+**Generator form**: pass a `generator` that yields one expression per constraint row.
+
+**Dims form**: pass integer or `UnitRange` dimensions to create empty constraints,
+then use [`add_con!`](@ref) / [`@add_con!`](@ref) to accumulate terms afterwards.
+`dims` can be a single integer (`add_con(c, 9)`), multiple integers
+(`add_con(c, 3, 4)` for a 3×4 grid), or `AbstractUnitRange` values
+(`add_con(c, 1:3, 2:5)`) — matching the convention used by [`add_var`](@ref).
 
 ## Keyword Arguments
 - `start`: The initial guess of the dual solution. Can either be `Number`, `AbstractArray`, or `Generator`.
@@ -911,25 +920,8 @@ Constraint
 
   where |I| = 9
 ```
-"""
 
-"""
-    add_con(core, dims...; start = 0, lcon = 0, ucon = 0, name = nothing, tag = nothing)
-
-Adds empty constraints with dimensions specified by `dims` to `core` and returns
-`(core, Constraint)`.  No expression is attached initially — use
-[`add_con!`](@ref) / [`@add_con!`](@ref) to accumulate terms into the rows
-afterwards.
-
-`dims` can be a single integer (`add_con(c, 9)`), multiple integers
-(`add_con(c, 3, 4)` for a 3×4 grid), or `AbstractUnitRange` values
-(`add_con(c, 1:3, 2:5)`) — matching the convention used by [`add_var`](@ref).
-
-When `name` is given as `Val(:name)`, the constraint is also accessible as
-`core.name` or `model.name`. The optional `tag` keyword attaches user-defined
-metadata to the constraint block.
-
-## Example
+Empty constraint with augmentation:
 ```jldoctest
 julia> using ExaModels
 
