@@ -14,15 +14,17 @@ Base.eltype(::Type{NaNSource{T}}) where {T} = T
 A handle to a block of optimization variables added to an [`ExaCore`](@ref) via
 [`add_var`](@ref) / [`@add_var`](@ref). Use indexing (e.g. `x[i]`) to reference
 individual entries in objective and constraint expressions. Retrieve solution
-values with [`solution`](@ref).
+values with [`solution`](@ref). An optional `tag` field carries user-defined
+metadata (e.g. scenario identifiers for two-stage models).
 """
-struct Variable{S,O} <: AbstractVariable
+struct Variable{S,O,T} <: AbstractVariable
     size::S
     length::O
     offset::O
     name::Symbol
+    tag::T
 end
-Base.show(io::IO, v::Variable) = print(
+Base.show(io::IO, v::AbstractVariable) = print(
     io,
     """
 Variable
@@ -38,18 +40,20 @@ A subexpression created by [`add_expr`](@ref) / [`@add_expr`](@ref).
 When indexed (e.g. `s[i]`), the expression is substituted directly into the
 enclosing objective or constraint — no auxiliary variables or equality constraints
 are introduced.  Use `Expression` to share common sub-expressions across multiple
-objectives or constraints without duplicating the expression tree.
+objectives or constraints without duplicating the expression tree. An optional
+`tag` field carries user-defined metadata.
 """
-struct Expression{S, F, I}
+struct Expression{S, F, I, T}
     size::S
     length::Int
     f::F           # The generator function
     iter::I        # The collected iterator (for indexing)
+    tag::T
 end
 Base.show(io::IO, s::Expression) = _show_expression(io, s)
 function _show_expression(io::IO, s::Expression)
     expr = try
-        _expr_string(s.f(DataSource()))
+        _expr_string(s.f(ParSource()))
     catch
         "(?)"
     end
@@ -70,12 +74,14 @@ end
 A handle to a block of model parameters added to an [`ExaCore`](@ref) via
 [`add_par`](@ref) / [`@add_par`](@ref). Parameter values can be updated at any
 time with [`set_parameter!`](@ref) without rebuilding the model. Use indexing
-(e.g. `θ[i]`) to embed parameter values in expressions.
+(e.g. `θ[i]`) to embed parameter values in expressions. An optional `tag` field
+carries user-defined metadata.
 """
-struct Parameter{S,O} <: AbstractParameter
+struct Parameter{S,O,T} <: AbstractParameter
     size::S
     length::O
     offset::O
+    tag::T
 end
 Base.show(io::IO, v::Parameter) = print(
     io,
@@ -120,13 +126,15 @@ end
 A block of constraints added to an [`ExaCore`](@ref) via [`add_con`](@ref) /
 [`@add_con`](@ref). Each element of the iterator corresponds to one constraint row.
 Row `k` of this block maps to global constraint index `offset + k`. Dual
-solution values can be retrieved with [`multipliers`](@ref).
+solution values can be retrieved with [`multipliers`](@ref). An optional `tag`
+field carries user-defined metadata.
 """
-struct Constraint{F,I,O,S} <: AbstractConstraint
+struct Constraint{F,I,O,S,T} <: AbstractConstraint
     f::F
     itr::I
     offset::O
     size::S
+    tag::T
 end
 function Base.show(io::IO, v::Constraint)
     expr = try _expr_string(v.f.f) catch; "(?)" end
@@ -153,13 +161,15 @@ An augmentation layer added to an existing [`Constraint`](@ref) via
 `idx => expr` pair: `expr` is accumulated into the constraint row identified
 by `idx` at evaluation time. Multiple `ConstraintAugmentation` objects can be stacked on
 the same base constraint to aggregate contributions from several data sources
-(e.g. summing arc flows into nodal balance constraints).
+(e.g. summing arc flows into nodal balance constraints). An optional `tag` field
+carries user-defined metadata.
 """
-struct ConstraintAugmentation{F,I,D} <: AbstractConstraint
+struct ConstraintAugmentation{F,I,D,T} <: AbstractConstraint
     f::F
     itr::I
     oa::Int
     dims::D  # dimensions of the original constraint (for Pair{Tuple} offset computation)
+    tag::T
 end
 
 function Base.show(io::IO, v::ConstraintAugmentation)
@@ -317,7 +327,7 @@ struct ExaCore{T,VT<:AbstractVector{T}, B, S, V, P, O, C, R} <: AbstractExaCore{
     lcon::VT
     ucon::VT
     minimize::Bool
-    tags::S  # For storing variable/constraint tags (e.g., scenario tags for two-stage models)
+    tag::S  # For storing variable/constraint tag (e.g., scenario tag for two-stage models)
     refs::R
 end
 
@@ -346,7 +356,7 @@ end
     lcon = similar(x0),
     ucon = similar(x0),
     minimize = true,
-    tags = nothing,
+    tag = nothing,
     refs = (;)
     )
 
@@ -374,7 +384,7 @@ end
         lcon,
         ucon,
         minimize,
-        tags,
+        tag,
         refs
     )
 end
@@ -394,8 +404,6 @@ end
     kwargs...,
 )
 @inline default_T(backend) = Float64
-@inline append_var_tags(::Nothing, backend, len) = nothing
-@inline append_con_tags(::Nothing, backend, len) = nothing
 
 
 Base.show(io::IO, c::ExaCore{T,VT,B}) where {T,VT,B} = print(
@@ -429,7 +437,7 @@ struct ExaModel{T,VT,E,V,P,O,C,S,R} <: AbstractExaModel{T,VT,E}
     meta::NLPModels.NLPModelMeta{T,VT}
     counters::NLPModels.Counters
     ext::E
-    tags::S
+    tag::S
     refs::R
 end
 
@@ -503,14 +511,14 @@ function ExaModel(c::C; prod = false, kwargs...) where {C<:ExaCore}
         ,
         NLPModels.Counters(),
         build_extension(c; prod),
-        c.tags,
+        c.tag,
         c.refs
     )
 end
 
 build_extension(c::ExaCore; kwargs...) = nothing
 
-@inline function Base.getindex(v::V, i) where {D, V<:Variable{D}}
+@inline function Base.getindex(v::V, i) where {V<:AbstractVariable}
     _bound_check(v.size, i)
     _indexed_var(i, v.offset - _start(v.size[1]) + 1)
 end
@@ -520,7 +528,7 @@ end
 # which is type-unstable and breaks juliac --trim=safe.
 @inline _indexed_var(i::I, o::Int) where {I<:AbstractNode} = Var(Node2(+, i, o))
 @inline _indexed_var(i, o) = Var(i + o)
-@inline function Base.getindex(v::V, is...) where {D, V<:Variable{D}}
+@inline function Base.getindex(v::V, is...) where {V<:AbstractVariable}
     @assert(length(is) == length(v.size), "Variable index dimension error")
     _bound_check(v.size, is)
     Var(v.offset + idxx(is .- (_start.(v.size) .- 1), _length.(v.size)))
@@ -630,7 +638,7 @@ end
 @inline _start(n::UnitRange) = n.start
 
 """
-    add_var(core, dims...; start = 0, lvar = -Inf, uvar = Inf, name = nothing, kwargs...)
+    add_var(core, dims...; start = 0, lvar = -Inf, uvar = Inf, name = nothing, tag = nothing)
 
 Adds variables with dimensions specified by `dims` to `core`. `dims` can be either `Integer` or `UnitRange`. Returns `(core, Variable)`.
 
@@ -639,7 +647,7 @@ Adds variables with dimensions specified by `dims` to `core`. `dims` can be eith
 - `lvar` : The variable lower bound. Can either be `Number`, `AbstractArray`, or `Generator`.
 - `uvar` : The variable upper bound. Can either be `Number`, `AbstractArray`, or `Generator`.
 - `name` : When given as `Val(:name)`, registers the variable in `core` for later retrieval as `core.name` or `model.name`. See [`@add_var`](@ref) for the idiomatic named interface.
-- `kwargs...`: Additional keyword arguments for variable tags (e.g., `scenario` for two-stage models)
+- `tag`  : User-defined metadata attached to the variable block (e.g., scenario identifier for two-stage models).
 
 ## Example
 ```jldoctest
@@ -666,23 +674,25 @@ Variable
 @inline function add_var(
     c::C,
     ns...;
+    tag = nothing,
     name = nothing,
     start = zero(T),
     lvar = T(-Inf),
     uvar = T(Inf),
-    kwargs...
 ) where {T,C<:ExaCore{T}}
+    return _add_var(c, tag, name, start, lvar, uvar, ns...)
+end
 
-
+@inline function _add_var(c, tag, name, start, lvar, uvar, ns...)
     o = c.nvar
     len = total(ns)
     nvar = c.nvar + len
-    x0 = append!(c.backend, c.x0, start, total(ns))
-    lvar = append!(c.backend, c.lvar, lvar, total(ns))
-    uvar = append!(c.backend, c.uvar, uvar, total(ns))
 
-    append_var_tags(c.tags, c.backend, total(ns); kwargs...)
-    v = Variable(ns, len, o, _val_name(name))
+    x0 = append!(c.backend, c.x0, start, len)
+    lvar = append!(c.backend, c.lvar, lvar, len)
+    uvar = append!(c.backend, c.uvar, uvar, len)
+
+    v = Variable(ns, len, o, _val_name(name), tag)
 
     (ExaCore(c; var = (v, c.var...), nvar=nvar, x0=x0, lvar=lvar, uvar=uvar, refs = add_refs(c.refs, name, v)), v)
 end
@@ -694,19 +704,19 @@ end
 
 
 """
-    add_par(core, dims...; start = 0, name = nothing)
+    add_par(core, dims...; start = 0, name = nothing, tag = nothing)
+    add_par(core, start::AbstractArray; name = nothing, tag = nothing)
 
-Adds parameters with dimensions specified by `dims` to `core`. `dims` can be either
-`Integer` or `UnitRange`. Returns `(core, Parameter)`.
+Adds parameters to `core` and returns `(core, Parameter)`.
 
-    add_par(core, start::AbstractArray; name = nothing)
-
-Convenience form: adds parameters with initial values specified by `start`, using
-`size(start)` as the dimensions.
+The first form specifies dimensions with `dims` (each an `Integer` or
+`UnitRange`) and initial values via the `start` keyword. The second form
+is a convenience that uses `size(start)` as the dimensions.
 
 ## Keyword Arguments
 - `start`: Initial parameter values. Can be a `Number`, `AbstractArray`, or `Generator`.
-- `name`: When given as `Val(:name)`, registers the parameter in `core` for later retrieval as `core.name` or `model.name`. See [`@add_par`](@ref) for the idiomatic named interface.
+- `name` : When given as `Val(:name)`, registers the parameter in `core` for later retrieval as `core.name` or `model.name`. See [`@add_par`](@ref) for the idiomatic named interface.
+- `tag`  : User-defined metadata attached to the parameter block.
 
 ## Example
 ```jldoctest
@@ -722,24 +732,24 @@ Parameter
   θ ∈ R^{10}
 ```
 """
-@inline function add_par(c::C, start::AbstractArray; name = nothing) where {T,C<:ExaCore{T}}
-    _add_par(c, name, start, Base.size(start)...)
+@inline function add_par(c::C, start::AbstractArray; tag = nothing, name = nothing) where {T,C<:ExaCore{T}}
+    _add_par(c, tag, name, start, Base.size(start)...)
 end
 
-@inline function add_par(c::C, n::AbstractRange; name = nothing, start = zero(T)) where {T,C<:ExaCore{T}}
-    _add_par(c, name, start, n)
+@inline function add_par(c::C, n::AbstractRange; tag = nothing, name = nothing, start = zero(T)) where {T,C<:ExaCore{T}}
+    _add_par(c, tag, name, start, n)
 end
 
-@inline function add_par(c::C, ns...; name = nothing, start = zero(T)) where {T,C<:ExaCore{T}}
-    _add_par(c, name, start, ns...)
+@inline function add_par(c::C, ns...; tag = nothing, name = nothing, start = zero(T)) where {T,C<:ExaCore{T}}
+    _add_par(c, tag, name, start, ns...)
 end
 
-@inline function _add_par(c, name, start, ns...)
+@inline function _add_par(c, tag, name, start, ns...)
     o = c.npar
     len = total(ns)
     npar = c.npar + len
     θ = append!(c.backend, c.θ, start, len)
-    p = Parameter(ns, len, o)
+    p = Parameter(ns, len, o, tag)
     (ExaCore(c; par = (p, c.par...), θ=θ, npar=npar, refs = add_refs(c.refs, name, p)), p)
 end
 
@@ -776,11 +786,6 @@ function set_parameter!(c::ExaCore, param::Parameter, values::AbstractArray)
     return nothing
 end
 
-@inline function add_var(c::C; kwargs...) where {T,C<:ExaCore{T}}
-    c, v = add_var(c, 1; kwargs...)
-    return (c, v[1])
-end
-
 """
     add_var(core, gen::Base.Generator; kwargs...)
 
@@ -792,6 +797,7 @@ Returns `(core, Variable)`.
 @inline function add_var(
     c::C,
     gen::Base.Generator;
+    tag = nothing,
     name = nothing,
     start = zero(T),
     lvar = T(-Inf),
@@ -800,7 +806,7 @@ Returns `(core, Variable)`.
 ) where {T,C<:ExaCore{T}}
     gen = _adapt_gen(gen)
     n = length(gen.iter)
-    c, x = add_var(c, n; name = name, start = start, lvar = lvar, uvar = uvar, kwargs...)
+    c, x = add_var(c, n; tag, name = name, start = start, lvar = lvar, uvar = uvar, kwargs...)
     # Pair local 1-based index with original parameter so x[j] uses 1:n
     # while gen.f(orig) sees the original iterator element.
     pars = collect(enumerate(gen.iter))
@@ -875,7 +881,7 @@ end
 
 
 """
-    add_con(core, generator; start = 0, lcon = 0, ucon = 0, kwargs...)
+    add_con(core, generator; start = 0, lcon = 0, ucon = 0, name = nothing, tag = nothing)
 
 Adds constraints specified by a `generator` to `core`, and returns `(core, Constraint)`.
 
@@ -884,7 +890,7 @@ Adds constraints specified by a `generator` to `core`, and returns `(core, Const
 - `lcon` : The constraint lower bound. Can either be `Number`, `AbstractArray`, or `Generator`.
 - `ucon` : The constraint upper bound. Can either be `Number`, `AbstractArray`, or `Generator`.
 - `name` : When given as `Val(:name)`, registers the constraint in `core` for later retrieval as `core.name` or `model.name`. See [`@add_con`](@ref) for the idiomatic named interface.
-- `kwargs...`: Additional keyword arguments for constraint tags (e.g., `scenario` for two-stage models)
+- `tag`  : User-defined metadata attached to the constraint block.
 
 ## Example
 ```julia
@@ -906,90 +912,85 @@ Constraint
   where |I| = 9
 ```
 """
-@inline function add_con(
-    c::C,
-    gen::Base.Generator;
-    name = nothing,
-    start = zero(T),
-    lcon = zero(T),
-    ucon = zero(T),
-    kwargs...
-) where {T,C<:ExaCore{T}}
+# @inline function add_con(
+#     c::C,
+#     gen::Base.Generator;
+#     name = nothing,
+#     tag = nothing,
+#     start = zero(T),
+#     lcon = zero(T),
+#     ucon = zero(T),
+# ) where {T,C<:ExaCore{T}}
+#     _add_con(c, gen, start, lcon, ucon, name, tag)
+# end
 
-    dims = _infer_subexpr_dims(gen.iter)
-    gen = _adapt_gen(gen)
-    f = SIMDFunction(T, gen, c.ncon, c.nnzj, c.nnzh)
-    pars = gen.iter
+# """
+#     add_con(core, gen, gens...; kwargs...)
 
-    _add_con(c, f, pars, dims, start, lcon, ucon, name; kwargs...)
-end
+# Create a constraint from the first generator, then augment it with each
+# subsequent generator via [`add_con!`](@ref). Returns `(core, Constraint)`.
 
-"""
-    add_con(core, gen, gens...; kwargs...)
+# ## Keyword Arguments
+# - `start`: Initial guess for the dual solution. Can be a `Number`, `AbstractArray`, or `Generator`.
+# - `lcon` : Constraint lower bound. Can be a `Number`, `AbstractArray`, or `Generator`.
+# - `ucon` : Constraint upper bound. Can be a `Number`, `AbstractArray`, or `Generator`.
+# - `name` : When given as `Val(:name)`, registers the constraint for later retrieval as `core.name` or `model.name`.
+# - `kwargs...`: Additional keyword arguments forwarded to [`add_con`](@ref) (e.g. scenario tag).
 
-Create a constraint from the first generator, then augment it with each
-subsequent generator via [`add_con!`](@ref). Returns `(core, Constraint)`.
+# ## Example
+# ```julia
+# c, g = add_con(c,
+#     (x[i] for i in 1:N),
+#     (i => sin(x[i]) for i in 1:N);
+#     lcon = 0.0, ucon = 0.0,
+# )
+# ```
+# """
+# @inline function add_con(
+#     c::C,
+#     gen::Base.Generator,
+#     gens::Base.Generator...;
+#     kwargs...
+# ) where {T,C<:ExaCore{T}}
+#     c, con = add_con(c, gen; kwargs...)
+#     for g in gens
+#         c, _ = add_con!(c, con, g)
+#     end
+#     return (c, con)
+# end
 
-## Keyword Arguments
-- `start`: Initial guess for the dual solution. Can be a `Number`, `AbstractArray`, or `Generator`.
-- `lcon` : Constraint lower bound. Can be a `Number`, `AbstractArray`, or `Generator`.
-- `ucon` : Constraint upper bound. Can be a `Number`, `AbstractArray`, or `Generator`.
-- `name` : When given as `Val(:name)`, registers the constraint for later retrieval as `core.name` or `model.name`.
-- `kwargs...`: Additional keyword arguments forwarded to [`add_con`](@ref) (e.g. scenario tags).
+# """
+#     add_con(core, expr [, pars]; start = 0, lcon = 0, ucon = 0, name = nothing)
 
-## Example
-```julia
-c, g = add_con(c,
-    (x[i] for i in 1:N),
-    (i => sin(x[i]) for i in 1:N);
-    lcon = 0.0, ucon = 0.0,
-)
-```
-"""
-@inline function add_con(
-    c::C,
-    gen::Base.Generator,
-    gens::Base.Generator...;
-    kwargs...
-) where {T,C<:ExaCore{T}}
-    c, con = add_con(c, gen; kwargs...)
-    for g in gens
-        c, _ = add_con!(c, con, g)
-    end
-    return (c, con)
-end
+# Low-level form of [`add_con`](@ref) that accepts a pre-built `AbstractNode`
+# expression `expr` evaluated over `pars`, and returns `(core, Constraint)`.
 
-"""
-    add_con(core, expr [, pars]; start = 0, lcon = 0, ucon = 0, name = nothing)
+# When `name` is given as `Val(:name)`, the constraint is also accessible as
+# `core.name` or `model.name`.
 
-Low-level form of [`add_con`](@ref) that accepts a pre-built `AbstractNode`
-expression `expr` evaluated over `pars`, and returns `(core, Constraint)`.
+# Prefer the generator form (`add_con(core, gen)`) for typical use; this form
+# is intended for code that builds expression trees programmatically.
+# """
+# @inline function add_con(
+#     c::C,
+#     expr::N,
+#     pars = 1:1;
+#     tag = nothing,
+#     name = nothing,
+#     start = zero(T),
+#     lcon = zero(T),
+#     ucon = zero(T),
+#     kwargs...
+# ) where {T,C<:ExaCore{T},N<:AbstractNode}
 
-When `name` is given as `Val(:name)`, the constraint is also accessible as
-`core.name` or `model.name`.
+#     f = _simdfunction(T,expr, c.ncon, c.nnzj, c.nnzh)
+#     dims = _infer_subexpr_dims(pars)
 
-Prefer the generator form (`add_con(core, gen)`) for typical use; this form
-is intended for code that builds expression trees programmatically.
-"""
-@inline function add_con(
-    c::C,
-    expr::N,
-    pars = 1:1;
-    name = nothing,
-    start = zero(T),
-    lcon = zero(T),
-    ucon = zero(T),
-    kwargs...
-) where {T,C<:ExaCore{T},N<:AbstractNode}
-
-    f = _simdfunction(T,expr, c.ncon, c.nnzj, c.nnzh)
-    dims = _infer_subexpr_dims(pars)
-
-    _add_con(c, f, pars, dims, start, lcon, ucon, name; kwargs...)
-end
+#     _add_con(c, f, pars, dims, start, lcon, ucon, name, tag)
+# end
 
 """
-    add_con(core, dims...; start = 0, lcon = 0, ucon = 0, name = nothing)
+    add_con(core, dims...; start = 0, lcon = 0, ucon = 0, name = nothing, tag = nothing)
 
 Adds empty constraints with dimensions specified by `dims` to `core` and returns
 `(core, Constraint)`.  No expression is attached initially — use
@@ -1001,7 +1002,8 @@ afterwards.
 (`add_con(c, 1:3, 2:5)`) — matching the convention used by [`add_var`](@ref).
 
 When `name` is given as `Val(:name)`, the constraint is also accessible as
-`core.name` or `model.name`.
+`core.name` or `model.name`. The optional `tag` keyword attaches user-defined
+metadata to the constraint block.
 
 ## Example
 ```jldoctest
@@ -1028,6 +1030,7 @@ Constraint
 @inline function add_con(
     c::C,
     ns...;
+    tag = nothing, 
     name = nothing,
     start = zero(T),
     lcon = zero(T),
@@ -1035,18 +1038,32 @@ Constraint
     kwargs...
 ) where {T,C<:ExaCore{T}}
 
-    f = _simdfunction(T, Null(nothing), c.ncon, c.nnzj, c.nnzh)
-    pars = _empty_con_itr(ns)
-
-    _add_con(c, f, pars, ns, start, lcon, ucon, name; kwargs...)
+    gen = _get_generator(ns)
+    dims = _get_con_dims(ns)
+    gen = _adapt_gen(gen)
+    f = _simdfunction(T, gen.f(DataSource()), c.ncon, c.nnzj, c.nnzh)
+    pars = gen.iter
+    
+    _add_con(c, f, pars, dims, start, lcon, ucon, name, tag)
 end
+
+@inline _get_generator(ns) = (0 for _ in _empty_con_itr(ns))
+@inline _get_generator(gen::Tuple{G}) where G <: Base.Generator = gen[1]
+@inline _get_generator(n::Tuple{N}) where N <: AbstractNode = (n[1] for _ in 1:1)
+
+# Infer constraint dims from the original arguments, preserving range start info.
+@inline _get_con_dims(ns) = ns
+@inline _get_con_dims(gen::Tuple{G}) where G <: Base.Generator = _infer_subexpr_dims(gen[1].iter)
+@inline _get_con_dims(n::Tuple{N}) where N <: AbstractNode = (1,)
 
 # Build an iterator for empty constraints: 1:n for 1D, collected ProductIterator for multi-dim.
 _empty_con_itr(ns::Tuple{Any}) = 1:_length(ns[1])
 _empty_con_itr(ns::Tuple) = collect(Iterators.product(map(n -> 1:_length(n), ns)...))
 
 
-function _add_con(c::C, f, pars, dims, start, lcon, ucon, name = nothing; kwargs...) where {C<:ExaCore}
+function _add_con(c, f, pars, dims, start, lcon, ucon, name, tag)
+    # pars = gen.iter
+    
     nitr = length(pars)
     o = c.ncon
     ncon = c.ncon + nitr
@@ -1056,9 +1073,8 @@ function _add_con(c::C, f, pars, dims, start, lcon, ucon, name = nothing; kwargs
     y0 = append!(c.backend, c.y0, start, nitr)
     lcon = append!(c.backend, c.lcon, lcon, nitr)
     ucon = append!(c.backend, c.ucon, ucon, nitr)
-    append_con_tags(c.tags, c.backend, nitr; kwargs...)
 
-    con = Constraint(f, convert_array(pars, c.backend), o, dims)
+    con = Constraint(f, convert_array(pars, c.backend), o, dims, tag)
 
     (ExaCore(c; ncon=ncon, nnzj=nnzj, nnzh=nnzh, y0=y0, lcon=lcon, ucon=ucon, cons=(con, c.cons...), refs = add_refs(c.refs, name, con)), con)
 end
@@ -1067,7 +1083,7 @@ end
 
 
 """
-    add_con!(core, c1, generator)
+    add_con!(core, c1, generator; tag = nothing)
 
 Augments the existing constraint `c1` by adding extra expression terms to a subset of its
 rows, and returns `(core, ConstraintAugmentation)`.
@@ -1130,17 +1146,17 @@ add_con!(c, bus, arc.bus => p[arc.i] for arc in data.arc)              # add arc
 add_con!(c, bus, gen.bus => -pg[gen.i] for gen in data.gen)            # subtract generation
 ```
 """
-@inline function add_con!(c::C, c1, gen::Base.Generator) where {T, C<:ExaCore{T}}
+@inline function add_con!(c::C, c1, gen::Base.Generator; tag = nothing) where {T, C<:ExaCore{T}}
 
     gen = _adapt_gen(gen)
     f = SIMDFunction(T, gen, offset0(c1, 0), c.nnzj, c.nnzh)
     pars = gen.iter
 
-    _add_con!(c, f, pars, _constraint_dims(c1))
+    _add_con!(c, f, pars, _constraint_dims(c1), tag)
 end
 
 """
-    add_con!(core::ExaCore, gen::Base.Generator)
+    add_con!(core::ExaCore, gen::Base.Generator; tag = nothing)
 
 Two-argument form of [`add_con!`](@ref) supporting the `constraint[idx] += expr` sugar.
 The generator must use the pattern `g[idx] += expr for ... in itr`, where `g` is an
@@ -1156,7 +1172,7 @@ c, g = add_con(c, 9; lcon = -1.0, ucon = 1.0)
 c, _ = add_con!(c, g[i] += x[i] + x[i+1] for i = 1:9)
 ```
 """
-@inline function add_con!(c::ExaCore{T}, gen::Base.Generator) where T
+@inline function add_con!(c::ExaCore{T}, gen::Base.Generator; tag = nothing) where T
     gen = _adapt_gen(gen)
 
     # Probe the generator: the result is a ConAugPair which carries the target
@@ -1170,7 +1186,7 @@ c, _ = add_con!(c, g[i] += x[i] + x[i+1] for i = 1:9)
 
     # The generator yields ConAugPair values; replace_T unwraps them to plain
     # Pairs before SIMDFunction stores them, so offset0 dispatch is unchanged.
-    return add_con!(c, con, gen)
+    return add_con!(c, con, gen; tag)
 end
 
 # Extract the dimensions of the original constraint's iterator.
@@ -1180,13 +1196,13 @@ end
 _constraint_dims(c::Constraint) = Base.size(c.itr)
 _constraint_dims(c::ConstraintAugmentation) = c.dims
 
-function _add_con!(c, f, pars, dims)
+function _add_con!(c, f, pars, dims, tag)
     oa = c.nconaug
     nitr = length(pars)
     nconaug = c.nconaug + nitr
     nnzj = c.nnzj + nitr * f.o1step
     nnzh = c.nnzh + nitr * f.o2step
-    con = ConstraintAugmentation(f, convert_array(pars, c.backend), oa, dims)
+    con = ConstraintAugmentation(f, convert_array(pars, c.backend), oa, dims, tag)
     (ExaCore(c; nconaug=nconaug, nnzj=nnzj, nnzh=nnzh, cons=(con, c.cons...)), con)
 end
 
@@ -1197,7 +1213,7 @@ _infer_subexpr_dims(itr::Base.Iterators.ProductIterator) = itr.iterators
 _infer_subexpr_dims(itr) = (length(collect(itr)),)  # fallback
 
 """
-    add_expr(core, generator; name = nothing)
+    add_expr(core, generator; name = nothing, tag = nothing)
 
 Creates a subexpression from a `generator` and returns `(core, Expression)`.
 The expression is stored for direct substitution (inlining) when indexed — no auxiliary
@@ -1205,6 +1221,7 @@ variables or constraints are added to the problem.
 
 ## Keyword Arguments
 - `name`: When given as `Val(:name)`, registers the subexpression in `core` for later retrieval as `core.name` or `model.name`. See [`@add_expr`](@ref) for the idiomatic named interface.
+- `tag` : User-defined metadata attached to the expression.
 
 ## Example
 ```julia
@@ -1235,13 +1252,13 @@ c, s = add_expr(c, x[i, k]^2 for (i, k) in itr)
 # s[i, k] substitutes x[i,k]^2 directly
 ```
 """
-@inline function add_expr(c::C, gen::Base.Generator; name = nothing) where {T, C <: ExaCore{T}}
+@inline function add_expr(c::C, gen::Base.Generator; name = nothing, tag = nothing) where {T, C <: ExaCore{T}}
     ns = _infer_subexpr_dims(gen.iter)
 
     gen = _adapt_gen(gen)
     n = length(gen.iter)
 
-    ex = Expression(ns, n, gen.f, collect(gen.iter))
+    ex = Expression(ns, n, gen.f, collect(gen.iter), tag)
     return (ExaCore(c; refs = add_refs(c.refs, name, ex)), ex)
 end
 

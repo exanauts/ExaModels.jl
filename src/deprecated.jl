@@ -29,7 +29,7 @@ end
 @inline function _make_exacore(::Val{false}, ::Type{T}, backend; kwargs...) where {T}
     @warn "`ExaCore()` is deprecated, and will be removed in v0.11. Use `ExaCore(concrete = Val(true))` for the immutable ExaCore. The default behavior for `ExaCore()` will change to return the immutable ExaCore in v0.11."
     inner = _exa_core(; x0 = convert_array(zeros(T, 0), backend), backend, kwargs...)
-    return LegacyExaCore{T, typeof(inner.x0), typeof(backend), typeof(inner.tags)}(inner)
+    return LegacyExaCore{T, typeof(inner.x0), typeof(backend), typeof(inner.tag)}(inner)
 end
 
 # ---------------------------------------------------------------------------
