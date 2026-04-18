@@ -647,7 +647,7 @@ Adds variables with dimensions specified by `dims` to `core`. `dims` can be eith
 - `lvar` : The variable lower bound. Can either be `Number`, `AbstractArray`, or `Generator`.
 - `uvar` : The variable upper bound. Can either be `Number`, `AbstractArray`, or `Generator`.
 - `name` : When given as `Val(:name)`, registers the variable in `core` for later retrieval as `core.name` or `model.name`. See [`@add_var`](@ref) for the idiomatic named interface.
-- `kwargs...`: Additional keyword arguments for variable tag (e.g., `scenario` for two-stage models)
+- `tag`  : User-defined metadata attached to the variable block (e.g., scenario identifier for two-stage models).
 
 ## Example
 ```jldoctest
@@ -899,7 +899,7 @@ then use [`add_con!`](@ref) / [`@add_con!`](@ref) to accumulate terms afterwards
 - `lcon` : The constraint lower bound. Can either be `Number`, `AbstractArray`, or `Generator`.
 - `ucon` : The constraint upper bound. Can either be `Number`, `AbstractArray`, or `Generator`.
 - `name` : When given as `Val(:name)`, registers the constraint in `core` for later retrieval as `core.name` or `model.name`. See [`@add_con`](@ref) for the idiomatic named interface.
-- `kwargs...`: Additional keyword arguments for constraint tag (e.g., `scenario` for two-stage models)
+- `tag`  : User-defined metadata attached to the constraint block.
 
 ## Example
 ```julia
