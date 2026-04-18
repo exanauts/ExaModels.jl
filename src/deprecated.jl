@@ -26,9 +26,16 @@ mutable struct LegacyExaCore{T, VT <: AbstractArray{T}, B, S} <: AbstractExaCore
 end
 
 # Override the Val{false} dispatch defined in nlp.jl so ExaCore() returns a LegacyExaCore.
-@inline function _make_exacore(::Val{false}, ::Type{T}, backend; kwargs...) where {T}
+@inline function _make_exacore(::Val{false}, ::Type{T}, backend, ::Val{1}; kwargs...) where {T}
     @warn "`ExaCore()` is deprecated, and will be removed in v0.11. Use `ExaCore(concrete = Val(true))` for the immutable ExaCore. The default behavior for `ExaCore()` will change to return the immutable ExaCore in v0.11."
     inner = _exa_core(; x0 = convert_array(zeros(T, 0), backend), backend, kwargs...)
+    return LegacyExaCore{T, typeof(inner.x0), typeof(backend), typeof(inner.tag)}(inner)
+end
+@inline function _make_exacore(::Val{false}, ::Type{T}, backend, ::Val{NB}; kwargs...) where {T, NB}
+    @warn "`ExaCore()` is deprecated, and will be removed in v0.11. Use `ExaCore(concrete = Val(true))` for the immutable ExaCore. The default behavior for `ExaCore()` will change to return the immutable ExaCore in v0.11."
+    x0 = convert_array(zeros(T, 0, NB), backend)
+    inner = _exa_core(; x0, θ = similar(x0), lvar = similar(x0), uvar = similar(x0),
+                        y0 = similar(x0), lcon = similar(x0), ucon = similar(x0), backend, kwargs...)
     return LegacyExaCore{T, typeof(inner.x0), typeof(backend), typeof(inner.tag)}(inner)
 end
 

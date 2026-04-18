@@ -6,372 +6,304 @@ import NLPModels
 import NLPModels:
     obj, cons!, cons_nln!, grad!, jac_coord!, hess_coord!, jac_structure!,
     hess_structure!
-import ExaModels: obj!, var_indices, cons_block_indices, get_model, get_nbatch
+import NLPModels: obj!
+import ExaModels: var_indices, cons_block_indices, get_model, get_nbatch
 
 import NLPModelsIpopt: ipopt
 
 import ..BACKENDS
 using Adapt
 
+# ============================================================================
+# Helper: build a standard test problem
+# ============================================================================
+
+function build_batch_model(; ns=2, nv=2, θ_val=[2.0])
+    c = BatchExaCore(ns)
+    @add_var(c, v, nv)
+    @add_par(c, θ, θ_val)
+    c, _ = add_obj(c, θ[1] * v[j]^2 for j in 1:nv)
+    c, _ = add_con(c, v[j] - θ[1] for j in 1:nv; lcon = 0.0)
+    return ExaModel(c)
+end
+
+# ============================================================================
+# Extract test logic into functions to avoid Julia 1.12 GC/compiler segfault
+# ============================================================================
+
+function test_construction()
+    model = build_batch_model(ns=3)
+    @test get_nbatch(model) == 3
+    @test NLPModels.get_nvar(model) == 2
+    @test NLPModels.get_ncon(model) == 2
+    @test model isa NLPModels.AbstractNLPModel
+    @test size(model.meta.x0) == (2, 3)
+end
+
+function test_obj()
+    model = build_batch_model()
+    bx = [1.0 3.0; 2.0 4.0]
+    bf = zeros(2)
+    obj!(model, bx, bf)
+    @test bf[1] ≈ 10.0
+    @test bf[2] ≈ 50.0
+    @test obj(model, bx) ≈ bf
+    flat = get_model(model)
+    @test sum(bf) ≈ obj(flat, vec(bx))
+end
+
+function test_grad()
+    model = build_batch_model()
+    bx = [1.0 3.0; 2.0 4.0]
+    bg = zeros(2, 2)
+    grad!(model, bx, bg)
+    @test bg[:, 1] ≈ [4.0, 8.0]
+    @test bg[:, 2] ≈ [12.0, 16.0]
+    g_flat = zeros(4)
+    grad!(get_model(model), vec(bx), g_flat)
+    @test vec(bg) ≈ g_flat
+end
+
+function test_cons()
+    model = build_batch_model()
+    bx = [1.0 3.0; 2.0 4.0]
+    bc = zeros(2, 2)
+    cons!(model, bx, bc)
+    @test bc[:, 1] ≈ [-1.0, 0.0]
+    @test bc[:, 2] ≈ [1.0, 2.0]
+    c_flat = zeros(4)
+    cons_nln!(get_model(model), vec(bx), c_flat)
+    @test vec(bc) ≈ c_flat
+end
+
+function test_jac_hess()
+    model = build_batch_model()
+    ns, nv = 2, 2
+    flat = get_model(model)
+    bx = [1.0 3.0; 2.0 4.0]
+
+    # --- Jacobian values ---
+    nnzj = NLPModels.get_nnzj(model)
+    jvals = zeros(nnzj, ns)
+    jac_coord!(model, bx, jvals)
+    jvals_flat = zeros(NLPModels.get_nnzj(flat))
+    jac_coord!(flat, vec(bx), jvals_flat)
+    @test vec(jvals) ≈ jvals_flat
+
+    # --- Hessian values ---
+    nnzh = NLPModels.get_nnzh(model)
+    by = ones(nv, ns)
+    hvals = zeros(nnzh, ns)
+    hess_coord!(model, bx, by, hvals)
+    hvals_flat = zeros(NLPModels.get_nnzh(flat))
+    hess_coord!(flat, vec(bx), vec(by), hvals_flat)
+    @test vec(hvals) ≈ hvals_flat
+end
+
+function test_hess_obj_weight()
+    ns, nv = 2, 2
+    c = BatchExaCore(ns)
+    @add_var(c, v, nv)
+    @add_par(c, θ, [2.0])
+    c, _ = add_obj(c, θ[1] * v[j]^2 for j in 1:nv)
+    c, _ = add_con(c, v[j]^2 for j in 1:nv)
+    model = ExaModel(c)
+
+    nc = NLPModels.get_ncon(model)
+    nnzh = NLPModels.get_nnzh(model)
+    bx = [1.0 3.0; 2.0 4.0]
+    by = ones(nc, ns)
+    flat = get_model(model)
+
+    hvals_w1 = zeros(nnzh, ns)
+    hess_coord!(model, bx, by, hvals_w1; obj_weight = 1.0)
+    hvals_flat_w1 = zeros(NLPModels.get_nnzh(flat))
+    hess_coord!(flat, vec(bx), vec(by), hvals_flat_w1; obj_weight = 1.0)
+    @test vec(hvals_w1) ≈ hvals_flat_w1
+
+    hvals_w2 = zeros(nnzh, ns)
+    hess_coord!(model, bx, by, hvals_w2; obj_weight = 2.0)
+    hvals_flat_w2 = zeros(NLPModels.get_nnzh(flat))
+    hess_coord!(flat, vec(bx), vec(by), hvals_flat_w2; obj_weight = 2.0)
+    @test vec(hvals_w2) ≈ hvals_flat_w2
+
+    @test hvals_w1 != hvals_w2
+end
+
+function test_hess_vector_obj_weight()
+    ns, nv = 2, 2
+    c = BatchExaCore(ns)
+    @add_var(c, v, nv)
+    @add_par(c, θ, [2.0])
+    c, _ = add_obj(c, θ[1] * v[j]^2 for j in 1:nv)
+    c, _ = add_con(c, v[j]^2 for j in 1:nv)
+    model = ExaModel(c)
+
+    nc = NLPModels.get_ncon(model)
+    nnzh = NLPModels.get_nnzh(model)
+    bx = [1.0 3.0; 2.0 4.0]
+    by = ones(nc, ns)
+
+    # Vector obj_weight = [w1, w2]
+    wvec = [1.5, 3.0]
+    hvals_vec = zeros(nnzh, ns)
+    hess_coord!(model, bx, by, hvals_vec; obj_weight = wvec)
+
+    # Uniform scalar weights for comparison
+    hvals_w1 = zeros(nnzh, ns)
+    hess_coord!(model, bx, by, hvals_w1; obj_weight = wvec[1])
+    hvals_w2 = zeros(nnzh, ns)
+    hess_coord!(model, bx, by, hvals_w2; obj_weight = wvec[2])
+
+    # With uniform weight, both instances get the same obj contribution.
+    # With vector weight, instance 1 gets w1, instance 2 gets w2.
+    # The constraint hessian is unaffected by obj_weight, so it is the same.
+    # Check: vector result differs from both uniform-scalar results.
+    @test hvals_vec != hvals_w1
+    @test hvals_vec != hvals_w2
+
+    # Verify consistency: uniform weight = special case of vector weight
+    hvals_uniform = zeros(nnzh, ns)
+    hess_coord!(model, bx, by, hvals_uniform; obj_weight = [2.0, 2.0])
+    hvals_scalar = zeros(nnzh, ns)
+    hess_coord!(model, bx, by, hvals_scalar; obj_weight = 2.0)
+    @test hvals_uniform ≈ hvals_scalar
+end
+
+function test_multiple_constraints()
+    ns, nv = 2, 3
+    c = BatchExaCore(ns)
+    @add_var(c, v, nv)
+    @add_par(c, θ, [1.0])
+    c, _ = add_obj(c, θ[1] * v[j]^2 for j in 1:nv)
+    c, _ = add_con(c, v[j] - θ[1] for j in 1:nv)
+    c, _ = add_con(c, v[1] + v[2] + v[3] for _ in 1:1; ucon = 10.0)
+    model = ExaModel(c)
+    flat = get_model(model)
+
+    nc = NLPModels.get_ncon(model)
+    @test nc == nv + 1
+    @test get_nbatch(model) == ns
+
+    bx = reshape(Float64[1, 2, 3, 4, 5, 6], nv, ns)
+
+    # cons!
+    bc = zeros(nc, ns)
+    cons!(model, bx, bc)
+    c_flat = zeros(nc * ns)
+    cons_nln!(flat, vec(bx), c_flat)
+    @test vec(bc) ≈ c_flat
+
+    # jac
+    nnzj = NLPModels.get_nnzj(model)
+    jvals = zeros(nnzj, ns)
+    jac_coord!(model, bx, jvals)
+    jvals_flat = zeros(NLPModels.get_nnzj(flat))
+    jac_coord!(flat, vec(bx), jvals_flat)
+    @test vec(jvals) ≈ jvals_flat
+
+    # hess
+    nnzh = NLPModels.get_nnzh(model)
+    by = ones(nc, ns)
+    hvals = zeros(nnzh, ns)
+    hess_coord!(model, bx, by, hvals)
+    hvals_flat = zeros(NLPModels.get_nnzh(flat))
+    hess_coord!(flat, vec(bx), vec(by), hvals_flat)
+    @test vec(hvals) ≈ hvals_flat
+end
+
+function test_error_guards()
+    model = build_batch_model()
+    x_vec = ones(2)
+    @test_throws ArgumentError obj(model, x_vec)
+    @test_throws ArgumentError cons!(model, x_vec, zeros(2))
+    @test_throws ArgumentError grad!(model, x_vec, zeros(2))
+end
+
+function test_bounds()
+    ns, nv = 2, 2
+    c = BatchExaCore(ns)
+    @add_var(c, v, nv; start = 0.5, lvar = 0.0, uvar = 10.0)
+    c, _ = add_obj(c, v[j]^2 for j in 1:nv)
+    c, _ = add_con(c, v[j] for j in 1:nv; lcon = 0.0, ucon = 100.0)
+    model = ExaModel(c)
+
+    @test size(model.meta.x0) == (nv, ns)
+    @test model.meta.x0 ≈ fill(0.5, nv, ns)
+    @test model.meta.lvar ≈ fill(0.0, nv, ns)
+    @test model.meta.uvar ≈ fill(10.0, nv, ns)
+
+    flat = get_model(model)
+    @test NLPModels.get_nvar(flat) == nv * ns
+    @test flat.meta.x0 ≈ fill(0.5, nv * ns)
+    @test flat.meta.lvar ≈ fill(0.0, nv * ns)
+    @test flat.meta.uvar ≈ fill(10.0, nv * ns)
+end
+
+function test_flatten_model()
+    model = build_batch_model()
+    flat = get_model(model)
+    @test flat isa ExaModels.BatchNLPModels.FlattenNLPModel
+    @test NLPModels.get_nvar(flat) == 2 * 2
+    @test NLPModels.get_ncon(flat) == 2 * 2
+
+    c = ExaCore(concrete = Val(true))
+    c, x = add_var(c, 2)
+    c, _ = add_obj(c, x[i]^2 for i in 1:2)
+    m = ExaModel(c)
+    @test get_model(m) === m
+end
+
+function test_ipopt_simple()
+    ns, nv = 3, 1
+    c = BatchExaCore(ns)
+    @add_var(c, v, nv)
+    @add_par(c, θ, [2.0])
+    c, _ = add_obj(c, (v[1] - θ[1])^2 for _ in 1:1)
+    c, _ = add_con(c, v[1] for _ in 1:1; lcon = 0.0, ucon = Inf)
+    model = ExaModel(c)
+
+    result = ipopt(get_model(model); print_level = 0)
+    @test result.status == :first_order
+    for i in 1:ns
+        @test result.solution[var_indices(model, i)] ≈ [2.0] atol = 1e-5
+    end
+    @test isapprox(result.objective, 0.0; atol = 1e-8)
+end
+
+function test_ipopt_multi()
+    ns, nv = 2, 2
+    c = BatchExaCore(ns)
+    @add_var(c, v, nv)
+    @add_par(c, θ, [1.0, 3.0])
+    c, _ = add_obj(c, (v[j] - θ[j])^2 for j in 1:nv)
+    c, _ = add_con(c, v[1] + v[2] for _ in 1:1; ucon = 10.0)
+    model = ExaModel(c)
+
+    result = ipopt(get_model(model); print_level = 0)
+    @test result.status == :first_order
+    @test result.solution[var_indices(model, 1)] ≈ [1.0, 3.0] atol = 1e-5
+    @test result.solution[var_indices(model, 2)] ≈ [1.0, 3.0] atol = 1e-5
+    @test isapprox(result.objective, 0.0; atol = 1e-8)
+end
+
+# ============================================================================
+
 function runtests()
     return @testset "Batch ExaModel" begin
-
-        @testset "Construction and dimensions" begin
-            ns, nv = 3, 2
-
-            c = BatchExaCore(ns)
-            @add_var(c, v, EachInstance(), nv)
-            @add_par(c, θ, EachInstance(), [1.0, 2.0])
-            @add_obj(c, θ[j, s] * v[j, s]^2 for j in 1:nv, s in 1:ns)
-            @add_con(c, EachInstance(), v[j, s] for j in 1:nv, s in 1:ns)
-            model = ExaModel(c)
-
-            @test get_nbatch(model) == 3
-            @test NLPModels.get_nvar(model) == nv
-            @test NLPModels.get_ncon(model) == nv
-
-            # ExaModel <: AbstractNLPModel
-            @test model isa NLPModels.AbstractNLPModel
-        end
-
-        @testset "Batch obj! evaluation" begin
-            ns, nv = 2, 2
-
-            c = BatchExaCore(ns)
-            @add_var(c, v, EachInstance(), nv)
-            @add_par(c, θ, EachInstance(), [2.0])
-            nb = get_nbatch(c)
-            c, _ = add_obj(c, θ[1, s] * v[j, s]^2 for j in 1:nv, s in 1:nb)
-            c, _ = add_con(c, EachInstance(), v[j, s] for j in 1:nv, s in 1:nb)
-            model = ExaModel(c)
-
-            # bx: (nv, ns) matrix
-            bx = reshape([1.0, 2.0, 3.0, 4.0], nv, ns)
-
-            bf = zeros(ns)
-            obj!(model, bx, bf)
-
-            # Both instances have θ=2
-            # instance1: v=[1,2], obj = 2*(1 + 4) = 10
-            # instance2: v=[3,4], obj = 2*(9 + 16) = 50
-            @test bf[1] ≈ 10.0
-            @test bf[2] ≈ 50.0
-
-            # Consistency: sum(bf) ≈ obj(get_model(m), vec(bx))
-            @test sum(bf) ≈ obj(get_model(model), vec(bx))
-
-            # Convenience obj() also works
-            bf2 = obj(model, bx)
-            @test bf2 ≈ bf
-        end
-
-        @testset "Batch grad! evaluation" begin
-            ns, nv = 2, 2
-
-            c = BatchExaCore(ns)
-            @add_var(c, v, EachInstance(), nv)
-            @add_par(c, θ, EachInstance(), [2.0])
-            nb = get_nbatch(c)
-            c, _ = add_obj(c, θ[1, s] * v[j, s]^2 for j in 1:nv, s in 1:nb)
-            c, _ = add_con(c, EachInstance(), v[j, s] for j in 1:nv, s in 1:nb)
-            model = ExaModel(c)
-
-            bx = reshape([1.0, 2.0, 3.0, 4.0], nv, ns)
-            bg = zeros(nv, ns)
-            grad!(model, bx, bg)
-
-            # ∂(θ*v²)/∂v = 2*θ*v, θ=2 for both instances
-            # s1: [2*2*1, 2*2*2] = [4, 8]
-            # s2: [2*2*3, 2*2*4] = [12, 16]
-            @test bg[:, 1] ≈ [4.0, 8.0]
-            @test bg[:, 2] ≈ [12.0, 16.0]
-
-            # Consistency with fused model
-            g_flat = zeros(ns * nv)
-            grad!(get_model(model), vec(bx), g_flat)
-            @test vec(bg) ≈ g_flat
-        end
-
-        @testset "Batch cons! evaluation" begin
-            ns, nv = 2, 2
-
-            c = BatchExaCore(ns)
-            @add_var(c, v, EachInstance(), nv)
-            @add_par(c, θ, EachInstance(), [1.0])
-            nb = get_nbatch(c)
-            c, _ = add_obj(c, v[j, s]^2 for j in 1:nv, s in 1:nb)
-            c, _ = add_con(c, EachInstance(), v[j, s] - θ[1, s] for j in 1:nv, s in 1:nb)
-            model = ExaModel(c)
-
-            bx = reshape([1.0, 2.0, 3.0, 4.0], nv, ns)
-            bc = zeros(nv, ns)
-            cons!(model, bx, bc)
-
-            # Both instances have θ=1
-            # s1: v=[1,2], θ=1 → [0, 1]
-            # s2: v=[3,4], θ=1 → [2, 3]
-            @test bc[:, 1] ≈ [0.0, 1.0]
-            @test bc[:, 2] ≈ [2.0, 3.0]
-
-            # Consistency with fused model
-            c_flat = zeros(ns * nv)
-            cons_nln!(get_model(model), vec(bx), c_flat)
-            @test vec(bc) ≈ c_flat
-        end
-
-        @testset "Batch jac_structure! and jac_coord!" begin
-            ns, nv, nc = 2, 2, 2
-
-            c = BatchExaCore(ns)
-            @add_var(c, v, EachInstance(), nv)
-            nb = get_nbatch(c)
-            c, _ = add_obj(c, v[j, s]^2 for j in 1:nv, s in 1:nb)
-            c, _ = add_con(c, EachInstance(), v[j, s] for j in 1:nv, s in 1:nb)
-            model = ExaModel(c)
-
-            nnzj = NLPModels.get_nnzj(model)
-            @test nnzj > 0
-
-            rows = zeros(Int, nnzj)
-            cols = zeros(Int, nnzj)
-            jac_structure!(model, rows, cols)
-
-            # Per-instance local indices: rows ∈ 1:nc, cols ∈ 1:nv
-            @test all(r -> 1 <= r <= nc, rows)
-            @test all(c -> 1 <= c <= nv, cols)
-
-            # Evaluate Jacobian: jvals is flat vector (nnzj * ns)
-            bx = reshape(ones(nv * ns), nv, ns)
-            jvals = zeros(nnzj * ns)
-            jac_coord!(model, bx, jvals)
-
-            # Linear constraints → all values should be 1
-            @test all(v -> v ≈ 1.0, jvals)
-        end
-
-        @testset "Batch hess_structure! and hess_coord!" begin
-            ns, nv = 2, 2
-
-            c = BatchExaCore(ns)
-            @add_var(c, v, EachInstance(), nv)
-            @add_par(c, θ, EachInstance(), [2.0])
-            nb = get_nbatch(c)
-            c, _ = add_obj(c, θ[1, s] * v[j, s]^2 for j in 1:nv, s in 1:nb)
-            c, _ = add_con(c, EachInstance(), v[j, s] for j in 1:nv, s in 1:nb)
-            model = ExaModel(c)
-
-            nnzh = NLPModels.get_nnzh(model)
-            @test nnzh > 0
-
-            rows = zeros(Int, nnzh)
-            cols = zeros(Int, nnzh)
-            hess_structure!(model, rows, cols)
-
-            # Per-instance local indices
-            @test all(r -> 1 <= r <= nv, rows)
-            @test all(c -> 1 <= c <= nv, cols)
-
-            # Evaluate with uniform obj_weight
-            bx = reshape(ones(nv * ns), nv, ns)
-            by = zeros(nv, ns)
-            bobj_weight = ones(ns)
-            hvals = zeros(nnzh * ns)
-            hess_coord!(model, bx, by, bobj_weight, hvals)
-
-            # Hessian of θ*v[j]^2 is 2*θ on diagonal, θ=2 for all instances
-            # Both instances: 2*2 = 4
-            hvals_s1 = hvals[1:nnzh]
-            hvals_s2 = hvals[nnzh+1:2*nnzh]
-            @test any(v -> v ≈ 4.0, hvals_s1)
-            @test any(v -> v ≈ 4.0, hvals_s2)
-        end
-
-        @testset "hess_coord! with varying obj_weight" begin
-            ns, nv = 2, 2
-
-            c = BatchExaCore(ns)
-            @add_var(c, v, EachInstance(), nv)
-            @add_par(c, θ, EachInstance(), [2.0])
-            nb = get_nbatch(c)
-            c, _ = add_obj(c, θ[1, s] * v[j, s]^2 for j in 1:nv, s in 1:nb)
-            c, _ = add_con(c, EachInstance(), v[j, s]^3 for j in 1:nv, s in 1:nb)
-            model = ExaModel(c)
-
-            nc = NLPModels.get_ncon(model)
-            nnzh = NLPModels.get_nnzh(model)
-            bx = reshape([1.0, 2.0, 3.0, 4.0], nv, ns)
-            by = ones(nc, ns)
-
-            # Uniform weight for reference
-            hvals_uniform = zeros(nnzh * ns)
-            hess_coord!(model, bx, by, [1.0, 1.0], hvals_uniform)
-
-            # Varying weights
-            hvals_varying = zeros(nnzh * ns)
-            hess_coord!(model, bx, by, [2.0, 0.5], hvals_varying)
-
-            # Compute reference via fused model for each instance
-            inner = get_model(model)
-            total_nnzh = NLPModels.get_nnzh(inner)
-
-            # obj-only hessian
-            hess_obj = zeros(total_nnzh)
-            hess_coord!(inner, vec(bx), zeros(ns * nc), hess_obj; obj_weight = 1.0)
-
-            # con-only hessian
-            hess_con = zeros(total_nnzh)
-            hess_coord!(inner, vec(bx), vec(by), hess_con; obj_weight = 0.0)
-
-            # Verify per-instance reconstruction
-            perm = ExaModels._batch_hess_perm(model)
-            for s in 1:ns
-                for k in 1:nnzh
-                    idx = perm[(s - 1) * nnzh + k]
-                    expected = [2.0, 0.5][s] * hess_obj[idx] + hess_con[idx]
-                    @test hvals_varying[(s - 1) * nnzh + k] ≈ expected
-                end
-            end
-        end
-
-        @testset "Multiple constraint calls" begin
-            ns, nv = 2, 3
-
-            c = BatchExaCore(ns)
-            @add_var(c, v, EachInstance(), nv)
-            @add_par(c, θ, EachInstance(), [1.0])
-            nb = get_nbatch(c)
-            c, _ = add_obj(c, θ[1, s] * v[j, s]^2 for j in 1:nv, s in 1:nb)
-            # Two separate constraint calls per instance
-            c, _ = add_con(c, EachInstance(), v[j, s] - θ[1, s] for j in 1:nv, s in 1:nb)
-            c, _ = add_con(c, EachInstance(), v[1, s] + v[2, s] + v[3, s] for s in 1:nb; ucon = 10.0)
-            model = ExaModel(c)
-
-            nc = NLPModels.get_ncon(model)
-            # nc = nv + 1 = 4 per instance
-            @test nc == nv + 1
-            @test get_nbatch(model) == ns
-
-            bx = reshape([1.0, 2.0, 3.0, 4.0, 5.0, 6.0], nv, ns)
-            bc = zeros(nc, ns)
-            cons!(model, bx, bc)
-
-            # Consistency with fused model — this is the definitive check
-            c_flat = zeros(nc * ns)
-            cons_nln!(get_model(model), vec(bx), c_flat)
-            @test vec(bc) ≈ c_flat
-
-            # Hessian with both obj and con contributions
-            nnzh = NLPModels.get_nnzh(model)
-
-            # Evaluate hessian
-            by = ones(nc, ns)
-            bobj_weight = ones(ns)
-            hvals = zeros(nnzh * ns)
-            hess_coord!(model, bx, by, bobj_weight, hvals)
-            @test any(v -> v != 0.0, hvals[1:nnzh])
-            @test any(v -> v != 0.0, hvals[nnzh+1:2*nnzh])
-        end
-
-        @testset "Get underlying model" begin
-            ns, nv = 2, 2
-
-            c = BatchExaCore(ns)
-            @add_var(c, v, EachInstance(), nv)
-            nb = get_nbatch(c)
-            c, _ = add_obj(c, v[j, s]^2 for j in 1:nv, s in 1:nb)
-            c, _ = add_con(c, EachInstance(), v[j, s] for j in 1:nv, s in 1:nb)
-            model = ExaModel(c)
-
-            inner = get_model(model)
-            @test inner isa ExaModels.ExaModel
-            @test NLPModels.get_nvar(inner) == ns * nv
-            @test NLPModels.get_ncon(inner) == ns * nv
-        end
-
-        @testset "Variable bounds and start values" begin
-            ns, nv = 2, 2
-
-            c = BatchExaCore(ns)
-            @add_var(c, v, EachInstance(), nv; start = 0.5, lvar = 0.0, uvar = 10.0)
-            nb = get_nbatch(c)
-            c, _ = add_obj(c, v[j, s]^2 for j in 1:nv, s in 1:nb)
-            c, _ = add_con(c, EachInstance(), v[j, s] for j in 1:nv, s in 1:nb; lcon = 0.0, ucon = 100.0)
-            model = ExaModel(c)
-
-            # Check that meta matrices have correct shape and values
-            @test size(model.meta.x0) == (nv, ns)
-            @test all(model.meta.x0 .== 0.5)
-
-            @test all(model.meta.lvar .== 0.0)
-            @test all(model.meta.uvar .== 10.0)
-        end
-
-        @testset "Error on vector arguments" begin
-            ns, nv = 2, 2
-
-            c = BatchExaCore(ns)
-            @add_var(c, v, EachInstance(), nv)
-            nb = get_nbatch(c)
-            c, _ = add_obj(c, v[j, s]^2 for j in 1:nv, s in 1:nb)
-            c, _ = add_con(c, EachInstance(), v[j, s] for j in 1:nv, s in 1:nb)
-            model = ExaModel(c)
-
-            x_vec = ones(nv)
-            c_vec = zeros(nv)
-            g_vec = zeros(nv)
-
-            @test_throws ArgumentError obj(model, x_vec)
-            @test_throws ArgumentError cons!(model, x_vec, c_vec)
-            @test_throws ArgumentError grad!(model, x_vec, g_vec)
-        end
-
-        @testset "Ipopt solver with known solution" begin
-            ns, nv = 3, 1
-
-            c = BatchExaCore(ns)
-            @add_var(c, v, EachInstance(), nv)
-            @add_par(c, θ, EachInstance(), [2.0])
-            nb = get_nbatch(c)
-            # Each instance minimizes (v[1,s] - θ[1,s])^2
-            # But θ is the same (2.0) for all instances with this API
-            c, _ = add_obj(c, (v[1, s] - θ[1, s])^2 for s in 1:nb)
-            c, _ = add_con(c, EachInstance(), v[1, s] for s in 1:nb; lcon = 0.0, ucon = Inf)
-            model = ExaModel(c)
-
-            # Solve via fused model
-            result = ipopt(get_model(model); print_level = 0)
-            @test result.status == :first_order
-
-            x_sol = result.solution
-            # All instances have θ=2, so optimal v*=2 for each
-            for i in 1:ns
-                @test x_sol[var_indices(model, i)] ≈ [2.0] atol = 1.0e-5
-            end
-            @test result.objective ≈ 0.0 atol = 1.0e-8
-        end
-
-        @testset "Ipopt solver - multiple variables per instance" begin
-            ns, nv = 2, 2
-
-            c = BatchExaCore(ns)
-            @add_var(c, v, EachInstance(), nv)
-            @add_par(c, θ, EachInstance(), [1.0, 3.0])
-            nb = get_nbatch(c)
-            # Each instance minimizes sum of (v[j,s] - θ[j,s])^2
-            c, _ = add_obj(c, (v[j, s] - θ[j, s])^2 for j in 1:nv, s in 1:nb)
-            c, _ = add_con(c, EachInstance(), v[1, s] + v[2, s] for s in 1:nb; ucon = 10.0)
-            model = ExaModel(c)
-
-            result = ipopt(get_model(model); print_level = 0)
-            @test result.status == :first_order
-
-            x_sol = result.solution
-            # Both instances have θ=[1,3], so optimal v*=[1,3] for each
-            @test x_sol[var_indices(model, 1)] ≈ [1.0, 3.0] atol = 1.0e-5
-            @test x_sol[var_indices(model, 2)] ≈ [1.0, 3.0] atol = 1.0e-5
-            @test result.objective ≈ 0.0 atol = 1.0e-8
-        end
-
+        @testset "Construction" test_construction()
+        @testset "obj!" test_obj()
+        @testset "grad!" test_grad()
+        @testset "cons!" test_cons()
+        @testset "jac and hess" test_jac_hess()
+        @testset "hess obj_weight" test_hess_obj_weight()
+        @testset "hess vector obj_weight" test_hess_vector_obj_weight()
+        @testset "Multiple constraints" test_multiple_constraints()
+        @testset "Error guards" test_error_guards()
+        @testset "Bounds" test_bounds()
+        @testset "flatten_model" test_flatten_model()
+        @testset "Ipopt simple" test_ipopt_simple()
+        @testset "Ipopt multi" test_ipopt_multi()
     end
 end
 

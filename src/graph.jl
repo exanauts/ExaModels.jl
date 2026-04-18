@@ -1,3 +1,18 @@
+# ── OffsetVector — zero-allocation offset indexing for batch kernels ──────────
+
+"""
+    OffsetVector(data, offset)
+
+Lightweight wrapper: `ov[i]` returns `data[offset + i]`.
+Used in batch KA kernels to avoid GPU view allocations.
+"""
+struct OffsetVector{V}
+    data::V
+    offset::Int
+end
+@inline Base.getindex(ov::OffsetVector, i) = @inbounds ov.data[ov.offset + i]
+@inline Base.setindex!(ov::OffsetVector, v, i) = @inbounds ov.data[ov.offset + i] = v
+
 # ── Abstract node types ───────────────────────────────────────────────────────
 
 """

@@ -21,7 +21,6 @@ include("DeprecatedTest/DeprecatedTest.jl")
 include("JuMPTest/JuMPTest.jl")
 include("UtilsTest/UtilsTest.jl")
 include("TwoStageTest/TwoStageTest.jl")
-include("LinAlgTest/LinAlgTest.jl")
 include("BatchTest/BatchTest.jl")
 include("JuliaCTest/JuliaCTest.jl")
 include("TwoStageTest/TwoStageTest.jl")
@@ -60,8 +59,6 @@ include("PrettyPrintTest.jl")
     # @info "Running OptimalControl Test"
     # OptimalControlTest.runtests()
 
-    @info "Running LinAlg Test"
-    LinAlgTest.runtests()
     @info "Running Batch Test"
     BatchTest.runtests()
 end

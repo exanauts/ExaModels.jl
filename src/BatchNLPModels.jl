@@ -1,8 +1,8 @@
 """
     BatchNLPModels
 
-Template module for batched NLP models. Defines abstract types, metadata,
-and generic API functions following the NLPModels.jl pattern.
+Template module for batched NLP models. Defines abstract types and
+generic API functions following the NLPModels.jl pattern.
 
 Key design: `AbstractBatchNLPModel <: NLPModels.AbstractNLPModel`, so batch
 models participate in the standard NLPModels dispatch hierarchy.
@@ -12,7 +12,9 @@ module BatchNLPModels
 import NLPModels:
     NLPModels,
     AbstractNLPModel,
-    AbstractNLPModelMeta
+    AbstractNLPModelMeta,
+    NLPModelMeta,
+    obj!
 
 # ============================================================================
 # Abstract types
@@ -25,7 +27,7 @@ Abstract type for batched NLP models. Subtypes `AbstractNLPModel` so that
 batch models participate in the standard NLPModels dispatch hierarchy.
 
 Implementations must provide:
-- `meta` field of type `<: AbstractBatchNLPModelMeta`
+- `meta` field of type `NLPModelMeta`
 - `counters` field of type `NLPModels.Counters`
 - Batch API methods: `obj!`, `grad!`, `cons!`, `jac_structure!`, `jac_coord!`,
   `hess_structure!`, `hess_coord!`
@@ -33,205 +35,22 @@ Implementations must provide:
 abstract type AbstractBatchNLPModel{T, S} <: AbstractNLPModel{T, S} end
 
 # ============================================================================
-# BatchNLPModelMeta
+# get_nbatch — derived from the VT type of the meta
 # ============================================================================
 
-"""
-    BatchNLPModelMeta{T, VT, VI} <: AbstractNLPModelMeta{T, VT}
+get_nbatch(meta::NLPModelMeta{T, <:AbstractMatrix}) where {T} = Base.size(meta.x0, 2)
+get_nbatch(meta::NLPModelMeta) = 1
+get_nbatch(m::AbstractNLPModel) = get_nbatch(m.meta)
 
-Metadata for a batched NLP where `nbatch` independent problems share
-identical structure (dimensions, sparsity patterns). Extends the standard
-`NLPModelMeta` interface with a batch dimension.
-
-All `VT`-typed arrays are either vectors (nbatch=1) or matrices with
-columns indexing instances.
-
-# Type parameters
-- `T`:  element type (e.g. `Float64`)
-- `VT`: storage type — `Matrix{T}` when `nbatch > 1` (columns = instances),
-        `Vector{T}` when `nbatch == 1`
-- `VI`: integer index vector type (typically `Vector{Int}`)
-"""
-struct BatchNLPModelMeta{T, VT, VI} <: AbstractNLPModelMeta{T, VT}
-    nvar::Int
-    x0::VT
-    lvar::VT
-    uvar::VT
-    ifix::VI
-    ilow::VI
-    iupp::VI
-    irng::VI
-    ifree::VI
-    iinf::VI
-    nlvb::Int
-    nlvo::Int
-    nlvc::Int
-    ncon::Int
-    y0::VT
-    lcon::VT
-    ucon::VT
-    jfix::VI
-    jlow::VI
-    jupp::VI
-    jrng::VI
-    jfree::VI
-    jinf::VI
-    nnzo::Int
-    nnzj::Int
-    lin_nnzj::Int
-    nln_nnzj::Int
-    nnzh::Int
-    nlin::Int
-    nnln::Int
-    lin::VI
-    nln::VI
-    minimize::Bool
-    islp::Bool
-    name::String
-    variable_bounds_analysis::Bool
-    constraint_bounds_analysis::Bool
-    sparse_jacobian::Bool
-    sparse_hessian::Bool
-    grad_available::Bool
-    jac_available::Bool
-    hess_available::Bool
-    jprod_available::Bool
-    jtprod_available::Bool
-    hprod_available::Bool
-end
-
-# ============================================================================
-# Accessors — auto-generate get_* for all fields
-# ============================================================================
-
-for field in fieldnames(BatchNLPModelMeta)
-    meth = Symbol("get_", field)
-    # Extend NLPModels accessor if it exists, otherwise define locally
-    if isdefined(NLPModels, meth)
-        @eval begin
-            NLPModels.$meth(meta::BatchNLPModelMeta) = getproperty(meta, $(QuoteNode(field)))
-            NLPModels.$meth(m::AbstractBatchNLPModel) = NLPModels.$meth(m.meta)
-        end
-    else
-        @eval begin
-            $meth(meta::BatchNLPModelMeta) = getproperty(meta, $(QuoteNode(field)))
-            $meth(m::AbstractBatchNLPModel) = $meth(m.meta)
-            export $meth
-        end
-    end
-end
-
-# get_nbatch is derived from the VT type, not stored as a field
-get_nbatch(meta::BatchNLPModelMeta{T, <:AbstractMatrix}) where {T} = Base.size(meta.x0, 2)
-get_nbatch(meta::BatchNLPModelMeta) = 1
-get_nbatch(m::AbstractBatchNLPModel) = get_nbatch(m.meta)
-export get_nbatch
-
-# ============================================================================
-# Constructor helpers
-# ============================================================================
-
-"""
-    _first_instance(v)
-
-Extract first-instance data for bounds classification.
-"""
-_first_instance(v::AbstractVector) = v
-_first_instance(m::AbstractMatrix) = @view m[:, 1]
-
-function _classify_bounds(lb, ub, ::Type{T}) where {T}
-    ifix  = findall(lb .== ub)
-    ilow  = findall((lb .> T(-Inf)) .& (ub .== T(Inf)))
-    iupp  = findall((lb .== T(-Inf)) .& (ub .< T(Inf)))
-    irng  = findall((lb .> T(-Inf)) .& (ub .< T(Inf)) .& (lb .< ub))
-    ifree = findall((lb .== T(-Inf)) .& (ub .== T(Inf)))
-    iinf  = findall(lb .> ub)
-    return ifix, ilow, iupp, irng, ifree, iinf
-end
-
-"""
-    BatchNLPModelMeta(nbatch, nvar, x0, lvar, uvar, ncon, y0, lcon, ucon; kwargs...)
-
-Construct batch NLP metadata. Bounds analysis (variable/constraint
-classification) is performed on the first instance.
-"""
-function BatchNLPModelMeta(
-    nvar::Int,
-    x0::VT,
-    lvar::VT,
-    uvar::VT,
-    ncon::Int,
-    y0::VT,
-    lcon::VT,
-    ucon::VT;
-    nnzj::Int = nvar * ncon,
-    nnzh::Int = nvar * (nvar + 1) ÷ 2,
-    minimize::Bool = true,
-    islp::Bool = false,
-    name::String = "Generic",
-) where {VT}
-    T = eltype(VT)
-
-    # Variable bounds analysis (first instance)
-    ifix, ilow, iupp, irng, ifree, iinf = _classify_bounds(
-        _first_instance(lvar), _first_instance(uvar), T,
-    )
-
-    # Constraint bounds analysis (first instance)
-    if ncon > 0
-        jfix, jlow, jupp, jrng, jfree, jinf = _classify_bounds(
-            _first_instance(lcon), _first_instance(ucon), T,
-        )
-    else
-        jfix = jlow = jupp = jrng = jfree = jinf = Int[]
-    end
-
-    nln = collect(1:ncon)
-    VI = Vector{Int}
-
-    return BatchNLPModelMeta{T, VT, VI}(
-        nvar,
-        x0, lvar, uvar,
-        ifix, ilow, iupp, irng, ifree, iinf,
-        nvar, nvar, nvar,    # nlvb, nlvo, nlvc
-        ncon,
-        y0, lcon, ucon,
-        jfix, jlow, jupp, jrng, jfree, jinf,
-        nvar,                # nnzo
-        nnzj, 0, nnzj,      # nnzj, lin_nnzj, nln_nnzj
-        nnzh,
-        0, ncon,             # nlin, nnln
-        Int[], nln,          # lin, nln
-        minimize, islp, name,
-        true, true,          # variable/constraint_bounds_analysis
-        true, true,          # sparse_jacobian/hessian
-        true,                # grad_available
-        ncon > 0,            # jac_available
-        true,                # hess_available
-        ncon > 0,            # jprod_available
-        ncon > 0,            # jtprod_available
-        true,                # hprod_available
-    )
-end
 
 # ============================================================================
 # Generic batch API — function stubs
 # ============================================================================
-#
-# Concrete implementations must define the `!` (in-place) methods.
-# Allocating wrappers are provided as defaults.
-
-"""
-    obj!(m::AbstractBatchNLPModel, bx::AbstractMatrix, bf::AbstractVector)
-
-Evaluate per-instance objectives. `bx` is `(nvar, nbatch)`, `bf` is `(nbatch,)`.
-"""
-function obj! end
 
 """
     obj(m::AbstractBatchNLPModel, bx::AbstractMatrix) -> Vector
 
-Allocating version of `obj!`.
+Allocating version of `NLPModels.obj!`.
 """
 function NLPModels.obj(m::AbstractBatchNLPModel{T}, bx::AbstractMatrix) where {T}
     bf = Vector{T}(undef, get_nbatch(m))
@@ -254,7 +73,7 @@ end
 Allocating version of `grad!`.
 """
 function NLPModels.grad(m::AbstractBatchNLPModel{T}, bx::AbstractMatrix) where {T}
-    bg = Matrix{T}(undef, get_nvar(m), get_nbatch(m))
+    bg = Matrix{T}(undef, NLPModels.get_nvar(m), get_nbatch(m))
     NLPModels.grad!(m, bx, bg)
     return bg
 end
@@ -274,7 +93,7 @@ end
 Allocating version of `cons!`.
 """
 function NLPModels.cons(m::AbstractBatchNLPModel{T}, bx::AbstractMatrix) where {T}
-    bc = Matrix{T}(undef, get_ncon(m), get_nbatch(m))
+    bc = Matrix{T}(undef, NLPModels.get_ncon(m), get_nbatch(m))
     NLPModels.cons!(m, bx, bc)
     return bc
 end
@@ -282,8 +101,7 @@ end
 """
     jac_structure!(m::AbstractBatchNLPModel, rows, cols)
 
-Per-instance Jacobian sparsity pattern (local indices). `rows` and `cols`
-have length `nnzj` (per instance).
+Per-instance Jacobian sparsity pattern (local indices).
 """
 function NLPModels.jac_structure!(
     m::AbstractBatchNLPModel,
@@ -296,8 +114,7 @@ end
 """
     jac_coord!(m::AbstractBatchNLPModel, bx::AbstractMatrix, jvals::AbstractVector)
 
-Evaluate batch Jacobian values. `jvals` is a flat vector of length
-`nnzj * nbatch`, laid out instance by instance.
+Evaluate batch Jacobian values.
 """
 function NLPModels.jac_coord!(
     m::AbstractBatchNLPModel,
@@ -310,8 +127,7 @@ end
 """
     hess_structure!(m::AbstractBatchNLPModel, rows, cols)
 
-Per-instance Hessian sparsity pattern (local indices). `rows` and `cols`
-have length `nnzh` (per instance).
+Per-instance Hessian sparsity pattern (local indices).
 """
 function NLPModels.hess_structure!(
     m::AbstractBatchNLPModel,
@@ -322,24 +138,150 @@ function NLPModels.hess_structure!(
 end
 
 """
-    hess_coord!(m::AbstractBatchNLPModel, bx, by, bobj_weight, hvals)
+    hess_coord!(m::AbstractBatchNLPModel, bx, by, hvals; obj_weight = 1)
 
-Evaluate batch Hessian values. `hvals` is a flat vector of length
-`nnzh * nbatch`, laid out instance by instance.
-
-- `bx`: `(nvar, nbatch)` primal values
-- `by`: `(ncon, nbatch)` dual values
-- `bobj_weight`: `(nbatch,)` per-instance objective weights
-- `hvals`: `(nnzh * nbatch,)` flat Hessian values
+Evaluate batch Hessian values.
 """
 function NLPModels.hess_coord!(
-    m::AbstractBatchNLPModel,
+    m::AbstractBatchNLPModel{T},
     bx::AbstractMatrix,
     by::AbstractMatrix,
-    bobj_weight::AbstractVector,
-    hvals::AbstractVector,
-)
+    hvals::AbstractVector;
+    obj_weight = one(T),
+) where {T}
     error("hess_coord! not implemented for $(typeof(m))")
+end
+
+# ============================================================================
+# FlattenNLPModel
+# ============================================================================
+
+"""
+    FlattenNLPModel{T, M} <: AbstractNLPModel{T, Vector{T}}
+
+Wrapper that presents a batch NLP model as a flat (Vector-based) NLP model.
+All NLPModels callbacks delegate to the underlying batch model's matrix API.
+
+    FlattenNLPModel(model::AbstractNLPModel)
+
+Construct a flat model from a batch model whose `meta.x0` is a matrix.
+"""
+struct FlattenNLPModel{T, M <: AbstractNLPModel{T}} <: AbstractNLPModel{T, Vector{T}}
+    batch::M
+    meta::NLPModelMeta{T, Vector{T}}
+    counters::NLPModels.Counters
+end
+
+function FlattenNLPModel(model::AbstractNLPModel{T}) where {T}
+    nb = get_nbatch(model)
+    nvar = NLPModels.get_nvar(model) * nb
+    ncon = NLPModels.get_ncon(model) * nb
+    nnzj = NLPModels.get_nnzj(model) * nb
+    nnzh = NLPModels.get_nnzh(model) * nb
+    meta = NLPModelMeta{T, Vector{T}}(
+        nvar,
+        vec(model.meta.x0), vec(model.meta.lvar), vec(model.meta.uvar),
+        Int[], Int[], Int[], Int[], collect(1:nvar), Int[],
+        nvar, nvar, nvar,
+        ncon,
+        vec(model.meta.y0), vec(model.meta.lcon), vec(model.meta.ucon),
+        Int[], Int[], Int[], Int[], Int[], Int[],
+        nvar, nnzj, 0, nnzj, nnzh,
+        0, ncon, Int[], collect(1:ncon),
+        model.meta.minimize, false, String(model.meta.name),
+        false, false, true, true, true, ncon > 0, true, ncon > 0, ncon > 0, true,
+    )
+    return FlattenNLPModel(model, meta, NLPModels.Counters())
+end
+
+function NLPModels.obj(m::FlattenNLPModel{T}, x::AbstractVector) where {T}
+    nb = get_nbatch(m.batch)
+    nvar = NLPModels.get_nvar(m.batch)
+    bx = reshape(x, nvar, nb)
+    bf = Vector{T}(undef, nb)
+    obj!(m.batch, bx, bf)
+    return sum(bf)
+end
+
+function NLPModels.grad!(m::FlattenNLPModel{T}, x::AbstractVector, g::AbstractVector) where {T}
+    nb = get_nbatch(m.batch)
+    nvar = NLPModels.get_nvar(m.batch)
+    NLPModels.grad!(m.batch, reshape(x, nvar, nb), reshape(g, nvar, nb))
+    return g
+end
+
+function NLPModels.cons_nln!(m::FlattenNLPModel{T}, x::AbstractVector, c::AbstractVector) where {T}
+    nb = get_nbatch(m.batch)
+    nvar = NLPModels.get_nvar(m.batch)
+    ncon = NLPModels.get_ncon(m.batch)
+    NLPModels.cons!(m.batch, reshape(x, nvar, nb), reshape(c, ncon, nb))
+    return c
+end
+
+function NLPModels.jac_structure!(m::FlattenNLPModel, rows::AbstractVector, cols::AbstractVector)
+    nb = get_nbatch(m.batch)
+    nvar = NLPModels.get_nvar(m.batch)
+    ncon = NLPModels.get_ncon(m.batch)
+    nnzj = NLPModels.get_nnzj(m.batch)
+
+    # Get per-instance structure
+    r1 = @view rows[1:nnzj]
+    c1 = @view cols[1:nnzj]
+    NLPModels.jac_structure!(m.batch, r1, c1)
+
+    # Replicate for each instance with shifted indices
+    for s in 2:nb
+        offset = (s - 1) * nnzj
+        row_shift = (s - 1) * ncon
+        col_shift = (s - 1) * nvar
+        for k in 1:nnzj
+            @inbounds rows[offset + k] = r1[k] + row_shift
+            @inbounds cols[offset + k] = c1[k] + col_shift
+        end
+    end
+    return rows, cols
+end
+
+function NLPModels.jac_coord!(m::FlattenNLPModel{T}, x::AbstractVector, jvals::AbstractVector) where {T}
+    nb = get_nbatch(m.batch)
+    nvar = NLPModels.get_nvar(m.batch)
+    nnzj = NLPModels.get_nnzj(m.batch)
+    NLPModels.jac_coord!(m.batch, reshape(x, nvar, nb), reshape(jvals, nnzj, nb))
+    return jvals
+end
+
+function NLPModels.hess_structure!(m::FlattenNLPModel, rows::AbstractVector, cols::AbstractVector)
+    nb = get_nbatch(m.batch)
+    nvar = NLPModels.get_nvar(m.batch)
+    nnzh = NLPModels.get_nnzh(m.batch)
+
+    # Get per-instance structure
+    r1 = @view rows[1:nnzh]
+    c1 = @view cols[1:nnzh]
+    NLPModels.hess_structure!(m.batch, r1, c1)
+
+    # Replicate for each instance with shifted indices
+    for s in 2:nb
+        offset = (s - 1) * nnzh
+        shift = (s - 1) * nvar
+        for k in 1:nnzh
+            @inbounds rows[offset + k] = r1[k] + shift
+            @inbounds cols[offset + k] = c1[k] + shift
+        end
+    end
+    return rows, cols
+end
+
+function NLPModels.hess_coord!(
+    m::FlattenNLPModel{T}, x::AbstractVector, y::AbstractVector,
+    hvals::AbstractVector; obj_weight = one(T),
+) where {T}
+    nb = get_nbatch(m.batch)
+    nvar = NLPModels.get_nvar(m.batch)
+    ncon = NLPModels.get_ncon(m.batch)
+    nnzh = NLPModels.get_nnzh(m.batch)
+    NLPModels.hess_coord!(m.batch, reshape(x, nvar, nb), reshape(y, ncon, nb), reshape(hvals, nnzh, nb); obj_weight)
+    return hvals
 end
 
 # ============================================================================
@@ -347,7 +289,6 @@ end
 # ============================================================================
 
 export AbstractBatchNLPModel,
-    BatchNLPModelMeta,
-    obj!
+    FlattenNLPModel
 
 end # module BatchNLPModels

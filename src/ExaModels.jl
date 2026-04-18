@@ -63,7 +63,7 @@ include("tags.jl")
 include("two_stage.jl")
 include("BatchNLPModels.jl")
 using .BatchNLPModels
-include("batch.jl")
+get_model(model::BatchExaModel) = BatchNLPModels.FlattenNLPModel(model)
 
 export ExaModel,
     ExaCore,
@@ -113,12 +113,11 @@ export ExaModel,
     get_ucon,
     set_ucon!,
     AbstractBatchNLPModel,
-    BatchNLPModelMeta,
     BatchExaCore,
     BatchExaModel,
-    EachInstance,
     get_nbatch,
     get_model,
+    flatten_model,
     var_indices,
     cons_block_indices
 

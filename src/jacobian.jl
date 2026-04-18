@@ -125,6 +125,27 @@ function sjacobian!(y1, y2, f, x, θ, adj)
         )
     end
 end
+function sjacobian!(y1, y2, f, x::AbstractArray, θ::AbstractArray, adj, nb::Integer, nvar::Integer, npar::Integer, nout::Integer, ::Nothing = nothing)
+    for s in 1:nb
+        x_s = @view x[(s-1)*nvar+1 : s*nvar]
+        θ_s = @view θ[(s-1)*npar+1 : s*npar]
+        y1_s = @view y1[(s-1)*nout+1 : s*nout]
+        @simd for i in eachindex(f.itr)
+            @inbounds sjacobian!(
+                y1_s,
+                y2,
+                f.f,
+                f.itr[i],
+                x_s,
+                θ_s,
+                f.f.comp1,
+                offset0(f, i),
+                offset1(f, i),
+                adj,
+            )
+        end
+    end
+end
 
 function sjacobian!(y1, y2, f, p, x, θ, comp, o0, o1, adj)
     graph = f(p, AdjointNodeSource(x), θ)

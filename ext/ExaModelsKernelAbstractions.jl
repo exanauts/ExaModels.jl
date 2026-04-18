@@ -672,6 +672,157 @@ end
     @inbounds sparsity[i] = ((J[i], I[i]), i)
 end
 
+# ============================================================================
+# Batch KA dispatch — single kernel launch for the whole batch
+# ============================================================================
+
+# --- Objective ---
+
+function ExaModels._obj_batch!(bf, obj, x, θ, nb, nvar, npar, backend::KernelAbstractions.Backend)
+    nitr = length(obj.itr)
+    if nitr > 0
+        kerf_batch(backend)(bf, obj.f, obj.itr, x, θ, nvar, npar, nitr; ndrange = nb * nitr)
+    end
+end
+
+@kernel function kerf_batch(bf, @Const(f), @Const(itr), @Const(x), @Const(θ), @Const(nvar), @Const(npar), @Const(nitr))
+    I = @index(Global)
+    s = (I - 1) ÷ nitr + 1
+    k = (I - 1) % nitr + 1
+    x_off = (s - 1) * nvar
+    θ_off = (s - 1) * npar
+    @inbounds bf[s] += f(itr[k], ExaModels.OffsetVector(x, x_off), ExaModels.OffsetVector(θ, θ_off))
+end
+
+# --- Constraints ---
+
+function ExaModels._cons_nln_batch!(con, x, θ, g, nb, nvar, npar, ncon, backend::KernelAbstractions.Backend)
+    nitr = length(con.itr)
+    if nitr > 0
+        kerf_con_batch(backend)(g, con.f, con.itr, x, θ, nvar, npar, ncon, nitr; ndrange = nb * nitr)
+    end
+end
+
+@kernel function kerf_con_batch(g, @Const(f), @Const(itr), @Const(x), @Const(θ), @Const(nvar), @Const(npar), @Const(ncon), @Const(nitr))
+    I = @index(Global)
+    s = (I - 1) ÷ nitr + 1
+    k = (I - 1) % nitr + 1
+    x_off = (s - 1) * nvar
+    θ_off = (s - 1) * npar
+    g_off = (s - 1) * ncon
+    @inbounds g[g_off + ExaModels.offset0(f, itr, k)] += f(itr[k], ExaModels.OffsetVector(x, x_off), ExaModels.OffsetVector(θ, θ_off))
+end
+
+# --- Gradient ---
+
+function ExaModels.gradient!(y, f, x::AbstractVector, θ::AbstractVector, adj, nb::Integer, nvar::Integer, npar::Integer, backend::KernelAbstractions.Backend)
+    nitr = length(f.itr)
+    if nitr > 0
+        kerg_batch(backend)(y, f.f, f.itr, x, θ, adj, nvar, npar, nitr; ndrange = nb * nitr)
+    end
+    return y
+end
+
+@kernel function kerg_batch(y, @Const(f), @Const(itr), @Const(x), @Const(θ), @Const(adj), @Const(nvar), @Const(npar), @Const(nitr))
+    I = @index(Global)
+    s = (I - 1) ÷ nitr + 1
+    k = (I - 1) % nitr + 1
+    x_off = (s - 1) * nvar
+    θ_off = (s - 1) * npar
+    y_off = (s - 1) * nvar
+    @inbounds ExaModels.drpass(
+        f(itr[k], ExaModels.AdjointNodeSource(ExaModels.OffsetVector(x, x_off)), ExaModels.OffsetVector(θ, θ_off)),
+        ExaModels.OffsetVector(y, y_off),
+        adj,
+    )
+end
+
+# --- Jacobian ---
+
+function ExaModels.sjacobian!(y1, y2, f, x::AbstractVector, θ::AbstractVector, adj, nb::Integer, nvar::Integer, npar::Integer, nout::Integer, backend::KernelAbstractions.Backend)
+    nitr = length(f.itr)
+    if nitr > 0
+        kerj_batch(backend)(y1, y2, f.f, f.itr, x, θ, adj, ExaModels._constraint_dims(f), nvar, npar, nout, nitr; ndrange = nb * nitr)
+    end
+end
+
+@kernel function kerj_batch(y1, y2, @Const(f), @Const(itr), @Const(x), @Const(θ), @Const(adj), @Const(dims), @Const(nvar), @Const(npar), @Const(nout), @Const(nitr))
+    I = @index(Global)
+    s = (I - 1) ÷ nitr + 1
+    k = (I - 1) % nitr + 1
+    x_off = (s - 1) * nvar
+    θ_off = (s - 1) * npar
+    y_off = (s - 1) * nout
+    @inbounds ExaModels.jrpass(
+        f(itr[k], ExaModels.AdjointNodeSource(ExaModels.OffsetVector(x, x_off)), ExaModels.OffsetVector(θ, θ_off)),
+        f.comp1,
+        ExaModels.offset0(f, itr, k, dims),
+        ExaModels.OffsetVector(y1, y_off),
+        y2,
+        ExaModels.offset1(f, k),
+        0,
+        adj,
+    )
+end
+
+# --- Hessian (objective) ---
+
+function ExaModels.shessian!(y1, y2, f, x::AbstractVector, θ::AbstractVector, adj1, adj2, nb::Integer, nvar::Integer, npar::Integer, nout::Integer, backend::KernelAbstractions.Backend)
+    nitr = length(f.itr)
+    if nitr > 0
+        kerh_batch(backend)(y1, y2, f.f, f.itr, x, θ, adj1, adj2, nvar, npar, nout, nitr; ndrange = nb * nitr)
+    end
+end
+
+@kernel function kerh_batch(y1, y2, @Const(f), @Const(itr), @Const(x), @Const(θ), @Const(adj1), @Const(adj2), @Const(nvar), @Const(npar), @Const(nout), @Const(nitr))
+    I = @index(Global)
+    s = (I - 1) ÷ nitr + 1
+    k = (I - 1) % nitr + 1
+    x_off = (s - 1) * nvar
+    θ_off = (s - 1) * npar
+    y_off = (s - 1) * nout
+    w_s = ExaModels._get_obj_weight(adj1, s)
+    @inbounds ExaModels.hrpass0(
+        f(itr[k], ExaModels.SecondAdjointNodeSource(ExaModels.OffsetVector(x, x_off)), ExaModels.OffsetVector(θ, θ_off)),
+        f.comp2,
+        ExaModels.OffsetVector(y1, y_off),
+        y2,
+        ExaModels.offset2(f, k),
+        0,
+        w_s,
+        adj2,
+    )
+end
+
+# --- Hessian (constraints) ---
+
+function ExaModels.shessian!(y1, y2, f, x::AbstractVector, θ::AbstractVector, adj1s::AbstractVector, adj2, nb::Integer, nvar::Integer, npar::Integer, ncon::Integer, nout::Integer, backend::KernelAbstractions.Backend)
+    nitr = length(f.itr)
+    if nitr > 0
+        kerh2_batch(backend)(y1, y2, f.f, f.itr, x, θ, adj1s, adj2, ExaModels._constraint_dims(f), nvar, npar, ncon, nout, nitr; ndrange = nb * nitr)
+    end
+end
+
+@kernel function kerh2_batch(y1, y2, @Const(f), @Const(itr), @Const(x), @Const(θ), @Const(adj1s), @Const(adj2), @Const(dims), @Const(nvar), @Const(npar), @Const(ncon), @Const(nout), @Const(nitr))
+    I = @index(Global)
+    s = (I - 1) ÷ nitr + 1
+    k = (I - 1) % nitr + 1
+    x_off = (s - 1) * nvar
+    θ_off = (s - 1) * npar
+    y_off = (s - 1) * nout
+    a_off = (s - 1) * ncon
+    @inbounds ExaModels.hrpass0(
+        f(itr[k], ExaModels.SecondAdjointNodeSource(ExaModels.OffsetVector(x, x_off)), ExaModels.OffsetVector(θ, θ_off)),
+        f.comp2,
+        ExaModels.OffsetVector(y1, y_off),
+        y2,
+        ExaModels.offset2(f, k),
+        0,
+        adj1s[a_off + ExaModels.offset0(f, itr, k, dims)],
+        adj2,
+    )
+end
+
 end # module ExaModelsKernelAbstractions
 
 

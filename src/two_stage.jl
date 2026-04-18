@@ -104,12 +104,13 @@ function add_var(
     lvar = T(-Inf),
     uvar = T(Inf),
     ) where {T,VT<:AbstractVector{T},B}
-    
+
     len = total(ns)
-    append!(c.backend, c.tag.var_scen, 0, len)
+    new_var_scen = append!(c.backend, c.tag.var_scen, 0, len)
+    c = ExaCore(c; tag = TwoStageExaModelTag(c.tag.nscen, new_var_scen, c.tag.con_scen))
     return _add_var(
         c, FirstStageTag(), name, start, lvar, uvar, ns...
-    )    
+    )
 end
 """
     add_var(core::TwoStageExaCore, ::EachScenario, dims...; start = 0, lvar = -Inf, uvar = Inf, name = nothing)
@@ -130,10 +131,11 @@ function add_var(
     ) where {T,VT<:AbstractVector{T},B}
     nscen = c.tag.nscen
     len = total(ns)
-    append!(c.backend, c.tag.var_scen, _scen_each_tag(nscen, len), len * nscen)
+    new_var_scen = append!(c.backend, c.tag.var_scen, _scen_each_tag(nscen, len), len * nscen)
+    c = ExaCore(c; tag = TwoStageExaModelTag(c.tag.nscen, new_var_scen, c.tag.con_scen))
     return _add_var(
         c, SecondStageTag(), name, start, lvar, uvar, ns..., nscen
-    )    
+    )
 end
 
 """
@@ -211,7 +213,8 @@ function add_con(
     f = _simdfunction(T, gen.f(DataSource()), c.ncon, c.nnzj, c.nnzh)
     pars = gen.iter
 
-    append!(c.backend, c.tag.con_scen, 0, length(pars))
+    new_con_scen = append!(c.backend, c.tag.con_scen, 0, length(pars))
+    c = ExaCore(c; tag = TwoStageExaModelTag(c.tag.nscen, c.tag.var_scen, new_con_scen))
     return _add_con(c, f, pars, dims, start, lcon, ucon, name, FirstStageConstraintTag())
 end
 
@@ -242,7 +245,8 @@ function add_con(
 
     nscen = c.tag.nscen
     len = length(pars)
-    append!(c.backend, c.tag.con_scen, _scen_each_tag(nscen, div(len, nscen)), len)
+    new_con_scen = append!(c.backend, c.tag.con_scen, _scen_each_tag(nscen, div(len, nscen)), len)
+    c = ExaCore(c; tag = TwoStageExaModelTag(c.tag.nscen, c.tag.var_scen, new_con_scen))
     return _add_con(c, f, pars, dims, start, lcon, ucon, name, SecondStageConstraintTag())
 end
 

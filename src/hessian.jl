@@ -1,3 +1,6 @@
+@inline _get_obj_weight(w::Number, s) = w
+@inline _get_obj_weight(w::AbstractVector, s) = @inbounds w[s]
+
 """
     hdrpass(t1::T1, t2::T2, comp, y1, y2, o2, cnt, adj)
 
@@ -694,6 +697,19 @@ function shessian!(y1, y2, f, x, θ, adj1, adj2)
         )
     end
 end
+function shessian!(y1, y2, f, x::AbstractArray, θ::AbstractArray, adj1, adj2, nb::Integer, nvar::Integer, npar::Integer, nout::Integer, ::Nothing = nothing)
+    for s in 1:nb
+        x_s = @view x[(s-1)*nvar+1 : s*nvar]
+        θ_s = @view θ[(s-1)*npar+1 : s*npar]
+        y1_s = @view y1[(s-1)*nout+1 : s*nout]
+        w_s = _get_obj_weight(adj1, s)
+        @simd for k in eachindex(f.itr)
+            @inbounds shessian!(
+                y1_s, y2, f.f, f.itr[k], x_s, θ_s, f.f.comp2, offset2(f, k), w_s, adj2,
+            )
+        end
+    end
+end
 function shessian!(y1, y2, f, x, θ, adj1s::V, adj2) where {V<:AbstractVector}
     @simd for k in eachindex(f.itr)
         @inbounds shessian!(
@@ -708,6 +724,20 @@ function shessian!(y1, y2, f, x, θ, adj1s::V, adj2) where {V<:AbstractVector}
             adj1s[offset0(f, k)],
             adj2,
         )
+    end
+end
+function shessian!(y1, y2, f, x::AbstractArray, θ::AbstractArray, adj1s::AbstractVector, adj2, nb::Integer, nvar::Integer, npar::Integer, ncon::Integer, nout::Integer, ::Nothing = nothing)
+    for s in 1:nb
+        x_s = @view x[(s-1)*nvar+1 : s*nvar]
+        θ_s = @view θ[(s-1)*npar+1 : s*npar]
+        y1_s = @view y1[(s-1)*nout+1 : s*nout]
+        a_s = @view adj1s[(s-1)*ncon+1 : s*ncon]
+        @simd for k in eachindex(f.itr)
+            @inbounds shessian!(
+                y1_s, y2, f.f, f.itr[k], x_s, θ_s, f.f.comp2, offset2(f, k),
+                a_s[offset0(f, k)], adj2,
+            )
+        end
     end
 end
 
