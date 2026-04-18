@@ -1,4 +1,5 @@
 import Pkg
+using BenchmarkTools
 if "main" in ARGS
     Pkg.activate(joinpath(@__DIR__, "main"))
     Pkg.update()
@@ -22,18 +23,17 @@ using ExaModels, Printf, ExaPowerIO, Random
 const _extra = filter(a -> a ∉ ("main", "current"), ARGS)
 const _all   = "all" in _extra
 
-# Each entry: (label, backend_object, sync_fn)
-const BENCH_BACKENDS = Tuple{String, Any, Function}[]
+const BENCH_BACKENDS = []
 
 if isempty(_extra) || "nothing" in _extra || _all
-    push!(BENCH_BACKENDS, ("nothing", nothing, () -> nothing))
+    push!(BENCH_BACKENDS, ("nothing", nothing))
 end
 
 if "cuda" in _extra || _all
     try
         @eval using CUDA
         if CUDA.functional()
-            push!(BENCH_BACKENDS, ("CUDA", CUDABackend(), CUDA.synchronize))
+            push!(BENCH_BACKENDS, ("CUDA"))
         else
             @warn "CUDA loaded but not functional — skipping"
         end
@@ -46,7 +46,7 @@ if "amdgpu" in _extra || _all
     try
         @eval using AMDGPU
         if AMDGPU.functional()
-            push!(BENCH_BACKENDS, ("AMDGPU", ROCBackend(), AMDGPU.synchronize))
+            push!(BENCH_BACKENDS, ("AMDGPU", ROCBackend()))
         else
             @warn "AMDGPU loaded but not functional — skipping"
         end
@@ -59,7 +59,7 @@ if "oneapi" in _extra || _all
     try
         @eval using oneAPI
         if oneAPI.functional()
-            push!(BENCH_BACKENDS, ("oneAPI", oneAPIBackend(), oneAPI.synchronize))
+            push!(BENCH_BACKENDS, ("oneAPI", oneAPIBackend()))
         else
             @warn "oneAPI loaded but not functional — skipping"
         end
@@ -77,50 +77,7 @@ if isempty(BENCH_BACKENDS)
     exit(0)
 end
 
-# ── Timing helpers ─────────────────────────────────────────────────────────────
-
-# Measure the minimum time over many samples, enforcing a minimum total elapsed
-# time so that the estimate is meaningful even for very fast kernels.
-#
-# Design rationale:
-#   • minimum rather than mean: any sample slower than the fastest is pure noise
-#     (OS jitter, cache miss, scheduler preemption).  The minimum is the closest
-#     approximation to the true kernel time.
-#   • minimum total time: for sub-microsecond kernels, a fixed sample count of
-#     e.g. 10 may cover only ~100 µs total — easily dominated by a single timer
-#     interrupt.  We keep running until we have accumulated at least `min_time`
-#     seconds of measurements.
-#   • inner batch: wrapping N inner iterations inside one @elapsed call reduces
-#     the relative overhead of time_ns() itself for very fast operations.
-#   • multiple warmups: a single warmup is insufficient for GPU kernels that may
-#     JIT-compile or cache state on the first few launches.
-function belapsed(
-    ex;
-    warmups  = 5,           # number of warmup calls before timing begins
-    min_time = 0.5,         # minimum total sampling duration (seconds)
-    min_samples = 100,      # minimum number of timed samples
-    inner    = 100,           # inner repetitions per @elapsed call (for fast ops)
-)
-    for _ in 1:warmups
-        ex()
-    end
-    GC.gc()
-    GC.enable(false)
-    t_best   = Inf
-    t_total  = 0.0
-    n        = 0
-    while n < min_samples || t_total < min_time
-        t = @elapsed for _ in 1:inner; ex(); end
-        t /= inner
-        t_best  = min(t_best, t)
-        t_total += t * inner
-        n       += 1
-    end
-    GC.enable(true)
-    return t_best
-end
-
-function benchmark_callbacks(m, sync = () -> nothing)
+function benchmark_callbacks(m)
     nvar = m.meta.nvar
     ncon = m.meta.ncon
     nnzj = m.meta.nnzj
@@ -135,15 +92,11 @@ function benchmark_callbacks(m, sync = () -> nothing)
     jac  = similar(x, nnzj)
     hess = similar(x, nnzh)
 
-    # sync() blocks until all GPU kernels enqueued by the callback have
-    # completed, so @elapsed measures real compute time, not just launch time.
-    # sync() is placed outside the inner batch so that the GPU is flushed once
-    # per sample rather than once per inner iteration, keeping the timing clean.
-    tobj  = belapsed(() -> (ExaModels.obj(m, x);                     sync()))
-    tcon  = belapsed(() -> (ExaModels.cons!(m, x, c);                sync()))
-    tgrad = belapsed(() -> (ExaModels.grad!(m, x, g);                sync()))
-    tjac  = belapsed(() -> (ExaModels.jac_coord!(m, x, jac);         sync()))
-    thess = belapsed(() -> (ExaModels.hess_coord!(m, x, y, hess);    sync()))
+    tobj  = @belapsed ExaModels.obj($m, $x)
+    tcon  = @belapsed ExaModels.cons!($m, $x, $c)
+    tgrad = @belapsed ExaModels.grad!($m, $x, $g)
+    tjac  = @belapsed ExaModels.jac_coord!($m, $x, $jac)
+    thess = @belapsed ExaModels.hess_coord!($m, $x, $y, $hess)
 
     return (nvar=nvar, ncon=ncon, tobj=tobj, tcon=tcon, tgrad=tgrad, tjac=tjac, thess=thess)
 end
@@ -459,7 +412,7 @@ end
 results = Dict{Tuple{String,String,String}, NamedTuple}()
 print_header("backend-instance-param")
 
-for (bname, backend, sync) in BENCH_BACKENDS
+for (bname, backend) in BENCH_BACKENDS
     for (instance, param, thunk) in [
         ("rosenrock", "1000",      () -> exa_rosenrock_model(backend, 1000)),
         ("rosenrock", "10000",     () -> exa_rosenrock_model(backend, 10000)),
@@ -476,7 +429,7 @@ for (bname, backend, sync) in BENCH_BACKENDS
         ]
         key = (bname, instance, param)
         m = thunk()
-        r = benchmark_callbacks(m, sync)
+        r = benchmark_callbacks(m)
         print_row("$bname-$instance-$param", r)
         results[key] = r
     end
