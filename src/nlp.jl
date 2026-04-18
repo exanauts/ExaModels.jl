@@ -912,6 +912,8 @@ Constraint
   where |I| = 9
 ```
 """
+
+"""
     add_con(core, dims...; start = 0, lcon = 0, ucon = 0, name = nothing, tag = nothing)
 
 Adds empty constraints with dimensions specified by `dims` to `core` and returns
