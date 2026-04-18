@@ -1195,6 +1195,7 @@ add_con!(c, bus, gen.bus => -pg[gen.i] for gen in data.gen)            # subtrac
 
     gen = _adapt_gen(gen)
     f = SIMDFunction(T, gen, offset0(c1, 0), c.nnzj, c.nnzh)
+    pars = gen.iter
 
     _add_con!(c, f, pars, _constraint_dims(c1), tag)
 end
