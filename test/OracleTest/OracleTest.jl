@@ -8,6 +8,11 @@ using Test
 
 import ..BACKENDS
 
+# Backend-aware tolerance: Metal uses Float32 (~1e-7 machine eps), so we relax
+# from 1e-12 to 1e-4. Pass a `tight` keyword to use a less-strict default on Float64.
+_atol(backend, tight = 1.0e-12) =
+    (ExaModels.default_T(backend) == Float32) ? 1.0e-4 : tight
+
 # ── Test problem ───────────────────────────────────────────────────────────────
 #
 # A small 4-variable problem mixing SIMD symbolic constraints with two
@@ -128,8 +133,8 @@ function test_obj_and_grad(backend)
     return @testset "obj and grad" begin
         m = _build_oracle_model(backend)
         x0 = ExaModels.convert_array(X0, backend)
-        @test NLPModels.obj(m, x0) ≈ OBJ0 atol = 1.0e-12
-        @test Array(NLPModels.grad(m, x0)) ≈ GRAD0 atol = 1.0e-12
+        @test NLPModels.obj(m, x0) ≈ OBJ0 atol = _atol(backend)
+        @test Array(NLPModels.grad(m, x0)) ≈ GRAD0 atol = _atol(backend)
     end
 end
 
@@ -139,7 +144,7 @@ function test_cons(backend)
         x0 = ExaModels.convert_array(X0, backend)
         g = similar(x0, m.meta.ncon)
         ExaModels.cons_nln!(m, x0, g)
-        @test Array(g) ≈ CONS0 atol = 1.0e-12
+        @test Array(g) ≈ CONS0 atol = _atol(backend)
     end
 end
 
@@ -161,7 +166,7 @@ function test_jac(backend)
         for k in eachindex(rows_cpu)
             J_assembled[rows_cpu[k], cols_cpu[k]] += vals_cpu[k]
         end
-        @test J_assembled ≈ analytic_jac_dense(X0) atol = 1.0e-12
+        @test J_assembled ≈ analytic_jac_dense(X0) atol = _atol(backend)
 
         # Row indices: SIMD uses rows [1,1], oracleA shifts to [2,2], oracleB to [3,3]
         @test all(1 .<= rows_cpu .<= 3)
@@ -191,7 +196,7 @@ function test_hess(backend)
                 H_assembled[cols_cpu[k], rows_cpu[k]] += vals_cpu[k]
             end
         end
-        @test H_assembled ≈ analytic_hess_dense(X0, [0.0, 0.0, 1.0]) atol = 1.0e-12
+        @test H_assembled ≈ analytic_hess_dense(X0, [0.0, 0.0, 1.0]) atol = _atol(backend)
 
         # obj-only variant (no constraint contribution)
         fill!(vals, 0)
@@ -204,7 +209,7 @@ function test_hess(backend)
                 H_obj[cols_cpu[k], rows_cpu[k]] += vals_cpu[k]
             end
         end
-        @test H_obj ≈ diagm(0 => fill(2.0, 4)) atol = 1.0e-12
+        @test H_obj ≈ diagm(0 => fill(2.0, 4)) atol = _atol(backend)
     end
 end
 
@@ -244,8 +249,8 @@ function test_jprod_jtprod(backend)
         ExaModels.jprod_nln!(m, x0, v, Jv)
         ExaModels.jtprod_nln!(m, x0, w, Jtw)
 
-        @test Array(Jv) ≈ J * X0 * 0 .+ J * [1.0, -1.0, 2.0, -0.5] atol = 1.0e-10
-        @test Array(Jtw) ≈ J' * [1.0, 2.0, -1.0]                    atol = 1.0e-10
+        @test Array(Jv) ≈ J * X0 * 0 .+ J * [1.0, -1.0, 2.0, -0.5] atol = _atol(backend, 1.0e-10)
+        @test Array(Jtw) ≈ J' * [1.0, 2.0, -1.0]                    atol = _atol(backend, 1.0e-10)
     end
 end
 
@@ -282,7 +287,7 @@ function test_hprod(backend)
         ExaModels.hprod!(m, x0, y0, v, Hv)
 
         H = analytic_hess_dense(X0, [0.0, 0.0, 1.0])
-        @test Array(Hv) ≈ H * [1.0, -1.0, 2.0, -0.5] atol = 1.0e-10
+        @test Array(Hv) ≈ H * [1.0, -1.0, 2.0, -0.5] atol = _atol(backend, 1.0e-10)
     end
 end
 
@@ -329,11 +334,11 @@ function test_multiple_oracles(backend)
         g = similar(x0, 5)
         ExaModels.cons_nln!(m, x0, g)
         g_cpu = Array(g)
-        @test g_cpu[1] ≈ 1.0  atol = 1.0e-12   # SIMD: x1+x2
-        @test g_cpu[2] ≈ 0.2  atol = 1.0e-12   # SIMD: x3-x4
-        @test g_cpu[3] ≈ 0.0  atol = 1.0e-12   # o1: x1-x2
-        @test g_cpu[4] ≈ X0[1] * X0[3]  atol = 1.0e-12  # o2[1]: x1*x3
-        @test g_cpu[5] ≈ X0[2] * X0[4]  atol = 1.0e-12  # o2[2]: x2*x4
+        @test g_cpu[1] ≈ 1.0  atol = _atol(backend)   # SIMD: x1+x2
+        @test g_cpu[2] ≈ 0.2  atol = _atol(backend)   # SIMD: x3-x4
+        @test g_cpu[3] ≈ 0.0  atol = _atol(backend)   # o1: x1-x2
+        @test g_cpu[4] ≈ X0[1] * X0[3]  atol = _atol(backend)  # o2[1]: x1*x3
+        @test g_cpu[5] ≈ X0[2] * X0[4]  atol = _atol(backend)  # o2[2]: x2*x4
 
         # Verify oracle row offsets in Jacobian
         rows = similar(x0, Int, m.meta.nnzj)
@@ -385,8 +390,8 @@ function test_gpu_oracle(backend)
         # cons
         g = similar(x0, m.meta.ncon)
         ExaModels.cons_nln!(m, x0, g)
-        @test Array(g)[1] ≈ 1.0   atol = 1.0e-12
-        @test Array(g)[2] ≈ 0.52  atol = 1.0e-12   # x3^2 + x4^2
+        @test Array(g)[1] ≈ 1.0   atol = _atol(backend)
+        @test Array(g)[2] ≈ 0.52  atol = _atol(backend)   # x3^2 + x4^2
 
         # jac_coord
         jac = similar(x0, m.meta.nnzj)
@@ -398,10 +403,10 @@ function test_gpu_oracle(backend)
         for k in eachindex(Array(rows))
             J[Array(rows)[k], Array(cols)[k]] += Array(jac)[k]
         end
-        @test J[1, 1] ≈ 1.0  atol = 1.0e-12
-        @test J[1, 2] ≈ 1.0  atol = 1.0e-12
-        @test J[2, 3] ≈ 2 * X0[3]  atol = 1.0e-12
-        @test J[2, 4] ≈ 2 * X0[4]  atol = 1.0e-12
+        @test J[1, 1] ≈ 1.0  atol = _atol(backend)
+        @test J[1, 2] ≈ 1.0  atol = _atol(backend)
+        @test J[2, 3] ≈ 2 * X0[3]  atol = _atol(backend)
+        @test J[2, 4] ≈ 2 * X0[4]  atol = _atol(backend)
 
         # hess_coord with λ₂=1
         hess = similar(x0, m.meta.nnzh)
@@ -417,10 +422,10 @@ function test_gpu_oracle(backend)
         end
         # obj: 2I; oracle hess: λ_oracle*2 on (3,3) and (4,4);
         # y0=[0.0,1.0] so λ_oracle=y0[2]=1.0, contribution = 2.0
-        @test H[1, 1] ≈ 2.0  atol = 1.0e-12
-        @test H[2, 2] ≈ 2.0  atol = 1.0e-12
-        @test H[3, 3] ≈ 4.0  atol = 1.0e-12   # 2 (obj) + 2*1.0 (oracle)
-        @test H[4, 4] ≈ 4.0  atol = 1.0e-12   # 2 (obj) + 2*1.0 (oracle)
+        @test H[1, 1] ≈ 2.0  atol = _atol(backend)
+        @test H[2, 2] ≈ 2.0  atol = _atol(backend)
+        @test H[3, 3] ≈ 4.0  atol = _atol(backend)   # 2 (obj) + 2*1.0 (oracle)
+        @test H[4, 4] ≈ 4.0  atol = _atol(backend)   # 2 (obj) + 2*1.0 (oracle)
     end
 end
 
@@ -486,7 +491,7 @@ function test_matfree_cons(backend)
         x0 = ExaModels.convert_array(X0, backend)
         g = similar(x0, m.meta.ncon)
         ExaModels.cons_nln!(m, x0, g)
-        @test Array(g) ≈ CONS0 atol = 1.0e-12
+        @test Array(g) ≈ CONS0 atol = _atol(backend)
     end
 end
 
@@ -507,7 +512,7 @@ function test_matfree_jac(backend)
         for k in eachindex(rows_cpu)
             J_assembled[rows_cpu[k], cols_cpu[k]] += vals_cpu[k]
         end
-        @test J_assembled ≈ analytic_jac_dense(X0) atol = 1.0e-12
+        @test J_assembled ≈ analytic_jac_dense(X0) atol = _atol(backend)
     end
 end
 
@@ -532,7 +537,7 @@ function test_matfree_hess(backend)
                 H_assembled[cols_cpu[k], rows_cpu[k]] += vals_cpu[k]
             end
         end
-        @test H_assembled ≈ analytic_hess_dense(X0, [0.0, 0.0, 1.0]) atol = 1.0e-12
+        @test H_assembled ≈ analytic_hess_dense(X0, [0.0, 0.0, 1.0]) atol = _atol(backend)
     end
 end
 
@@ -571,8 +576,8 @@ function test_matfree_jprod_jtprod(backend)
         ExaModels.jprod_nln!(m, x0, v, Jv)
         ExaModels.jtprod_nln!(m, x0, w, Jtw)
 
-        @test Array(Jv) ≈ J * [1.0, -1.0, 2.0, -0.5] atol = 1.0e-10
-        @test Array(Jtw) ≈ J' * [1.0, 2.0, -1.0]      atol = 1.0e-10
+        @test Array(Jv) ≈ J * [1.0, -1.0, 2.0, -0.5] atol = _atol(backend, 1.0e-10)
+        @test Array(Jtw) ≈ J' * [1.0, 2.0, -1.0]      atol = _atol(backend, 1.0e-10)
     end
 end
 
@@ -608,7 +613,7 @@ function test_matfree_hprod(backend)
         ExaModels.hprod!(m, x0, y0, v, Hv)
 
         H = analytic_hess_dense(X0, [0.0, 0.0, 1.0])
-        @test Array(Hv) ≈ H * [1.0, -1.0, 2.0, -0.5] atol = 1.0e-10
+        @test Array(Hv) ≈ H * [1.0, -1.0, 2.0, -0.5] atol = _atol(backend, 1.0e-10)
     end
 end
 

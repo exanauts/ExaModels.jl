@@ -872,10 +872,10 @@ function ExaModels.hess_coord!(
         x::AbstractVector,
         y::AbstractVector,
         hess::AbstractVector;
-        obj_weight = one(eltype(x)),
+        obj_weight = one(T),
     ) where {T, VT, E <: KAExtension}
     fill!(hess, zero(eltype(hess)))
-    _obj_hess_coord!(m.ext.backend, hess, m.objs, x, m.θ, obj_weight)
+    _obj_hess_coord!(m.ext.backend, hess, m.objs, x, m.θ, T(obj_weight))
     _con_hess_coord!(m.ext.backend, hess, m.cons, x, m.θ, y)
     for (i, oracle) in enumerate(m.oracles)
         cache = m.oracle_caches[i]
