@@ -694,11 +694,18 @@ end
 
 
 """
+    add_par(core, dims...; start = 0, name = nothing)
+
+Adds parameters with dimensions specified by `dims` to `core`. `dims` can be either
+`Integer` or `UnitRange`. Returns `(core, Parameter)`.
+
     add_par(core, start::AbstractArray; name = nothing)
 
-Adds parameters with initial values specified by `start`, and returns `(core, Parameter)`.
+Convenience form: adds parameters with initial values specified by `start`, using
+`size(start)` as the dimensions.
 
 ## Keyword Arguments
+- `start`: Initial parameter values. Can be a `Number`, `AbstractArray`, or `Generator`.
 - `name`: When given as `Val(:name)`, registers the parameter in `core` for later retrieval as `core.name` or `model.name`. See [`@add_par`](@ref) for the idiomatic named interface.
 
 ## Example
@@ -716,8 +723,18 @@ Parameter
 ```
 """
 @inline function add_par(c::C, start::AbstractArray; name = nothing) where {T,C<:ExaCore{T}}
+    _add_par(c, name, start, Base.size(start)...)
+end
 
-    ns = Base.size(start)
+@inline function add_par(c::C, n::AbstractRange; name = nothing, start = zero(T)) where {T,C<:ExaCore{T}}
+    _add_par(c, name, start, n)
+end
+
+@inline function add_par(c::C, ns...; name = nothing, start = zero(T)) where {T,C<:ExaCore{T}}
+    _add_par(c, name, start, ns...)
+end
+
+@inline function _add_par(c, name, start, ns...)
     o = c.npar
     len = total(ns)
     npar = c.npar + len
@@ -743,10 +760,10 @@ julia> set_parameter!(c, p, ones(5))
 ```
 """
 function set_parameter!(c::ExaCore, param::Parameter, values::AbstractArray)
-    if Base.size(values) != param.size
+    if length(values) != param.length
         throw(
             DimensionMismatch(
-                "Parameter size mismatch: expected $(param.size), got $(Base.size(values))",
+                "Parameter size mismatch: expected $(param.length) elements, got $(length(values))",
             ),
         )
     end
