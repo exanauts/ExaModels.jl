@@ -137,55 +137,55 @@ function add_var(
 end
 
 """
-    add_par(core::TwoStageExaCore, start::AbstractArray; name = nothing)
-    add_par(core::TwoStageExaCore, n::AbstractRange; name = nothing, start = 0)
-    add_par(core::TwoStageExaCore, dims...; name = nothing, start = 0)
+    add_par(core::TwoStageExaCore, value::AbstractArray; name = nothing)
+    add_par(core::TwoStageExaCore, n::AbstractRange; name = nothing, value = 0)
+    add_par(core::TwoStageExaCore, dims...; name = nothing, value = 0)
 
 Add first-stage parameters to a two-stage core, tagged with `FirstStageTag()`.
 
 Mirrors the [`add_par`](@ref) convention from `ExaCore`:
-- Pass `start::AbstractArray` as the first positional argument to use its values
-  and infer dimensions from `size(start)`.
+- Pass `value::AbstractArray` as the first positional argument to use its values
+  and infer dimensions from `size(value)`.
 - Pass dimensions (`Integer` or `AbstractRange`) as positional arguments and
-  supply the uniform initial value via the `start` keyword.
+  supply the uniform initial value via the `value` keyword.
 """
 function add_par(
     c::TwoStageExaCore{T,VT,B},
-    start::AbstractArray;
+    value::AbstractArray;
     name = nothing,
     ) where {T,VT<:AbstractVector{T},B}
-    return _add_par(c, FirstStageTag(), name, start, Base.size(start)...)
+    return _add_par(c, FirstStageTag(), name, value, Base.size(value)...)
 end
 function add_par(
     c::TwoStageExaCore{T,VT,B},
     n::AbstractRange;
     name = nothing,
-    start = zero(T),
+    value = zero(T),
     ) where {T,VT<:AbstractVector{T},B}
-    return _add_par(c, FirstStageTag(), name, start, n)
+    return _add_par(c, FirstStageTag(), name, value, n)
 end
 function add_par(
     c::TwoStageExaCore{T,VT,B},
     ns...;
     name = nothing,
-    start = zero(T),
+    value = zero(T),
     ) where {T,VT<:AbstractVector{T},B}
-    return _add_par(c, FirstStageTag(), name, start, ns...)
+    return _add_par(c, FirstStageTag(), name, value, ns...)
 end
 
 """
-    add_par(core::TwoStageExaCore, ::EachScenario, start::AbstractVector; name = nothing)
+    add_par(core::TwoStageExaCore, ::EachScenario, value::AbstractVector; name = nothing)
 
-Add second-stage parameters to a two-stage core.  The parameter vector `start`
+Add second-stage parameters to a two-stage core.  The parameter vector `value`
 is replicated for each scenario, tagged with `SecondStageTag()`.
 """
 function add_par(
     c::TwoStageExaCore{T,VT,B},
     ::EachScenario,
-    start::AbstractVector;
+    value::AbstractVector;
     name = nothing,
     ) where {T,VT<:AbstractVector{T},B}
-    combined = cat((start for _ in 1:c.tag.nscen)...; dims = ndims(start) + 1)
+    combined = cat((value for _ in 1:c.tag.nscen)...; dims = ndims(value) + 1)
     return _add_par(c, SecondStageTag(), name, combined, Base.size(combined)...)
 end
 
@@ -287,26 +287,14 @@ function get_con_scen(model::TwoStageExaModel)
 end
 
 """
-    get_parameter(model, param)
-
-Return a view of all values for `param` in `model.θ`.
-
-Works for both first-stage and second-stage parameters.  For second-stage
-parameters use `get_parameter(model, param, scen)` to extract a single scenario.
-"""
-function get_parameter(model::ExaModel, param::Parameter)
-    return view(model.θ, param.offset+1 : param.offset+param.length)
-end
-
-"""
-    get_parameter(model::TwoStageExaModel, param::SecondStageParameter, scen)
+    get_value(model::TwoStageExaModel, param::SecondStageParameter, scen)
 
 Return a view of the values for `param` in scenario `scen`.
 
 The parameter must have been added with `EachScenario`.  `scen` must be an
 integer in `1:get_nscen(model)`.
 """
-function get_parameter(model::TwoStageExaModel, param::SecondStageParameter, scen::Integer)
+function get_value(model::TwoStageExaModel, param::SecondStageParameter, scen::Integer)
     n_per_scen = param.length ÷ get_nscen(model)
     start_idx  = param.offset + (scen - 1) * n_per_scen + 1
     end_idx    = param.offset + scen * n_per_scen
@@ -314,14 +302,14 @@ function get_parameter(model::TwoStageExaModel, param::SecondStageParameter, sce
 end
 
 """
-    set_parameter!(model::TwoStageExaModel, param::SecondStageParameter, scen, values)
+    set_value!(model::TwoStageExaModel, param::SecondStageParameter, scen, values)
 
 Update the values for `param` in scenario `scen` to `values`.
 
 The parameter must have been added with `EachScenario`.  `values` must have
 `param.length ÷ get_nscen(model)` elements.
 """
-function set_parameter!(model::TwoStageExaModel, param::SecondStageParameter, scen::Integer, values)
+function set_value!(model::TwoStageExaModel, param::SecondStageParameter, scen::Integer, values)
     n_per_scen = param.length ÷ get_nscen(model)
     if length(values) != n_per_scen
         throw(DimensionMismatch(
@@ -334,9 +322,95 @@ function set_parameter!(model::TwoStageExaModel, param::SecondStageParameter, sc
     return nothing
 end
 
+# ── Scenario-sliced helpers ────────────────────────────────────────────────────
+
+@inline function _scen_var_range(v::SecondStageVariable, nscen::Int, scen::Int)
+    n_per_scen = v.length ÷ nscen
+    (v.offset + (scen-1)*n_per_scen + 1) : (v.offset + scen*n_per_scen)
+end
+
+@inline function _scen_con_range(c::SecondStageConstraint, nscen::Int, scen::Int)
+    n_per_scen = total(c.size) ÷ nscen
+    (c.offset + (scen-1)*n_per_scen + 1) : (c.offset + scen*n_per_scen)
+end
+
+"""
+    get_start(model::TwoStageExaModel, var::SecondStageVariable, scen)
+    get_lvar(model::TwoStageExaModel, var::SecondStageVariable, scen)
+    get_uvar(model::TwoStageExaModel, var::SecondStageVariable, scen)
+
+Return a view of `x0`, `lvar`, or `uvar` for `var` restricted to scenario `scen`.
+"""
+get_start(m::TwoStageExaModel, v::SecondStageVariable, s::Integer) =
+    view(m.meta.x0,   _scen_var_range(v, get_nscen(m), s))
+get_lvar(m::TwoStageExaModel, v::SecondStageVariable, s::Integer) =
+    view(m.meta.lvar, _scen_var_range(v, get_nscen(m), s))
+get_uvar(m::TwoStageExaModel, v::SecondStageVariable, s::Integer) =
+    view(m.meta.uvar, _scen_var_range(v, get_nscen(m), s))
+
+"""
+    set_start!(model::TwoStageExaModel, var::SecondStageVariable, scen, values)
+    set_lvar!(model::TwoStageExaModel, var::SecondStageVariable, scen, values)
+    set_uvar!(model::TwoStageExaModel, var::SecondStageVariable, scen, values)
+
+Update `x0`, `lvar`, or `uvar` for `var` in scenario `scen` in-place.
+"""
+function set_start!(m::TwoStageExaModel, v::SecondStageVariable, s::Integer, values)
+    r = _scen_var_range(v, get_nscen(m), s)
+    _check_len(length(values), length(r), "set_start!")
+    copyto!(view(m.meta.x0,   r), values)
+end
+function set_lvar!(m::TwoStageExaModel, v::SecondStageVariable, s::Integer, values)
+    r = _scen_var_range(v, get_nscen(m), s)
+    _check_len(length(values), length(r), "set_lvar!")
+    copyto!(view(m.meta.lvar, r), values)
+end
+function set_uvar!(m::TwoStageExaModel, v::SecondStageVariable, s::Integer, values)
+    r = _scen_var_range(v, get_nscen(m), s)
+    _check_len(length(values), length(r), "set_uvar!")
+    copyto!(view(m.meta.uvar, r), values)
+end
+
+"""
+    get_start(model::TwoStageExaModel, con::SecondStageConstraint, scen)
+    get_lcon(model::TwoStageExaModel, con::SecondStageConstraint, scen)
+    get_ucon(model::TwoStageExaModel, con::SecondStageConstraint, scen)
+
+Return a view of `y0`, `lcon`, or `ucon` for `con` restricted to scenario `scen`.
+"""
+get_start(m::TwoStageExaModel, c::SecondStageConstraint, s::Integer) =
+    view(m.meta.y0,   _scen_con_range(c, get_nscen(m), s))
+get_lcon(m::TwoStageExaModel, c::SecondStageConstraint, s::Integer) =
+    view(m.meta.lcon, _scen_con_range(c, get_nscen(m), s))
+get_ucon(m::TwoStageExaModel, c::SecondStageConstraint, s::Integer) =
+    view(m.meta.ucon, _scen_con_range(c, get_nscen(m), s))
+
+"""
+    set_start!(model::TwoStageExaModel, con::SecondStageConstraint, scen, values)
+    set_lcon!(model::TwoStageExaModel, con::SecondStageConstraint, scen, values)
+    set_ucon!(model::TwoStageExaModel, con::SecondStageConstraint, scen, values)
+
+Update `y0`, `lcon`, or `ucon` for `con` in scenario `scen` in-place.
+"""
+function set_start!(m::TwoStageExaModel, c::SecondStageConstraint, s::Integer, values)
+    r = _scen_con_range(c, get_nscen(m), s)
+    _check_len(length(values), length(r), "set_start!")
+    copyto!(view(m.meta.y0,   r), values)
+end
+function set_lcon!(m::TwoStageExaModel, c::SecondStageConstraint, s::Integer, values)
+    r = _scen_con_range(c, get_nscen(m), s)
+    _check_len(length(values), length(r), "set_lcon!")
+    copyto!(view(m.meta.lcon, r), values)
+end
+function set_ucon!(m::TwoStageExaModel, c::SecondStageConstraint, s::Integer, values)
+    r = _scen_con_range(c, get_nscen(m), s)
+    _check_len(length(values), length(r), "set_ucon!")
+    copyto!(view(m.meta.ucon, r), values)
+end
+
 export EachScenario, SecondStageVariable,
        FirstStageTag, SecondStageTag,
        FirstStageConstraintTag, SecondStageConstraintTag,
        TwoStageExaCore, TwoStageExaModel,
        get_nscen, get_var_scen, get_con_scen,
-       get_parameter
+       get_value, set_value!

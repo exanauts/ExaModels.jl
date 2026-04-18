@@ -96,6 +96,17 @@ export ExaModel,
     get_con_scen,
     AbstractVariableTag,
     AbstractConstraintTag,
-    get_parameter
+    get_value,
+    set_value!,
+    get_start,
+    set_start!,
+    get_lvar,
+    set_lvar!,
+    get_uvar,
+    set_uvar!,
+    get_lcon,
+    set_lcon!,
+    get_ucon,
+    set_ucon!
 
 end # module ExaModels
