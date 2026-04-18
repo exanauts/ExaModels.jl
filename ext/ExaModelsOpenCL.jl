@@ -2,8 +2,6 @@ module ExaModelsOpenCL
 
 import ExaModels, OpenCL
 
-ExaModels.convert_array(v, backend::OpenCL.OpenCLBackend) = OpenCL.CLArray(v)
-
 ExaModels.sort!(array::A; lt = isless) where {A<:OpenCL.CLArray} =
     copyto!(array, sort!(Array(array); lt = lt))
 

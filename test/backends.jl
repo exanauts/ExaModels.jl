@@ -1,10 +1,20 @@
-using KernelAbstractions
+const BACKENDS = []
 
-const BACKENDS = Any[nothing, CPU()]
+if "EXAMODELS_NO_TEST_CPU" in ARGS
+    @info "excluding CPU"
+else
+    push!(BACKENDS, nothing)
+end
 
-is_package_installed(name::String) = !isnothing(Base.find_package(name))
-const EXAMODELS_TEST_CUDA = is_package_installed("CUDA")
-if EXAMODELS_TEST_CUDA
+if "EXAMODELS_TEST_KA" in ARGS
+    @eval using KernelAbstractions
+    @eval push!(BACKENDS, CPU())
+    @info "including KernelAbstractions"
+else
+    @info "excluding KernelAbstractions"
+end
+
+if "EXAMODELS_TEST_CUDA" in ARGS
     @eval using CUDA
     @eval push!(BACKENDS, CUDABackend())
     @info "including CUDA"
@@ -12,8 +22,7 @@ else
     @info "excluding CUDA"
 end
 
-const EXAMODELS_TEST_AMDGPU = is_package_installed("AMDGPU")
-if EXAMODELS_TEST_AMDGPU
+if "EXAMODELS_TEST_AMDGPU" in ARGS
     @eval using AMDGPU
     @eval push!(BACKENDS, ROCBackend())
     @info "including AMDGPU"
@@ -21,8 +30,9 @@ else
     @info "excluding AMDGPU"
 end
 
-const EXAMODELS_TEST_ONEAPI = is_package_installed("oneAPI")
-if EXAMODELS_TEST_ONEAPI
+if "EXAMODELS_TEST_ONEAPI" in ARGS
+    # on Julia 1.9, oneAPI causes the CI to stall indefinitely
+    Pkg.add("oneAPI")
     @eval using oneAPI
     @eval push!(BACKENDS, oneAPIBackend())
     @info "including oneAPI"
@@ -30,8 +40,15 @@ else
     @info "excluding oneAPI"
 end
 
-const EXAMODELS_TEST_OPENCL = is_package_installed("OpenCL")
-if EXAMODELS_TEST_OPENCL
+if "EXAMODELS_TEST_METAL" in ARGS
+    @eval using Metal
+    @eval push!(BACKENDS, MetalBackend())
+    @info "including Metal"
+else
+    @info "excluding Metal"
+end
+
+if "EXAMODELS_TEST_POCL" in ARGS
     @eval begin
         using OpenCL, pocl_jll
         if !(Sys.iswindows() && OpenCL.cl.is_high_integrity_level())

@@ -10,15 +10,19 @@ if !(@isdefined _PAGES)
         "Mathematical Abstraction" => "simd.md",
         "Tutorial" => [
             "guide.md",
+            "patterns.md",
+            "constraint_augmentation.md",
             "performance.md",
             "gpu.md",
             "parameters.md",
             "two_stage.md",
             "batch.md",
+
             "develop.md",
             "quad.md",
             "distillation.md",
             "opf.md",
+            "upgrade.md",
         ],
         "JuMP Interface (experimental)" => "jump.md",
         "API Manual" => "core.md",
@@ -38,6 +42,7 @@ if !(@isdefined _JL_FILENAMES)
         "parameters.jl",
         "two_stage.jl",
         "batch.jl",
+
     ]
 end
 
