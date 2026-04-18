@@ -730,6 +730,53 @@ ExaModels.getbackend(m::ExaModels.AbstractExaModel{T,VT,E}) where {T,VT,E<:KAExt
 #   • Oracle callback part → CPU bridge: Array(gpu) → callback → copyto!(gpu, cpu)
 #     Oracle callbacks are always CPU functions (including PyCall wrappers).
 
+function ExaModels.obj(
+        m::ExaModels.ExaModelWithOracle{T, VT, E},
+        x::AbstractVector,
+    ) where {T, VT, E <: KAExtension}
+    # SIMD part via GPU kernel (avoids scalar indexing on device arrays)
+    if !isempty(m.ext.objbuffer)
+        _obj(m.ext.backend, m.ext.objbuffer, m.objs, x, m.θ)
+        val = ExaModels.sum(m.ext.objbuffer)
+    else
+        val = zero(T)
+    end
+    # Oracle callbacks are CPU functions; adapt device array to CPU first
+    for oracle in m.scalar_oracles
+        xin = ExaModels._oracle_input(oracle, x)
+        val += oracle.f(xin)
+    end
+    return val
+end
+
+function ExaModels.grad!(
+        m::ExaModels.ExaModelWithOracle{T, VT, E},
+        x::V,
+        y::V,
+    ) where {T, VT, E <: KAExtension, V <: AbstractVector}
+    gradbuffer = m.ext.gradbuffer
+    fill!(y, zero(eltype(y)))
+    if !isempty(gradbuffer)
+        fill!(gradbuffer, zero(eltype(gradbuffer)))
+        _grad!(m.ext.backend, m.ext.gradbuffer, m.objs, x, m.θ)
+        compress_to_dense(m.ext.backend)(
+            y,
+            gradbuffer,
+            m.ext.gptr,
+            m.ext.gsparsity;
+            ndrange = length(m.ext.gptr) - 1,
+        )
+    end
+    for oracle in m.scalar_oracles
+        xin = ExaModels._oracle_input(oracle, x)
+        g_cpu = zeros(T, oracle.nvar)
+        oracle.grad!(g_cpu, xin)
+        g_dev = ExaModels.convert_array(g_cpu, m.ext.backend)
+        y .+= g_dev
+    end
+    return y
+end
+
 function ExaModels.jac_structure!(
         m::ExaModels.ExaModelWithOracle{T, VT, E},
         rows::V,

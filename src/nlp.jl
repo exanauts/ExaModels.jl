@@ -539,7 +539,7 @@ julia> result = ipopt(m; print_level=0)    # solve the problem
 ```
 """
 function ExaModel(c::C; prod = false, kwargs...) where {C<:ExaCore}
-    (isempty(c.oracles) && isempty(c.scalar_oracles)) || return _build_with_oracle(c; kwargs...)
+    (isempty(c.oracles) && isempty(c.scalar_oracles)) || return _build_with_oracle(c; prod, kwargs...)
     return ExaModel(
         c.name,
         c.var,
