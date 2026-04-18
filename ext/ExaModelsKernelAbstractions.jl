@@ -516,10 +516,10 @@ function ExaModels.hess_coord!(
     m::ExaModels.AbstractExaModel{T,VT,E},
         x::AbstractVector,
         hess::AbstractVector;
-        obj_weight = one(eltype(x)),
+        obj_weight = one(T),
     ) where {T, VT, E <: KAExtension}
     fill!(hess, zero(eltype(hess)))
-    _obj_hess_coord!(m.ext.backend, hess, m.objs, x, m.θ, obj_weight)
+    _obj_hess_coord!(m.ext.backend, hess, m.objs, x, m.θ, T(obj_weight))
     return hess
 end
 
@@ -528,10 +528,10 @@ function ExaModels.hess_coord!(
         x::AbstractVector,
         y::AbstractVector,
         hess::AbstractVector;
-    obj_weight = one(eltype(y)),
+    obj_weight = one(T),
     ) where {T, VT, E <: KAExtension}
     fill!(hess, zero(eltype(hess)))
-    _obj_hess_coord!(m.ext.backend, hess, m.objs, x, m.θ, obj_weight)
+    _obj_hess_coord!(m.ext.backend, hess, m.objs, x, m.θ, T(obj_weight))
     _con_hess_coord!(m.ext.backend, hess, m.cons, x, m.θ, y)
     return hess
 end
