@@ -87,6 +87,18 @@ export ExaModel,
     exa_sum,
     exa_prod,
     @register_univariate,
-    @register_bivariate
+    @register_bivariate,
+    get_value,
+    set_value!,
+    get_start,
+    set_start!,
+    get_lvar,
+    set_lvar!,
+    get_uvar,
+    set_uvar!,
+    get_lcon,
+    set_lcon!,
+    get_ucon,
+    set_ucon!
 
 end # module ExaModels
