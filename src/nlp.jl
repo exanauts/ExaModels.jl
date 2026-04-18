@@ -262,9 +262,13 @@ end
 abstract type AbstractExaCore{T,VT,B,S} end
 
 """
-    ExaCore([array_eltype::Type; backend = nothing, minimize = true, name = :Generic])
+    ExaCore([T::Type; backend = nothing, concrete = Val(false), nbatch = Val(1), minimize = true, name = :Generic])
 
-Creates an intermediate data object `ExaCore`, which later can be used for creating an `ExaModel`
+Creates an intermediate data object `ExaCore`, which later can be used for creating an `ExaModel`.
+
+When `nbatch = Val(N)` with `N > 1`, creates a batch core with matrix-valued
+storage arrays (columns = instances).  See [`BatchExaCore`](@ref) for a
+convenience alias.
 
 ## Example
 ```jldoctest
@@ -1085,67 +1089,33 @@ Constraint
   where |I| = 9
 ```
 """
-# Generator form — directly dispatched for type stability and juliac trimmer.
 @inline function add_con(
     c::C,
-    gen::Base.Generator;
+    ns...;
     tag = nothing,
     name = nothing,
     start = zero(T),
     lcon = zero(T),
     ucon = zero(T),
-) where {T,C<:ExaCore{T}}
-    dims = _infer_subexpr_dims(gen.iter)
-    gen = _adapt_gen(gen)
-    f = SIMDFunction(T, gen, c.ncon, c.nnzj, c.nnzh)
-    pars = gen.iter
-    _add_con(c, f, pars, dims, start, lcon, ucon, name, tag)
-end
-
-# Multi-generator form: first generator creates the constraint, rest augment it.
-@inline function add_con(
-    c::C,
-    gen::Base.Generator,
-    gens::Base.Generator...;
     kwargs...
 ) where {T,C<:ExaCore{T}}
-    c, con = add_con(c, gen; kwargs...)
-    for g in gens
-        c, _ = add_con!(c, con, g)
-    end
-    return (c, con)
-end
+    gen = _get_generator(ns)
+    dims = _get_con_dims(ns)
+    gen = _adapt_gen(gen)
+    f = _simdfunction(T, gen.f(DataSource()), c.ncon, c.nnzj, c.nnzh)
+    pars = gen.iter
 
-# Expression form — pre-built expression tree with explicit parameters.
-@inline function add_con(
-    c::C,
-    expr::N,
-    pars = 1:1;
-    tag = nothing,
-    name = nothing,
-    start = zero(T),
-    lcon = zero(T),
-    ucon = zero(T),
-) where {T,C<:ExaCore{T},N<:AbstractNode}
-    f = _simdfunction(T, expr, c.ncon, c.nnzj, c.nnzh)
-    dims = _infer_subexpr_dims(pars)
     _add_con(c, f, pars, dims, start, lcon, ucon, name, tag)
 end
 
-# Dims form — empty constraints for later augmentation.
-@inline function add_con(
-    c::C,
-    ns::Union{Integer, AbstractUnitRange}...;
-    tag = nothing,
-    name = nothing,
-    start = zero(T),
-    lcon = zero(T),
-    ucon = zero(T),
-) where {T,C<:ExaCore{T}}
-    f = _simdfunction(T, Null(nothing), c.ncon, c.nnzj, c.nnzh)
-    pars = _empty_con_itr(ns)
-    _add_con(c, f, pars, ns, start, lcon, ucon, name, tag)
-end
+@inline _get_generator(ns) = (Null(nothing) for _ in _empty_con_itr(ns))
+@inline _get_generator(gen::Tuple{G}) where G <: Base.Generator = gen[1]
+@inline _get_generator(n::Tuple{N}) where N <: AbstractNode = (n[1] for _ in 1:1)
+
+# Infer constraint dims from the original arguments, preserving range start info.
+@inline _get_con_dims(ns) = ns
+@inline _get_con_dims(gen::Tuple{G}) where G <: Base.Generator = _infer_subexpr_dims(gen[1].iter)
+@inline _get_con_dims(n::Tuple{N}) where N <: AbstractNode = (1,)
 
 # Build an iterator for empty constraints: 1:n for 1D, collected ProductIterator for multi-dim.
 _empty_con_itr(ns::Tuple{Any}) = 1:_length(ns[1])

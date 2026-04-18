@@ -117,7 +117,6 @@ export ExaModel,
     BatchExaModel,
     get_nbatch,
     get_model,
-    flatten_model,
     var_indices,
     cons_block_indices
 
