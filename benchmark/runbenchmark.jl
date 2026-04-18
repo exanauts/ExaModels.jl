@@ -79,16 +79,48 @@ end
 
 # ── Timing helpers ─────────────────────────────────────────────────────────────
 
-function belapsed(ex; samples = 1000)
-    ex()  # one warmup to avoid JIT / kernel-compile overhead in the timed window
+# Measure the minimum time over many samples, enforcing a minimum total elapsed
+# time so that the estimate is meaningful even for very fast kernels.
+#
+# Design rationale:
+#   • minimum rather than mean: any sample slower than the fastest is pure noise
+#     (OS jitter, cache miss, scheduler preemption).  The minimum is the closest
+#     approximation to the true kernel time.
+#   • minimum total time: for sub-microsecond kernels, a fixed sample count of
+#     e.g. 10 may cover only ~100 µs total — easily dominated by a single timer
+#     interrupt.  We keep running until we have accumulated at least `min_time`
+#     seconds of measurements.
+#   • inner batch: wrapping N inner iterations inside one @elapsed call reduces
+#     the relative overhead of time_ns() itself for very fast operations.
+#   • multiple warmups: a single warmup is insufficient for GPU kernels that may
+#     JIT-compile or cache state on the first few launches.
+function belapsed(
+    ex;
+    warmups  = 5,           # number of warmup calls before timing begins
+    min_time = 0.5,         # minimum total sampling duration (seconds)
+    min_samples = 100,      # minimum number of timed samples
+    inner    = 1,           # inner repetitions per @elapsed call (for fast ops)
+)
+    for _ in 1:warmups
+        ex()
+    end
     GC.gc()
     GC.enable(false)
-    t = sum(@elapsed ex() for _ in 1:samples)/samples
+    t_best   = Inf
+    t_total  = 0.0
+    n        = 0
+    while n < min_samples || t_total < min_time
+        t = @elapsed for _ in 1:inner; ex(); end
+        t /= inner
+        t_best  = min(t_best, t)
+        t_total += t * inner
+        n       += 1
+    end
     GC.enable(true)
-    return t
+    return t_best
 end
 
-function benchmark_callbacks(m, sync = () -> nothing; samples = 10)
+function benchmark_callbacks(m, sync = () -> nothing)
     nvar = m.meta.nvar
     ncon = m.meta.ncon
     nnzj = m.meta.nnzj
@@ -105,11 +137,13 @@ function benchmark_callbacks(m, sync = () -> nothing; samples = 10)
 
     # sync() blocks until all GPU kernels enqueued by the callback have
     # completed, so @elapsed measures real compute time, not just launch time.
-    tobj  = belapsed(() -> (ExaModels.obj(m, x);          sync()); samples)
-    tcon  = belapsed(() -> (ExaModels.cons!(m, x, c);     sync()); samples)
-    tgrad = belapsed(() -> (ExaModels.grad!(m, x, g);     sync()); samples)
-    tjac  = belapsed(() -> (ExaModels.jac_coord!(m, x, jac);      sync()); samples)
-    thess = belapsed(() -> (ExaModels.hess_coord!(m, x, y, hess); sync()); samples)
+    # sync() is placed outside the inner batch so that the GPU is flushed once
+    # per sample rather than once per inner iteration, keeping the timing clean.
+    tobj  = belapsed(() -> (ExaModels.obj(m, x);                     sync()))
+    tcon  = belapsed(() -> (ExaModels.cons!(m, x, c);                sync()))
+    tgrad = belapsed(() -> (ExaModels.grad!(m, x, g);                sync()))
+    tjac  = belapsed(() -> (ExaModels.jac_coord!(m, x, jac);         sync()))
+    thess = belapsed(() -> (ExaModels.hess_coord!(m, x, y, hess);    sync()))
 
     return (nvar=nvar, ncon=ncon, tobj=tobj, tcon=tcon, tgrad=tgrad, tjac=tjac, thess=thess)
 end
