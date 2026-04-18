@@ -352,81 +352,81 @@ end
 function _build_with_oracle(c::ExaCore; kwargs...)
     oracles = c.oracles                          # Vector{Any} of VectorNonlinearOracle
 
+    # SIMD-only counts (oracle contributions deferred to here)
+    n_simd_ncon = c.ncon
+    n_simd_nnzj = c.nnzj
+    n_simd_nnzh = c.nnzh
+
     # Total oracle contributions
     total_oracle_ncon = sum(o.ncon for o in oracles)
     total_oracle_nnzj = sum(o.nnzj for o in oracles)
     total_oracle_nnzh = sum(o.nnzh for o in oracles)
 
-    # SIMD-only counts: c.ncon/c.nnzj/c.nnzh do NOT include oracle
-    # contributions (oracle registration defers all count updates to here).
-    n_simd_ncon = c.ncon
-    n_simd_nnzj = c.nnzj
-    n_simd_nnzh = c.nnzh
+    total_ncon = n_simd_ncon + total_oracle_ncon
+    total_nnzj = n_simd_nnzj + total_oracle_nnzj
+    total_nnzh = n_simd_nnzh + total_oracle_nnzh
 
-    # Now add oracle contributions to the total counts.
-    c.ncon += total_oracle_ncon
-    c.nnzj += total_oracle_nnzj
-    c.nnzh += total_oracle_nnzh
-
-    # Append oracle constraint bounds (SIMD bounds are already in c.y0/lcon/ucon).
+    # Build extended constraint bound arrays without mutating c
+    y0   = c.y0
+    lcon = c.lcon
+    ucon = c.ucon
     for o in oracles
-        c.y0 = append!(c.backend, c.y0, zero(eltype(c.θ)), o.ncon)
-        c.lcon = append!(c.backend, c.lcon, o.lcon, o.ncon)
-        c.ucon = append!(c.backend, c.ucon, o.ucon, o.ncon)
+        y0   = append!(c.backend, y0,   zero(eltype(c.θ)), o.ncon)
+        lcon = append!(c.backend, lcon, o.lcon, o.ncon)
+        ucon = append!(c.backend, ucon, o.ucon, o.ncon)
     end
 
     # Compute per-oracle offsets (0-based, relative to the full arrays)
-    oracle_con_offsets = Vector{Int}(undef, length(oracles))
-    oracle_jac_offsets = Vector{Int}(undef, length(oracles))
+    oracle_con_offsets  = Vector{Int}(undef, length(oracles))
+    oracle_jac_offsets  = Vector{Int}(undef, length(oracles))
     oracle_hess_offsets = Vector{Int}(undef, length(oracles))
 
-    con_off = n_simd_ncon
-    jac_off = n_simd_nnzj
+    con_off  = n_simd_ncon
+    jac_off  = n_simd_nnzj
     hess_off = n_simd_nnzh
     for (i, o) in enumerate(oracles)
-        oracle_con_offsets[i] = con_off
-        oracle_jac_offsets[i] = jac_off
+        oracle_con_offsets[i]  = con_off
+        oracle_jac_offsets[i]  = jac_off
         oracle_hess_offsets[i] = hess_off
-        con_off += o.ncon
-        jac_off += o.nnzj
+        con_off  += o.ncon
+        jac_off  += o.nnzj
         hess_off += o.nnzh
     end
 
     meta = NLPModels.NLPModelMeta(
         c.nvar,
-        ncon = c.ncon,
-        nnzj = c.nnzj,
-        nnzh = c.nnzh,
+        ncon = total_ncon,
+        nnzj = total_nnzj,
+        nnzh = total_nnzh,
         x0 = c.x0,
         lvar = c.lvar,
         uvar = c.uvar,
-        y0 = c.y0,
-        lcon = c.lcon,
-        ucon = c.ucon,
+        y0 = y0,
+        lcon = lcon,
+        ucon = ucon,
         minimize = c.minimize,
     )
 
     # Precompute index caches for zero-allocation NLPModels evaluations.
-    # Convert integer index arrays to device arrays for GPU backends.
     oracle_caches = [
         _adapt_cache(
-                _build_oracle_index_cache(
-                    oracles[i], oracle_con_offsets[i],
-                    oracle_jac_offsets[i], oracle_hess_offsets[i]
-                ),
-                c.backend,
-            )
-            for i in eachindex(oracles)
+            _build_oracle_index_cache(
+                oracles[i], oracle_con_offsets[i],
+                oracle_jac_offsets[i], oracle_hess_offsets[i],
+            ),
+            c.backend,
+        )
+        for i in eachindex(oracles)
     ]
 
     return ExaModelWithOracle(
         c.obj,
-        c.con,
+        c.cons,
         c.θ,
         meta,
         NLPModels.Counters(),
         build_extension(c; kwargs...),
-        c.tags,
+        c.tag,
         Tuple(oracles),
         oracle_con_offsets,
         oracle_jac_offsets,

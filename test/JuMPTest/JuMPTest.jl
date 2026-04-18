@@ -49,31 +49,28 @@ function fixed_variable_e2etest()
     em = ExaModel(jm)
     @test only(em.meta.lcon) == only(em.meta.ucon) == 1.0
 
-    # FIXME: two ConstraintAug?
-    wcons = em.cons
-    @test typeof(wcons) <: ExaModels.ConstraintAug
-    @test typeof(wcons.f.f) <: ExaModels.Null
+    # em.cons is a Tuple: (ConstraintAugmentation{Null}, ConstraintAugmentation{Pair}, Constraint{Null{Nothing}})
+    @test em.cons[1] isa ExaModels.ConstraintAugmentation
+    @test em.cons[1].f.f isa ExaModels.Null
 
-    cons = wcons.inner
-    @test typeof(cons) <: ExaModels.ConstraintAug
-    @test typeof(cons.f.f) <: Pair
+    @test em.cons[2] isa ExaModels.ConstraintAugmentation
+    @test em.cons[2].f.f isa Pair
 
-    @test typeof(cons.f.f.second) <: ExaModels.Node2{
+    @test typeof(em.cons[2].f.f.second) <: ExaModels.Node2{
         typeof(*),
         ExaModels.Var{T1},
         T2,
-    } where {T1<:ExaModels.ParIndexed,T2<:ExaModels.ParIndexed}
+    } where {T1<:ExaModels.DataIndexed,T2<:ExaModels.DataIndexed}
 
-    @test typeof(cons.inner) <: ExaModels.Constraint
-    @test typeof(cons.inner.f.f) <: ExaModels.Null{Nothing}
-    @test typeof(cons.inner.inner) <: ExaModels.ConstraintNull
+    @test em.cons[3] isa ExaModels.Constraint
+    @test em.cons[3].f.f isa ExaModels.Null{Nothing}
 
-    @test typeof(em.objs.f.f) <: ExaModels.Null
-    @test typeof(em.objs.inner.f.f) <: ExaModels.Node2{
+    @test em.objs[1].f.f isa ExaModels.Null
+    @test typeof(em.objs[2].f.f) <: ExaModels.Node2{
         typeof(*),
         T1,
         ExaModels.Node1{typeof(abs2),ExaModels.Var{T2}},
-    } where {T1<:ExaModels.ParIndexed,T2<:ExaModels.ParIndexed}
+    } where {T1<:ExaModels.DataIndexed,T2<:ExaModels.DataIndexed}
 
     jm = JuMP.Model()
 
@@ -85,27 +82,25 @@ function fixed_variable_e2etest()
     em = ExaModel(jm)
     @test only(em.meta.lcon) == only(em.meta.ucon) == 0.0
     @test only(em.θ) == 1.0
-    wcons = em.cons
-    @test typeof(wcons) <: ExaModels.ConstraintAug
-    @test typeof(wcons.f.f) <: ExaModels.Null
-    cons = wcons.inner
-    @test typeof(cons) <: ExaModels.ConstraintAug
-    @test typeof(cons.f.f) <: Pair
-    @test typeof(cons.f.f.second) <: ExaModels.Node2{
+    # em.cons: (ConstraintAugmentation{Null}, ConstraintAugmentation{Pair/Param}, ConstraintAugmentation{Pair/Var}, Constraint{Null{Nothing}})
+    @test em.cons[1] isa ExaModels.ConstraintAugmentation
+    @test em.cons[1].f.f isa ExaModels.Null
+    @test em.cons[2] isa ExaModels.ConstraintAugmentation
+    @test em.cons[2].f.f isa Pair
+    @test typeof(em.cons[2].f.f.second) <: ExaModels.Node2{
         typeof(*),
         ExaModels.ParameterNode{T1},
         T2,
-    } where {T1<:ExaModels.ParIndexed,T2<:ExaModels.ParIndexed}
-    @test typeof(cons.inner) <: ExaModels.ConstraintAug
-    @test typeof(cons.inner.f.f) <: Pair
-    @test typeof(cons.inner.f.f.second) <: ExaModels.Node2{
+    } where {T1<:ExaModels.DataIndexed,T2<:ExaModels.DataIndexed}
+    @test em.cons[3] isa ExaModels.ConstraintAugmentation
+    @test em.cons[3].f.f isa Pair
+    @test typeof(em.cons[3].f.f.second) <: ExaModels.Node2{
         typeof(*),
         ExaModels.Var{T1},
         T2,
-    } where {T1<:ExaModels.ParIndexed,T2<:ExaModels.ParIndexed}
-    @test typeof(cons.inner.inner) <: ExaModels.Constraint
-    @test typeof(cons.inner.inner.f.f) <: ExaModels.Null{Nothing}
-    @test typeof(cons.inner.inner.inner) <: ExaModels.ConstraintNull
+    } where {T1<:ExaModels.DataIndexed,T2<:ExaModels.DataIndexed}
+    @test em.cons[4] isa ExaModels.Constraint
+    @test em.cons[4].f.f isa ExaModels.Null{Nothing}
 
     jm = JuMP.Model()
     JuMP.@variable(jm, x)
@@ -121,12 +116,12 @@ function no_constraints_e2etest()
 
     em = ExaModel(jm)
 
-    @test typeof(em.cons) <: ExaModels.Constraint
-    @test typeof(em.cons.inner) <: ExaModels.ConstraintNull
+    @test length(em.cons) == 1
+    @test em.cons[1] isa ExaModels.Constraint
 
-    @test typeof(em.objs.f.f) <: ExaModels.Null
-    @test typeof(em.objs.inner.f.f) <:
-          ExaModels.Node1{typeof(sin),ExaModels.Var{T1}} where {T1<:ExaModels.ParIndexed}
+    @test em.objs[1].f.f isa ExaModels.Null
+    @test typeof(em.objs[2].f.f) <:
+          ExaModels.Node1{typeof(sin),ExaModels.Var{T1}} where {T1<:ExaModels.DataIndexed}
 
     N=5
     jm = JuMP.Model()
@@ -135,12 +130,12 @@ function no_constraints_e2etest()
 
     em = ExaModel(jm)
 
-    @test typeof(em.cons) <: ExaModels.Constraint
-    @test typeof(em.cons.inner) <: ExaModels.ConstraintNull
+    @test length(em.cons) == 1
+    @test em.cons[1] isa ExaModels.Constraint
 
-    @test typeof(em.objs.f.f) <: ExaModels.Null
+    @test em.objs[1].f.f isa ExaModels.Null
     # broken since ExaMOI fails to detect SIMD in this case
-    @test_broken typeof(em.objs.inner.f.f) <:
+    @test_broken typeof(em.objs[2].f.f) <:
                  ExaModels.Node1{typeof(sin),ExaModels.Var{T1}} where {T1}
 end
 function generic_e2etest()
@@ -153,7 +148,7 @@ function generic_e2etest()
     em = ExaModel(jm)
 
     @test typeof(em) <: ExaModel{Float32}
-    @test typeof(getindex.(em.cons.inner.itr, 2)) <: Vector{Float32}
+    @test typeof(getindex.(em.cons[2].itr, 2)) <: Vector{Float32}
 end
 
 function jump_ac_power_model(filename = "pglib_opf_case3_lmbd.m")

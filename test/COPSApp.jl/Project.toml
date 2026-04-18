@@ -1,0 +1,13 @@
+name = "COPSApp"
+uuid = "b3c4e8f2-1a2b-4c5d-8e9f-0a1b2c3d4e5f"
+version = "0.1.0"
+
+[deps]
+COPSBenchmark = "3c263af4-7bba-497b-afe4-00c59a0a48a5"
+ExaModels = "1037b233-b668-4ce9-9b63-f9f681f55dd2"
+NLPModelsIpoptLite = "48c312a9-6620-4177-b859-0e15058d61ee"
+
+[sources]
+ExaModels = {path = "../.."}
+NLPModelsIpoptLite = {path = "../NLPModelsIpoptLite.jl"}
+COPSBenchmark = {url = "https://github.com/MadNLP/COPSBenchmark.jl", rev= "claude/compare-backends-glider-IRYgD"}

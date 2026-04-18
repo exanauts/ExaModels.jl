@@ -13,65 +13,12 @@
 #
 # This script is NOT a runtime dependency — it generates static Julia code.
 
-using Symbolics
-
-@variables x x1 x2
+include(joinpath(@__DIR__, "codegen_utils.jl"))
 
 # ============================================================================
-# Symbolics helpers
+# Float64 constants emitted by Symbolics.jl -> type-generic replacements
 # ============================================================================
 
-function sym_derivs_univ(f_sym)
-    expr = f_sym(x)
-    df = Symbolics.simplify(Symbolics.derivative(expr, x))
-    ddf = Symbolics.simplify(Symbolics.derivative(df, x))
-    return df, ddf
-end
-
-function sym_derivs_biv(f_sym)
-    expr = f_sym(x1, x2)
-    df1 = Symbolics.simplify(Symbolics.derivative(expr, x1))
-    df2 = Symbolics.simplify(Symbolics.derivative(expr, x2))
-    ddf11 = Symbolics.simplify(Symbolics.derivative(df1, x1))
-    ddf12 = Symbolics.simplify(Symbolics.derivative(df1, x2))
-    ddf22 = Symbolics.simplify(Symbolics.derivative(df2, x2))
-    return df1, df2, ddf11, ddf12, ddf22
-end
-
-function sym2lambda(expr, vars::Symbol...)
-    s = string(expr)
-    typevar = string(vars[1])
-    s = replace_float_constants(s, typevar)
-    s = replace_integer_constants(s, typevar)
-    s = _runic_mul_spaces(s)
-    if length(vars) == 1
-        return "$(vars[1]) -> $s"
-    else
-        vstr = join(vars, ", ")
-        return "($vstr) -> $s"
-    end
-end
-
-"""
-Ensure spaces around `*` for Runic formatting compliance.
-Symbolics.jl emits `a*b`; Runic expects `a * b`.
-Two passes handle chains like `a*b*c`.
-"""
-function _runic_mul_spaces(s::String)
-    for _ in 1:2
-        s = replace(s, r"(\S)\*(\S)" => s"\1 * \2")
-    end
-    return s
-end
-
-# ============================================================================
-# Type-generic constant replacement (Float32 compatibility)
-# ============================================================================
-
-# Known Float64 constants emitted by Symbolics.jl → type-generic replacements.
-# {V} is a placeholder for the type variable (e.g. "x" or "x1").
-# Literal strings are computed from their mathematical definitions so they
-# always match whatever `string(...)` produces at generation time.
 const FLOAT_CONSTANT_REPLACEMENTS = [
     # log constants
     (string(log(2)), "_clog2({V})"),
@@ -90,50 +37,6 @@ const FLOAT_CONSTANT_REPLACEMENTS = [
     (string(2 * Float64(π) / 180), "(2 * _cd2r({V}))"),
     (string(180 / Float64(π)), "_cr2d({V})"),
 ]
-
-"""
-Replace known Float64 literal constants in an expression string with
-type-generic helper calls, handling implicit multiplication.
-"""
-function replace_float_constants(s::String, typevar::String)
-    for (literal, template) in FLOAT_CONSTANT_REPLACEMENTS
-        repl = replace(template, "{V}" => typevar)
-        escaped = replace(literal, "." => "\\.")
-        # Literal followed by word char or '(' needs explicit ' * '
-        s = replace(s, Regex(escaped * raw"(?=[a-zA-Z_(])") => repl * " * ")
-        # Remaining occurrences (before operators, ), end of string)
-        s = replace(s, literal => repl)
-    end
-    return s
-end
-
-"""
-Replace bare integer expression bodies and ifelse integer arguments
-with type-generic versions for Float32 compatibility.
-"""
-function replace_integer_constants(s::String, typevar::String)
-    # Bare integer body → typed constant
-    if occursin(r"^-?\d+$", s)
-        return _typed_int(s, typevar)
-    end
-    # Integer arguments in ifelse(cond, int, int) calls
-    s = replace(
-        s, r"ifelse\((.+?), (-?\d+), (-?\d+)\)" => m -> begin
-            caps = match(r"ifelse\((.+?), (-?\d+), (-?\d+)\)", m).captures
-            cond, v1, v2 = caps
-            "ifelse($(cond), $(_typed_int(v1, typevar)), $(_typed_int(v2, typevar)))"
-        end
-    )
-    return s
-end
-
-function _typed_int(s::AbstractString, typevar::String)
-    n = parse(Int, s)
-    n == 0 && return "zero($typevar)"
-    n == 1 && return "one($typevar)"
-    n == -1 && return "-one($typevar)"
-    return "oftype($typevar, $s)"
-end
 
 # ============================================================================
 # Function tables
@@ -185,166 +88,6 @@ const AUTO_BIVARIATES = [
 function generate()
     io = IOBuffer()
 
-    # --- Helper functions ---
-    println(io, "@inline _mone(x) = -one(x)")
-    println(io, "@inline _one(x1, x2) = one(x1)")
-    println(io, "@inline _zero(x1, x2) = zero(x1)")
-    println(io, "@inline _mone(x1, x2) = -one(x1)")
-    println(io, "@inline _x1(x1, x2) = x1")
-    println(io, "@inline _x2(x1, x2) = x2")
-    println(io, "@inline _and(x::Bool, y::Bool) = x && y")
-    println(io, "@inline _or(x::Bool, y::Bool) = x || y")
-    println(io, "@inline _and(x, y::Bool) = x == 1 && y")
-    println(io, "@inline _or(x, y::Bool) = x == 1 || y")
-    println(io, "@inline _and(x::Bool, y) = x && y == 1")
-    println(io, "@inline _or(x::Bool, y) = x || y == 1")
-    println(io, "@inline _and(x, y) = x == 1 && y == 1")
-    println(io, "@inline _or(x, y) = x == 1 || y == 1")
-    println(io)
-    println(io, "# Type-generic constant helpers (avoid Float64 literals for Float32 compatibility)")
-    println(io, "@inline _clog2(x) = oftype(x, log(2))")
-    println(io, "@inline _clog10(x) = oftype(x, log(10))")
-    println(io, "@inline _cpi(x) = oftype(x, π)")
-    println(io, "@inline _cd2r(x) = oftype(x, π / 180)")
-    println(io, "@inline _cr2d(x) = oftype(x, 180 / π)")
-    println(io)
-
-    # --- Registration helpers ---
-    println(
-        io, raw"""# Runtime registration helpers — use Base.$fname pattern (symbols) to avoid
-        # syntax errors with operator function names like Base.:+.
-
-        # _needs_overload: true when no ExaModels-specific method exists yet.
-        # Plain `hasmethod` is too conservative — it returns true for
-        # untyped Base generics like max(x,y) = ifelse(isless(x,y),y,x),
-        # which prevents the Node2 overload from being added.  Check the
-        # module of the matched method: only skip if ExaModels already owns it
-        # (e.g. the identity-element specializations in specialization.jl).
-        function _needs_overload(f, types)
-            hasmethod(f, types) || return true
-            return which(f, types).module !== @__MODULE__
-        end
-
-        function _register_univ(fname::Symbol, df, ddf)
-            if _needs_overload(getfield(Base, fname), Tuple{AbstractNode})
-                @eval @inline Base.$fname(n::N) where {N <: AbstractNode} = Node1(Base.$fname, n)
-            end
-            @eval @inline Base.$fname(d::D) where {D <: AbstractAdjointNode} =
-                AdjointNode1(Base.$fname, Base.$fname(d.x), ($df)(d.x), d)
-            @eval @inline Base.$fname(t::T) where {T <: AbstractSecondAdjointNode} =
-                SecondAdjointNode1(Base.$fname, Base.$fname(t.x), ($df)(t.x), ($ddf)(t.x), t)
-            return @eval @inline (n::Node1{typeof(Base.$fname), I})(i, x, θ) where {I} =
-                Base.$fname(n.inner(i, x, θ))
-        end
-
-        function _register_biv(fname::Symbol, df1, df2, ddf11, ddf12, ddf22)
-            f = getfield(Base, fname)
-            if _needs_overload(f, Tuple{AbstractNode, AbstractNode})
-                @eval @inline function Base.$fname(
-                        d1::D1,
-                        d2::D2,
-                    ) where {D1 <: AbstractNode, D2 <: AbstractNode}
-                    return Node2(Base.$fname, d1, d2)
-                end
-            end
-            if _needs_overload(f, Tuple{AbstractNode, Real})
-                @eval @inline function Base.$fname(
-                        d1::D1,
-                        d2::D2,
-                    ) where {D1 <: AbstractNode, D2 <: Real}
-                    return Node2(Base.$fname, d1, d2)
-                end
-            end
-            if _needs_overload(f, Tuple{Real, AbstractNode})
-                @eval @inline function Base.$fname(
-                        d1::D1,
-                        d2::D2,
-                    ) where {D1 <: Real, D2 <: AbstractNode}
-                    return Node2(Base.$fname, d1, d2)
-                end
-            end
-            return @eval begin
-                @inline function Base.$fname(
-                        d1::D1,
-                        d2::D2,
-                    ) where {D1 <: AbstractAdjointNode, D2 <: AbstractAdjointNode}
-                    x1 = d1.x
-                    x2 = d2.x
-                    return AdjointNode2(Base.$fname, Base.$fname(x1, x2), ($df1)(x1, x2), ($df2)(x1, x2), d1, d2)
-                end
-                @inline function Base.$fname(
-                        d1::D1,
-                        d2::D2,
-                    ) where {D1 <: AbstractAdjointNode, D2 <: Union{Real, ParameterNode}}
-                    x1 = d1.x
-                    x2 = d2
-                    return AdjointNode1(Base.$fname, Base.$fname(x1, x2), ($df1)(x1, x2), d1)
-                end
-                @inline function Base.$fname(
-                        d1::D1,
-                        d2::D2,
-                    ) where {D1 <: Union{Real, ParameterNode}, D2 <: AbstractAdjointNode}
-                    x1 = d1
-                    x2 = d2.x
-                    return AdjointNode1(Base.$fname, Base.$fname(x1, x2), ($df2)(x1, x2), d2)
-                end
-                @inline function Base.$fname(
-                        t1::T1,
-                        t2::T2,
-                    ) where {T1 <: AbstractSecondAdjointNode, T2 <: AbstractSecondAdjointNode}
-                    x1 = t1.x
-                    x2 = t2.x
-                    return SecondAdjointNode2(
-                        Base.$fname,
-                        Base.$fname(x1, x2),
-                        ($df1)(x1, x2),
-                        ($df2)(x1, x2),
-                        ($ddf11)(x1, x2),
-                        ($ddf12)(x1, x2),
-                        ($ddf22)(x1, x2),
-                        t1,
-                        t2,
-                    )
-                end
-                @inline function Base.$fname(
-                        t1::T1,
-                        t2::T2,
-                    ) where {T1 <: AbstractSecondAdjointNode, T2 <: Union{Real, ParameterNode}}
-                    x1 = t1.x
-                    x2 = t2
-                    return SecondAdjointNode1(
-                        SecondFixed(Base.$fname),
-                        Base.$fname(x1, x2),
-                        ($df1)(x1, x2),
-                        ($ddf11)(x1, x2),
-                        t1,
-                    )
-                end
-                @inline function Base.$fname(
-                        t1::T1,
-                        t2::T2,
-                    ) where {T1 <: Union{Real, ParameterNode}, T2 <: AbstractSecondAdjointNode}
-                    x1 = t1
-                    x2 = t2.x
-                    return SecondAdjointNode1(
-                        FirstFixed(Base.$fname),
-                        Base.$fname(x1, x2),
-                        ($df2)(x1, x2),
-                        ($ddf22)(x1, x2),
-                        t2,
-                    )
-                end
-                @inline (n::Node2{typeof(Base.$fname), I1, I2})(i, x, θ) where {I1, I2} =
-                    Base.$fname(n.inner1(i, x, θ), n.inner2(i, x, θ))
-                @inline (n::Node2{typeof(Base.$fname), I1, I2})(i, x, θ) where {I1 <: Real, I2} =
-                    Base.$fname(n.inner1, n.inner2(i, x, θ))
-                @inline (n::Node2{typeof(Base.$fname), I1, I2})(i, x, θ) where {I1, I2 <: Real} =
-                    Base.$fname(n.inner1(i, x, θ), n.inner2)
-            end
-        end"""
-    )
-    println(io)
-
     # --- Univariate table ---
     println(io, "# " * "="^76)
     println(io, "# Univariate functions: (symbol, df, ddf)")
@@ -356,8 +99,8 @@ function generate()
     for fname in AUTO_UNIVARIATES
         f_sym = getfield(Base, fname)
         df_sym, ddf_sym = sym_derivs_univ(f_sym)
-        df_s = sym2lambda(df_sym, :x)
-        ddf_s = sym2lambda(ddf_sym, :x)
+        df_s = sym2lambda(df_sym, FLOAT_CONSTANT_REPLACEMENTS, :x)
+        ddf_s = sym2lambda(ddf_sym, FLOAT_CONSTANT_REPLACEMENTS, :x)
         println(io, "    (:$fname, $df_s, $ddf_s),")
     end
 
@@ -371,7 +114,7 @@ function generate()
     println(io, "]")
     println(io)
     println(io, "for (fname, df, ddf) in _UNIVARIATES")
-    println(io, "    _register_univ(fname, df, ddf)")
+    println(io, "    @eval @register_univariate(Base.\$fname, \$df, \$ddf)")
     println(io, "end")
     println(io)
 
@@ -386,18 +129,18 @@ function generate()
     for fname in AUTO_BIVARIATES
         f_sym = getfield(Base, fname)
         df1_sym, df2_sym, ddf11_sym, ddf12_sym, ddf22_sym = sym_derivs_biv(f_sym)
-        df1_s = sym2lambda(df1_sym, :x1, :x2)
-        df2_s = sym2lambda(df2_sym, :x1, :x2)
-        ddf11_s = sym2lambda(ddf11_sym, :x1, :x2)
-        ddf12_s = sym2lambda(ddf12_sym, :x1, :x2)
-        ddf22_s = sym2lambda(ddf22_sym, :x1, :x2)
+        df1_s = sym2lambda(df1_sym, FLOAT_CONSTANT_REPLACEMENTS, :x1, :x2)
+        df2_s = sym2lambda(df2_sym, FLOAT_CONSTANT_REPLACEMENTS, :x1, :x2)
+        ddf11_s = sym2lambda(ddf11_sym, FLOAT_CONSTANT_REPLACEMENTS, :x1, :x2)
+        ddf12_s = sym2lambda(ddf12_sym, FLOAT_CONSTANT_REPLACEMENTS, :x1, :x2)
+        ddf22_s = sym2lambda(ddf22_sym, FLOAT_CONSTANT_REPLACEMENTS, :x1, :x2)
         println(io, "    (:$fname, $df1_s, $df2_s, $ddf11_s, $ddf12_s, $ddf22_s),")
     end
 
     println(io, "]")
     println(io)
     println(io, "for (fname, df1, df2, ddf11, ddf12, ddf22) in _BIVARIATES")
-    println(io, "    _register_biv(fname, df1, df2, ddf11, ddf12, ddf22)")
+    println(io, "    @eval @register_bivariate(Base.\$fname, \$df1, \$df2, \$ddf11, \$ddf12, \$ddf22)")
     println(io, "end")
 
     return String(take!(io))
