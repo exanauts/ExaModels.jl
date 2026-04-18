@@ -682,22 +682,11 @@ function append!(backend, a, b::Number, lb)
     return cat(a, new_part; dims = 1)
 end
 
-function append!(backend, a, b::AbstractVector, lb)
+function append!(backend, a, b::AbstractArray, lb)
     lb == 0 && return a
-    col = vec(convert_array(b, backend))
+    arr = convert_array(b, backend)
+    col = vec(arr)
     return cat(a, _expand_to_shape(col, _trailing_dims(a)); dims = 1)
-end
-
-function append!(backend, a, b::AbstractMatrix, lb)
-    lb == 0 && return a
-    m = convert_array(b, backend)
-    trailing = _trailing_dims(a)
-    if trailing == ()
-        # a is a vector — flatten the matrix to a vector
-        return cat(a, vec(m); dims = 1)
-    else
-        return cat(a, m; dims = 1)
-    end
 end
 
 function append!(backend, a, b::Base.Generator, lb)
@@ -1096,33 +1085,67 @@ Constraint
   where |I| = 9
 ```
 """
+# Generator form — directly dispatched for type stability and juliac trimmer.
 @inline function add_con(
     c::C,
-    ns...;
+    gen::Base.Generator;
     tag = nothing,
     name = nothing,
     start = zero(T),
     lcon = zero(T),
     ucon = zero(T),
-    kwargs...
 ) where {T,C<:ExaCore{T}}
-    gen = _get_generator(ns)
-    dims = _get_con_dims(ns)
+    dims = _infer_subexpr_dims(gen.iter)
     gen = _adapt_gen(gen)
-    f = _simdfunction(T, gen.f(DataSource()), c.ncon, c.nnzj, c.nnzh)
+    f = SIMDFunction(T, gen, c.ncon, c.nnzj, c.nnzh)
     pars = gen.iter
-
     _add_con(c, f, pars, dims, start, lcon, ucon, name, tag)
 end
 
-@inline _get_generator(ns) = (Null(nothing) for _ in _empty_con_itr(ns))
-@inline _get_generator(gen::Tuple{G}) where G <: Base.Generator = gen[1]
-@inline _get_generator(n::Tuple{N}) where N <: AbstractNode = (n[1] for _ in 1:1)
+# Multi-generator form: first generator creates the constraint, rest augment it.
+@inline function add_con(
+    c::C,
+    gen::Base.Generator,
+    gens::Base.Generator...;
+    kwargs...
+) where {T,C<:ExaCore{T}}
+    c, con = add_con(c, gen; kwargs...)
+    for g in gens
+        c, _ = add_con!(c, con, g)
+    end
+    return (c, con)
+end
 
-# Infer constraint dims from the original arguments, preserving range start info.
-@inline _get_con_dims(ns) = ns
-@inline _get_con_dims(gen::Tuple{G}) where G <: Base.Generator = _infer_subexpr_dims(gen[1].iter)
-@inline _get_con_dims(n::Tuple{N}) where N <: AbstractNode = (1,)
+# Expression form — pre-built expression tree with explicit parameters.
+@inline function add_con(
+    c::C,
+    expr::N,
+    pars = 1:1;
+    tag = nothing,
+    name = nothing,
+    start = zero(T),
+    lcon = zero(T),
+    ucon = zero(T),
+) where {T,C<:ExaCore{T},N<:AbstractNode}
+    f = _simdfunction(T, expr, c.ncon, c.nnzj, c.nnzh)
+    dims = _infer_subexpr_dims(pars)
+    _add_con(c, f, pars, dims, start, lcon, ucon, name, tag)
+end
+
+# Dims form — empty constraints for later augmentation.
+@inline function add_con(
+    c::C,
+    ns::Union{Integer, AbstractUnitRange}...;
+    tag = nothing,
+    name = nothing,
+    start = zero(T),
+    lcon = zero(T),
+    ucon = zero(T),
+) where {T,C<:ExaCore{T}}
+    f = _simdfunction(T, Null(nothing), c.ncon, c.nnzj, c.nnzh)
+    pars = _empty_con_itr(ns)
+    _add_con(c, f, pars, ns, start, lcon, ucon, name, tag)
+end
 
 # Build an iterator for empty constraints: 1:n for 1D, collected ProductIterator for multi-dim.
 _empty_con_itr(ns::Tuple{Any}) = 1:_length(ns[1])

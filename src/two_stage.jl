@@ -199,7 +199,7 @@ the base [`add_con`](@ref) (generator or dims).  Tagged with `FirstStageTag()`.
 """
 function add_con(
     c::C,
-    ns...;
+    gen::Base.Generator;
     name = nothing,
     tag = nothing,
     start = zero(T),
@@ -207,15 +207,32 @@ function add_con(
     ucon = zero(T),
     ) where {T,VT<:AbstractVector{T},B,S<:TwoStageExaModelTag,C<:ExaCore{T,VT,B,S}}
 
-    gen = _get_generator(ns)
-    dims = _get_con_dims(ns)
+    dims = _infer_subexpr_dims(gen.iter)
     gen = _adapt_gen(gen)
-    f = _simdfunction(T, gen.f(DataSource()), c.ncon, c.nnzj, c.nnzh)
+    f = SIMDFunction(T, gen, c.ncon, c.nnzj, c.nnzh)
     pars = gen.iter
 
     new_con_scen = append!(c.backend, c.tag.con_scen, 0, length(pars))
     c = ExaCore(c; tag = TwoStageExaModelTag(c.tag.nscen, c.tag.var_scen, new_con_scen))
     return _add_con(c, f, pars, dims, start, lcon, ucon, name, FirstStageConstraintTag())
+end
+
+function add_con(
+    c::C,
+    ns::Union{Integer, AbstractUnitRange}...;
+    name = nothing,
+    tag = nothing,
+    start = zero(T),
+    lcon = zero(T),
+    ucon = zero(T),
+    ) where {T,VT<:AbstractVector{T},B,S<:TwoStageExaModelTag,C<:ExaCore{T,VT,B,S}}
+
+    f = _simdfunction(T, Null(nothing), c.ncon, c.nnzj, c.nnzh)
+    pars = _empty_con_itr(ns)
+
+    new_con_scen = append!(c.backend, c.tag.con_scen, 0, length(pars))
+    c = ExaCore(c; tag = TwoStageExaModelTag(c.tag.nscen, c.tag.var_scen, new_con_scen))
+    return _add_con(c, f, pars, ns, start, lcon, ucon, name, FirstStageConstraintTag())
 end
 
 """
@@ -229,7 +246,7 @@ scenario index.
 function add_con(
     c::C,
     ::EachScenario,
-    ns...;
+    gen::Base.Generator;
     name = nothing,
     tag = nothing,
     start = zero(T),
@@ -237,10 +254,9 @@ function add_con(
     ucon = zero(T),
     ) where {T,VT<:AbstractVector{T},B,S<:TwoStageExaModelTag,C<:ExaCore{T,VT,B,S}}
 
-    gen = _get_generator(ns)
-    dims = _get_con_dims(ns)
+    dims = _infer_subexpr_dims(gen.iter)
     gen = _adapt_gen(gen)
-    f = _simdfunction(T, gen.f(DataSource()), c.ncon, c.nnzj, c.nnzh)
+    f = SIMDFunction(T, gen, c.ncon, c.nnzj, c.nnzh)
     pars = gen.iter
 
     nscen = c.tag.nscen
@@ -248,6 +264,27 @@ function add_con(
     new_con_scen = append!(c.backend, c.tag.con_scen, _scen_each_tag(nscen, div(len, nscen)), len)
     c = ExaCore(c; tag = TwoStageExaModelTag(c.tag.nscen, c.tag.var_scen, new_con_scen))
     return _add_con(c, f, pars, dims, start, lcon, ucon, name, SecondStageConstraintTag())
+end
+
+function add_con(
+    c::C,
+    ::EachScenario,
+    ns::Union{Integer, AbstractUnitRange}...;
+    name = nothing,
+    tag = nothing,
+    start = zero(T),
+    lcon = zero(T),
+    ucon = zero(T),
+    ) where {T,VT<:AbstractVector{T},B,S<:TwoStageExaModelTag,C<:ExaCore{T,VT,B,S}}
+
+    f = _simdfunction(T, Null(nothing), c.ncon, c.nnzj, c.nnzh)
+    pars = _empty_con_itr(ns)
+
+    nscen = c.tag.nscen
+    len = length(pars)
+    new_con_scen = append!(c.backend, c.tag.con_scen, _scen_each_tag(nscen, div(len, nscen)), len)
+    c = ExaCore(c; tag = TwoStageExaModelTag(c.tag.nscen, c.tag.var_scen, new_con_scen))
+    return _add_con(c, f, pars, ns, start, lcon, ucon, name, SecondStageConstraintTag())
 end
 
 # --- Accessors ---
