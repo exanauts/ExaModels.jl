@@ -21,6 +21,8 @@ include("DeprecatedTest/DeprecatedTest.jl")
 include("JuMPTest/JuMPTest.jl")
 include("UtilsTest/UtilsTest.jl")
 include("JuliaCTest/JuliaCTest.jl")
+include("TwoStageTest/TwoStageTest.jl")
+include("GetterSetterTest/GetterSetterTest.jl")
 include("PrettyPrintTest.jl")
 # include("OptimalControlTest/OptimalControlTest.jl")
 
@@ -42,6 +44,12 @@ include("PrettyPrintTest.jl")
 
     @info "Running JuliaC AOT Test"
     JuliaCTest.runtests()
+
+    @info "Running TwoStage Test"
+    TwoStageTest.runtests()
+
+    @info "Running Getter/Setter Test"
+    GetterSetterTest.runtests()
 
     @info "Running PrettyPrint Test"
     PrettyPrintTest.runtests()
