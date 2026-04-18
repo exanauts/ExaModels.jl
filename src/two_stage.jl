@@ -18,8 +18,10 @@ c, g = add_con(core, EachScenario(), v[i] for i in 1:4)  # per-scenario constrai
 ```
 """
 struct EachScenario end
-struct FirstStageTag <: AbstractTag end
-struct SecondStageTag <: AbstractTag end
+struct FirstStageTag <: AbstractVariableTag end
+struct SecondStageTag <: AbstractVariableTag end
+struct FirstStageConstraintTag <: AbstractConstraintTag end
+struct SecondStageConstraintTag <: AbstractConstraintTag end
 struct TwoStageExaModelTag{VI<:AbstractVector{Int}} <: AbstractExaModelTag
     nscen::Int
     var_scen::VI
@@ -37,8 +39,8 @@ const FirstStageParameter{S,O} = Parameter{S,O,<: FirstStageTag}
 const SecondStageParameter{S,O} = Parameter{S,O,<: SecondStageTag} 
 const FirstStageExpression{S,F,I} = Expression{S,F,I,<: FirstStageTag}
 const SecondStageExpression{S,F,I} = Expression{S,F,I,<: SecondStageTag}
-const FirstStageConstraint{F,I,O,S} = Constraint{F,I,O,S,<: FirstStageTag}
-const SecondStageConstraint{F,I,O,S} = Constraint{F,I,O,S,<: SecondStageTag}
+const FirstStageConstraint{F,I,O,S} = Constraint{F,I,O,S,<: FirstStageConstraintTag}
+const SecondStageConstraint{F,I,O,S} = Constraint{F,I,O,S,<: SecondStageConstraintTag}
 """
     TwoStageExaCore{T,VT,B}
 
@@ -210,7 +212,7 @@ function add_con(
     pars = gen.iter
 
     append!(c.backend, c.tag.con_scen, 0, length(pars))
-    return _add_con(c, f, pars, dims, start, lcon, ucon, name, FirstStageTag())
+    return _add_con(c, f, pars, dims, start, lcon, ucon, name, FirstStageConstraintTag())
 end
 
 """
@@ -241,7 +243,7 @@ function add_con(
     nscen = c.tag.nscen
     len = length(pars)
     append!(c.backend, c.tag.con_scen, _scen_each_tag(nscen, div(len, nscen)), len)
-    return _add_con(c, f, pars, dims, start, lcon, ucon, name, SecondStageTag())
+    return _add_con(c, f, pars, dims, start, lcon, ucon, name, SecondStageConstraintTag())
 end
 
 # --- Accessors ---
@@ -285,5 +287,7 @@ function get_con_scen(model::TwoStageExaModel)
 end
 
 export EachScenario, SecondStageVariable,
+       FirstStageTag, SecondStageTag,
+       FirstStageConstraintTag, SecondStageConstraintTag,
        TwoStageExaCore, TwoStageExaModel,
        get_nscen, get_var_scen, get_con_scen

@@ -93,6 +93,8 @@ export ExaModel,
     TwoStageExaModel,
     get_nscen,
     get_var_scen,
-    get_con_scen
+    get_con_scen,
+    AbstractVariableTag,
+    AbstractConstraintTag
 
 end # module ExaModels
