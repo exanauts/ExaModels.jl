@@ -28,8 +28,8 @@ end
 
 abstract type AbstractTwoStageVariable{V} end
 
-@inline _scen_each_tag(nscen, nitr) = (k for _ in 1:nitr, k in 1:nscen)
-@inline _scen_full_tag(nscen, nitr) = (k for _ in 1:div(nitr, nscen), k in 1:nscen)
+@inline _scen_each_tag(nscen, n_per_scen) = repeat(1:nscen, inner = n_per_scen)
+@inline _scen_full_tag(nscen, nitr) = repeat(1:nscen, outer = div(nitr, nscen))
 
 const FirstStageVariable{S,O} = Variable{S,O,<: FirstStageTag}
 const SecondStageVariable{S,O} = Variable{S,O,<: SecondStageTag} 
@@ -56,12 +56,6 @@ to query the scenario structure after building the model.
 """
 const TwoStageExaModel{T,VT,E,V,P,O,C,R} = ExaModel{T,VT,E,V,P,O,C,<:TwoStageExaModelTag,R}
 
-@inline function Base.getindex(v::V, is...) where {V<:SecondStageVariable}
-    is = (is..., DataSource()[2])
-    @assert(length(is) == length(v.size), "Variable index dimension error")
-    _bound_check(v.size, is)
-    Var(v.offset + idxx(is .- (_start.(v.size) .- 1), _length.(v.size)))
-end
 
 """
     TwoStageExaCore(nscen; backend = nothing, concrete = Val(false), kwargs...)
@@ -150,12 +144,14 @@ function add_par(
     start;
     name = nothing,
     ) where {T,VT<:AbstractVector{T},B}
-    return _add_par(
-        c,
-        FirstStageTag(),
-        name,
-        start
-    )
+    return _add_par(c, FirstStageTag(), name, start, Base.size(start)...)
+end
+function add_par(
+    c::TwoStageExaCore{T,VT,B},
+    start::AbstractArray;
+    name = nothing,
+    ) where {T,VT<:AbstractVector{T},B}
+    return _add_par(c, FirstStageTag(), name, start, Base.size(start)...)
 end
 """
     add_par(core::TwoStageExaCore, ::EachScenario, start::AbstractVector; name = nothing)
@@ -169,12 +165,8 @@ function add_par(
     start::AbstractVector;
     name = nothing,
     ) where {T,VT<:AbstractVector{T},B}
-    return _add_par(
-        c,
-        SecondStageTag(),
-        name,
-        cat((start for _ in 1:c.tag.nscen)...; dims = ndims(start) + 1)
-    )
+    combined = cat((start for _ in 1:c.tag.nscen)...; dims = ndims(start) + 1)
+    return _add_par(c, SecondStageTag(), name, combined, Base.size(combined)...)
 end
 
 """
@@ -194,14 +186,13 @@ function add_con(
     ) where {T,VT<:AbstractVector{T},B,S<:TwoStageExaModelTag,C<:ExaCore{T,VT,B,S}}
 
     gen = _get_generator(ns)
-    dims = _infer_subexpr_dims(gen.iter)
+    dims = _get_con_dims(ns)
     gen = _adapt_gen(gen)
     f = _simdfunction(T, gen.f(DataSource()), c.ncon, c.nnzj, c.nnzh)
     pars = gen.iter
-    
-    return _add_con(
-        c, gen, start, lcon, ucon, name, FirstStageTag()
-    )
+
+    append!(c.backend, c.tag.con_scen, 0, length(pars))
+    return _add_con(c, f, pars, dims, start, lcon, ucon, name, FirstStageTag())
 end
 
 """
@@ -222,18 +213,17 @@ function add_con(
     lcon = zero(T),
     ucon = zero(T),
     ) where {T,VT<:AbstractVector{T},B,S<:TwoStageExaModelTag,C<:ExaCore{T,VT,B,S}}
-    
-    gen = _get_generator(ns)
-    nscen = c.tag.nscen
-    len = length(gen)
-    append!(c.backend, c.tag.var_scen, _scen_each_tag(nscen, len), len * nscen)
 
     gen = _get_generator(ns)
-    dims = _infer_subexpr_dims(gen.iter)
+    dims = _get_con_dims(ns)
     gen = _adapt_gen(gen)
-    pars = collect((i,k) for i in gen.iter for k in 1:nscen)
-    f = _simdfunction(T, gen.f(DataSource()[1]), c.ncon, c.nnzj, c.nnzh)
-    _add_con(c, f, pars, dims, start, lcon, ucon, name, tag)
+    f = _simdfunction(T, gen.f(DataSource()), c.ncon, c.nnzj, c.nnzh)
+    pars = gen.iter
+
+    nscen = c.tag.nscen
+    len = length(pars)
+    append!(c.backend, c.tag.con_scen, _scen_each_tag(nscen, div(len, nscen)), len)
+    return _add_con(c, f, pars, dims, start, lcon, ucon, name, SecondStageTag())
 end
 
 # --- Accessors ---

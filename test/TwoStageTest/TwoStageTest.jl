@@ -364,7 +364,7 @@ function runtests()
 
             @test core.nvar == ns * nv + nd
 
-            tags = core.tags
+            tags = core.tag
             @test length(tags.var_scen) == ns * nv + nd
             @test tags.var_scen[1:ns*nv] == [k for k in 1:ns for _ in 1:nv]
             @test tags.var_scen[ns*nv+1:end] == zeros(Int, nd)
@@ -379,7 +379,7 @@ function runtests()
             con_data = [(i, j, (i - 1) * nv + j) for i in 1:ns for j in 1:nv]
             @add_con(core, EachScenario(), (v[v_idx] + d[1] for (i, j, v_idx) in con_data))
 
-            tags = core.tags
+            tags = core.tag
             @test length(tags.con_scen) == ns * nv
             @test tags.con_scen == [k for k in 1:ns for _ in 1:nv]
         end
@@ -426,7 +426,7 @@ function runtests()
 
             @test core.nvar == ns * 3 + ns * 2 + 1
 
-            tags = core.tags
+            tags = core.tag
             @test tags.var_scen == [1, 1, 1, 2, 2, 2, 1, 1, 2, 2, 0]
 
             model = ExaModel(core)
