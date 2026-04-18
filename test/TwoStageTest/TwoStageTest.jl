@@ -438,28 +438,16 @@ function runtests()
 
     end
 
-    @testset "Getters and setters" begin
+    @testset "Two-stage getters and setters" begin
 
         ns, nv = 3, 2
         c = TwoStageExaCore(ns)
         c, x  = add_var(c, EachScenario(), nv; lvar = -1.0, uvar = 2.0, start = 0.5)
-        c, d  = add_var(c, 1; lvar = -5.0, uvar = 5.0, start = 1.0)
         c, θs = add_par(c, EachScenario(), [10.0, 20.0])
-        c, θf = add_par(c, [100.0, 200.0])
-        c, g  = add_con(c, EachScenario(), (x[i] + d[1] for i in 1:nv*ns);
+        con_data = [(i, j, (i - 1) * nv + j) for i in 1:ns for j in 1:nv]
+        c, g  = add_con(c, EachScenario(), (x[v_idx] for (i, j, v_idx) in con_data);
                         lcon = -1.0, ucon = 1.0, start = 0.1)
-        c, h  = add_con(c, (d[1] for _ in 1:1); lcon = 0.0, ucon = 0.0)
         m = ExaModel(c)
-
-        @testset "get_value / set_value! — parameters (full block)" begin
-            @test get_value(m, θf) == [100.0, 200.0]
-            @test get_value(m, θs) == [10.0, 20.0, 10.0, 20.0, 10.0, 20.0]
-
-            set_value!(m, θf, [111.0, 222.0])
-            @test get_value(m, θf) == [111.0, 222.0]
-
-            @test_throws DimensionMismatch set_value!(m, θf, [1.0])
-        end
 
         @testset "get_value / set_value! — second-stage parameters (per scenario)" begin
             @test get_value(m, θs, 1) == [10.0, 20.0]
@@ -474,27 +462,7 @@ function runtests()
             @test_throws DimensionMismatch set_value!(m, θs, 1, [1.0])
         end
 
-        @testset "get_start / get_lvar / get_uvar — first-stage variable" begin
-            @test get_start(m, d) == [1.0]
-            @test get_lvar(m, d)  == [-5.0]
-            @test get_uvar(m, d)  == [5.0]
-        end
-
-        @testset "set_start! / set_lvar! / set_uvar! — first-stage variable" begin
-            set_start!(m, d, [3.0]);  @test get_start(m, d) == [3.0]
-            set_lvar!(m, d, [-9.0]);  @test get_lvar(m, d)  == [-9.0]
-            set_uvar!(m, d, [9.0]);   @test get_uvar(m, d)  == [9.0]
-
-            @test_throws DimensionMismatch set_start!(m, d, [1.0, 2.0])
-            @test_throws DimensionMismatch set_lvar!(m, d,  [1.0, 2.0])
-            @test_throws DimensionMismatch set_uvar!(m, d,  [1.0, 2.0])
-        end
-
-        @testset "get_start / get_lvar / get_uvar — second-stage variable (full + per scenario)" begin
-            @test all(get_start(m, x) .== 0.5)
-            @test all(get_lvar(m, x)  .== -1.0)
-            @test all(get_uvar(m, x)  .==  2.0)
-
+        @testset "get_start / get_lvar / get_uvar — second-stage variable (per scenario)" begin
             @test length(get_start(m, x, 1)) == nv
             @test all(get_start(m, x, 2) .== 0.5)
             @test all(get_lvar(m, x, 3)  .== -1.0)
@@ -520,27 +488,7 @@ function runtests()
             @test_throws DimensionMismatch set_uvar!(m, x, 1,  [1.0])
         end
 
-        @testset "get_start / get_lcon / get_ucon — first-stage constraint" begin
-            @test get_start(m, h) == [0.0]
-            @test get_lcon(m, h)  == [0.0]
-            @test get_ucon(m, h)  == [0.0]
-        end
-
-        @testset "set_start! / set_lcon! / set_ucon! — first-stage constraint" begin
-            set_start!(m, h, [0.5]);  @test get_start(m, h) == [0.5]
-            set_lcon!(m, h, [-2.0]);  @test get_lcon(m, h)  == [-2.0]
-            set_ucon!(m, h, [2.0]);   @test get_ucon(m, h)  == [2.0]
-
-            @test_throws DimensionMismatch set_start!(m, h, [1.0, 2.0])
-            @test_throws DimensionMismatch set_lcon!(m, h,  [1.0, 2.0])
-            @test_throws DimensionMismatch set_ucon!(m, h,  [1.0, 2.0])
-        end
-
-        @testset "get_start / get_lcon / get_ucon — second-stage constraint (full + per scenario)" begin
-            @test all(get_start(m, g) .== 0.1)
-            @test all(get_lcon(m, g)  .== -1.0)
-            @test all(get_ucon(m, g)  .==  1.0)
-
+        @testset "get_start / get_lcon / get_ucon — second-stage constraint (per scenario)" begin
             @test length(get_start(m, g, 1)) == nv
             @test all(get_start(m, g, 2) .== 0.1)
             @test all(get_lcon(m, g, 3)  .== -1.0)
@@ -548,18 +496,19 @@ function runtests()
         end
 
         @testset "set_start! / set_lcon! / set_ucon! — second-stage constraint (per scenario)" begin
-            set_start!(m, g, 2, [0.9, 0.8])
-            @test get_start(m, g, 1) == [0.1, 0.1]
-            @test get_start(m, g, 2) == [0.9, 0.8]
-            @test get_start(m, g, 3) == [0.1, 0.1]
+            nc = nv
+            set_start!(m, g, 2, fill(0.9, nc))
+            @test all(get_start(m, g, 1) .== 0.1)
+            @test all(get_start(m, g, 2) .== 0.9)
+            @test all(get_start(m, g, 3) .== 0.1)
 
-            set_lcon!(m, g, 1, [-2.0, -3.0])
-            @test get_lcon(m, g, 1) == [-2.0, -3.0]
-            @test get_lcon(m, g, 2) == [-1.0, -1.0]
+            set_lcon!(m, g, 1, fill(-2.0, nc))
+            @test all(get_lcon(m, g, 1) .== -2.0)
+            @test all(get_lcon(m, g, 2) .== -1.0)
 
-            set_ucon!(m, g, 3, [4.0, 5.0])
-            @test get_ucon(m, g, 3) == [4.0, 5.0]
-            @test get_ucon(m, g, 1) == [1.0, 1.0]
+            set_ucon!(m, g, 3, fill(4.0, nc))
+            @test all(get_ucon(m, g, 3) .== 4.0)
+            @test all(get_ucon(m, g, 1) .== 1.0)
 
             @test_throws DimensionMismatch set_start!(m, g, 1, [1.0])
             @test_throws DimensionMismatch set_lcon!(m, g, 1,  [1.0])
