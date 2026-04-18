@@ -84,6 +84,10 @@ end
 
 Deprecated. Use [`add_obj`](@ref) instead.
 """
+function objective(c::LegacyExaCore, oracle::ScalarNonlinearOracle)
+    objective(c.inner, oracle)
+    return oracle
+end
 function objective(c::LegacyExaCore, args...; kwargs...)
     new_core, o = add_obj(c.inner, args...; kwargs...)
     c.inner = new_core
@@ -95,6 +99,14 @@ end
 
 Deprecated. Use [`add_con`](@ref) instead.
 """
+function constraint(c::LegacyExaCore, oracle::VectorNonlinearOracle)
+    constraint(c.inner, oracle)
+    return oracle
+end
+function constraint(c::LegacyExaCore, oracle::ScalarNonlinearOracle)
+    constraint(c.inner, oracle)
+    return oracle
+end
 function constraint(c::LegacyExaCore, args...; kwargs...)
     new_core, con = add_con(c.inner, args...; kwargs...)
     c.inner = new_core
