@@ -713,17 +713,17 @@ end
 
 
 """
-    add_par(core, dims...; start = 0, name = nothing, tag = nothing)
-    add_par(core, start::AbstractArray; name = nothing, tag = nothing)
+    add_par(core, dims...; value = 0, name = nothing, tag = nothing)
+    add_par(core, value::AbstractArray; name = nothing, tag = nothing)
 
 Adds parameters to `core` and returns `(core, Parameter)`.
 
 The first form specifies dimensions with `dims` (each an `Integer` or
-`UnitRange`) and initial values via the `start` keyword. The second form
-is a convenience that uses `size(start)` as the dimensions.
+`UnitRange`) and initial values via the `value` keyword. The second form
+is a convenience that uses `size(value)` as the dimensions.
 
 ## Keyword Arguments
-- `start`: Initial parameter values. Can be a `Number`, `AbstractArray`, or `Generator`.
+- `value`: Initial parameter values. Can be a `Number`, `AbstractArray`, or `Generator`.
 - `name` : When given as `Val(:name)`, registers the parameter in `core` for later retrieval as `core.name` or `model.name`. See [`@add_par`](@ref) for the idiomatic named interface.
 - `tag`  : User-defined metadata attached to the parameter block.
 
@@ -741,16 +741,16 @@ Parameter
   θ ∈ R^{10}
 ```
 """
-@inline function add_par(c::C, start::AbstractArray; tag = nothing, name = nothing) where {T,C<:ExaCore{T}}
-    _add_par(c, tag, name, start, Base.size(start)...)
+@inline function add_par(c::C, value::AbstractArray; tag = nothing, name = nothing) where {T,C<:ExaCore{T}}
+    _add_par(c, tag, name, value, Base.size(value)...)
 end
 
-@inline function add_par(c::C, n::AbstractRange; tag = nothing, name = nothing, start = zero(T)) where {T,C<:ExaCore{T}}
-    _add_par(c, tag, name, start, n)
+@inline function add_par(c::C, n::AbstractRange; tag = nothing, name = nothing, value = zero(T)) where {T,C<:ExaCore{T}}
+    _add_par(c, tag, name, value, n)
 end
 
-@inline function add_par(c::C, ns...; tag = nothing, name = nothing, start = zero(T)) where {T,C<:ExaCore{T}}
-    _add_par(c, tag, name, start, ns...)
+@inline function add_par(c::C, ns...; tag = nothing, name = nothing, value = zero(T)) where {T,C<:ExaCore{T}}
+    _add_par(c, tag, name, value, ns...)
 end
 
 @inline function _add_par(c, tag, name, start, ns...)
@@ -793,6 +793,135 @@ function set_parameter!(c::ExaCore, param::Parameter, values::AbstractArray)
     copyto!(@view(c.θ[start_idx:end_idx]), values)
 
     return nothing
+end
+
+"""
+    get_value(model, param)
+
+Return a view of all values for `param` in `model.θ`.
+
+For second-stage parameters in a two-stage model, use
+`get_value(model, param, scen)` to extract a single scenario's slice.
+"""
+function get_value(model::ExaModel, param::Parameter)
+    return view(model.θ, param.offset+1 : param.offset+param.length)
+end
+
+"""
+    set_value!(model, param, values)
+
+Update all values for `param` in `model.θ` to `values`.
+"""
+function set_value!(model::ExaModel, param::Parameter, values)
+    if length(values) != param.length
+        throw(DimensionMismatch(
+            "expected $(param.length) elements, got $(length(values))"
+        ))
+    end
+    copyto!(view(model.θ, param.offset+1:param.offset+param.length), values)
+    return nothing
+end
+
+@inline _var_range(v::Variable) = v.offset+1 : v.offset+v.length
+@inline _con_range(c::Constraint) = c.offset+1 : c.offset+total(c.size)
+
+"""
+    get_start(model, var::Variable)
+    get_start(model, con::Constraint)
+
+Return a view of the initial-point values (`x0` for variables, `y0` for constraints).
+"""
+get_start(model::ExaModel, v::Variable)    = view(model.meta.x0,   _var_range(v))
+get_start(model::ExaModel, c::Constraint)  = view(model.meta.y0,   _con_range(c))
+
+"""
+    get_lvar(model, var::Variable)
+
+Return a view of the lower bounds for `var`.
+"""
+get_lvar(model::ExaModel, v::Variable) = view(model.meta.lvar, _var_range(v))
+
+"""
+    get_uvar(model, var::Variable)
+
+Return a view of the upper bounds for `var`.
+"""
+get_uvar(model::ExaModel, v::Variable) = view(model.meta.uvar, _var_range(v))
+
+"""
+    get_lcon(model, con::Constraint)
+
+Return a view of the lower bounds for `con`.
+"""
+get_lcon(model::ExaModel, c::Constraint) = view(model.meta.lcon, _con_range(c))
+
+"""
+    get_ucon(model, con::Constraint)
+
+Return a view of the upper bounds for `con`.
+"""
+get_ucon(model::ExaModel, c::Constraint) = view(model.meta.ucon, _con_range(c))
+
+@inline function _check_len(got, expected, label)
+    got == expected || throw(DimensionMismatch("$label: expected $expected elements, got $got"))
+end
+
+"""
+    set_start!(model, var::Variable, values)
+    set_start!(model, con::Constraint, values)
+
+Update the initial-point values in-place (`x0` for variables, `y0` for constraints).
+"""
+function set_start!(model::ExaModel, v::Variable, values)
+    _check_len(length(values), v.length, "set_start!")
+    copyto!(view(model.meta.x0, _var_range(v)), values)
+end
+function set_start!(model::ExaModel, c::Constraint, values)
+    n = total(c.size)
+    _check_len(length(values), n, "set_start!")
+    copyto!(view(model.meta.y0, _con_range(c)), values)
+end
+
+"""
+    set_lvar!(model, var::Variable, values)
+
+Update the lower bounds for `var` in-place.
+"""
+function set_lvar!(model::ExaModel, v::Variable, values)
+    _check_len(length(values), v.length, "set_lvar!")
+    copyto!(view(model.meta.lvar, _var_range(v)), values)
+end
+
+"""
+    set_uvar!(model, var::Variable, values)
+
+Update the upper bounds for `var` in-place.
+"""
+function set_uvar!(model::ExaModel, v::Variable, values)
+    _check_len(length(values), v.length, "set_uvar!")
+    copyto!(view(model.meta.uvar, _var_range(v)), values)
+end
+
+"""
+    set_lcon!(model, con::Constraint, values)
+
+Update the lower bounds for `con` in-place.
+"""
+function set_lcon!(model::ExaModel, c::Constraint, values)
+    n = total(c.size)
+    _check_len(length(values), n, "set_lcon!")
+    copyto!(view(model.meta.lcon, _con_range(c)), values)
+end
+
+"""
+    set_ucon!(model, con::Constraint, values)
+
+Update the upper bounds for `con` in-place.
+"""
+function set_ucon!(model::ExaModel, c::Constraint, values)
+    n = total(c.size)
+    _check_len(length(values), n, "set_ucon!")
+    copyto!(view(model.meta.ucon, _con_range(c)), values)
 end
 
 """

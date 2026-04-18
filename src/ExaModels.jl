@@ -60,6 +60,7 @@ include("nlp.jl")
 include("deprecated.jl")
 include("utils.jl")
 include("tags.jl")
+include("two_stage.jl")
 include("BatchNLPModels.jl")
 using .BatchNLPModels
 include("batch.jl")
@@ -92,6 +93,25 @@ export ExaModel,
     exa_prod,
     @register_univariate,
     @register_bivariate,
+    EachScenario,
+    TwoStageExaModel,
+    get_nscen,
+    get_var_scen,
+    get_con_scen,
+    AbstractVariableTag,
+    AbstractConstraintTag,
+    get_value,
+    set_value!,
+    get_start,
+    set_start!,
+    get_lvar,
+    set_lvar!,
+    get_uvar,
+    set_uvar!,
+    get_lcon,
+    set_lcon!,
+    get_ucon,
+    set_ucon!,
     AbstractBatchNLPModel,
     BatchNLPModelMeta,
     BatchExaCore,
