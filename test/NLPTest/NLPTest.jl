@@ -46,6 +46,14 @@ include("feature_test.jl")
 include("conaug_test.jl")
 
 function test_nlp(m1, m2; full = false, tol = sol_tolerance(eltype(m1.meta.x0), eltype(m2.meta.x0)))
+    varis1 = 1:m1.meta.nvar
+    varis2 = 1:m2.meta.nvar
+    x0 = m1.meta.x0
+    x01 = m1.meta.x0
+    x02 = m2.meta.x0
+    y0 = m1.meta.y0
+    u = ones(eltype(m1.meta.x0), m1.meta.nvar)
+    v = ones(eltype(m1.meta.x0), m1.meta.ncon)
     @testset "NLP meta tests" begin
         list = [:ncon, :y0, :lcon, :ucon]
         @test length(varis1) == length(varis2)
@@ -157,7 +165,6 @@ function runtests()
                         jump_model = getfield(@__MODULE__, Symbol("_jump_$(name)_model"))
 
                         m, vars0, cons0 = exa_model(nothing, args)
-                        varis0 = m.varis
                         m0 = WrapperNLPModel(m)
 
                         m, vars2, cons2 = jump_model(nothing, args)
@@ -169,7 +176,6 @@ function runtests()
                         optimize!(m)
 
                         m, vars1, cons1 = exa_model(backend, args)
-                        varis1 = m.varis
                         m1 = WrapperNLPModel(m)
 
                         @testset "Backend test" begin
@@ -187,7 +193,7 @@ function runtests()
                                 result2 = solver(m2)
 
                                 @testset "$sname" begin
-                                    test_nlp_solution((result1, varis1), (result2, varis2))
+                                    test_nlp_solution(result1, result2)
                                 end
                             end
                         end
