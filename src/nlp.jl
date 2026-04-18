@@ -912,84 +912,6 @@ Constraint
   where |I| = 9
 ```
 """
-# @inline function add_con(
-#     c::C,
-#     gen::Base.Generator;
-#     name = nothing,
-#     tag = nothing,
-#     start = zero(T),
-#     lcon = zero(T),
-#     ucon = zero(T),
-# ) where {T,C<:ExaCore{T}}
-#     _add_con(c, gen, start, lcon, ucon, name, tag)
-# end
-
-# """
-#     add_con(core, gen, gens...; kwargs...)
-
-# Create a constraint from the first generator, then augment it with each
-# subsequent generator via [`add_con!`](@ref). Returns `(core, Constraint)`.
-
-# ## Keyword Arguments
-# - `start`: Initial guess for the dual solution. Can be a `Number`, `AbstractArray`, or `Generator`.
-# - `lcon` : Constraint lower bound. Can be a `Number`, `AbstractArray`, or `Generator`.
-# - `ucon` : Constraint upper bound. Can be a `Number`, `AbstractArray`, or `Generator`.
-# - `name` : When given as `Val(:name)`, registers the constraint for later retrieval as `core.name` or `model.name`.
-# - `kwargs...`: Additional keyword arguments forwarded to [`add_con`](@ref) (e.g. scenario tag).
-
-# ## Example
-# ```julia
-# c, g = add_con(c,
-#     (x[i] for i in 1:N),
-#     (i => sin(x[i]) for i in 1:N);
-#     lcon = 0.0, ucon = 0.0,
-# )
-# ```
-# """
-# @inline function add_con(
-#     c::C,
-#     gen::Base.Generator,
-#     gens::Base.Generator...;
-#     kwargs...
-# ) where {T,C<:ExaCore{T}}
-#     c, con = add_con(c, gen; kwargs...)
-#     for g in gens
-#         c, _ = add_con!(c, con, g)
-#     end
-#     return (c, con)
-# end
-
-# """
-#     add_con(core, expr [, pars]; start = 0, lcon = 0, ucon = 0, name = nothing)
-
-# Low-level form of [`add_con`](@ref) that accepts a pre-built `AbstractNode`
-# expression `expr` evaluated over `pars`, and returns `(core, Constraint)`.
-
-# When `name` is given as `Val(:name)`, the constraint is also accessible as
-# `core.name` or `model.name`.
-
-# Prefer the generator form (`add_con(core, gen)`) for typical use; this form
-# is intended for code that builds expression trees programmatically.
-# """
-# @inline function add_con(
-#     c::C,
-#     expr::N,
-#     pars = 1:1;
-#     tag = nothing,
-#     name = nothing,
-#     start = zero(T),
-#     lcon = zero(T),
-#     ucon = zero(T),
-#     kwargs...
-# ) where {T,C<:ExaCore{T},N<:AbstractNode}
-
-#     f = _simdfunction(T,expr, c.ncon, c.nnzj, c.nnzh)
-#     dims = _infer_subexpr_dims(pars)
-
-#     _add_con(c, f, pars, dims, start, lcon, ucon, name, tag)
-# end
-
-"""
     add_con(core, dims...; start = 0, lcon = 0, ucon = 0, name = nothing, tag = nothing)
 
 Adds empty constraints with dimensions specified by `dims` to `core` and returns
@@ -1062,8 +984,6 @@ _empty_con_itr(ns::Tuple) = collect(Iterators.product(map(n -> 1:_length(n), ns)
 
 
 function _add_con(c, f, pars, dims, start, lcon, ucon, name, tag)
-    # pars = gen.iter
-    
     nitr = length(pars)
     o = c.ncon
     ncon = c.ncon + nitr
