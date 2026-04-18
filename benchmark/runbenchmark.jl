@@ -99,7 +99,7 @@ function belapsed(
     warmups  = 5,           # number of warmup calls before timing begins
     min_time = 0.5,         # minimum total sampling duration (seconds)
     min_samples = 100,      # minimum number of timed samples
-    inner    = 1,           # inner repetitions per @elapsed call (for fast ops)
+    inner    = 100,           # inner repetitions per @elapsed call (for fast ops)
 )
     for _ in 1:warmups
         ex()
