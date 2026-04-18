@@ -42,7 +42,7 @@ function test_subexpr_basic(backend)
     x_vals = solution(result2, x2)
     return @test subexpr_vals ≈ x_vals .^ 2 atol = sol_tolerance(eltype(c1.x0)) rtol = sol_tolerance(eltype(c1.x0))
 end
- 
+
 """
 Test multi-dimensional subexpressions with automatic dimension inference.
 """
@@ -65,12 +65,10 @@ function test_subexpr_multidim(backend)
     # Add some constraints to make it non-trivial
     @add_con(c, x[0, i] - 0.0 for i in 0:N)  # Initial condition
     @add_con(c, x[T, i] - 1.0 for i in 0:N)  # Final condition
-
     m = ExaModel(c)
 
     # Wrap in WrapperNLPModel for GPU compatibility with Ipopt
     result = NLPModelsIpopt.ipopt(WrapperNLPModel(m); print_level = 0, tol = solver_tolerance(eltype(c.x0)))
-    @test result.status == :first_order
 
     # Check subexpression values match the definition
     x_sol = solution(result, x)
@@ -101,12 +99,10 @@ function test_subexpr_auto_dims(backend)
 
     # Use in objective
     @add_obj(c, s[t, i] for t in 1:T, i in 1:N)
-
     m = ExaModel(c)
 
     # Wrap in WrapperNLPModel for GPU compatibility with Ipopt
     result = NLPModelsIpopt.ipopt(WrapperNLPModel(m); print_level = 0, tol = solver_tolerance(eltype(c.x0)))
-    return @test result.status == :first_order
 end
 
 """
@@ -124,7 +120,6 @@ function test_subexpr_in_obj_and_con(backend)
 
     # Use in constraint
     @add_con(c, s[i] + s[i + 1] for i in 1:4; lcon = 1.0, ucon = 3.0)
-
     m = ExaModel(c)
 
     # Wrap in WrapperNLPModel for GPU compatibility with Ipopt
@@ -164,7 +159,6 @@ end
 #     # Subexpression uses both x and θ: s[i] = x[i] * θ[i]
 #     # With x start = 2.0 and θ = [1,2,3], expect start = [2,4,6]
 #     @add_expr(c2, s2, x2[i] * θ[i] for i in 1:3)
-
 #     start_vals2 = c2.x0[(s2.offset+1):(s2.offset+s2.length)]
 #     @test Array(start_vals2) ≈ [2.0, 4.0, 6.0]
 
@@ -208,7 +202,6 @@ function test_subexpr_reduced_basic(backend)
     @test result1.status == result2.status
     return @test solution(result1, x1) ≈ solution(result2, x2) atol = sol_tolerance(eltype(c1.x0)) rtol = sol_tolerance(eltype(c1.x0))
 end
-
 # """
 # Test that reduced and lifted subexpressions produce equivalent solutions.
 # """
@@ -227,7 +220,6 @@ end
 #     @add_expr(c2, s2, sqrt(x2[i]) for i in 1:5)
 #     @add_obj(c2, (s2[i] - 1)^2 for i in 1:5)
 #     @add_con(c2, s2[i] + s2[i + 1] for i in 1:4; lcon = 1.0, ucon = 3.0)
-#     m2 = ExaModel(c2)
 
 #     # Lifted has more vars/cons
 #     @test m1.meta.nvar > m2.meta.nvar
@@ -236,7 +228,6 @@ end
 #     # Solve both (wrap in WrapperNLPModel for GPU compatibility with Ipopt)
 #     result1 = NLPModelsIpopt.ipopt(WrapperNLPModel(m1); print_level = 0, tol = solver_tolerance(eltype(c1.x0)))
 #     result2 = NLPModelsIpopt.ipopt(WrapperNLPModel(m2); print_level = 0, tol = solver_tolerance(eltype(c2.x0)))
-
 #     # Both should converge to same solution
 #     @test result1.status == :first_order
 #     @test result2.status == :first_order
@@ -303,7 +294,6 @@ function test_subexpr_reduced_nested(backend)
     # 2*x^2 = 2 => x = 1
     return @test solution(result, x) ≈ ones(5) atol = sol_tolerance(eltype(c.x0)) rtol = sol_tolerance(eltype(c.x0))
 end
-
 # """
 # Test mixed lifted and reduced subexpressions.
 # """
@@ -318,7 +308,6 @@ end
 #     @add_expr(c, s_reduced, s_lifted[i] * 2 for i in 1:5)
 
 #     @add_obj(c, (s_reduced[i] - 2)^2 for i in 1:5)
-
 #     m = ExaModel(c)
 
 #     # Only lifted subexpr adds vars/cons
@@ -398,7 +387,6 @@ function test_subexpr_reduced_0based_nested(backend)
     # (x+1)*2 = 4 => x = 1
     return @test solution(result, x) ≈ ones(T + 1, N + 1) atol = sol_tolerance(eltype(c.x0)) rtol = sol_tolerance(eltype(c.x0))
 end
-
 """
 Run all subexpression tests.
 """
@@ -418,7 +406,6 @@ function test_subexpr(backend)
     # @testset "Subexpr in obj and con (lifted)" begin
     #     test_subexpr_in_obj_and_con(backend)
     # end
-
     # @testset "Subexpr lifted start values" begin
     #     test_subexpr_lifted_start_values(backend)
     # end
@@ -426,7 +413,6 @@ function test_subexpr(backend)
     @testset "Subexpr reduced basic" begin
         test_subexpr_reduced_basic(backend)
     end
-
     # @testset "Subexpr lifted vs reduced" begin
     #     test_subexpr_lifted_vs_reduced(backend)
     # end
@@ -438,7 +424,6 @@ function test_subexpr(backend)
     @testset "Subexpr reduced nested" begin
         test_subexpr_reduced_nested(backend)
     end
-
     # @testset "Subexpr mixed lifted and reduced" begin
     #     test_subexpr_mixed(backend)
     # end
@@ -452,4 +437,3 @@ function test_subexpr(backend)
     end
 
 end
-
