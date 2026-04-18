@@ -534,6 +534,7 @@ end
 )
     I = @index(Global)
     @inbounds ExaModels.hrpass0(
+        nothing, nothing, nothing, nothing, nothing, nothing,
         f(itr[I], ExaModels.SecondAdjointNodeSource(x, nothing), θ),
         f.comp2,
         y1,
@@ -558,6 +559,7 @@ end
 )
     I = @index(Global)
     @inbounds ExaModels.hrpass0(
+        nothing, nothing, nothing, nothing, nothing, nothing,
         f(itr[I], ExaModels.SecondAdjointNodeSource(x, nothing), θ),
         f.comp2,
         y1,
@@ -573,6 +575,7 @@ end
     I = @index(Global)
     @inbounds ExaModels.jrpass(
         f(itr[I], ExaModels.AdjointNodeSource(x, nothing), θ),
+        nothing, nothing, nothing,
         f.comp1,
         ExaModels.offset0(f, itr, I, dims),
         y1,
