@@ -13,23 +13,24 @@ nv = 2   ## recourse variables per scenario
 nd = 1   ## design variables
 weight = 1.0 / ns
 
-# Two annotate the scenario for each variable and constraint, we can use the `scenario` we need to start with a special ExaCore that supports such scenario annotations, which can be created by calling `TwoStageExaCore()`. 
-core = TwoStageExaCore()
+# To annotate the scenario for each variable and constraint, we start with a `TwoStageExaCore` that supports scenario annotations.
+core = TwoStageExaCore(ns; concrete = Val(true))
 
-# Now we can define the design variable and recourse variables. The `scenario` keyword argument allows us to specify which scenario(s) each variable belongs to. For the design variable `d`, we set `scenario = 0` to indicate that it is shared across all scenarios. 
-d = variable(core; start = 1.0, lvar = 0.0, uvar = Inf, scenario = 0)  ## design variable d
+# Design variables are shared across all scenarios — add them without `EachScenario()`.
+core, d = add_var(core, nd; start = 1.0, lvar = 0.0, uvar = Inf)
 
-# For the recourse variables `v`, we specify `scenario = [i for i=1:ns, j=1:nv]` to indicate that each variable `v[s,i]` belongs to scenario `s`. This allows us to define scenario-specific constraints and objectives that involve these recourse variables.
-v = variable(core, ns, nv; start = 1.0, lvar = 0.0, uvar = Inf, scenario = [i for i=1:ns, j=1:nv])  ## recourse variables v
+# Recourse variables are per-scenario — use `EachScenario()` to replicate them.
+v = @add_var(core, EachScenario(), nv; start = 1.0, lvar = 0.0, uvar = Inf)
 
-# Now we can define the constraints and objective function. The `scenario` keyword argument in the `constraint` and `objective` functions allows us to specify which scenario(s) each constraint or objective term belongs to. 
-constraint(core, v[s,1] - v[s,2]^2 for s in 1:ns; lcon = 0.0, scenario = 1:ns)
+# Per-scenario constraints use `EachScenario()`.
+@add_con(core, EachScenario(), (v[(s-1)*nv+1] - v[(s-1)*nv+2]^2 for s in 1:ns); lcon = 0.0)
 
-objective(core, d^2)
-objective(core, weight * (v[s,i] - d)^2 for s in 1:ns, i in 1:nv)
+# Objectives can mix design and recourse variables.
+@add_obj(core, d[1]^2)
+@add_obj(core, weight * (v[(s-1)*nv+i] - d[1])^2 for s in 1:ns, i in 1:nv)
 
 m = ExaModel(core)
 
-# Now we can solve the model as usual. 
-ipopt(m) 
+# Now we can solve the model as usual.
+ipopt(m)
 # If the solver knows how to exploit the scenario structure, the structure-exploiting method can be used.

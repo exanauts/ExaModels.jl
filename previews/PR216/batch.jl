@@ -1,15 +1,15 @@
 # # [Batch Optimization](@id batch)
-# ExaModels supports batch optimization through the `BatchExaModel`. This feature
-# enables efficient evaluation of multiple fully independent optimization scenarios
+# ExaModels supports batch optimization through `BatchExaCore`. This feature
+# enables efficient evaluation of multiple fully independent optimization instances
 # that share identical structure but differ in parameter values.
 #
-# Unlike `TwoStageExaModel`, which couples scenarios through shared design variables,
-# `BatchExaModel` treats each scenario as completely independent. The key advantage
-# is that all scenarios share one compiled expression pattern and are fused into a
+# Unlike `TwoStageExaModel`, which couples instances through shared design variables,
+# batch models treat each instance as completely independent. The key advantage
+# is that all instances share one compiled expression pattern and are fused into a
 # single model for efficient SIMD evaluation.
 
 # ## Problem Formulation
-# A batch optimization problem solves `ns` independent scenarios simultaneously:
+# A batch optimization problem solves `ns` independent instances simultaneously:
 # ```math
 # \begin{aligned}
 # \min_{v_i} \quad & f(v_i; \theta_i), \quad i = 1, \ldots, S \\
@@ -17,54 +17,48 @@
 # & v_i \in \mathcal{V}
 # \end{aligned}
 # ```
-# where each scenario has the same structure but different parameters $\theta_i$.
+# where each instance has the same structure but different parameters $\theta_i$.
 
 # ## Building a Batch Model
-# The builder function defines expressions for a **single scenario**. `BatchExaModel`
-# calls it `ns` times internally with per-scenario parameter handles.
-# This means you never have to compute global index offsets manually.
+# Use `BatchExaCore(ns)` to create a core for `ns` instances.
+# Variables, parameters, objectives, and constraints are defined once —
+# the batch structure replicates them across all instances automatically.
 
-using ExaModels, MadNLP
-
-# Define the problem dimensions and scenario parameters as a matrix of size `(nθ, ns)`:
-ns = 3   ## number of scenarios
-nv = 1   ## variables per scenario
-θ_data = [2.0 4.0 6.0]  ## (1, 3) matrix: θ₁=2, θ₂=4, θ₃=6
-
-# Build the model. First create an `ExaCore`, then pass it along with the parameter
-# matrix to `BatchExaModel`:
-c = ExaCore()
-model = BatchExaModel(c, ns, θ_data) do c, θ
-    ## Create variables — this is called once per scenario, offsets are automatic
-    v = variable(c, nv)
-    ## Objective: minimize (v - θ)²
-    objective(c, (v[1] - θ[1])^2)
-    ## Constraint: v ≥ 0
-    constraint(c, v[1]; lcon = 0.0, ucon = Inf)
-end
-
-# The builder function receives:
-# - `c`: the `ExaCore` — use `variable(c, ...)`, `objective(c, ...)`, `constraint(c, ...)` as usual
-# - `θ`: a per-scenario parameter handle (indices 1:nθ)
-#
-# Variable creation via `variable(c, ...)` works exactly like in a regular `ExaModel`.
-# You can set start values, lower/upper bounds, etc.
-
-# ## Batch API (NLPModels)
-# `BatchExaModel` implements the `AbstractBatchNLPModel` interface from NLPModels.jl.
-# All evaluation functions use matrices of size `(dim, ns)`:
+using ExaModels, NLPModelsIpopt
 import NLPModels
 
-println("Variables per scenario: ", NLPModels.get_nvar(model))
-println("Constraints per scenario: ", NLPModels.get_ncon(model))
-println("Number of scenarios: ", NLPModels.get_nbatch(model))
+# Define the problem dimensions and instance parameters:
+ns = 3   ## number of instances
+nv = 1   ## variables per instance
 
-# Evaluate objectives for all scenarios at once:
+# Create a batch core:
+c = BatchExaCore(ns)
+
+# Add variables and parameters:
+@add_var(c, v, nv)
+@add_par(c, θ, [2.0])
+
+# Define objectives and constraints — these apply to every instance:
+@add_obj(c, (v[j] - θ[1])^2 for j in 1:nv)
+@add_con(c, g, v[j] for j in 1:nv; lcon = 0.0)
+
+# Build the model:
+model = ExaModel(c)
+
+# ## Batch API (NLPModels)
+# Batch models implement `AbstractNLPModel` with matrix-valued variables.
+# All evaluation functions use matrices of size `(dim, ns)`:
+
+println("Variables per instance: ", NLPModels.get_nvar(model))
+println("Constraints per instance: ", NLPModels.get_ncon(model))
+println("Number of instances: ", ExaModels.get_nbatch(model))
+
+# Evaluate objectives for all instances at once:
 bx = reshape([1.0, 3.0, 5.0], nv, ns)
 bf = zeros(ns)
 NLPModels.obj!(model, bx, bf)
 println("\nObjective values: ", bf)
-## scenario 1: (1-2)² = 1, scenario 2: (3-4)² = 1, scenario 3: (5-6)² = 1
+## instance 1: (1-2)² = 1, instance 2: (3-4)² = 1, instance 3: (5-6)² = 1
 
 # Evaluate gradients:
 bg = zeros(nv, ns)
@@ -77,57 +71,31 @@ NLPModels.cons!(model, bx, bc)
 println("Constraints: ", bc)
 
 # ## Solving via the Fused Model
-# For solving, access the underlying fused `ExaModel` and use any NLPModels-compatible
-# solver (e.g., MadNLP):
-result = madnlp(ExaModels.get_model(model); print_level = MadNLP.ERROR)
+# For solving, use `get_model(model)` to access the fused `FlattenNLPModel` and
+# pass it to any NLPModels-compatible solver:
+flat = ExaModels.get_model(model)
+result = ipopt(flat; print_level = 0)
 println("\nSolution status: ", result.status)
-println("Optimal objective: ", round(result.objective, digits = 4))
 
-# Extract per-scenario solutions:
+# Extract per-instance solutions:
 x_sol = result.solution
 for i in 1:ns
     v_sol = x_sol[ExaModels.var_indices(model, i)]
-    println("Scenario $i: v* = ", round(v_sol[1], digits = 4))
+    println("Instance $i: v* = ", round(v_sol[1], digits = 4))
 end
 
-# ## A More Complex Example
-# Here's a batch model with multiple variables, objectives, and constraints per scenario:
-ns2, nv2 = 2, 3
-θ_data2 = [1.0 4.0; 2.0 5.0; 3.0 6.0]  ## (3, 2) matrix
+# ## Per-Instance Parameters
+# Each instance can have different parameter values.
+# Parameters are stored as a matrix `(nθ, ns)`. You can set different values
+# per instance using `set_parameter!`:
 
-c2 = ExaCore()
-model2 = BatchExaModel(c2, ns2, θ_data2) do c, θ
-    v = variable(c, nv2; start = 1.0, lvar = 0.0, uvar = 10.0)
-    ## Objective: Σⱼ (vⱼ - θⱼ)²
-    objective(c, (v[j] - θ[j])^2 for j in 1:nv2)
-    ## Constraints: sum of all variables ≤ 20
-    constraint(c, sum(v[j] for j in 1:nv2); ucon = 20.0)
-end
+c2 = BatchExaCore(2)
+@add_var(c2, x, 2)
+@add_par(c2, p, [1.0, 2.0])
+@add_obj(c2, (x[j] - p[j])^2 for j in 1:2)
+model2 = ExaModel(c2)
 
-result2 = madnlp(ExaModels.get_model(model2); print_level = MadNLP.ERROR)
-println("\nMulti-variable example:")
-println("Status: ", result2.status)
-x_sol2 = result2.solution
-for i in 1:ns2
-    v_sol = x_sol2[ExaModels.var_indices(model2, i)]
-    println("Scenario $i: v* = ", round.(v_sol, digits = 4))
-end
-
-# ## Updating Parameters
-# You can update scenario parameters and re-solve without rebuilding the model:
-
-# Update a single scenario:
-ExaModels.set_scenario_parameters!(model, 1, [10.0])
-
-# Or update all scenarios at once:
-ExaModels.set_all_scenario_parameters!(model, [[10.0], [12.0], [14.0]])
-
-# Re-solve with new parameters:
-result3 = madnlp(ExaModels.get_model(model); print_level = MadNLP.ERROR)
-println("\nAfter parameter update:")
-println("Status: ", result3.status)
-x_sol3 = result3.solution
-for i in 1:ns
-    v_sol = x_sol3[ExaModels.var_indices(model, i)]
-    println("Scenario $i: v* = ", round(v_sol[1], digits = 4))
-end
+# Update parameters for instance 2:
+ExaModels.set_parameter!(c2, p, [10.0, 20.0])
+model2 = ExaModel(c2)
+println("\nParameter matrix shape: ", size(model2.θ))
