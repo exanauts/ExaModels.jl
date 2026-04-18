@@ -1,5 +1,4 @@
 import Pkg
-using BenchmarkTools
 if "main" in ARGS
     Pkg.activate(joinpath(@__DIR__, "main"))
     Pkg.update()
@@ -14,7 +13,7 @@ else
     error("Please specify either 'main' or 'current' as an argument to select the environment.")
 end
 
-using ExaModels, Printf, ExaPowerIO, Random
+using ExaModels, Printf, ExaPowerIO, Random, BenchmarkTools
 
 # ── Backend selection ──────────────────────────────────────────────────────────
 # Usage: julia runbenchmark.jl (main|current) [nothing] [cuda] [amdgpu] [oneapi] [all]
