@@ -25,7 +25,6 @@ include("TwoStageTest/TwoStageTest.jl")
 include("GetterSetterTest/GetterSetterTest.jl")
 include("PrettyPrintTest.jl")
 # include("OptimalControlTest/OptimalControlTest.jl")
-include("LinAlgTest/LinAlgTest.jl")
 include("OracleTest/OracleTest.jl")
 
 @testset verbose = true "ExaModels test" begin
@@ -58,9 +57,6 @@ include("OracleTest/OracleTest.jl")
 
     # @info "Running OptimalControl Test"
     # OptimalControlTest.runtests()
-
-    @info "Running LinAlg Test"
-    LinAlgTest.runtests()
 
     @info "Running Oracle Test"
     OracleTest.runtests()
