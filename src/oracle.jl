@@ -1,5 +1,9 @@
 # oracle.jl
 #
+# ScalarNonlinearOracle: a scalar objective term with callbacks for value,
+# gradient, and (optionally) Hessian-vector product.  Registered via
+# `objective(core, oracle)`.  No Jacobian is needed — only ∇f and ∇²f·v.
+#
 # VectorNonlinearOracle: lets users plug arbitrary nonlinear constraint blocks
 # (e.g. GPU simulation residuals, external ODE solvers) into an ExaModel by
 # supplying three Julia callbacks:
@@ -181,6 +185,86 @@ Return `true` if the oracle provides a matrix-free Hessian-vector product (`hvp!
 """
 has_matfree_hess(o::VectorNonlinearOracle) = o.hvp! !== nothing
 
+
+# ── ScalarNonlinearOracle ─────────────────────────────────────────────────────
+
+"""
+    ScalarNonlinearOracle
+
+A scalar objective oracle: adds `f(x)` to the objective via callbacks.
+No output variables, no constraints, no Jacobian — only gradient and
+optionally Hessian-vector product.
+
+Callbacks:
+- `f(x) -> Float64`:           objective value
+- `grad!(g, x)`:              fills g[1:nvar] = ∇f(x)
+- `hvp!(Hv, x, v) = nothing`: fills Hv[1:nvar] = ∇²f(x)·v  (optional; L-BFGS if absent)
+
+Register via `objective(core, oracle)`.
+"""
+struct ScalarNonlinearOracle{F, G, H}
+    nvar::Int
+    f::F
+    grad!::G
+    hvp!::H
+    nnzh::Int
+    hess_rows::Vector{Int}
+    hess_cols::Vector{Int}
+    gpu::Bool
+end
+
+function ScalarNonlinearOracle(;
+        nvar::Int,
+        f,
+        grad!,
+        hvp! = nothing,
+        nnzh::Int = -1,
+        hess_rows::Vector{Int} = Int[],
+        hess_cols::Vector{Int} = Int[],
+        gpu::Bool = false,
+    )
+    if nnzh == -1
+        nnzh = length(hess_rows)
+        # Matrix-free with hvp!: declare dense lower-triangular Hessian
+        if hvp! !== nothing && nnzh == 0
+            nnzh = nvar * (nvar + 1) ÷ 2
+            hess_rows = Int[]
+            hess_cols = Int[]
+            sizehint!(hess_rows, nnzh)
+            sizehint!(hess_cols, nnzh)
+            for i in 1:nvar, j in 1:i
+                push!(hess_rows, i)
+                push!(hess_cols, j)
+            end
+        end
+    end
+    return ScalarNonlinearOracle(nvar, f, grad!, hvp!, nnzh, hess_rows, hess_cols, gpu)
+end
+
+Base.show(io::IO, o::ScalarNonlinearOracle) = print(
+    io,
+    """
+    ScalarNonlinearOracle
+
+      nvar: $(o.nvar)   nnzh: $(o.nnzh)   gpu: $(o.gpu)
+      hvp!: $(o.hvp! !== nothing)
+    """,
+)
+
+_oracle_input(oracle::ScalarNonlinearOracle, x) =
+    oracle.gpu ? x : adapt(Array, x)
+
+"""
+    objective(core::ExaCore, oracle::ScalarNonlinearOracle)
+
+Register a scalar objective oracle with `core`.
+"""
+function objective(c::ExaCore, oracle::ScalarNonlinearOracle)
+    push!(c.scalar_oracles, oracle)
+    return oracle
+end
+
+
 # ── Array-routing helper ─────────────────────────────────────────────────────
 # When oracle.gpu == false (default): adapt device arrays to CPU before calling
 # the callback.  When oracle.gpu == true: pass arrays through unchanged.
@@ -327,7 +411,7 @@ The constraint ordering is:
 
 and analogously for the Jacobian and Hessian nonzero arrays.
 """
-struct ExaModelWithOracle{T, VT, E, O, C, S, R, IC} <: AbstractExaModel{T, VT, E}
+struct ExaModelWithOracle{T, VT, E, O, C, S, R, IC, SO} <: AbstractExaModel{T, VT, E}
     objs::O                          # same as ExaModel
     cons::C                          # same as ExaModel (SIMD constraints only)
     θ::VT                            # same as ExaModel
@@ -340,6 +424,7 @@ struct ExaModelWithOracle{T, VT, E, O, C, S, R, IC} <: AbstractExaModel{T, VT, E
     oracle_jac_offsets::Vector{Int}  # jac NNZ offset (0-based) for each oracle
     oracle_hess_offsets::Vector{Int} # hess NNZ offset (0-based) for each oracle
     oracle_caches::IC                # precomputed index arrays (Vector{OracleIndexCache{VI}})
+    scalar_oracles::SO               # Tuple of ScalarNonlinearOracle
 end
 
 function Base.show(io::IO, m::ExaModelWithOracle{T, VT}) where {T, VT}
@@ -351,6 +436,7 @@ end
 
 function _build_with_oracle(c::ExaCore; kwargs...)
     oracles = c.oracles                          # Vector{Any} of VectorNonlinearOracle
+    s_oracles = c.scalar_oracles                 # Vector{Any} of ScalarNonlinearOracle
 
     # SIMD-only counts (oracle contributions deferred to here)
     n_simd_ncon = c.ncon
@@ -358,9 +444,10 @@ function _build_with_oracle(c::ExaCore; kwargs...)
     n_simd_nnzh = c.nnzh
 
     # Total oracle contributions
-    total_oracle_ncon = sum(o.ncon for o in oracles)
-    total_oracle_nnzj = sum(o.nnzj for o in oracles)
-    total_oracle_nnzh = sum(o.nnzh for o in oracles)
+    total_oracle_ncon = isempty(oracles) ? 0 : sum(o.ncon for o in oracles)
+    total_oracle_nnzj = isempty(oracles) ? 0 : sum(o.nnzj for o in oracles)
+    total_oracle_nnzh = (isempty(oracles) ? 0 : sum(o.nnzh for o in oracles)) +
+                        (isempty(s_oracles) ? 0 : sum(o.nnzh for o in s_oracles))
 
     total_ncon = n_simd_ncon + total_oracle_ncon
     total_nnzj = n_simd_nnzj + total_oracle_nnzj
@@ -377,19 +464,19 @@ function _build_with_oracle(c::ExaCore; kwargs...)
     end
 
     # Compute per-oracle offsets (0-based, relative to the full arrays)
-    oracle_con_offsets  = Vector{Int}(undef, length(oracles))
-    oracle_jac_offsets  = Vector{Int}(undef, length(oracles))
+    oracle_con_offsets = Vector{Int}(undef, length(oracles))
+    oracle_jac_offsets = Vector{Int}(undef, length(oracles))
     oracle_hess_offsets = Vector{Int}(undef, length(oracles))
 
-    con_off  = n_simd_ncon
-    jac_off  = n_simd_nnzj
+    con_off = n_simd_ncon
+    jac_off = n_simd_nnzj
     hess_off = n_simd_nnzh
     for (i, o) in enumerate(oracles)
-        oracle_con_offsets[i]  = con_off
-        oracle_jac_offsets[i]  = jac_off
+        oracle_con_offsets[i] = con_off
+        oracle_jac_offsets[i] = jac_off
         oracle_hess_offsets[i] = hess_off
-        con_off  += o.ncon
-        jac_off  += o.nnzj
+        con_off += o.ncon
+        jac_off += o.nnzj
         hess_off += o.nnzh
     end
 
@@ -432,15 +519,34 @@ function _build_with_oracle(c::ExaCore; kwargs...)
         oracle_jac_offsets,
         oracle_hess_offsets,
         oracle_caches,
+        Tuple(s_oracles),
     )
 end
 
 # ── NLPModels methods ──────────────────────────────────────────────────────────
 
-# obj and grad! are not overridden here:
-# the KA extension provides AbstractExaModel{E<:KAExtension} overrides which
-# dispatch correctly for ExaModelWithOracle on GPU.  On CPU, NLPModels falls
-# back through AbstractExaModel -> nlp.jl definitions.
+# --- objective (with scalar oracle contributions) ---
+
+function obj(m::ExaModelWithOracle, x::AbstractVector)
+    val = _obj(m.objs, x, m.θ)
+    for oracle in m.scalar_oracles
+        xin = _oracle_input(oracle, x)
+        val += oracle.f(xin)
+    end
+    return val
+end
+
+function grad!(m::ExaModelWithOracle, x::AbstractVector, f::AbstractVector)
+    fill!(f, zero(eltype(f)))
+    _grad!(m.objs, x, m.θ, f)
+    for oracle in m.scalar_oracles
+        xin = _oracle_input(oracle, x)
+        g_buf = zeros(eltype(f), oracle.nvar)
+        oracle.grad!(g_buf, xin)
+        f .+= g_buf
+    end
+    return f
+end
 
 # --- constraint residuals ---
 

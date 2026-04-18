@@ -62,7 +62,8 @@ function ExaModels.build_extension(
         simd_ncon = c.ncon
 
         total_nnzj = c.nnzj + sum(getproperty(o, :nnzj) for o in c.oracles; init = 0)
-        total_nnzh = c.nnzh + sum(getproperty(o, :nnzh) for o in c.oracles; init = 0)
+        total_nnzh = c.nnzh + sum(getproperty(o, :nnzh) for o in c.oracles; init = 0) +
+                              sum(getproperty(o, :nnzh) for o in c.scalar_oracles; init = 0)
         jacbuffer = similar(c.x0, total_nnzj)
         hessbuffer = similar(c.x0, total_nnzh)
         jacsparsityi = similar(c.x0, Tuple{Tuple{Int, Int}, Int}, simd_nnzj)

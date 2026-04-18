@@ -41,7 +41,6 @@ if !(@isdefined _JL_FILENAMES)
         "parameters.jl",
         "two_stage.jl",
         "oracle.jl",
-
     ]
 end
 
