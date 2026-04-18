@@ -91,16 +91,16 @@ function test_add_par_dims(backend)
         @test θ.size == (5,)
     end
 
-    @testset "add_par(core, n; start)" begin
+    @testset "add_par(core, n; value)" begin
         c = ExaCore(; backend, concrete = Val(true))
-        c, θ = add_par(c, 5; start = 1.0)
+        c, θ = add_par(c, 5; value = 1.0)
         @test θ.length == 5
     end
 
-    @testset "add_par(core, range; start) — non-unit start" begin
+    @testset "add_par(core, range; value) — non-unit start" begin
         c = ExaCore(; backend, concrete = Val(true))
         c, x = add_var(c, 5)
-        c, θ = add_par(c, 2:4; start = [10.0, 20.0, 30.0])
+        c, θ = add_par(c, 2:4; value = [10.0, 20.0, 30.0])
         @test θ.length == 3
         @test θ.size == (2:4,)
 
@@ -111,10 +111,10 @@ function test_add_par_dims(backend)
         @test g_vals ≈ [10.0, 20.0, 30.0]
     end
 
-    @testset "add_par(core, n, range; start) — multi-dim" begin
+    @testset "add_par(core, n, range; value) — multi-dim" begin
         c = ExaCore(; backend, concrete = Val(true))
         c, x = add_var(c, 12)
-        c, θ = add_par(c, 3, 2:5; start = collect(Float64, 1:12))
+        c, θ = add_par(c, 3, 2:5; value = collect(Float64, 1:12))
         @test θ.length == 12
         @test θ.size == (3, 2:5)
 
@@ -127,7 +127,7 @@ function test_add_par_dims(backend)
 
     @testset "set_parameter! with range-sized parameter" begin
         c = ExaCore(; backend, concrete = Val(true))
-        c, θ = add_par(c, 2:4; start = ones(3))
+        c, θ = add_par(c, 2:4; value = ones(3))
         set_parameter!(c, θ, [5.0, 6.0, 7.0])
         c, x = add_var(c, 1)
         c, g = add_con(c, θ[j] * x[1] for j in 2:4; lcon = 0.0, ucon = 0.0)
