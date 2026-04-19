@@ -157,7 +157,7 @@ end
 # ============================================================================
 
 """
-    FlatNLPModel{T, M} <: AbstractNLPModel{T, Vector{T}}
+    FlatNLPModel{T, VT, M} <: AbstractNLPModel{T, VT}
 
 Wrapper that presents a batch NLP model as a flat (Vector-based) NLP model.
 All NLPModels callbacks delegate to the underlying batch model's matrix API.
@@ -166,9 +166,9 @@ All NLPModels callbacks delegate to the underlying batch model's matrix API.
 
 Construct a flat model from a batch model whose `meta.x0` is a matrix.
 """
-struct FlatNLPModel{T, M <: AbstractNLPModel{T}} <: AbstractNLPModel{T, Vector{T}}
+struct FlatNLPModel{T, VT <: AbstractVector{T}, M <: AbstractNLPModel{T}} <: AbstractNLPModel{T, VT}
     batch::M
-    meta::NLPModelMeta{T, Vector{T}}
+    meta::NLPModelMeta{T, VT}
     counters::NLPModels.Counters
 end
 
@@ -178,17 +178,15 @@ function FlatNLPModel(model::AbstractNLPModel{T}) where {T}
     ncon = NLPModels.get_ncon(model) * nb
     nnzj = NLPModels.get_nnzj(model) * nb
     nnzh = NLPModels.get_nnzh(model) * nb
-    meta = NLPModelMeta{T, Vector{T}}(
+    x0 = vec(model.meta.x0)
+    VT = typeof(x0)
+    meta = NLPModelMeta{T, VT}(
         nvar,
-        Vector{T}(vec(model.meta.x0)),
-        Vector{T}(vec(model.meta.lvar)),
-        Vector{T}(vec(model.meta.uvar)),
+        x0, vec(model.meta.lvar), vec(model.meta.uvar),
         Int[], Int[], Int[], Int[], collect(1:nvar), Int[],
         nvar, nvar, nvar,
         ncon,
-        Vector{T}(vec(model.meta.y0)),
-        Vector{T}(vec(model.meta.lcon)),
-        Vector{T}(vec(model.meta.ucon)),
+        vec(model.meta.y0), vec(model.meta.lcon), vec(model.meta.ucon),
         Int[], Int[], Int[], Int[], Int[], Int[],
         nvar, nnzj, 0, nnzj, nnzh,
         0, ncon, Int[], collect(1:ncon),
@@ -222,7 +220,7 @@ function NLPModels.cons_nln!(m::FlatNLPModel{T}, x::AbstractVector, c::AbstractV
     return c
 end
 
-function NLPModels.jac_structure!(m::FlatNLPModel, rows::AbstractVector, cols::AbstractVector)
+function NLPModels.jac_nln_structure!(m::FlatNLPModel, rows::AbstractVector{<:Integer}, cols::AbstractVector{<:Integer})
     nb = get_nbatch(m.batch)
     nvar = NLPModels.get_nvar(m.batch)
     ncon = NLPModels.get_ncon(m.batch)
@@ -234,19 +232,19 @@ function NLPModels.jac_structure!(m::FlatNLPModel, rows::AbstractVector, cols::A
     NLPModels.jac_structure!(m.batch, r1, c1)
 
     # Replicate for each instance with shifted indices
-    for s in 2:nb
+    @inbounds for s in 2:nb
         offset = (s - 1) * nnzj
         row_shift = (s - 1) * ncon
         col_shift = (s - 1) * nvar
         for k in 1:nnzj
-            @inbounds rows[offset + k] = r1[k] + row_shift
-            @inbounds cols[offset + k] = c1[k] + col_shift
+            rows[offset + k] = r1[k] + row_shift
+            cols[offset + k] = c1[k] + col_shift
         end
     end
     return rows, cols
 end
 
-function NLPModels.jac_coord!(m::FlatNLPModel{T}, x::AbstractVector, jvals::AbstractVector) where {T}
+function NLPModels.jac_nln_coord!(m::FlatNLPModel{T}, x::AbstractVector, jvals::AbstractVector) where {T}
     nb = get_nbatch(m.batch)
     nvar = NLPModels.get_nvar(m.batch)
     nnzj = NLPModels.get_nnzj(m.batch)
@@ -254,7 +252,7 @@ function NLPModels.jac_coord!(m::FlatNLPModel{T}, x::AbstractVector, jvals::Abst
     return jvals
 end
 
-function NLPModels.hess_structure!(m::FlatNLPModel, rows::AbstractVector, cols::AbstractVector)
+function NLPModels.hess_structure!(m::FlatNLPModel, rows::AbstractVector{<:Integer}, cols::AbstractVector{<:Integer})
     nb = get_nbatch(m.batch)
     nvar = NLPModels.get_nvar(m.batch)
     nnzh = NLPModels.get_nnzh(m.batch)
@@ -265,12 +263,12 @@ function NLPModels.hess_structure!(m::FlatNLPModel, rows::AbstractVector, cols::
     NLPModels.hess_structure!(m.batch, r1, c1)
 
     # Replicate for each instance with shifted indices
-    for s in 2:nb
+    @inbounds for s in 2:nb
         offset = (s - 1) * nnzh
         shift = (s - 1) * nvar
         for k in 1:nnzh
-            @inbounds rows[offset + k] = r1[k] + shift
-            @inbounds cols[offset + k] = c1[k] + shift
+            rows[offset + k] = r1[k] + shift
+            cols[offset + k] = c1[k] + shift
         end
     end
     return rows, cols
