@@ -13,23 +13,33 @@ nv = 2   ## recourse variables per scenario
 nd = 1   ## design variables
 weight = 1.0 / ns
 
-# To annotate the scenario for each variable and constraint, we need to start with a special ExaCore that supports such scenario annotations, which can be created by calling `TwoStageExaCore(ns, concrete = Val(true))`.
+# To annotate the scenario for each variable and constraint, we need to start with a special
+# ExaCore that supports such scenario annotations. Pass `ns` as the first argument to set
+# the number of scenarios.
 core = TwoStageExaCore(ns, concrete = Val(true))
 
-# Now we can define the design variable and recourse variables. The `scenario` keyword argument allows us to specify which scenario(s) each variable belongs to. For the design variable `d`, we set `scenario = 0` to indicate that it is shared across all scenarios. 
-@add_var(core, d; start = 1.0, lvar = 0.0, uvar = Inf, scenario = 0)  ## design variable d
+# Now we can define the first-stage (design) variable `d`, shared across all scenarios.
+# These are added without `EachScenario()`.
+@add_var(core, d, nd; start = 1.0, lvar = 0.0, uvar = Inf)
 
-# For the recourse variables `v`, we specify `scenario = [i for i=1:ns, j=1:nv]` to indicate that each variable `v[s,i]` belongs to scenario `s`. This allows us to define scenario-specific constraints and objectives that involve these recourse variables.
-@add_var(core, v, ns, nv; start = 1.0, lvar = 0.0, uvar = Inf, scenario = [i for i=1:ns, j=1:nv])  ## recourse variables v
+# Second-stage (recourse) variables are added with `EachScenario()` as the first argument
+# after the core. This creates `nv * ns` variables in total — one block of `nv` per scenario.
+# Variables for scenario `s` occupy flat indices `(s-1)*nv+1 : s*nv`.
+v = @add_var(core, EachScenario(), nv; start = 1.0, lvar = 0.0, uvar = Inf)
 
-# Now we can define the constraints and objective function. The `scenario` keyword argument in the `constraint` and `objective` functions allows us to specify which scenario(s) each constraint or objective term belongs to. 
-@add_con(core, v[s,1] - v[s,2]^2 for s in 1:ns; lcon = 0.0, scenario = 1:ns)
+# Second-stage constraints are also added with `EachScenario()`. Here we add the constraint
+# v[s,1] - v[s,2]^2 = 0 for each scenario s, using flat variable indices.
+con_data = [(s, (s - 1) * nv + 1, (s - 1) * nv + 2) for s in 1:ns]
+@add_con(core, EachScenario(), (v[i1] - v[i2]^2 for (s, i1, i2) in con_data); lcon = 0.0, ucon = 0.0)
 
-@add_obj(core, d^2)
-@add_obj(core, weight * (v[s,i] - d)^2 for s in 1:ns, i in 1:nv)
+# The objective can mix first- and second-stage variables. Here we minimize
+# d[1]^2 + weight * sum_{s,i} (v[s,i] - d[1])^2.
+@add_obj(core, d[1]^2)
+obj_data = [(i, j, (i - 1) * nv + j) for i in 1:ns for j in 1:nv]
+@add_obj(core, weight * (v[vidx] - d[1])^2 for (i, j, vidx) in obj_data)
 
 m = ExaModel(core)
 
-# Now we can solve the model as usual. 
-ipopt(m) 
+# Now we can solve the model as usual.
+ipopt(m)
 # If the solver knows how to exploit the scenario structure, the structure-exploiting method can be used.
