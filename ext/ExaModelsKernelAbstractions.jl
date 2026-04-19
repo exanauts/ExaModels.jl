@@ -102,7 +102,7 @@ function ExaModels.build_extension(
 
         # Per-oracle sorted sparsity + row/col pointers, precomputed once.
         # Used in jprod_nln! / jtprod_nln! / hprod! so we never rebuild them
-        # at inference time.  oracle.gpu=false oracles store nothing.
+        # at inference time.  adapt=Val(true) oracles store nothing.
         _o_jac_off = let s = simd_nnzj
             v = [
                 begin
@@ -129,7 +129,7 @@ function ExaModels.build_extension(
             oracle = c.oracles[i]
             # Skip precomputed sparsity for non-GPU oracles, zero-nnzj, or
             # matrix-free-only oracles (they use jvp!/vjp!/hvp! directly).
-            (!oracle.gpu || oracle.nnzj == 0 || oracle.jac! === nothing) && return nothing
+            (oracle.adapt === Val(true) || oracle.nnzj == 0 || oracle.jac! === nothing) && return nothing
             off_j = _o_jac_off[i];  off_c = _o_con_off[i];  off_h = _o_hess_off[i]
             # Jac: row-sorted (for Jv) and col-sorted (for J'v)
             jac_sp_i = _oracle_jac_sparsity(oracle, off_j, off_c, c.backend, c.x0)
@@ -978,7 +978,7 @@ function ExaModels.jprod_nln!(
             oracle.jvp!(Jv_oracle, xin, vin)
             copyto!(cache.buf_ncon, Jv_oracle)
             Jv[cache.con_idx] .+= cache.buf_ncon
-        elseif oracle.gpu
+        elseif oracle.adapt === Val(false)
             off_j = m.oracle_jac_offsets[i]
             prod_cache = m.ext.prodhelper.oracle_prod[i]
             oracle.jac!(m.ext.prodhelper.jacbuffer[cache.jac_idx], xin)
@@ -1034,7 +1034,7 @@ function ExaModels.jtprod_nln!(
             oracle.vjp!(Jtv_oracle, xin, w)
             copyto!(cache.buf_nvar, Jtv_oracle)
             Jtv .+= cache.buf_nvar
-        elseif oracle.gpu
+        elseif oracle.adapt === Val(false)
             off_j = m.oracle_jac_offsets[i]
             prod_cache = m.ext.prodhelper.oracle_prod[i]
             oracle.jac!(m.ext.prodhelper.jacbuffer[cache.jac_idx], xin)
@@ -1105,7 +1105,7 @@ function ExaModels.hprod!(
             oracle.hvp!(Hv_oracle, xin, win, vin)
             copyto!(cache.buf_nvar, Hv_oracle)
             Hv .+= cache.buf_nvar
-        elseif oracle.gpu
+        elseif oracle.adapt === Val(false)
             prod_cache = m.ext.prodhelper.oracle_prod[i]
             hess_buf = similar(xin, oracle.nnzh)
             oracle.hess!(hess_buf, xin, win)

@@ -50,6 +50,7 @@ function _build_oracle_model(backend)
         jac_cols = [3, 4],
         lcon = [0.0],
         ucon = [0.0],
+        adapt = Val(true),
         f! = (cv, xv) -> (cv[1] = xv[3] - xv[4]; nothing),
         jac! = (vv, xv) -> (vv[1] = 1.0; vv[2] = -1.0; nothing),
     )
@@ -67,6 +68,7 @@ function _build_oracle_model(backend)
         hess_cols = [3, 4],
         lcon = [-Inf],
         ucon = [Inf],
+        adapt = Val(true),
         f! = (cv, xv) -> (cv[1] = xv[3]^2 + xv[4]^2; nothing),
         jac! = (vv, xv) -> (vv[1] = 2 * xv[3]; vv[2] = 2 * xv[4]; nothing),
         hess! = (hv, xv, yv) -> (hv[1] = 2 * yv[1]; hv[2] = 2 * yv[1]; nothing),
@@ -223,6 +225,7 @@ function test_jprod_jtprod(backend)
             nvar = 4, ncon = 1, nnzj = 2, nnzh = 0,
             jac_rows = [1, 1], jac_cols = [3, 4],
             lcon = [0.0], ucon = [0.0],
+            adapt = Val(true),
             f! = (cv, xv) -> (cv[1] = xv[3] - xv[4]; nothing),
             jac! = (vv, xv) -> (vv[1] = 1.0; vv[2] = -1.0; nothing),
         )
@@ -232,6 +235,7 @@ function test_jprod_jtprod(backend)
             jac_rows = [1, 1], jac_cols = [3, 4],
             hess_rows = [3, 4], hess_cols = [3, 4],
             lcon = [-Inf], ucon = [Inf],
+            adapt = Val(true),
             f! = (cv, xv) -> (cv[1] = xv[3]^2 + xv[4]^2; nothing),
             jac! = (vv, xv) -> (vv[1] = 2 * xv[3]; vv[2] = 2 * xv[4]; nothing),
             hess! = (hv, xv, yv) -> (hv[1] = 2 * yv[1]; hv[2] = 2 * yv[1]; nothing),
@@ -264,6 +268,7 @@ function test_hprod(backend)
             nvar = 4, ncon = 1, nnzj = 2, nnzh = 0,
             jac_rows = [1, 1], jac_cols = [3, 4],
             lcon = [0.0], ucon = [0.0],
+            adapt = Val(true),
             f! = (cv, xv) -> (cv[1] = xv[3] - xv[4]; nothing),
             jac! = (vv, xv) -> (vv[1] = 1.0; vv[2] = -1.0; nothing),
         )
@@ -273,6 +278,7 @@ function test_hprod(backend)
             jac_rows = [1, 1], jac_cols = [3, 4],
             hess_rows = [3, 4], hess_cols = [3, 4],
             lcon = [-Inf], ucon = [Inf],
+            adapt = Val(true),
             f! = (cv, xv) -> (cv[1] = xv[3]^2 + xv[4]^2; nothing),
             jac! = (vv, xv) -> (vv[1] = 2 * xv[3]; vv[2] = 2 * xv[4]; nothing),
             hess! = (hv, xv, yv) -> (hv[1] = 2 * yv[1]; hv[2] = 2 * yv[1]; nothing),
@@ -306,6 +312,7 @@ function test_multiple_oracles(backend)
             nvar = 4, ncon = 1, nnzj = 2, nnzh = 0,
             jac_rows = [1, 1], jac_cols = [1, 2],
             lcon = [0.0], ucon = [0.0],
+            adapt = Val(true),
             f! = (cv, xv) -> (cv[1] = xv[1] - xv[2]; nothing),
             jac! = (vv, xv) -> (vv[1] = 1.0; vv[2] = -1.0; nothing),
         )
@@ -317,6 +324,7 @@ function test_multiple_oracles(backend)
             jac_rows = [1, 1, 2, 2], jac_cols = [1, 3, 2, 4],
             hess_rows = [1, 2], hess_cols = [3, 4],
             lcon = [0.0, 0.0], ucon = [Inf, Inf],
+            adapt = Val(true),
             f! = (cv, xv) -> (cv[1] = xv[1] * xv[3]; cv[2] = xv[2] * xv[4]; nothing),
             jac! = (vv, xv) -> (vv[1] = xv[3]; vv[2] = xv[1]; vv[3] = xv[4]; vv[4] = xv[2]; nothing),
             hess! = (hv, xv, yv) -> (hv[1] = yv[1]; hv[2] = yv[2]; nothing),
@@ -447,6 +455,7 @@ function _build_matfree_oracle_model(backend)
     oracle_A = VectorNonlinearOracle(
         nvar = 4,
         ncon = 1,
+        adapt = Val(true),
         f! = (cv, xv) -> (cv[1] = xv[3] - xv[4]; nothing),
         jvp! = (Jv, xv, v) -> (Jv[1] = v[3] - v[4]; nothing),
         vjp! = (Jtv, xv, w) -> (fill!(Jtv, 0.0); Jtv[3] = w[1]; Jtv[4] = -w[1]; nothing),
@@ -459,6 +468,7 @@ function _build_matfree_oracle_model(backend)
     oracle_B = VectorNonlinearOracle(
         nvar = 4,
         ncon = 1,
+        adapt = Val(true),
         f! = (cv, xv) -> (cv[1] = xv[3]^2 + xv[4]^2; nothing),
         jvp! = (Jv, xv, v) -> (Jv[1] = 2 * xv[3] * v[3] + 2 * xv[4] * v[4]; nothing),
         vjp! = (Jtv, xv, w) -> (fill!(Jtv, 0.0); Jtv[3] = 2 * xv[3] * w[1]; Jtv[4] = 2 * xv[4] * w[1]; nothing),
@@ -549,6 +559,7 @@ function test_matfree_jprod_jtprod(backend)
         constraint(c, x[1] + x[2]; lcon = 1.0, ucon = 1.0)
         oracle_A = VectorNonlinearOracle(
             nvar = 4, ncon = 1,
+            adapt = Val(true),
             f! = (cv, xv) -> (cv[1] = xv[3] - xv[4]; nothing),
             jvp! = (Jv, xv, v) -> (Jv[1] = v[3] - v[4]; nothing),
             vjp! = (Jtv, xv, w) -> (fill!(Jtv, 0.0); Jtv[3] = w[1]; Jtv[4] = -w[1]; nothing),
@@ -557,6 +568,7 @@ function test_matfree_jprod_jtprod(backend)
         constraint(c, oracle_A)
         oracle_B = VectorNonlinearOracle(
             nvar = 4, ncon = 1,
+            adapt = Val(true),
             f! = (cv, xv) -> (cv[1] = xv[3]^2 + xv[4]^2; nothing),
             jvp! = (Jv, xv, v) -> (Jv[1] = 2 * xv[3] * v[3] + 2 * xv[4] * v[4]; nothing),
             vjp! = (Jtv, xv, w) -> (fill!(Jtv, 0.0); Jtv[3] = 2 * xv[3] * w[1]; Jtv[4] = 2 * xv[4] * w[1]; nothing),
@@ -589,6 +601,7 @@ function test_matfree_hprod(backend)
         constraint(c, x[1] + x[2]; lcon = 1.0, ucon = 1.0)
         oracle_A = VectorNonlinearOracle(
             nvar = 4, ncon = 1,
+            adapt = Val(true),
             f! = (cv, xv) -> (cv[1] = xv[3] - xv[4]; nothing),
             jvp! = (Jv, xv, v) -> (Jv[1] = v[3] - v[4]; nothing),
             vjp! = (Jtv, xv, w) -> (fill!(Jtv, 0.0); Jtv[3] = w[1]; Jtv[4] = -w[1]; nothing),
@@ -597,6 +610,7 @@ function test_matfree_hprod(backend)
         constraint(c, oracle_A)
         oracle_B = VectorNonlinearOracle(
             nvar = 4, ncon = 1,
+            adapt = Val(true),
             f! = (cv, xv) -> (cv[1] = xv[3]^2 + xv[4]^2; nothing),
             jvp! = (Jv, xv, v) -> (Jv[1] = 2 * xv[3] * v[3] + 2 * xv[4] * v[4]; nothing),
             vjp! = (Jtv, xv, w) -> (fill!(Jtv, 0.0); Jtv[3] = 2 * xv[3] * w[1]; Jtv[4] = 2 * xv[4] * w[1]; nothing),
