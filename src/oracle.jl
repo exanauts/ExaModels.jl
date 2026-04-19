@@ -813,8 +813,7 @@ end
 
 Embed an opaque vector function `f: ℝⁿ → ℝᵐ` into an `ExaCore` using the
 full-space pattern.  Creates auxiliary variables `z ∈ ℝᵐ`, registers an oracle
-constraint `z − f(x) = 0`, and returns `z` as a regular `Variable` that can be
-used in any SIMD objective or constraint.
+constraint `z − f(x) = 0`, and returns the updated core together with `z`.
 
 The callbacks operate on **local** input/output vectors — no global offsets:
 
@@ -823,23 +822,24 @@ The callbacks operate on **local** input/output vectors — no global offsets:
 - `vjp!(Jtv, x, w)`:  `Jtv[1:n] = J_f(x)' * w[1:m]`
 - `hvp!(Hv, x, w, v)`: `Hv[1:n] = (Σ wᵢ ∇²fᵢ(x)) * v[1:n]`  (optional)
 
-Returns `(z, oracle)` where `z` is the output `Variable`.
+Returns `(core, z, oracle)` where `core` is the updated core and `z` is the
+output `Variable`.
 
 ## Example
 
 ```julia
-core = ExaCore()
-x = variable(core, 2; start = [1.0, 1.0])
+core = ExaCore(concrete = Val(true))
+@add_var(core, x, 2; start = [1.0, 1.0])
 
-z, _ = embed_oracle(core, x, 1;
+core, z, _ = embed_oracle(core, x, 1;
     f!   = (y, xv) -> (y[1] = xv[1]^2 + xv[2]^2; nothing),
     jvp! = (Jv, xv, v) -> (Jv[1] = 2xv[1]*v[1] + 2xv[2]*v[2]; nothing),
     vjp! = (Jtv, xv, w) -> (Jtv[1] = 2xv[1]*w[1]; Jtv[2] = 2xv[2]*w[1]; nothing),
     hvp! = (Hv, xv, w, v) -> (Hv[1] = 2w[1]*v[1]; Hv[2] = 2w[1]*v[2]; nothing),
 )
 
-objective(core, z[1])                                    # min f(x)
-constraint(core, x[1] + x[2]; lcon = 2.0, ucon = Inf)   # x₁+x₂ ≥ 2
+@add_obj(core, z[1])                                          # min f(x)
+@add_con(core, x[1] + x[2]; lcon = 2.0, ucon = Inf)          # x₁+x₂ ≥ 2
 model = ExaModel(core)
 ```
 """
@@ -855,16 +855,13 @@ function embed_oracle(
     )
     input_dim = x.length
     x_off = x.offset
-    z = variable(core, output_dim)
+    core, z = add_var(core, output_dim)
     z_off = z.offset
     nvar = core.nvar
 
     # Precompute integer index arrays for GPU-safe gather/scatter.
     x_idx = collect((x_off + 1):(x_off + input_dim))
     z_idx = collect((z_off + 1):(z_off + output_dim))
-
-    # Preallocate scratch buffers (one set per closure group).
-    # For GPU, these will be adapted to device arrays at first call via similar().
 
     _f! = let x_idx = x_idx, z_idx = z_idx
         (c, xv) -> begin
@@ -916,6 +913,6 @@ function embed_oracle(
         hvp! = _hvp!,
         adapt = adapt,
     )
-    constraint(core, oracle)
-    return z, oracle
+    core = constraint(core, oracle)
+    return core, z, oracle
 end

@@ -178,4 +178,10 @@ function add_expr(c::LegacyExaCore, args...; kwargs...)
     return (c, ex)
 end
 
+function embed_oracle(c::LegacyExaCore, args...; kwargs...)
+    new_core, z, oracle = embed_oracle(c.inner, args...; kwargs...)
+    c.inner = new_core
+    return z, oracle
+end
+
 export LegacyExaCore, variable, parameter, objective, constraint, constraint!, subexpr

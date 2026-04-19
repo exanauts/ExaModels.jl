@@ -24,7 +24,7 @@
 #
 # 1. Creates auxiliary output variables `z ∈ ℝᵐ`
 # 2. Registers an oracle constraint `z − f(x) = 0`
-# 3. Returns `z` as a regular `Variable` for use in any SIMD expression
+# 3. Returns the updated core and `z` as a regular `Variable` for use in any SIMD expression
 #
 # The callbacks operate on **local** vectors — no offset management needed:
 #
@@ -56,12 +56,12 @@ using MadNLPGPU
 
 N = 100
 
-core = ExaCore(Float64; backend = CUDABackend())
-x = variable(core, N; start = (1.0 for _ in 1:N))
+core = ExaCore(Float64; concrete = Val(true), backend = CUDABackend())
+@add_var(core, x, N; start = (1.0 for _ in 1:N))
 
-z, _ = embed_oracle(
+core, z, _ = embed_oracle(
     core, x, N;
-    f! = (y, xv) -> (y .= xv .^ 2; nothing),
+    f!   = (y, xv) -> (y .= xv .^ 2; nothing),
     jvp! = (Jv, xv, v) -> (Jv .= 2 .* xv .* v; nothing),
     vjp! = (Jtv, xv, w) -> (Jtv .= 2 .* xv .* w; nothing),
     hvp! = (Hv, xv, w, v) -> (Hv .= 2 .* w .* v; nothing),
@@ -71,8 +71,8 @@ z, _ = embed_oracle(
 # The oracle output `z` can now be used in SIMD generator expressions,
 # freely mixed with symbolic operations on `x`:
 
-objective(core, z[i] + sin(x[i]) for i in 1:N)
-constraint(core, x[i] for i in 1:N; lcon = 1.0, ucon = Inf)
+@add_obj(core, z[i] + sin(x[i]) for i in 1:N)
+@add_con(core, x[i] for i in 1:N; lcon = 1.0, ucon = Inf)
 
 model = ExaModel(core)
 result = madnlp(model; print_level = MadNLP.INFO, linear_solver = LapackCUDASolver)
