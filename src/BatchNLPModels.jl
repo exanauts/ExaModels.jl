@@ -226,12 +226,18 @@ function NLPModels.jac_nln_structure!(m::FlatNLPModel, rows::AbstractVector{<:In
     ncon = NLPModels.get_ncon(m.batch)
     nnzj = NLPModels.get_nnzj(m.batch)
 
-    # Compute structure on CPU (structure queries use scalar indexing)
+    # Use device-native arrays for the per-instance query (avoids scalar indexing on GPU itr)
+    r1_dev = similar(m.batch.meta.x0, Int, nnzj)
+    c1_dev = similar(m.batch.meta.x0, Int, nnzj)
+    NLPModels.jac_structure!(m.batch, r1_dev, c1_dev)
+
+    # Copy to CPU for replication
+    r1 = Vector{Int}(r1_dev)
+    c1 = Vector{Int}(c1_dev)
     r_cpu = Vector{Int}(undef, nnzj * nb)
     c_cpu = Vector{Int}(undef, nnzj * nb)
-    r1 = @view r_cpu[1:nnzj]
-    c1 = @view c_cpu[1:nnzj]
-    NLPModels.jac_structure!(m.batch, r1, c1)
+    copyto!(r_cpu, 1, r1, 1, nnzj)
+    copyto!(c_cpu, 1, c1, 1, nnzj)
 
     # Replicate for each instance with shifted indices
     @inbounds for s in 2:nb
@@ -261,12 +267,18 @@ function NLPModels.hess_structure!(m::FlatNLPModel, rows::AbstractVector{<:Integ
     nvar = NLPModels.get_nvar(m.batch)
     nnzh = NLPModels.get_nnzh(m.batch)
 
-    # Compute structure on CPU (structure queries use scalar indexing)
+    # Use device-native arrays for the per-instance query (avoids scalar indexing on GPU)
+    r1_dev = similar(m.batch.meta.x0, Int, nnzh)
+    c1_dev = similar(m.batch.meta.x0, Int, nnzh)
+    NLPModels.hess_structure!(m.batch, r1_dev, c1_dev)
+
+    # Copy to CPU for replication
+    r1 = Vector{Int}(r1_dev)
+    c1 = Vector{Int}(c1_dev)
     r_cpu = Vector{Int}(undef, nnzh * nb)
     c_cpu = Vector{Int}(undef, nnzh * nb)
-    r1 = @view r_cpu[1:nnzh]
-    c1 = @view c_cpu[1:nnzh]
-    NLPModels.hess_structure!(m.batch, r1, c1)
+    copyto!(r_cpu, 1, r1, 1, nnzh)
+    copyto!(c_cpu, 1, c1, 1, nnzh)
 
     # Replicate for each instance with shifted indices
     @inbounds for s in 2:nb

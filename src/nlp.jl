@@ -1329,6 +1329,8 @@ _jac_structure!(T, cons::Tuple{}, rows, cols) = nothing
     _jac_structure!(T, Base.tail(cons), rows, cols)
     sjacobian!(rows, cols, first(cons), NaNSource{T}(), NaNSource{T}(), T(NaN))
 end
+# Backend-aware fallbacks (KA extension overrides these for GPU backends)
+_jac_structure!(T, ::Nothing, cons, rows, cols) = _jac_structure!(T, cons, rows, cols)
 
 function hess_structure!(m::AbstractExaModel{T}, rows::AbstractVector, cols::AbstractVector) where T
     _obj_hess_structure!(T, m.objs, rows, cols)
@@ -1341,12 +1343,16 @@ _obj_hess_structure!(T, objs::Tuple{}, rows, cols) = nothing
     _obj_hess_structure!(T, Base.tail(objs), rows, cols)
     shessian!(rows, cols, first(objs), NaNSource{T}(), NaNSource{T}(), T(NaN), T(NaN))
 end
+# Backend-aware fallback (KA extension overrides for GPU backends)
+_obj_hess_structure!(T, ::Nothing, objs, rows, cols) = _obj_hess_structure!(T, objs, rows, cols)
 
 _con_hess_structure!(T, cons::Tuple{}, rows, cols) = nothing
 @inline function _con_hess_structure!(T, cons::Tuple, rows, cols)
     _con_hess_structure!(T, Base.tail(cons), rows, cols)
     shessian!(rows, cols, first(cons), NaNSource{T}(), NaNSource{T}(), T(NaN), T(NaN))
 end
+# Backend-aware fallback (KA extension overrides for GPU backends)
+_con_hess_structure!(T, ::Nothing, cons, rows, cols) = _con_hess_structure!(T, cons, rows, cols)
 
 # ============================================================================
 # Batch-aware evaluation — all low-level functions loop over 1:nb,
@@ -1890,7 +1896,7 @@ function NLPModels.jac_structure!(
     rows::AbstractVector{<:Integer},
     cols::AbstractVector{<:Integer},
 ) where {T}
-    _jac_structure!(T, m.cons, rows, cols)
+    _jac_structure!(T, getbackend(m), m.cons, rows, cols)
     return rows, cols
 end
 
@@ -1909,8 +1915,9 @@ function NLPModels.hess_structure!(
     rows::AbstractVector{<:Integer},
     cols::AbstractVector{<:Integer},
 ) where {T}
-    _obj_hess_structure!(T, m.objs, rows, cols)
-    _con_hess_structure!(T, m.cons, rows, cols)
+    backend = getbackend(m)
+    _obj_hess_structure!(T, backend, m.objs, rows, cols)
+    _con_hess_structure!(T, backend, m.cons, rows, cols)
     return rows, cols
 end
 
@@ -1928,7 +1935,7 @@ function NLPModels.hess_coord!(
     npar = Base.size(m.θ, 1)
     nnzh = NLPModels.get_nnzh(m)
     backend = getbackend(m)
-    _obj_hess_coord!(m.objs, vec(bx), vec(m.θ), vec(hvals), obj_weight, nb, nvar, npar, nnzh, backend)
+    _obj_hess_coord!(m.objs, vec(bx), vec(m.θ), vec(hvals), obj_weight isa Number ? T(obj_weight) : obj_weight, nb, nvar, npar, nnzh, backend)
     _con_hess_coord!(m.cons, vec(bx), vec(m.θ), vec(by), vec(hvals), nb, nvar, npar, ncon, nnzh, backend)
     return hvals
 end
