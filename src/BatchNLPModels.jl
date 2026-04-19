@@ -166,9 +166,9 @@ All NLPModels callbacks delegate to the underlying batch model's matrix API.
 
 Construct a flat model from a batch model whose `meta.x0` is a matrix.
 """
-struct FlatNLPModel{T, VT <: AbstractVector{T}, M <: AbstractNLPModel{T}} <: AbstractNLPModel{T, VT}
+struct FlatNLPModel{T, M <: AbstractNLPModel{T}} <: AbstractNLPModel{T, Vector{T}}
     batch::M
-    meta::NLPModelMeta{T, VT}
+    meta::NLPModelMeta{T, Vector{T}}
     counters::NLPModels.Counters
 end
 
@@ -178,15 +178,17 @@ function FlatNLPModel(model::AbstractNLPModel{T}) where {T}
     ncon = NLPModels.get_ncon(model) * nb
     nnzj = NLPModels.get_nnzj(model) * nb
     nnzh = NLPModels.get_nnzh(model) * nb
-    x0 = vec(model.meta.x0)
-    VT = typeof(x0)
-    meta = NLPModelMeta{T, VT}(
+    meta = NLPModelMeta{T, Vector{T}}(
         nvar,
-        x0, vec(model.meta.lvar), vec(model.meta.uvar),
+        Vector{T}(vec(model.meta.x0)),
+        Vector{T}(vec(model.meta.lvar)),
+        Vector{T}(vec(model.meta.uvar)),
         Int[], Int[], Int[], Int[], collect(1:nvar), Int[],
         nvar, nvar, nvar,
         ncon,
-        vec(model.meta.y0), vec(model.meta.lcon), vec(model.meta.ucon),
+        Vector{T}(vec(model.meta.y0)),
+        Vector{T}(vec(model.meta.lcon)),
+        Vector{T}(vec(model.meta.ucon)),
         Int[], Int[], Int[], Int[], Int[], Int[],
         nvar, nnzj, 0, nnzj, nnzh,
         0, ncon, Int[], collect(1:ncon),
