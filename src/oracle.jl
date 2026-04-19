@@ -61,11 +61,11 @@ into an `ExaCore` with [`constraint`](@ref). The block is characterised by:
 - `jvp!`: `jvp!(Jv, x, v)` — Jacobian-vector product: `Jv[1:ncon] = J(x) * v` (nothing if explicit only)
 - `vjp!`: `vjp!(Jtv, x, w)` — transpose Jacobian-vector product: `Jtv[1:nvar] = J(x)' * w` (nothing if explicit only)
 - `hvp!`: `hvp!(Hv, x, w, v)` — Hessian-vector product: `Hv[1:nvar] = (Σ wᵢ ∇²fᵢ) * v` (nothing if explicit only)
-- `gpu`: if `true`, callbacks receive device arrays (e.g. `CuArray`) directly — no CPU round-trip.
-  Use this when your callbacks are already GPU-capable (CUDA kernels, CuDSS, etc.).
-  Default is `false` (CPU bridge: arrays are `Array`-copied before every call).
+- `adapt`: `Val(false)` (default) — callbacks receive arrays as-is (device arrays on GPU backends).
+  `Val(true)` — arrays are copied to CPU (`Array`) before every call.
+  Use `Val(true)` when your callbacks are CPU-only; use `Val(false)` when they are GPU-capable.
 """
-struct VectorNonlinearOracle{F, J, H, JVP, VJP, HVP, VT <: AbstractVector}
+struct VectorNonlinearOracle{F, J, H, JVP, VJP, HVP, VT <: AbstractVector, A}
     nvar::Int
     ncon::Int
     nnzj::Int
@@ -82,7 +82,7 @@ struct VectorNonlinearOracle{F, J, H, JVP, VJP, HVP, VT <: AbstractVector}
     jvp!::JVP                # nothing if explicit only
     vjp!::VJP                # nothing if explicit only
     hvp!::HVP                # nothing if explicit only
-    gpu::Bool                # true ⟹ callbacks accept device arrays directly
+    adapt::A                 # Val(false) ⟹ pass arrays through; Val(true) ⟹ copy to CPU
 end
 
 function VectorNonlinearOracle(;
@@ -102,7 +102,7 @@ function VectorNonlinearOracle(;
         jvp! = nothing,
         vjp! = nothing,
         hvp! = nothing,
-        gpu::Bool = false,
+        adapt::Val = Val(false),
     )
     # Validate: at least one Jacobian path must be provided
     has_explicit_jac = jac! !== nothing
@@ -155,7 +155,7 @@ function VectorNonlinearOracle(;
         lcon, ucon,
         f!, jac!, hess!,
         jvp!, vjp!, hvp!,
-        gpu,
+        adapt,
     )
 end
 
@@ -164,7 +164,7 @@ Base.show(io::IO, o::VectorNonlinearOracle) = print(
     """
     VectorNonlinearOracle
 
-      ncon: $(o.ncon)   nnzj: $(o.nnzj)   nnzh: $(o.nnzh)   gpu: $(o.gpu)
+      ncon: $(o.ncon)   nnzj: $(o.nnzj)   nnzh: $(o.nnzh)   adapt: $(o.adapt)
       jac!: $(o.jac! !== nothing)   jvp!: $(o.jvp! !== nothing)   vjp!: $(o.vjp! !== nothing)   hvp!: $(o.hvp! !== nothing)
     """,
 )
@@ -202,7 +202,7 @@ Callbacks:
 
 Register via `objective(core, oracle)`.
 """
-struct ScalarNonlinearOracle{F, G, H}
+struct ScalarNonlinearOracle{F, G, H, A}
     nvar::Int
     f::F
     grad!::G
@@ -210,7 +210,7 @@ struct ScalarNonlinearOracle{F, G, H}
     nnzh::Int
     hess_rows::Vector{Int}
     hess_cols::Vector{Int}
-    gpu::Bool
+    adapt::A
 end
 
 function ScalarNonlinearOracle(;
@@ -221,7 +221,7 @@ function ScalarNonlinearOracle(;
         nnzh::Int = -1,
         hess_rows::Vector{Int} = Int[],
         hess_cols::Vector{Int} = Int[],
-        gpu::Bool = false,
+        adapt::Val = Val(false),
     )
     if nnzh == -1
         nnzh = length(hess_rows)
@@ -238,7 +238,7 @@ function ScalarNonlinearOracle(;
             end
         end
     end
-    return ScalarNonlinearOracle(nvar, f, grad!, hvp!, nnzh, hess_rows, hess_cols, gpu)
+    return ScalarNonlinearOracle(nvar, f, grad!, hvp!, nnzh, hess_rows, hess_cols, adapt)
 end
 
 Base.show(io::IO, o::ScalarNonlinearOracle) = print(
@@ -246,13 +246,12 @@ Base.show(io::IO, o::ScalarNonlinearOracle) = print(
     """
     ScalarNonlinearOracle
 
-      nvar: $(o.nvar)   nnzh: $(o.nnzh)   gpu: $(o.gpu)
+      nvar: $(o.nvar)   nnzh: $(o.nnzh)   adapt: $(o.adapt)
       hvp!: $(o.hvp! !== nothing)
     """,
 )
 
-_oracle_input(oracle::ScalarNonlinearOracle, x) =
-    oracle.gpu ? x : adapt(Array, x)
+_oracle_input(oracle::ScalarNonlinearOracle, x) = _do_adapt(oracle.adapt, x)
 
 """
     objective(core::ExaCore, oracle::ScalarNonlinearOracle)
@@ -264,11 +263,13 @@ function objective(c::ExaCore, oracle::ScalarNonlinearOracle)
 end
 
 
-# ── Array-routing helper ─────────────────────────────────────────────────────
-# When oracle.gpu == false (default): adapt device arrays to CPU before calling
-# the callback.  When oracle.gpu == true: pass arrays through unchanged.
-_oracle_input(oracle::VectorNonlinearOracle, x) =
-    oracle.gpu ? x : adapt(Array, x)
+# ── Array-routing helpers ────────────────────────────────────────────────────
+# Val(false) (default): pass arrays through unchanged (GPU-capable callbacks).
+# Val(true): copy to CPU Array before calling the callback.
+_do_adapt(::Val{false}, x) = x
+_do_adapt(::Val{true},  x) = adapt(Array, x)
+
+_oracle_input(oracle::VectorNonlinearOracle, x) = _do_adapt(oracle.adapt, x)
 
 
 # ── Registration ──────────────────────────────────────────────────────────────
@@ -315,7 +316,7 @@ struct OracleIndexCache{VI <: AbstractVector{Int}, VF <: AbstractVector}
     buf_nvar2::VF           # length nvar — second nvar buffer (for hess reconstruct)
     buf_nnzj::VF            # length nnzj — for jac! results
     buf_nnzh::VF            # length nnzh — for hess! results
-    # CPU-side buffers for gpu=false callbacks on GPU backends
+    # CPU-side buffers for adapt=Val(true) callbacks on GPU backends
     cpu_ncon::Vector{Float64}
     cpu_nvar::Vector{Float64}
     cpu_nvar2::Vector{Float64}
@@ -602,8 +603,8 @@ CPU scratch arrays are used for the callback and results are copied to device.
 function _jac_reconstruct_via_jvp!(oracle, x, jac, cache::OracleIndexCache, backend=nothing)
     T = eltype(x)
     xin = _oracle_input(oracle, x)
-    # Pick buffers: device buffers if gpu=true or CPU backend, else CPU scratch.
-    use_cpu = !oracle.gpu && backend !== nothing
+    # Pick buffers: device buffers if adapt=Val(false) or CPU backend, else CPU scratch.
+    use_cpu = oracle.adapt === Val(true) && backend !== nothing
     v  = use_cpu ? cache.cpu_nvar : cache.buf_nvar
     Jv = use_cpu ? cache.cpu_ncon : cache.buf_ncon
     for (ci, col) in enumerate(cache.jac_recon_cols)
@@ -743,7 +744,7 @@ function _hess_reconstruct_via_hvp!(oracle, x, y, hess, cache::OracleIndexCache,
     T = eltype(x)
     xin = _oracle_input(oracle, x)
     win = _oracle_input(oracle, y[cache.con_idx])
-    use_cpu = !oracle.gpu && backend !== nothing
+    use_cpu = oracle.adapt === Val(true) && backend !== nothing
     v  = use_cpu ? cache.cpu_nvar  : cache.buf_nvar
     Hv = use_cpu ? cache.cpu_nvar2 : cache.buf_nvar2
     for (ci, col) in enumerate(cache.hess_recon_cols)
@@ -808,7 +809,7 @@ end
 # ── High-level embedding API ─────────────────────────────────────────────────
 
 """
-    embed_oracle(core, x, output_dim; f!, jvp!, vjp!, hvp! = nothing, gpu = false)
+    embed_oracle(core, x, output_dim; f!, jvp!, vjp!, hvp! = nothing, adapt = Val(false))
 
 Embed an opaque vector function `f: ℝⁿ → ℝᵐ` into an `ExaCore` using the
 full-space pattern.  Creates auxiliary variables `z ∈ ℝᵐ`, registers an oracle
@@ -850,7 +851,7 @@ function embed_oracle(
         jvp!,
         vjp!,
         hvp! = nothing,
-        gpu::Bool = false,
+        adapt::Val = Val(false),
     )
     input_dim = x.length
     x_off = x.offset
@@ -913,7 +914,7 @@ function embed_oracle(
         jvp! = _jvp!,
         vjp! = _vjp!,
         hvp! = _hvp!,
-        gpu = gpu,
+        adapt = adapt,
     )
     constraint(core, oracle)
     return z, oracle

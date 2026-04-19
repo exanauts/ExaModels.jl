@@ -353,16 +353,16 @@ end
 
 function test_gpu_oracle(backend)
     # Only meaningful for GPU backends; skip on CPU (nothing / CPU()).
-    # We simulate a "GPU-native black-box" by setting gpu=true and providing
+    # We simulate a "GPU-native black-box" by setting adapt=Val(false) and providing
     # callbacks that operate directly on whatever array type the backend uses.
     # For CPU backends the callbacks just receive plain Arrays, which is fine.
-    return @testset "gpu=true oracle" begin
+    return @testset "adapt=Val(false) oracle" begin
         c = ExaCore(Float64; backend = backend)
         x = variable(c, 4; lvar = -Inf, uvar = Inf, start = [0.5, 0.5, 0.6, 0.4])
         objective(c, x[i]^2 for i in 1:4)
         constraint(c, x[1] + x[2]; lcon = 1.0, ucon = 1.0)
 
-        # Oracle with gpu=true: callbacks receive the native array type of the
+        # Oracle with adapt=Val(false): callbacks receive the native array type of the
         # backend (CuArray on CUDA, Array on CPU) without any host copy.
         oracle_gpu = VectorNonlinearOracle(
             nvar = 4,
@@ -375,7 +375,7 @@ function test_gpu_oracle(backend)
             hess_cols = [3, 4],
             lcon = [-Inf],
             ucon = [Inf],
-            gpu = true,
+            adapt = Val(false),
             f! = (cv, xv) -> (cv .= xv[3:3] .^ 2 .+ xv[4:4] .^ 2; nothing),
             jac! = (vv, xv) -> (vv .= 2 .* xv[3:4]; nothing),
             hess! = (hv, xv, yv) -> (hv .= 2 .* yv; nothing),

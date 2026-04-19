@@ -33,9 +33,9 @@
 # - `vjp!(Jtv, x, w)`:   `Jtv[1:n] = J_f(x)' * w[1:m]`
 # - `hvp!(Hv, x, w, v)`:  `Hv[1:n] = (Σ wᵢ ∇²fᵢ(x)) * v[1:n]`  (optional)
 #
-# When `gpu=true`, all callbacks receive device arrays (e.g. `CuArray`) and
-# must use broadcast operations — no scalar indexing.  The oracle's index
-# arrays and work buffers are automatically placed on the correct device.
+# When `adapt=Val(false)` (the default), all callbacks receive device arrays (e.g. `CuArray`)
+# and must use broadcast operations — no scalar indexing.  Use `adapt=Val(true)` to have
+# arrays automatically copied to CPU before each callback invocation.
 
 # ## Example
 #
@@ -65,7 +65,7 @@ z, _ = embed_oracle(
     jvp! = (Jv, xv, v) -> (Jv .= 2 .* xv .* v; nothing),
     vjp! = (Jtv, xv, w) -> (Jtv .= 2 .* xv .* w; nothing),
     hvp! = (Hv, xv, w, v) -> (Hv .= 2 .* w .* v; nothing),
-    gpu = true,
+    adapt = Val(false),
 )
 
 # The oracle output `z` can now be used in SIMD generator expressions,
