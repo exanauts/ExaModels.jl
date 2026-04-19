@@ -671,7 +671,7 @@ end
 
 # --- Objective ---
 
-function ExaModels._obj_batch!(bf, obj, x, θ, nb, nvar, npar, backend::KernelAbstractions.Backend)
+function ExaModels._obj_eval!(bf, obj, x, θ, nb, nvar, npar, backend::KernelAbstractions.Backend)
     nitr = length(obj.itr)
     if nitr > 0
         buf = similar(x, nitr, nb)
@@ -691,7 +691,7 @@ end
 
 # --- Constraints ---
 
-function ExaModels._cons_nln_batch!(con, x, θ, g, nb, nvar, npar, ncon, backend::KernelAbstractions.Backend)
+function ExaModels._cons_nln_eval!(con, x, θ, g, nb, nvar, npar, ncon, backend::KernelAbstractions.Backend)
     nitr = length(con.itr)
     if nitr > 0
         kerf_con_batch(backend)(g, con.f, con.itr, x, θ, nvar, npar, ncon, nitr; ndrange = nb * nitr)

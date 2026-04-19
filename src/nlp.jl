@@ -1362,11 +1362,11 @@ end
 
 @inline function _obj!(bf, (obj, objs...), x, θ, nb, nvar, npar, backend = nothing)
     _obj!(bf, objs, x, θ, nb, nvar, npar, backend)
-    _obj!(bf, obj, x, θ, nb, nvar, npar, backend)
+    _obj_eval!(bf, obj, x, θ, nb, nvar, npar, backend)
 end
 @inline _obj!(bf, ::Tuple{}, x, θ, nb, nvar, npar, backend = nothing) = nothing
 
-@inline function _obj!(bf, obj, x, θ, nb, nvar, npar, ::Nothing)
+@inline function _obj_eval!(bf, obj, x, θ, nb, nvar, npar, ::Nothing)
     @inbounds for s in 1:nb
         x_s = @view x[(s-1)*nvar+1 : s*nvar]
         θ_s = @view θ[(s-1)*npar+1 : s*npar]
@@ -1384,11 +1384,11 @@ end
 
 @inline function _cons_nln!(cons::Tuple, x, θ, g, nb, nvar, npar, ncon, backend = nothing)
     _cons_nln!(Base.tail(cons), x, θ, g, nb, nvar, npar, ncon, backend)
-    _cons_nln!(first(cons), x, θ, g, nb, nvar, npar, ncon, backend)
+    _cons_nln_eval!(first(cons), x, θ, g, nb, nvar, npar, ncon, backend)
 end
 _cons_nln!(cons::Tuple{}, x, θ, g, nb, nvar, npar, ncon, backend = nothing) = nothing
 
-@inline function _cons_nln!(con, x, θ, g, nb, nvar, npar, ncon, ::Nothing)
+@inline function _cons_nln_eval!(con, x, θ, g, nb, nvar, npar, ncon, ::Nothing)
     @inbounds for s in 1:nb
         x_s = @view x[(s-1)*nvar+1 : s*nvar]
         θ_s = @view θ[(s-1)*npar+1 : s*npar]
