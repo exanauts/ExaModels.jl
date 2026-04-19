@@ -226,9 +226,11 @@ function NLPModels.jac_nln_structure!(m::FlatNLPModel, rows::AbstractVector{<:In
     ncon = NLPModels.get_ncon(m.batch)
     nnzj = NLPModels.get_nnzj(m.batch)
 
-    # Get per-instance structure
-    r1 = @view rows[1:nnzj]
-    c1 = @view cols[1:nnzj]
+    # Compute structure on CPU (structure queries use scalar indexing)
+    r_cpu = Vector{Int}(undef, nnzj * nb)
+    c_cpu = Vector{Int}(undef, nnzj * nb)
+    r1 = @view r_cpu[1:nnzj]
+    c1 = @view c_cpu[1:nnzj]
     NLPModels.jac_structure!(m.batch, r1, c1)
 
     # Replicate for each instance with shifted indices
@@ -237,10 +239,12 @@ function NLPModels.jac_nln_structure!(m::FlatNLPModel, rows::AbstractVector{<:In
         row_shift = (s - 1) * ncon
         col_shift = (s - 1) * nvar
         for k in 1:nnzj
-            rows[offset + k] = r1[k] + row_shift
-            cols[offset + k] = c1[k] + col_shift
+            r_cpu[offset + k] = r1[k] + row_shift
+            c_cpu[offset + k] = c1[k] + col_shift
         end
     end
+    copyto!(rows, r_cpu)
+    copyto!(cols, c_cpu)
     return rows, cols
 end
 
@@ -257,9 +261,11 @@ function NLPModels.hess_structure!(m::FlatNLPModel, rows::AbstractVector{<:Integ
     nvar = NLPModels.get_nvar(m.batch)
     nnzh = NLPModels.get_nnzh(m.batch)
 
-    # Get per-instance structure
-    r1 = @view rows[1:nnzh]
-    c1 = @view cols[1:nnzh]
+    # Compute structure on CPU (structure queries use scalar indexing)
+    r_cpu = Vector{Int}(undef, nnzh * nb)
+    c_cpu = Vector{Int}(undef, nnzh * nb)
+    r1 = @view r_cpu[1:nnzh]
+    c1 = @view c_cpu[1:nnzh]
     NLPModels.hess_structure!(m.batch, r1, c1)
 
     # Replicate for each instance with shifted indices
@@ -267,10 +273,12 @@ function NLPModels.hess_structure!(m::FlatNLPModel, rows::AbstractVector{<:Integ
         offset = (s - 1) * nnzh
         shift = (s - 1) * nvar
         for k in 1:nnzh
-            rows[offset + k] = r1[k] + shift
-            cols[offset + k] = c1[k] + shift
+            r_cpu[offset + k] = r1[k] + shift
+            c_cpu[offset + k] = c1[k] + shift
         end
     end
+    copyto!(rows, r_cpu)
+    copyto!(cols, c_cpu)
     return rows, cols
 end
 
