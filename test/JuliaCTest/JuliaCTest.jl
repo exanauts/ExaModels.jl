@@ -4,6 +4,7 @@ using Test, JuliaC
 
 const LUKSANVLCEK_APP_DIR = abspath(joinpath(@__DIR__, "..", "LuksanVlcekApp.jl"))
 const COPS_APP_DIR        = abspath(joinpath(@__DIR__, "..", "COPSApp.jl"))
+const ORACLE_APP_DIR      = abspath(joinpath(@__DIR__, "..", "OracleApp.jl"))
 
 # Compile app_dir into an executable at exe_path using the JuliaC programmatic API.
 # Returns true on success, false if JuliaC API is not available.
@@ -106,6 +107,30 @@ function runtests()
                 ("elec",      10, false),
                 ("channel",   10, false),
             ])
+        end
+
+        # ── OracleApp ─────────────────────────────────────────────────────────────
+        # Verifies that VectorNonlinearOracle with hand-written (named function)
+        # callbacks survives juliac AOT compilation and produces the correct result.
+        @testset "OracleApp" begin
+            exe_path = joinpath(tempdir(), "oracle_aot_test" * (Sys.iswindows() ? ".exe" : ""))
+
+            compiled = false
+            @testset "juliac compiles OracleApp" begin
+                compiled = _compile_exe(ORACLE_APP_DIR, exe_path)
+                @test compiled skip=!_HAS_JULIAC_API
+                compiled && @test isfile(exe_path)
+            end
+
+            if compiled
+                @testset "AOT exe: oracle NLP" begin
+                    out = IOBuffer()
+                    result = run(pipeline(ignorestatus(`$exe_path`); stdout = out, stderr = out))
+                    @test success(result)
+                    @test contains(String(take!(out)), "Ipopt status : 0")
+                end
+                rm(exe_path; force = true)
+            end
         end
 
     end
