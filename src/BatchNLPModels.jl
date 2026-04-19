@@ -153,26 +153,26 @@ function NLPModels.hess_coord!(
 end
 
 # ============================================================================
-# FlattenNLPModel
+# FlatNLPModel
 # ============================================================================
 
 """
-    FlattenNLPModel{T, M} <: AbstractNLPModel{T, Vector{T}}
+    FlatNLPModel{T, M} <: AbstractNLPModel{T, Vector{T}}
 
 Wrapper that presents a batch NLP model as a flat (Vector-based) NLP model.
 All NLPModels callbacks delegate to the underlying batch model's matrix API.
 
-    FlattenNLPModel(model::AbstractNLPModel)
+    FlatNLPModel(model::AbstractNLPModel)
 
 Construct a flat model from a batch model whose `meta.x0` is a matrix.
 """
-struct FlattenNLPModel{T, M <: AbstractNLPModel{T}} <: AbstractNLPModel{T, Vector{T}}
+struct FlatNLPModel{T, M <: AbstractNLPModel{T}} <: AbstractNLPModel{T, Vector{T}}
     batch::M
     meta::NLPModelMeta{T, Vector{T}}
     counters::NLPModels.Counters
 end
 
-function FlattenNLPModel(model::AbstractNLPModel{T}) where {T}
+function FlatNLPModel(model::AbstractNLPModel{T}) where {T}
     nb = get_nbatch(model)
     nvar = NLPModels.get_nvar(model) * nb
     ncon = NLPModels.get_ncon(model) * nb
@@ -191,10 +191,10 @@ function FlattenNLPModel(model::AbstractNLPModel{T}) where {T}
         model.meta.minimize, false, String(model.meta.name),
         false, false, true, true, true, ncon > 0, true, ncon > 0, ncon > 0, true,
     )
-    return FlattenNLPModel(model, meta, NLPModels.Counters())
+    return FlatNLPModel(model, meta, NLPModels.Counters())
 end
 
-function NLPModels.obj(m::FlattenNLPModel{T}, x::AbstractVector) where {T}
+function NLPModels.obj(m::FlatNLPModel{T}, x::AbstractVector) where {T}
     nb = get_nbatch(m.batch)
     nvar = NLPModels.get_nvar(m.batch)
     bx = reshape(x, nvar, nb)
@@ -203,14 +203,14 @@ function NLPModels.obj(m::FlattenNLPModel{T}, x::AbstractVector) where {T}
     return sum(bf)
 end
 
-function NLPModels.grad!(m::FlattenNLPModel{T}, x::AbstractVector, g::AbstractVector) where {T}
+function NLPModels.grad!(m::FlatNLPModel{T}, x::AbstractVector, g::AbstractVector) where {T}
     nb = get_nbatch(m.batch)
     nvar = NLPModels.get_nvar(m.batch)
     NLPModels.grad!(m.batch, reshape(x, nvar, nb), reshape(g, nvar, nb))
     return g
 end
 
-function NLPModels.cons_nln!(m::FlattenNLPModel{T}, x::AbstractVector, c::AbstractVector) where {T}
+function NLPModels.cons_nln!(m::FlatNLPModel{T}, x::AbstractVector, c::AbstractVector) where {T}
     nb = get_nbatch(m.batch)
     nvar = NLPModels.get_nvar(m.batch)
     ncon = NLPModels.get_ncon(m.batch)
@@ -218,7 +218,7 @@ function NLPModels.cons_nln!(m::FlattenNLPModel{T}, x::AbstractVector, c::Abstra
     return c
 end
 
-function NLPModels.jac_structure!(m::FlattenNLPModel, rows::AbstractVector, cols::AbstractVector)
+function NLPModels.jac_structure!(m::FlatNLPModel, rows::AbstractVector, cols::AbstractVector)
     nb = get_nbatch(m.batch)
     nvar = NLPModels.get_nvar(m.batch)
     ncon = NLPModels.get_ncon(m.batch)
@@ -242,7 +242,7 @@ function NLPModels.jac_structure!(m::FlattenNLPModel, rows::AbstractVector, cols
     return rows, cols
 end
 
-function NLPModels.jac_coord!(m::FlattenNLPModel{T}, x::AbstractVector, jvals::AbstractVector) where {T}
+function NLPModels.jac_coord!(m::FlatNLPModel{T}, x::AbstractVector, jvals::AbstractVector) where {T}
     nb = get_nbatch(m.batch)
     nvar = NLPModels.get_nvar(m.batch)
     nnzj = NLPModels.get_nnzj(m.batch)
@@ -250,7 +250,7 @@ function NLPModels.jac_coord!(m::FlattenNLPModel{T}, x::AbstractVector, jvals::A
     return jvals
 end
 
-function NLPModels.hess_structure!(m::FlattenNLPModel, rows::AbstractVector, cols::AbstractVector)
+function NLPModels.hess_structure!(m::FlatNLPModel, rows::AbstractVector, cols::AbstractVector)
     nb = get_nbatch(m.batch)
     nvar = NLPModels.get_nvar(m.batch)
     nnzh = NLPModels.get_nnzh(m.batch)
@@ -273,7 +273,7 @@ function NLPModels.hess_structure!(m::FlattenNLPModel, rows::AbstractVector, col
 end
 
 function NLPModels.hess_coord!(
-    m::FlattenNLPModel{T}, x::AbstractVector, y::AbstractVector,
+    m::FlatNLPModel{T}, x::AbstractVector, y::AbstractVector,
     hvals::AbstractVector; obj_weight = one(T),
 ) where {T}
     nb = get_nbatch(m.batch)
@@ -289,6 +289,6 @@ end
 # ============================================================================
 
 export AbstractBatchNLPModel,
-    FlattenNLPModel
+    FlatNLPModel
 
 end # module BatchNLPModels

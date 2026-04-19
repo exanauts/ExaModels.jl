@@ -71,9 +71,9 @@ NLPModels.cons!(model, bx, bc)
 println("Constraints: ", bc)
 
 # ## Solving via the Fused Model
-# For solving, use `get_model(model)` to access the fused `FlattenNLPModel` and
+# For solving, use `FlatNLPModel(model)` to access the fused `FlatNLPModel` and
 # pass it to any NLPModels-compatible solver:
-flat = ExaModels.get_model(model)
+flat = FlatNLPModel(model)
 result = ipopt(flat; print_level = 0)
 println("\nSolution status: ", result.status)
 

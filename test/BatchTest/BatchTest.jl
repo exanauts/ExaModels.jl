@@ -7,8 +7,9 @@ import NLPModels:
     obj, cons!, cons_nln!, grad!, jac_coord!, hess_coord!, jac_structure!,
     hess_structure!
 import NLPModels: obj!
-import ExaModels: var_indices, cons_block_indices, get_model, get_nbatch,
+import ExaModels: var_indices, cons_block_indices, get_nbatch,
     get_start, get_lvar, get_uvar, get_lcon, get_ucon
+using ExaModels.BatchNLPModels: FlatNLPModel
 
 import NLPModelsIpopt: ipopt
 
@@ -49,7 +50,7 @@ function test_obj()
     @test bf[1] ≈ 10.0
     @test bf[2] ≈ 50.0
     @test obj(model, bx) ≈ bf
-    flat = get_model(model)
+    flat = FlatNLPModel(model)
     @test sum(bf) ≈ obj(flat, vec(bx))
 end
 
@@ -61,7 +62,7 @@ function test_grad()
     @test bg[:, 1] ≈ [4.0, 8.0]
     @test bg[:, 2] ≈ [12.0, 16.0]
     g_flat = zeros(4)
-    grad!(get_model(model), vec(bx), g_flat)
+    grad!(FlatNLPModel(model), vec(bx), g_flat)
     @test vec(bg) ≈ g_flat
 end
 
@@ -73,14 +74,14 @@ function test_cons()
     @test bc[:, 1] ≈ [-1.0, 0.0]
     @test bc[:, 2] ≈ [1.0, 2.0]
     c_flat = zeros(4)
-    cons_nln!(get_model(model), vec(bx), c_flat)
+    cons_nln!(FlatNLPModel(model), vec(bx), c_flat)
     @test vec(bc) ≈ c_flat
 end
 
 function test_jac_hess()
     model = build_batch_model()
     ns, nv = 2, 2
-    flat = get_model(model)
+    flat = FlatNLPModel(model)
     bx = [1.0 3.0; 2.0 4.0]
 
     # --- Jacobian values ---
@@ -114,7 +115,7 @@ function test_hess_obj_weight()
     nnzh = NLPModels.get_nnzh(model)
     bx = [1.0 3.0; 2.0 4.0]
     by = ones(nc, ns)
-    flat = get_model(model)
+    flat = FlatNLPModel(model)
 
     hvals_w1 = zeros(nnzh, ns)
     hess_coord!(model, bx, by, hvals_w1; obj_weight = 1.0)
@@ -180,7 +181,7 @@ function test_multiple_constraints()
     c, _ = add_con(c, v[j] - θ[1] for j in 1:nv)
     c, _ = add_con(c, v[1] + v[2] + v[3] for _ in 1:1; ucon = 10.0)
     model = ExaModel(c)
-    flat = get_model(model)
+    flat = FlatNLPModel(model)
 
     nc = NLPModels.get_ncon(model)
     @test nc == nv + 1
@@ -234,7 +235,7 @@ function test_bounds()
     @test model.meta.lvar ≈ fill(0.0, nv, ns)
     @test model.meta.uvar ≈ fill(10.0, nv, ns)
 
-    flat = get_model(model)
+    flat = FlatNLPModel(model)
     @test NLPModels.get_nvar(flat) == nv * ns
     @test flat.meta.x0 ≈ fill(0.5, nv * ns)
     @test flat.meta.lvar ≈ fill(0.0, nv * ns)
@@ -243,8 +244,8 @@ end
 
 function test_flatten_model()
     model = build_batch_model()
-    flat = get_model(model)
-    @test flat isa ExaModels.BatchNLPModels.FlattenNLPModel
+    flat = FlatNLPModel(model)
+    @test flat isa FlatNLPModel
     @test NLPModels.get_nvar(flat) == 2 * 2
     @test NLPModels.get_ncon(flat) == 2 * 2
 
@@ -252,7 +253,6 @@ function test_flatten_model()
     c, x = add_var(c, 2)
     c, _ = add_obj(c, x[i]^2 for i in 1:2)
     m = ExaModel(c)
-    @test get_model(m) === m
 end
 
 function test_ipopt_simple()
@@ -264,7 +264,7 @@ function test_ipopt_simple()
     c, _ = add_con(c, v[1] for _ in 1:1; lcon = 0.0, ucon = Inf)
     model = ExaModel(c)
 
-    result = ipopt(get_model(model); print_level = 0)
+    result = ipopt(FlatNLPModel(model); print_level = 0)
     @test result.status == :first_order
     for i in 1:ns
         @test result.solution[var_indices(model, i)] ≈ [2.0] atol = 1e-5
@@ -281,7 +281,7 @@ function test_ipopt_multi()
     c, _ = add_con(c, v[1] + v[2] for _ in 1:1; ucon = 10.0)
     model = ExaModel(c)
 
-    result = ipopt(get_model(model); print_level = 0)
+    result = ipopt(FlatNLPModel(model); print_level = 0)
     @test result.status == :first_order
     @test result.solution[var_indices(model, 1)] ≈ [1.0, 3.0] atol = 1e-5
     @test result.solution[var_indices(model, 2)] ≈ [1.0, 3.0] atol = 1e-5
@@ -340,7 +340,7 @@ function test_add_con_aug()
     @add_con(c, g, v[j] for j in 1:nv; lcon = -10.0, ucon = 10.0)
     @add_con!(c, g, j => θ[1] * v[j] for j in 1:nv)
     model = ExaModel(c)
-    flat = get_model(model)
+    flat = FlatNLPModel(model)
 
     nc = NLPModels.get_ncon(model)
     @test nc == nv
@@ -387,7 +387,7 @@ function test_add_expr()
     c, _ = add_obj(c, s[j] for j in 1:nv)
     c, _ = add_con(c, s[j] - v[j] for j in 1:nv; lcon = 0.0)
     model = ExaModel(c)
-    flat = get_model(model)
+    flat = FlatNLPModel(model)
 
     nc = NLPModels.get_ncon(model)
     @test nc == nv
@@ -452,7 +452,7 @@ function test_batch_backend(backend)
     @add_con(c, g, v[j] - θ[1] for j in 1:nv; lcon = 0.0)
     @add_con!(c, g, j => θ[1] * v[j] for j in 1:nv)
     model = ExaModel(c)
-    flat = get_model(model)
+    flat = FlatNLPModel(model)
 
     nc = NLPModels.get_ncon(model)
     bx = ExaModels.convert_array(reshape(Float64.(1:(nv*ns)), nv, ns), backend)

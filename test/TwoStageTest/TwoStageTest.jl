@@ -549,7 +549,7 @@ function runtests()
             @add_con(core, EachScenario(), (v[v_idx] - d[1] for (i, v_idx) in con_data); lcon = 0.0)
 
             model = ExaModel(core)
-            flat = ExaModels.get_model(model)
+            flat = ExaModels.FlatNLPModel(model)
 
             nvar = NLPModels.get_nvar(model)
             ncon = NLPModels.get_ncon(model)
@@ -607,7 +607,7 @@ function runtests()
             @add_con(core, EachScenario(), (v[i] - d[1] for i in 1:ns_scen); lcon = 0.0)
 
             model = ExaModel(core)
-            flat = ExaModels.get_model(model)
+            flat = ExaModels.FlatNLPModel(model)
 
             result = ipopt(flat; print_level = 0)
             @test result.status == :first_order
