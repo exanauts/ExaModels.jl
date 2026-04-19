@@ -616,8 +616,8 @@ function runtests()
             nvar = NLPModels.get_nvar(model)
             for b in 1:nb
                 x_b = result.solution[ExaModels.var_indices(model, b)]
-                # d* = θ̄/2 = 3/2, v_i* = d* (all constraints active at optimum)
-                d_expected = sum(θ_vals) / ns_scen / 2
+                # d² + Σ(v_i - θ_i)²  s.t. v_i = d  →  d* = Σθ / (1 + ns)
+                d_expected = sum(θ_vals) / (1 + ns_scen)
                 @test x_b[end] ≈ d_expected atol = 1e-4
             end
         end

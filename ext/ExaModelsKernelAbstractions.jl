@@ -33,7 +33,7 @@ function ExaModels.build_extension(
     c::C;
     prod = false,
     kwargs...,
-) where {T,VT<:AbstractVector{T},B<:KernelAbstractions.Backend,C<:ExaModels.ExaCore{T,VT,B}}
+) where {T,VT<:AbstractArray{T},B<:KernelAbstractions.Backend,C<:ExaModels.ExaCore{T,VT,B}}
 
     gsparsity = similar(c.x0, Tuple{Int,Int}, c.nnzg)
 

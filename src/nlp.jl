@@ -833,33 +833,24 @@ end
 """
     set_parameter!(core, param, values)
 
+!!! warning "Deprecated"
+    `set_parameter!` is deprecated. Use [`set_value!`](@ref) on the model instead.
+
 Updates the values of parameters in the core.
-
-## Example
-```jldoctest
-julia> using ExaModels
-
-julia> c = ExaCore(concrete = Val(true));
-
-julia> c, p = add_par(c, ones(5));
-
-julia> set_parameter!(c, p, ones(5))
-```
 """
 function set_parameter!(c::ExaCore, param::Parameter, values::AbstractArray)
-    if length(values) != param.length
-        throw(
-            DimensionMismatch(
-                "Parameter size mismatch: expected $(param.length) elements, got $(length(values))",
-            ),
-        )
+    Base.depwarn(
+        "`set_parameter!(core, param, values)` is deprecated, use `set_value!(model, param, values)` on the model instead.",
+        :set_parameter!,
+    )
+    rng = param.offset+1 : param.offset+param.length
+    if c.θ isa AbstractMatrix
+        for col in axes(c.θ, 2)
+            copyto!(@view(c.θ[rng, col]), values)
+        end
+    else
+        copyto!(@view(c.θ[rng]), values)
     end
-
-    start_idx = param.offset + 1
-    end_idx = param.offset + param.length
-
-    copyto!(@view(c.θ[start_idx:end_idx]), values)
-
     return nothing
 end
 
@@ -886,7 +877,14 @@ function set_value!(model::ExaModel, param::Parameter, values)
             "expected $(param.length) elements, got $(length(values))"
         ))
     end
-    copyto!(view(model.θ, param.offset+1:param.offset+param.length), values)
+    rng = param.offset+1 : param.offset+param.length
+    if model.θ isa AbstractMatrix
+        for col in axes(model.θ, 2)
+            copyto!(view(model.θ, rng, col), values)
+        end
+    else
+        copyto!(view(model.θ, rng), values)
+    end
     return nothing
 end
 
@@ -1940,7 +1938,7 @@ function obj!(m::BatchExaModel{T}, bx::AbstractMatrix, bf::AbstractVector) where
 end
 
 function obj(m::BatchExaModel{T}, bx::AbstractMatrix) where {T}
-    bf = Vector{T}(undef, get_nbatch(m))
+    bf = similar(bx, T, get_nbatch(m))
     obj!(m, bx, bf)
     return bf
 end

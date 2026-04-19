@@ -301,14 +301,12 @@ function test_set_parameter()
     bf = zeros(ns)
     obj!(model, bx, bf)
     @test bf[1] ≈ 1.0  # (1-2)^2
-    @test bf[2] ≈ 1.0  # (3-4)^2 — θ replicated to [2,4] via batch par
+    @test bf[2] ≈ 1.0  # (3-2)^2
 
-    # Update parameters for instance 2
-    ExaModels.set_parameter!(c, θ, [10.0])
-    model2 = ExaModel(c)
+    # Update parameters via set_value! on the model
+    set_value!(model, θ, [10.0])
     bf2 = zeros(ns)
-    obj!(model2, bx, bf2)
-    # After set_parameter!, the parameter is updated for the next ExaModel build.
+    obj!(model, bx, bf2)
     @test bf2[1] ≈ (1.0 - 10.0)^2
     @test bf2[2] ≈ (3.0 - 10.0)^2
 end
@@ -460,9 +458,8 @@ function test_batch_backend(backend)
     bx = ExaModels.convert_array(reshape(Float64.(1:(nv*ns)), nv, ns), backend)
 
     # obj
-    bf = zeros(ns)
-    obj!(model, bx, bf)
-    @test sum(bf) ≈ obj(flat, vec(bx))
+    bf_gpu = obj(model, bx)
+    @test sum(Array(bf_gpu)) ≈ obj(flat, vec(bx))
 
     # grad
     bg = ExaModels.convert_array(zeros(nv, ns), backend)
@@ -513,7 +510,7 @@ function runtests()
         @testset "flatten_model" test_flatten_model()
         @testset "Ipopt simple" test_ipopt_simple()
         @testset "Ipopt multi" test_ipopt_multi()
-        @testset "set_parameter!" test_set_parameter()
+        @testset "set_value!" test_set_parameter()
         @testset "Multidim vars" test_multidim_vars()
         @testset "add_con!" test_add_con_aug()
         @testset "add_expr" test_add_expr()
