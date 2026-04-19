@@ -53,7 +53,7 @@ get_nbatch(m::AbstractNLPModel) = get_nbatch(m.meta)
 Allocating version of `NLPModels.obj!`.
 """
 function NLPModels.obj(m::AbstractBatchNLPModel{T}, bx::AbstractMatrix) where {T}
-    bf = Vector{T}(undef, get_nbatch(m))
+    bf = similar(bx, T, get_nbatch(m))
     obj!(m, bx, bf)
     return bf
 end
@@ -73,7 +73,7 @@ end
 Allocating version of `grad!`.
 """
 function NLPModels.grad(m::AbstractBatchNLPModel{T}, bx::AbstractMatrix) where {T}
-    bg = Matrix{T}(undef, NLPModels.get_nvar(m), get_nbatch(m))
+    bg = similar(bx, T, NLPModels.get_nvar(m), get_nbatch(m))
     NLPModels.grad!(m, bx, bg)
     return bg
 end
@@ -93,7 +93,7 @@ end
 Allocating version of `cons!`.
 """
 function NLPModels.cons(m::AbstractBatchNLPModel{T}, bx::AbstractMatrix) where {T}
-    bc = Matrix{T}(undef, NLPModels.get_ncon(m), get_nbatch(m))
+    bc = similar(bx, T, NLPModels.get_ncon(m), get_nbatch(m))
     NLPModels.cons!(m, bx, bc)
     return bc
 end
@@ -198,7 +198,7 @@ function NLPModels.obj(m::FlattenNLPModel{T}, x::AbstractVector) where {T}
     nb = get_nbatch(m.batch)
     nvar = NLPModels.get_nvar(m.batch)
     bx = reshape(x, nvar, nb)
-    bf = Vector{T}(undef, nb)
+    bf = similar(x, T, nb)
     obj!(m.batch, bx, bf)
     return sum(bf)
 end

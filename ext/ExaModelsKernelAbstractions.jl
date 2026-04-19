@@ -681,17 +681,29 @@ end
 function ExaModels._obj_batch!(bf, obj, x, θ, nb, nvar, npar, backend::KernelAbstractions.Backend)
     nitr = length(obj.itr)
     if nitr > 0
-        kerf_batch(backend)(bf, obj.f, obj.itr, x, θ, nvar, npar, nitr; ndrange = nb * nitr)
+        buf = similar(x, nitr * nb)
+        kerf_batch_fill(backend)(buf, obj.f, obj.itr, x, θ, nvar, npar, nitr; ndrange = nb * nitr)
+        kerf_batch_reduce(backend)(bf, buf, nitr; ndrange = nb)
     end
 end
 
-@kernel function kerf_batch(bf, @Const(f), @Const(itr), @Const(x), @Const(θ), @Const(nvar), @Const(npar), @Const(nitr))
+@kernel function kerf_batch_fill(buf, @Const(f), @Const(itr), @Const(x), @Const(θ), @Const(nvar), @Const(npar), @Const(nitr))
     I = @index(Global)
     s = (I - 1) ÷ nitr + 1
     k = (I - 1) % nitr + 1
     x_off = (s - 1) * nvar
     θ_off = (s - 1) * npar
-    @inbounds bf[s] += f(itr[k], ExaModels.OffsetVector(x, x_off), ExaModels.OffsetVector(θ, θ_off))
+    @inbounds buf[I] = f(itr[k], ExaModels.OffsetVector(x, x_off), ExaModels.OffsetVector(θ, θ_off))
+end
+
+@kernel function kerf_batch_reduce(bf, @Const(buf), @Const(nitr))
+    s = @index(Global)
+    val = zero(eltype(bf))
+    base = (s - 1) * nitr
+    for k in 1:nitr
+        @inbounds val += buf[base + k]
+    end
+    @inbounds bf[s] += val
 end
 
 # --- Constraints ---
