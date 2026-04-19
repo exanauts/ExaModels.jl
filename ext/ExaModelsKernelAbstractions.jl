@@ -143,13 +143,13 @@ function ExaModels.jac_structure!(
     cols::V,
 ) where {T,VT,E<:KAExtension,V<:AbstractVector}
     if !isempty(rows)
-        _jac_structure!(T, m.ext.backend, m.cons, rows, cols)
+        ExaModels._jac_structure!(T, m.ext.backend, m.cons, rows, cols)
     end
     return rows, cols
 end
-_jac_structure!(T, backend, ::Tuple{}, rows, cols) = nothing
-function _jac_structure!(T, backend, (con, cons...), rows, cols)
-    _jac_structure!(T, backend, cons, rows, cols)
+ExaModels._jac_structure!(T, backend, ::Tuple{}, rows, cols) = nothing
+function ExaModels._jac_structure!(T, backend, (con, cons...), rows, cols)
+    ExaModels._jac_structure!(T, backend, cons, rows, cols)
     ExaModels.sjacobian!(backend, rows, cols, con, ExaModels.NaNSource{T}(), ExaModels.NaNSource{T}(), T(NaN))
 end
 
@@ -160,20 +160,20 @@ function ExaModels.hess_structure!(
     cols::V,
 ) where {T,VT,E<:KAExtension,V<:AbstractVector}
     if !isempty(rows)
-        _obj_hess_structure!(T, m.ext.backend, m.objs, rows, cols)
-        _con_hess_structure!(T, m.ext.backend, m.cons, rows, cols)
-        end
+        ExaModels._obj_hess_structure!(T, m.ext.backend, m.objs, rows, cols)
+        ExaModels._con_hess_structure!(T, m.ext.backend, m.cons, rows, cols)
+    end
     return rows, cols
 end
 
-_obj_hess_structure!(T, backend, ::Tuple{}, rows, cols) = nothing
-function _obj_hess_structure!(T, backend, (obj, objs...), rows, cols)
-    _obj_hess_structure!(T, backend, objs, rows, cols)
+ExaModels._obj_hess_structure!(T, backend, ::Tuple{}, rows, cols) = nothing
+function ExaModels._obj_hess_structure!(T, backend, (obj, objs...), rows, cols)
+    ExaModels._obj_hess_structure!(T, backend, objs, rows, cols)
     ExaModels.shessian!(backend, rows, cols, obj, ExaModels.NaNSource{T}(), ExaModels.NaNSource{T}(), T(NaN), T(NaN))
 end
-_con_hess_structure!(T, backend, ::Tuple{}, rows, cols) = nothing
-function _con_hess_structure!(T, backend, (con, cons...), rows, cols)
-    _con_hess_structure!(T, backend, cons, rows, cols)
+ExaModels._con_hess_structure!(T, backend, ::Tuple{}, rows, cols) = nothing
+function ExaModels._con_hess_structure!(T, backend, (con, cons...), rows, cols)
+    ExaModels._con_hess_structure!(T, backend, cons, rows, cols)
     ExaModels.shessian!(backend, rows, cols, con, ExaModels.NaNSource{T}(), ExaModels.NaNSource{T}(), T(NaN), T(NaN))
 end
 
