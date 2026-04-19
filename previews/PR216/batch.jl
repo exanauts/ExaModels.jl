@@ -85,8 +85,8 @@ for i in 1:ns
 end
 
 # ## Updating Parameters
-# Parameters can be updated on the core using `set_parameter!` and then
-# rebuilding the model. The updated values apply to all instances:
+# Parameters can be updated directly on the model using `set_value!`.
+# The updated values apply to all instances:
 
 c2 = BatchExaCore(2)
 @add_var(c2, x, 2)
@@ -95,6 +95,5 @@ c2 = BatchExaCore(2)
 model2 = ExaModel(c2)
 
 # Update parameters (applies to all instances):
-ExaModels.set_parameter!(c2, p, [10.0, 20.0])
-model2 = ExaModel(c2)
+ExaModels.set_value!(model2, p, [10.0, 20.0])
 println("\nParameter matrix shape: ", size(model2.θ))
