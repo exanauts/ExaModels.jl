@@ -58,11 +58,11 @@ function ExaModels.build_extension(
         jacsparsityi = similar(c.x0, Tuple{Tuple{Int,Int},Int}, c.nnzj)
         hesssparsityi = similar(c.x0, Tuple{Tuple{Int,Int},Int}, c.nnzh)
 
-        _jac_structure!(T, c.backend, c.cons, jacsparsityi, nothing)
+        ExaModels._jac_structure!(T, c.backend, c.cons, jacsparsityi, nothing)
 
         jacsparsityj = copy(jacsparsityi)
-        _obj_hess_structure!(T, c.backend, c.obj, hesssparsityi, nothing)
-        _con_hess_structure!(T, c.backend, c.cons, hesssparsityi, nothing)
+        ExaModels._obj_hess_structure!(T, c.backend, c.obj, hesssparsityi, nothing)
+        ExaModels._con_hess_structure!(T, c.backend, c.cons, hesssparsityi, nothing)
         hesssparsityj = copy(hesssparsityi)
 
         if !isempty(jacsparsityi)
