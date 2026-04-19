@@ -680,6 +680,17 @@ function _expand_to_shape(col::AbstractVector{T}, trailing::Tuple) where {T}
     return repeat(reshape(col, :, ntuple(_ -> 1, length(trailing))...), 1, trailing...)
 end
 
+# Reshape an array to have the given trailing dimensions.
+# For vectors, delegates to _expand_to_shape. For matrices/higher-dim arrays,
+# reshapes using total elements / trailing to infer the first dimension.
+_reshape_to_match(arr::AbstractVector, trailing::Tuple{}) = arr
+_reshape_to_match(arr::AbstractVector, trailing::Tuple) = _expand_to_shape(arr, trailing)
+_reshape_to_match(arr::AbstractArray, trailing::Tuple{}) = vec(arr)
+function _reshape_to_match(arr::AbstractArray, trailing::Tuple)
+    n = length(arr) ÷ prod(trailing)
+    return reshape(arr, n, trailing...)
+end
+
 function append!(backend, a, b::Number, lb)
     lb == 0 && return a
     new_part = fill(eltype(a)(b), lb, _trailing_dims(a)...)
@@ -689,8 +700,7 @@ end
 function append!(backend, a, b::AbstractArray, lb)
     lb == 0 && return a
     arr = convert_array(b, backend)
-    col = vec(arr)
-    return cat(a, _expand_to_shape(col, _trailing_dims(a)); dims = 1)
+    return cat(a, _reshape_to_match(arr, _trailing_dims(a)); dims = 1)
 end
 
 function append!(backend, a, b::Base.Generator, lb)
