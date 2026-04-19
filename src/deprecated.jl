@@ -184,4 +184,10 @@ function embed_oracle(c::LegacyExaCore, args...; kwargs...)
     return z, oracle
 end
 
+function add_eval(c::LegacyExaCore, args...; kwargs...)
+    new_core, ev = add_eval(c.inner, args...; kwargs...)
+    c.inner = new_core
+    return (c, ev)
+end
+
 export LegacyExaCore, variable, parameter, objective, constraint, constraint!, subexpr

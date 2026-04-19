@@ -348,7 +348,7 @@ An ExaCore
   number of constraint patterns: ... 0
 ```
 """
-struct ExaCore{T,VT<:AbstractVector{T}, B, S, V, P, O, C, R, OR, SOR} <: AbstractExaCore{T,VT,B,S}
+struct ExaCore{T,VT<:AbstractVector{T}, B, S, V, P, O, C, R, OR, SOR, EV} <: AbstractExaCore{T,VT,B,S}
     name::Symbol
     backend::B
     var::V
@@ -376,6 +376,7 @@ struct ExaCore{T,VT<:AbstractVector{T}, B, S, V, P, O, C, R, OR, SOR} <: Abstrac
     refs::R
     oracles::OR                # Tuple of VectorNonlinearOracle
     scalar_oracles::SOR        # Tuple of ScalarNonlinearOracle
+    evals::EV                  # Tuple of OracleEvaluator (augment pre-existing constraint rows)
 end
 
 @inline function _exa_core(
@@ -407,6 +408,7 @@ end
     refs = (;),
     oracles = (),
     scalar_oracles = (),
+    evals = (),
     )
 
     return ExaCore(
@@ -437,6 +439,7 @@ end
         refs,
         oracles,
         scalar_oracles,
+        evals,
     )
 end
 
@@ -539,7 +542,7 @@ julia> result = ipopt(m; print_level=0)    # solve the problem
 ```
 """
 # No-oracle path: always returns ExaModel (type-stable for juliac --trim=safe).
-function ExaModel(c::ExaCore{T,VT,B,S,V,P,O,C,R,Tuple{},Tuple{}}; prod = false, kwargs...) where {T,VT,B,S,V,P,O,C,R}
+function ExaModel(c::ExaCore{T,VT,B,S,V,P,O,C,R,Tuple{},Tuple{},Tuple{}}; prod = false, kwargs...) where {T,VT,B,S,V,P,O,C,R}
     return ExaModel(
         c.name,
         c.var,
@@ -2076,6 +2079,26 @@ macro add_con!(exs...)
     isempty(exs) && error("@add_con! requires core and generator arguments")
     parts, kwargs = _split_macro_args(exs)
     core  = parts[1]
+
+    # Oracle form: @add_con!(core, (c1,c2,...), (x,y,...), f!; kwargs...)
+    # Detected by a tuple expression as the second argument.
+    if length(parts) >= 4 && Meta.isexpr(parts[2], :tuple)
+        cons_expr = parts[2]
+        vars_expr = parts[3]
+        f_expr    = parts[4]
+        ev = gensym(:ev)
+        return quote
+            local $ev
+            $(esc(core)), $ev = add_eval(
+                $(esc(core)),
+                $(esc(cons_expr)),
+                $(esc(vars_expr)),
+                $(esc(f_expr));
+                $(map(esc, kwargs.args)...),
+            )
+            $ev
+        end
+    end
 
     if length(parts) == 2
         # Two-argument form: @add_con!(core, g[idx] += expr for ...)

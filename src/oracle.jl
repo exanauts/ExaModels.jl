@@ -396,6 +396,96 @@ function _adapt_cache(c::OracleIndexCache, backend)
     )
 end
 
+# ── OracleEvaluator: augment pre-existing constraint rows via callbacks ───────
+
+"""
+    OracleEvaluator
+
+Encapsulates callbacks that augment a set of pre-existing constraint rows
+(declared via [`add_con`](@ref)) with values from an opaque function.
+Registered via [`add_eval`](@ref) / [`@add_con!`](@ref) (oracle form).
+
+Unlike [`VectorNonlinearOracle`](@ref), an `OracleEvaluator` does **not**
+introduce new constraint rows; it fills rows that already exist.
+
+Callbacks operate on **local** concatenated vectors:
+- `f!(res, x_local)`:            `res[1:ncon_total] = f(x_local[1:nvar_total])`
+- `jac!(vals, x_local)`:         fills `vals[1:nnzj]` with Jacobian values
+- `hess!(vals, x_local, y_local)`:fills `vals[1:nnzh]` with Lagrangian Hessian values
+- `jvp!(Jv, x_local, v_local)`:  `Jv[1:ncon_total] = J(x) * v_local`
+- `vjp!(Jtv, x_local, w_local)`: `Jtv[1:nvar_total] = J(x)' * w_local`
+- `hvp!(Hv, x_local, w_local, v_local)`: `Hv[1:nvar_total] = (∑ wᵢ ∇²gᵢ) * v_local`
+"""
+struct OracleEvaluator{F, J, H, JVP, VJP, HVP, A}
+    nvar_total::Int        # total local variables  (sum of v.length for each v)
+    ncon_total::Int        # total local constraints (sum of length(c.itr) for each c)
+    nnzj::Int
+    nnzh::Int
+    jac_rows::Vector{Int}  # local 1-based row indices (1:ncon_total)
+    jac_cols::Vector{Int}  # local 1-based col indices (1:nvar_total)
+    hess_rows::Vector{Int} # local 1-based row indices, lower triangle
+    hess_cols::Vector{Int} # local 1-based col indices
+    con_global_idx::Vector{Int}  # 1-based global g-indices (length ncon_total)
+    var_global_idx::Vector{Int}  # 1-based global x-indices (length nvar_total)
+    f!::F
+    jac!::J
+    hess!::H
+    jvp!::JVP
+    vjp!::VJP
+    hvp!::HVP
+    adapt::A
+end
+
+struct EvalIndexCache{VI <: AbstractVector{Int}, VF <: AbstractVector}
+    con_global_idx::VI       # device: 1-based global g-indices
+    var_global_idx::VI       # device: 1-based global x-indices
+    jac_idx::VI              # positions in global jac NNZ array
+    hess_idx::VI             # positions in global hess NNZ array
+    jac_rows_global::VI      # global row indices for jac entries
+    jac_cols_global::VI      # global col indices for jac entries
+    hess_rows_global::VI     # global row indices for hess entries
+    hess_cols_global::VI     # global col indices for hess entries
+    buf_ncon::VF
+    buf_nvar::VF
+    buf_nnzj::VF
+    buf_nnzh::VF
+end
+
+function _build_eval_index_cache(ev::OracleEvaluator, jac_off::Int, hess_off::Int)
+    jac_idx  = isempty(ev.jac_rows)  ? Int[] : collect((jac_off  + 1):(jac_off  + ev.nnzj))
+    hess_idx = isempty(ev.hess_rows) ? Int[] : collect((hess_off + 1):(hess_off + ev.nnzh))
+    jac_rows_global  = isempty(ev.jac_rows)  ? Int[] : ev.con_global_idx[ev.jac_rows]
+    jac_cols_global  = isempty(ev.jac_cols)  ? Int[] : ev.var_global_idx[ev.jac_cols]
+    hess_rows_global = isempty(ev.hess_rows) ? Int[] : ev.var_global_idx[ev.hess_rows]
+    hess_cols_global = isempty(ev.hess_cols) ? Int[] : ev.var_global_idx[ev.hess_cols]
+    return EvalIndexCache(
+        copy(ev.con_global_idx),
+        copy(ev.var_global_idx),
+        jac_idx, hess_idx,
+        jac_rows_global, jac_cols_global,
+        hess_rows_global, hess_cols_global,
+        zeros(ev.ncon_total),
+        zeros(ev.nvar_total),
+        zeros(ev.nnzj),
+        zeros(ev.nnzh),
+    )
+end
+
+_adapt_eval_cache(c::EvalIndexCache, ::Nothing) = c
+function _adapt_eval_cache(c::EvalIndexCache, backend)
+    cv = v -> convert_array(v, backend)
+    return EvalIndexCache(
+        cv(c.con_global_idx), cv(c.var_global_idx),
+        cv(c.jac_idx), cv(c.hess_idx),
+        cv(c.jac_rows_global), cv(c.jac_cols_global),
+        cv(c.hess_rows_global), cv(c.hess_cols_global),
+        cv(c.buf_ncon), cv(c.buf_nvar),
+        cv(c.buf_nnzj), cv(c.buf_nnzh),
+    )
+end
+
+_eval_input(ev::OracleEvaluator, x) = _do_adapt(ev.adapt, x)
+
 """
     ExaModelWithOracle
 
@@ -409,7 +499,7 @@ The constraint ordering is:
 
 and analogously for the Jacobian and Hessian nonzero arrays.
 """
-struct ExaModelWithOracle{T, VT, E, O, C, S, R, IC, SO} <: AbstractExaModel{T, VT, E}
+struct ExaModelWithOracle{T, VT, E, O, C, S, R, IC, SO, EV, EC} <: AbstractExaModel{T, VT, E}
     objs::O                          # same as ExaModel
     cons::C                          # same as ExaModel (SIMD constraints only)
     θ::VT                            # same as ExaModel
@@ -423,6 +513,8 @@ struct ExaModelWithOracle{T, VT, E, O, C, S, R, IC, SO} <: AbstractExaModel{T, V
     oracle_hess_offsets::Vector{Int} # hess NNZ offset (0-based) for each oracle
     oracle_caches::IC                # precomputed index arrays (Vector{OracleIndexCache{VI}})
     scalar_oracles::SO               # Tuple of ScalarNonlinearOracle
+    evals::EV                        # Tuple of OracleEvaluator
+    eval_caches::EC                  # Vector{EvalIndexCache}
 end
 
 function Base.show(io::IO, m::ExaModelWithOracle{T, VT}) where {T, VT}
@@ -435,21 +527,24 @@ end
 function _build_with_oracle(c::ExaCore; kwargs...)
     oracles = c.oracles                          # Tuple of VectorNonlinearOracle
     s_oracles = c.scalar_oracles                 # Tuple of ScalarNonlinearOracle
+    evaluators = c.evals                         # Tuple of OracleEvaluator
 
     # SIMD-only counts (oracle contributions deferred to here)
     n_simd_ncon = c.ncon
     n_simd_nnzj = c.nnzj
     n_simd_nnzh = c.nnzh
 
-    # Total oracle contributions
+    # Total oracle contributions (oracles add rows; evaluators add NNZ only)
     total_oracle_ncon = isempty(oracles) ? 0 : sum(o.ncon for o in oracles)
     total_oracle_nnzj = isempty(oracles) ? 0 : sum(o.nnzj for o in oracles)
     total_oracle_nnzh = (isempty(oracles) ? 0 : sum(o.nnzh for o in oracles)) +
                         (isempty(s_oracles) ? 0 : sum(o.nnzh for o in s_oracles))
+    total_eval_nnzj = isempty(evaluators) ? 0 : sum(e.nnzj for e in evaluators)
+    total_eval_nnzh = isempty(evaluators) ? 0 : sum(e.nnzh for e in evaluators)
 
     total_ncon = n_simd_ncon + total_oracle_ncon
-    total_nnzj = n_simd_nnzj + total_oracle_nnzj
-    total_nnzh = n_simd_nnzh + total_oracle_nnzh
+    total_nnzj = n_simd_nnzj + total_oracle_nnzj + total_eval_nnzj
+    total_nnzh = n_simd_nnzh + total_oracle_nnzh + total_eval_nnzh
 
     # Build extended constraint bound arrays without mutating c
     y0   = c.y0
@@ -478,6 +573,10 @@ function _build_with_oracle(c::ExaCore; kwargs...)
         hess_off += o.nnzh
     end
 
+    # Evaluator NNZ offsets (after oracle NNZ)
+    eval_jac_off  = n_simd_nnzj + total_oracle_nnzj
+    eval_hess_off = n_simd_nnzh + total_oracle_nnzh
+
     meta = NLPModels.NLPModelMeta(
         c.nvar,
         ncon = total_ncon,
@@ -504,6 +603,22 @@ function _build_with_oracle(c::ExaCore; kwargs...)
         for i in eachindex(oracles)
     ]
 
+    # Precompute eval caches
+    eval_jac_cursor  = eval_jac_off
+    eval_hess_cursor = eval_hess_off
+    eval_caches = [
+        begin
+            cache = _adapt_eval_cache(
+                _build_eval_index_cache(evaluators[i], eval_jac_cursor, eval_hess_cursor),
+                c.backend,
+            )
+            eval_jac_cursor  += evaluators[i].nnzj
+            eval_hess_cursor += evaluators[i].nnzh
+            cache
+        end
+        for i in eachindex(evaluators)
+    ]
+
     return ExaModelWithOracle(
         c.obj,
         c.cons,
@@ -518,6 +633,8 @@ function _build_with_oracle(c::ExaCore; kwargs...)
         oracle_hess_offsets,
         oracle_caches,
         Tuple(s_oracles),
+        Tuple(evaluators),
+        eval_caches,
     )
 end
 
@@ -558,6 +675,12 @@ function cons_nln!(m::ExaModelWithOracle, x::AbstractVector, g::AbstractVector)
         oracle.f!(cv, xin)
         g[cache.con_idx] .= cv
     end
+    for (i, ev) in enumerate(m.evals)
+        cache = m.eval_caches[i]
+        xin = _eval_input(ev, x[cache.var_global_idx])
+        ev.f!(cache.buf_ncon, xin)
+        g[cache.con_global_idx] .+= cache.buf_ncon
+    end
     return g
 end
 
@@ -570,6 +693,13 @@ function jac_structure!(m::ExaModelWithOracle{T}, rows::AbstractVector, cols::Ab
         if oracle.nnzj > 0
             rows[cache.jac_idx] .= cache.jac_rows_shifted
             cols[cache.jac_idx] .= cache.jac_cols_copy
+        end
+    end
+    for (i, ev) in enumerate(m.evals)
+        cache = m.eval_caches[i]
+        if ev.nnzj > 0
+            rows[cache.jac_idx] .= cache.jac_rows_global
+            cols[cache.jac_idx] .= cache.jac_cols_global
         end
     end
     return rows, cols
@@ -588,6 +718,17 @@ function jac_coord!(m::ExaModelWithOracle, x::AbstractVector, jac::AbstractVecto
             jac[cache.jac_idx] .= jv
         else
             _jac_reconstruct_via_jvp!(oracle, x, jac, cache)
+        end
+    end
+    for (i, ev) in enumerate(m.evals)
+        cache = m.eval_caches[i]
+        ev.nnzj == 0 && continue
+        xin = _eval_input(ev, x[cache.var_global_idx])
+        if ev.jac! !== nothing
+            ev.jac!(cache.buf_nnzj, xin)
+            jac[cache.jac_idx] .= cache.buf_nnzj
+        elseif ev.jvp! !== nothing
+            _eval_jac_reconstruct_via_jvp!(ev, xin, jac, cache)
         end
     end
     return jac
@@ -655,6 +796,27 @@ function jprod_nln!(
             Jv .+= buf
         end
     end
+    for (i, ev) in enumerate(m.evals)
+        cache = m.eval_caches[i]
+        xin = _eval_input(ev, x[cache.var_global_idx])
+        vin_local = _eval_input(ev, v[cache.var_global_idx])
+        if ev.jvp! !== nothing
+            ev.jvp!(cache.buf_ncon, xin, vin_local)
+            Jv[cache.con_global_idx] .+= cache.buf_ncon
+        elseif ev.jac! !== nothing
+            ev.jac!(cache.buf_nnzj, xin)
+            jac_cpu = adapt(Array, cache.buf_nnzj)
+            v_cpu   = adapt(Array, vin_local)
+            delta   = zeros(eltype(jac_cpu), ev.ncon_total)
+            for k in 1:ev.nnzj
+                delta[ev.jac_rows[k]] += jac_cpu[k] * v_cpu[ev.jac_cols[k]]
+            end
+            con_cpu = adapt(Array, cache.con_global_idx)
+            for k in 1:ev.ncon_total
+                Jv[con_cpu[k]] += delta[k]
+            end
+        end
+    end
     return Jv
 end
 
@@ -690,6 +852,27 @@ function jtprod_nln!(
             Jtv .+= buf
         end
     end
+    for (i, ev) in enumerate(m.evals)
+        cache = m.eval_caches[i]
+        xin   = _eval_input(ev, x[cache.var_global_idx])
+        w_local = _eval_input(ev, v[cache.con_global_idx])
+        if ev.vjp! !== nothing
+            ev.vjp!(cache.buf_nvar, xin, w_local)
+            Jtv[cache.var_global_idx] .+= cache.buf_nvar
+        elseif ev.jac! !== nothing
+            ev.jac!(cache.buf_nnzj, xin)
+            jac_cpu = adapt(Array, cache.buf_nnzj)
+            w_cpu   = adapt(Array, w_local)
+            delta   = zeros(eltype(jac_cpu), ev.nvar_total)
+            for k in 1:ev.nnzj
+                delta[ev.jac_cols[k]] += jac_cpu[k] * w_cpu[ev.jac_rows[k]]
+            end
+            var_cpu = adapt(Array, cache.var_global_idx)
+            for k in 1:ev.nvar_total
+                Jtv[var_cpu[k]] += delta[k]
+            end
+        end
+    end
     return Jtv
 end
 
@@ -703,6 +886,13 @@ function hess_structure!(m::ExaModelWithOracle{T}, rows::AbstractVector, cols::A
         if oracle.nnzh > 0
             rows[cache.hess_idx] .= cache.hess_rows_copy
             cols[cache.hess_idx] .= cache.hess_cols_copy
+        end
+    end
+    for (i, ev) in enumerate(m.evals)
+        cache = m.eval_caches[i]
+        if ev.nnzh > 0
+            rows[cache.hess_idx] .= cache.hess_rows_global
+            cols[cache.hess_idx] .= cache.hess_cols_global
         end
     end
     return rows, cols
@@ -731,6 +921,18 @@ function hess_coord!(
             _hess_reconstruct_via_hvp!(oracle, x, y, hess, cache)
         end
     end
+    for (i, ev) in enumerate(m.evals)
+        cache = m.eval_caches[i]
+        ev.nnzh == 0 && continue
+        xin = _eval_input(ev, x[cache.var_global_idx])
+        win = _eval_input(ev, y[cache.con_global_idx])
+        if ev.hess! !== nothing
+            ev.hess!(cache.buf_nnzh, xin, win)
+            hess[cache.hess_idx] .= cache.buf_nnzh
+        elseif ev.hvp! !== nothing
+            _eval_hess_reconstruct_via_hvp!(ev, xin, win, hess, cache)
+        end
+    end
     return hess
 end
 
@@ -756,6 +958,46 @@ function _hess_reconstruct_via_hvp!(oracle, x, y, hess, cache::OracleIndexCache,
             hess[cache.hess_recon_pos_idx[ci]] .= cache.buf_nvar2[cache.hess_recon_row_idx[ci]]
         else
             hess[cache.hess_recon_pos_idx[ci]] .= Hv[cache.hess_recon_row_idx[ci]]
+        end
+    end
+    return nothing
+end
+
+function _eval_jac_reconstruct_via_jvp!(ev::OracleEvaluator, xin, jac, cache::EvalIndexCache)
+    T = eltype(xin)
+    v  = cache.buf_nvar
+    Jv = cache.buf_ncon
+    jac_rows_cpu = ev.jac_rows
+    jac_cols_cpu = ev.jac_cols
+    jac_idx_cpu  = adapt(Array, cache.jac_idx)
+    for col in unique(jac_cols_cpu)
+        fill!(v, zero(T))
+        v[col:col] .= one(T)
+        ev.jvp!(Jv, xin, v)
+        for k in 1:ev.nnzj
+            if jac_cols_cpu[k] == col
+                jac[jac_idx_cpu[k]:jac_idx_cpu[k]] .= Jv[jac_rows_cpu[k]:jac_rows_cpu[k]]
+            end
+        end
+    end
+    return nothing
+end
+
+function _eval_hess_reconstruct_via_hvp!(ev::OracleEvaluator, xin, win, hess, cache::EvalIndexCache)
+    T = eltype(xin)
+    v  = cache.buf_nvar
+    Hv = cache.buf_nvar  # reuse buf — overwritten per column
+    hess_rows_cpu = ev.hess_rows
+    hess_cols_cpu = ev.hess_cols
+    hess_idx_cpu  = adapt(Array, cache.hess_idx)
+    for col in unique(hess_cols_cpu)
+        fill!(v, zero(T))
+        v[col:col] .= one(T)
+        ev.hvp!(Hv, xin, win, v)
+        for k in 1:ev.nnzh
+            if hess_cols_cpu[k] == col
+                hess[hess_idx_cpu[k]:hess_idx_cpu[k]] .= Hv[hess_rows_cpu[k]:hess_rows_cpu[k]]
+            end
         end
     end
     return nothing
@@ -803,7 +1045,157 @@ function hprod!(
             Hv .+= buf
         end
     end
+    for (i, ev) in enumerate(m.evals)
+        cache = m.eval_caches[i]
+        ev.nnzh == 0 && continue
+        xin   = _eval_input(ev, x[cache.var_global_idx])
+        win   = _eval_input(ev, y[cache.con_global_idx])
+        vin   = _eval_input(ev, v[cache.var_global_idx])
+        if ev.hvp! !== nothing
+            ev.hvp!(cache.buf_nvar, xin, win, vin)
+            Hv[cache.var_global_idx] .+= cache.buf_nvar
+        elseif ev.hess! !== nothing
+            ev.hess!(cache.buf_nnzh, xin, win)
+            hess_cpu = adapt(Array, cache.buf_nnzh)
+            v_cpu    = adapt(Array, vin)
+            delta    = zeros(eltype(hess_cpu), ev.nvar_total)
+            for k in 1:ev.nnzh
+                r, c_ = ev.hess_rows[k], ev.hess_cols[k]
+                delta[r] += hess_cpu[k] * v_cpu[c_]
+                if r != c_
+                    delta[c_] += hess_cpu[k] * v_cpu[r]
+                end
+            end
+            var_cpu = adapt(Array, cache.var_global_idx)
+            for k in 1:ev.nvar_total
+                Hv[var_cpu[k]] += delta[k]
+            end
+        end
+    end
     return Hv
+end
+
+"""
+    add_eval(core, cons, vars, f!; jac!, hess!, jvp!, vjp!, hvp!,
+             jac_structure!, hess_structure!, nnzj=-1, nnzh=-1, adapt=Val(false))
+
+Register an oracle evaluator that augments pre-existing constraint rows.
+
+- `cons`: a tuple of [`Constraint`](@ref) handles whose rows will be filled.
+- `vars`: a tuple of [`Variable`](@ref) handles whose values are passed to the callbacks.
+- `f!(res, x_local)`: fills `res[1:ncon_total]` given `x_local[1:nvar_total]`.
+
+Sparsity is declared via `jac_structure!(rows, cols)` / `hess_structure!(rows, cols)`,
+called once at construction with pre-allocated local-index vectors; or pass `nnzj`/`nnzh`
+directly.  Passing `nnzj=-1` with no `jac_structure!` triggers a dense fallback.
+
+Returns `(core, evaluator)`.
+
+## Example
+
+```julia
+core = ExaCore(concrete = Val(true))
+@add_var(core, x, 4)
+c = @add_con(core, 0.0 * x[i] for i in 1:4; lcon = 0.0, ucon = 0.0)
+
+@add_con!(core, (c,), (x,), (res, xv) -> (res .= xv .^ 2; nothing);
+    jac! = (vals, xv) -> (vals .= 2 .* xv; nothing),
+    nnzj = 4,
+    jac_structure! = (rows, cols) -> begin
+        append!(rows, 1:4); append!(cols, 1:4)
+    end,
+)
+```
+"""
+function add_eval(
+        core::ExaCore,
+        cons::Tuple,
+        vars::Tuple,
+        f!;
+        jac! = nothing,
+        hess! = nothing,
+        jvp! = nothing,
+        vjp! = nothing,
+        hvp! = nothing,
+        jac_structure! = nothing,
+        hess_structure! = nothing,
+        nnzj::Int = -1,
+        nnzh::Int = -1,
+        adapt::Val = Val(false),
+    )
+    ncon_total = sum(length(c.itr) for c in cons)
+    nvar_total = sum(v.length for v in vars)
+
+    con_global_idx = Int[]
+    for c in cons
+        Base.append!(con_global_idx, (c.offset + 1):(c.offset + length(c.itr)))
+    end
+    var_global_idx = Int[]
+    for v in vars
+        Base.append!(var_global_idx, (v.offset + 1):(v.offset + v.length))
+    end
+
+    # Resolve Jacobian sparsity
+    if nnzj == -1
+        if jac_structure! !== nothing
+            jac_rows = Int[]; jac_cols = Int[]
+            jac_structure!(jac_rows, jac_cols)
+            nnzj = length(jac_rows)
+        else
+            nnzj = ncon_total * nvar_total
+            jac_rows = vec([i for i in 1:ncon_total, _ in 1:nvar_total])
+            jac_cols = vec([j for _ in 1:ncon_total, j in 1:nvar_total])
+        end
+    else
+        if jac_structure! !== nothing
+            jac_rows = Int[]; jac_cols = Int[]
+            jac_structure!(jac_rows, jac_cols)
+        else
+            jac_rows = vec([i for i in 1:ncon_total, _ in 1:nvar_total])
+            jac_cols = vec([j for _ in 1:ncon_total, j in 1:nvar_total])
+            resize!(jac_rows, nnzj); resize!(jac_cols, nnzj)
+        end
+    end
+
+    # Resolve Hessian sparsity
+    if nnzh == -1
+        if hess_structure! !== nothing
+            hess_rows = Int[]; hess_cols = Int[]
+            hess_structure!(hess_rows, hess_cols)
+            nnzh = length(hess_rows)
+        elseif hess! !== nothing || hvp! !== nothing
+            nnzh = nvar_total * (nvar_total + 1) ÷ 2
+            hess_rows = Int[]; hess_cols = Int[]
+            sizehint!(hess_rows, nnzh); sizehint!(hess_cols, nnzh)
+            for i in 1:nvar_total, j in 1:i
+                push!(hess_rows, i); push!(hess_cols, j)
+            end
+        else
+            nnzh = 0
+            hess_rows = Int[]; hess_cols = Int[]
+        end
+    else
+        if hess_structure! !== nothing
+            hess_rows = Int[]; hess_cols = Int[]
+            hess_structure!(hess_rows, hess_cols)
+        else
+            hess_rows = Int[]; hess_cols = Int[]
+            if nnzh > 0
+                for i in 1:nvar_total, j in 1:i
+                    push!(hess_rows, i); push!(hess_cols, j)
+                    length(hess_rows) == nnzh && break
+                end
+            end
+        end
+    end
+
+    evaluator = OracleEvaluator(
+        nvar_total, ncon_total, nnzj, nnzh,
+        jac_rows, jac_cols, hess_rows, hess_cols,
+        con_global_idx, var_global_idx,
+        f!, jac!, hess!, jvp!, vjp!, hvp!, adapt,
+    )
+    return ExaCore(core; evals = (core.evals..., evaluator)), evaluator
 end
 
 # ── High-level embedding API ─────────────────────────────────────────────────
