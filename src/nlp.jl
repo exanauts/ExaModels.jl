@@ -152,6 +152,51 @@ Constraint
     )
 end
 
+"""
+    ConEntry
+
+A single constraint entry within a [`ConstraintBatch`](@ref).
+"""
+struct ConEntry{F,I}
+    f::F
+    itr::I
+    offset::Int
+end
+
+"""
+    ConstraintBatch
+
+Batches multiple `constraint()` calls that share the same `SIMDFunction`
+**type** into a single node of the constraint linked list, preventing
+LLVM compile-time explosion from deeply nested recursive types.
+"""
+struct ConstraintBatch{R,F,I} <: AbstractConstraint
+    inner::R
+    entries::Vector{ConEntry{F,I}}
+end
+
+Base.show(io::IO, v::ConstraintBatch) = print(
+    io,
+    """
+Constraint Batch
+
+  s.t. (...)
+       g♭ ≤ [g(x,θ,p)]_{p ∈ P} ≤ g♯
+
+  where K = $(length(v.entries)), total |P| = $(sum(length(e.itr) for e in v.entries))
+""",
+)
+
+"""
+    ConstraintAugBatch
+
+Batches multiple `add_con!` augmentation calls that share the same `SIMDFunction`
+**type** into a single node of the constraint linked list.
+"""
+struct ConstraintAugBatch{R,F,I} <: AbstractConstraint
+    inner::R
+    entries::Vector{ConEntry{F,I}}
+end
 
 """
     ConstraintAugmentation
@@ -303,7 +348,7 @@ An ExaCore
   number of constraint patterns: ... 0
 ```
 """
-struct ExaCore{T,VT<:AbstractVector{T}, B, S, V, P, O, C, R} <: AbstractExaCore{T,VT,B,S}
+struct ExaCore{T,VT<:AbstractVector{T}, B, S, V, P, O, C, R, OR, SOR, EV} <: AbstractExaCore{T,VT,B,S}
     name::Symbol
     backend::B
     var::V
@@ -329,6 +374,9 @@ struct ExaCore{T,VT<:AbstractVector{T}, B, S, V, P, O, C, R} <: AbstractExaCore{
     minimize::Bool
     tag::S  # For storing variable/constraint tag (e.g., scenario tag for two-stage models)
     refs::R
+    oracles::OR                # Tuple of VectorNonlinearOracle
+    scalar_oracles::SOR        # Tuple of ScalarNonlinearOracle
+    evals::EV                  # Tuple of OracleEvaluator (augment pre-existing constraint rows)
 end
 
 @inline function _exa_core(
@@ -357,7 +405,10 @@ end
     ucon = similar(x0),
     minimize = true,
     tag = nothing,
-    refs = (;)
+    refs = (;),
+    oracles = (),
+    scalar_oracles = (),
+    evals = (),
     )
 
     return ExaCore(
@@ -385,7 +436,10 @@ end
         ucon,
         minimize,
         tag,
-        refs
+        refs,
+        oracles,
+        scalar_oracles,
+        evals,
     )
 end
 
@@ -487,7 +541,8 @@ julia> result = ipopt(m; print_level=0)    # solve the problem
 
 ```
 """
-function ExaModel(c::C; prod = false, kwargs...) where {C<:ExaCore}
+# No-oracle path: always returns ExaModel (type-stable for juliac --trim=safe).
+function ExaModel(c::ExaCore{T,VT,B,S,V,P,O,C,R,Tuple{},Tuple{},Tuple{}}; prod = false, kwargs...) where {T,VT,B,S,V,P,O,C,R}
     return ExaModel(
         c.name,
         c.var,
@@ -507,13 +562,17 @@ function ExaModel(c::C; prod = false, kwargs...) where {C<:ExaCore}
             lcon = (c.lcon),
             ucon = (c.ucon),
             minimize = c.minimize,
-        )
-        ,
+        ),
         NLPModels.Counters(),
         build_extension(c; prod),
         c.tag,
-        c.refs
+        c.refs,
     )
+end
+
+# Oracle path: always returns ExaModelWithOracle (type-stable for juliac --trim=safe).
+function ExaModel(c::ExaCore; prod = false, kwargs...)
+    return _build_with_oracle(c; prod, kwargs...)
 end
 
 build_extension(c::ExaCore; kwargs...) = nothing
@@ -1315,6 +1374,18 @@ _jac_structure!(T, cons::Tuple{}, rows, cols) = nothing
     _jac_structure!(T, Base.tail(cons), rows, cols)
     sjacobian!(rows, cols, first(cons), NaNSource{T}(), NaNSource{T}(), T(NaN))
 end
+function _jac_structure!(T, cons::ConstraintBatch, rows, cols)
+    _jac_structure!(T, cons.inner, rows, cols)
+    for entry in cons.entries
+        sjacobian!(rows, cols, entry, NaNSource{T}(), NaNSource{T}(), T(NaN))
+    end
+end
+function _jac_structure!(T, cons::ConstraintAugBatch, rows, cols)
+    _jac_structure!(T, cons.inner, rows, cols)
+    for entry in cons.entries
+        sjacobian!(rows, cols, entry, NaNSource{T}(), NaNSource{T}(), T(NaN))
+    end
+end
 
 function hess_structure!(m::AbstractExaModel{T}, rows::AbstractVector, cols::AbstractVector) where T
     _obj_hess_structure!(T, m.objs, rows, cols)
@@ -1332,6 +1403,18 @@ _con_hess_structure!(T, cons::Tuple{}, rows, cols) = nothing
 @inline function _con_hess_structure!(T, cons::Tuple, rows, cols)
     _con_hess_structure!(T, Base.tail(cons), rows, cols)
     shessian!(rows, cols, first(cons), NaNSource{T}(), NaNSource{T}(), T(NaN), T(NaN))
+end
+function _con_hess_structure!(T, cons::ConstraintBatch, rows, cols)
+    _con_hess_structure!(T, cons.inner, rows, cols)
+    for entry in cons.entries
+        shessian!(rows, cols, entry, NaNSource{T}(), NaNSource{T}(), T(NaN), T(NaN))
+    end
+end
+function _con_hess_structure!(T, cons::ConstraintAugBatch, rows, cols)
+    _con_hess_structure!(T, cons.inner, rows, cols)
+    for entry in cons.entries
+        shessian!(rows, cols, entry, NaNSource{T}(), NaNSource{T}(), T(NaN), T(NaN))
+    end
 end
 
 function obj(m::AbstractExaModel, x::AbstractVector)
@@ -1388,6 +1471,18 @@ _jac_coord!(cons::Tuple{}, x, θ, jac) = nothing
     _jac_coord!(Base.tail(cons), x, θ, jac)
     sjacobian!(jac, nothing, first(cons), x, θ, one(eltype(jac)))
 end
+function _jac_coord!(cons::ConstraintBatch, x, θ, jac)
+    _jac_coord!(cons.inner, x, θ, jac)
+    for entry in cons.entries
+        sjacobian!(jac, nothing, entry, x, θ, one(eltype(jac)))
+    end
+end
+function _jac_coord!(cons::ConstraintAugBatch, x, θ, jac)
+    _jac_coord!(cons.inner, x, θ, jac)
+    for entry in cons.entries
+        sjacobian!(jac, nothing, entry, x, θ, one(eltype(jac)))
+    end
+end
 
 function jprod_nln!(m::AbstractExaModel, x::AbstractVector, v::AbstractVector, Jv::AbstractVector)
     fill!(Jv, zero(eltype(Jv)))
@@ -1400,6 +1495,18 @@ _jprod_nln!(cons::Tuple{}, x, θ, v, Jv) = nothing
     _jprod_nln!(Base.tail(cons), x, θ, v, Jv)
     sjacobian!((Jv, v), nothing, first(cons), x, θ, one(eltype(Jv)))
 end
+function _jprod_nln!(cons::ConstraintBatch, x, θ, v, Jv)
+    _jprod_nln!(cons.inner, x, θ, v, Jv)
+    for entry in cons.entries
+        sjacobian!((Jv, v), nothing, entry, x, θ, one(eltype(Jv)))
+    end
+end
+function _jprod_nln!(cons::ConstraintAugBatch, x, θ, v, Jv)
+    _jprod_nln!(cons.inner, x, θ, v, Jv)
+    for entry in cons.entries
+        sjacobian!((Jv, v), nothing, entry, x, θ, one(eltype(Jv)))
+    end
+end
 
 function jtprod_nln!(m::AbstractExaModel, x::AbstractVector, v::AbstractVector, Jtv::AbstractVector)
     fill!(Jtv, zero(eltype(Jtv)))
@@ -1411,6 +1518,18 @@ _jtprod_nln!(cons::Tuple{}, x, θ, v, Jtv) = nothing
 @inline function _jtprod_nln!(cons::Tuple, x, θ, v, Jtv)
     _jtprod_nln!(Base.tail(cons), x, θ, v, Jtv)
     sjacobian!(nothing, (Jtv, v), first(cons), x, θ, one(eltype(Jtv)))
+end
+function _jtprod_nln!(cons::ConstraintBatch, x, θ, v, Jtv)
+    _jtprod_nln!(cons.inner, x, θ, v, Jtv)
+    for entry in cons.entries
+        sjacobian!(nothing, (Jtv, v), entry, x, θ, one(eltype(Jtv)))
+    end
+end
+function _jtprod_nln!(cons::ConstraintAugBatch, x, θ, v, Jtv)
+    _jtprod_nln!(cons.inner, x, θ, v, Jtv)
+    for entry in cons.entries
+        sjacobian!(nothing, (Jtv, v), entry, x, θ, one(eltype(Jtv)))
+    end
 end
 
 function hess_coord!(
@@ -1447,6 +1566,18 @@ _con_hess_coord!(cons::Tuple{}, x, θ, y, hess, obj_weight) = nothing
 @inline function _con_hess_coord!(cons::Tuple, x, θ, y, hess, obj_weight)
     _con_hess_coord!(Base.tail(cons), x, θ, y, hess, obj_weight)
     shessian!(hess, nothing, first(cons), x, θ, y, zero(eltype(hess)))
+end
+function _con_hess_coord!(cons::ConstraintBatch, x, θ, y, hess, obj_weight)
+    _con_hess_coord!(cons.inner, x, θ, y, hess, obj_weight)
+    for entry in cons.entries
+        shessian!(hess, nothing, entry, x, θ, y, zero(eltype(hess)))
+    end
+end
+function _con_hess_coord!(cons::ConstraintAugBatch, x, θ, y, hess, obj_weight)
+    _con_hess_coord!(cons.inner, x, θ, y, hess, obj_weight)
+    for entry in cons.entries
+        shessian!(hess, nothing, entry, x, θ, y, zero(eltype(hess)))
+    end
 end
 
 function hprod!(
@@ -1486,7 +1617,22 @@ _con_hprod!(cons::Tuple{}, x, θ, y, v, Hv, obj_weight) = nothing
     _con_hprod!(Base.tail(cons), x, θ, y, v, Hv, obj_weight)
     shessian!((Hv, v), nothing, first(cons), x, θ, y, zero(eltype(Hv)))
 end
+function _con_hprod!(cons::ConstraintBatch, x, θ, y, v, Hv, obj_weight)
+    _con_hprod!(cons.inner, x, θ, y, v, Hv, obj_weight)
+    for entry in cons.entries
+        shessian!((Hv, v), nothing, entry, x, θ, y, zero(eltype(Hv)))
+    end
+end
+function _con_hprod!(cons::ConstraintAugBatch, x, θ, y, v, Hv, obj_weight)
+    _con_hprod!(cons.inner, x, θ, y, v, Hv, obj_weight)
+    for entry in cons.entries
+        shessian!((Hv, v), nothing, entry, x, θ, y, zero(eltype(Hv)))
+    end
+end
 
+@inbounds @inline offset0(a::ConEntry, i) = a.offset + i
+@inbounds @inline offset1(a::ConEntry, i) = offset1(a.f, i)
+@inbounds @inline offset2(a::ConEntry, i) = offset2(a.f, i)
 @inbounds @inline offset0(a, i) = offset0(a.f, i)
 @inbounds @inline offset0(a::Constraint, i) = offset0(a.f, a.itr, i, _constraint_dims(a))
 @inbounds @inline offset1(a, i) = offset1(a.f, i)
@@ -1933,6 +2079,26 @@ macro add_con!(exs...)
     isempty(exs) && error("@add_con! requires core and generator arguments")
     parts, kwargs = _split_macro_args(exs)
     core  = parts[1]
+
+    # Oracle form: @add_con!(core, (c1,c2,...), (x,y,...), f!; kwargs...)
+    # Detected by a tuple expression as the second argument.
+    if length(parts) >= 4 && Meta.isexpr(parts[2], :tuple)
+        cons_expr = parts[2]
+        vars_expr = parts[3]
+        f_expr    = parts[4]
+        ev = gensym(:ev)
+        return quote
+            local $ev
+            $(esc(core)), $ev = add_eval(
+                $(esc(core)),
+                $(esc(cons_expr)),
+                $(esc(vars_expr)),
+                $(esc(f_expr));
+                $(map(esc, kwargs.args)...),
+            )
+            $ev
+        end
+    end
 
     if length(parts) == 2
         # Two-argument form: @add_con!(core, g[idx] += expr for ...)
