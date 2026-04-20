@@ -53,7 +53,7 @@ end
 Base.show(io::IO, s::Expression) = _show_expression(io, s)
 function _show_expression(io::IO, s::Expression)
     expr = try
-        _expr_string(s.f(ParSource()))
+        _expr_string(s.f(DataSource()))
     catch
         "(?)"
     end
