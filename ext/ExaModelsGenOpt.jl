@@ -31,7 +31,7 @@ function _copy_generator_constraints!(c, moim, cis, var_to_idx, con_to_idx, T, :
         set = MOI.get(moim, MOI.ConstraintSet(), ci)
         con_to_idx[ci] = c.ncon
         expr, pars = _exagen(func.func, func.iterators, var_to_idx)
-        c, _ = ExaModels.add_con(c, expr, pars; lcon = _lower_bounds(set, T), ucon = _upper_bounds(set, T))
+        c, _ = ExaModels.add_con(c, expr for p in pars; lcon = _lower_bounds(set, T), ucon = _upper_bounds(set, T))
     end
     return c
 end
