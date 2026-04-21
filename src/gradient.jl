@@ -167,6 +167,18 @@ end
     @inbounds y[ind] = (d.i, ind)
     return cnt
 end
+@inline function grpass(
+    d::D,
+    comp,
+    y::OffsetVector{Tuple{Int,Int}},
+    o1,
+    cnt,
+    adj,
+) where {D<:AdjointNodeVar}
+    ind = o1 + comp(cnt += 1)
+    @inbounds y[ind] = (d.i, ind)
+    return cnt
+end
 
 """ sgradient!(y, f, x, adj)
 

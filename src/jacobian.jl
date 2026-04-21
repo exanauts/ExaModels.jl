@@ -95,6 +95,35 @@ end
     @inbounds y1[ind] = ((i, d.i), ind)
     return cnt
 end
+@inline function jrpass(
+    d::D,
+    comp,
+    i,
+    y1::OffsetVector{I},
+    y2,
+    o1,
+    cnt,
+    adj,
+) where {D<:AdjointNodeVar,I<:Integer}
+    ind = o1 + comp(cnt += 1)
+    @inbounds y1[ind] = i
+    @inbounds y2[ind] = d.i
+    return cnt
+end
+@inline function jrpass(
+    d::D,
+    comp,
+    i,
+    y1::OffsetVector{Tuple{Tuple{Int,Int},Int}},
+    y2,
+    o1,
+    cnt,
+    adj,
+) where {D<:AdjointNodeVar}
+    ind = o1 + comp(cnt += 1)
+    @inbounds y1[ind] = ((i, d.i), ind)
+    return cnt
+end
 
 
 """

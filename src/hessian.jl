@@ -667,6 +667,75 @@ end
     end
     cnt
 end
+@inline function hrpass(
+    t::T,
+    comp,
+    y1::OffsetVector{I},
+    y2,
+    o2,
+    cnt,
+    adj,
+    adj2,
+) where {T<:SecondAdjointNodeVar,I<:Integer}
+    ind = o2 + comp(cnt += 1)
+    @inbounds y1[ind] = t.i
+    @inbounds y2[ind] = t.i
+    cnt
+end
+@inline function hrpass(
+    t::T,
+    comp,
+    y1::OffsetVector{Tuple{Tuple{Int,Int},Int}},
+    y2,
+    o2,
+    cnt,
+    adj,
+    adj2,
+) where {T<:SecondAdjointNodeVar}
+    ind = o2 + comp(cnt += 1)
+    @inbounds y1[ind] = ((t.i, t.i), ind)
+    cnt
+end
+@inline function hdrpass(
+    t1::T1,
+    t2::T2,
+    comp,
+    y1::OffsetVector{I},
+    y2,
+    o2,
+    cnt,
+    adj,
+) where {T1<:SecondAdjointNodeVar,T2<:SecondAdjointNodeVar,I<:Integer}
+    i, j = t1.i, t2.i
+    ind = o2 + comp(cnt += 1)
+    @inbounds if i >= j
+        y1[ind] = i
+        y2[ind] = j
+    else
+        y1[ind] = j
+        y2[ind] = i
+    end
+    cnt
+end
+@inline function hdrpass(
+    t1::T1,
+    t2::T2,
+    comp,
+    y1::OffsetVector{Tuple{Tuple{Int,Int},Int}},
+    y2,
+    o2,
+    cnt,
+    adj,
+) where {T1<:SecondAdjointNodeVar,T2<:SecondAdjointNodeVar}
+    i, j = t1.i, t2.i
+    ind = o2 + comp(cnt += 1)
+    @inbounds if i >= j
+        y1[ind] = ((i, j), ind)
+    else
+        y1[ind] = ((j, i), ind)
+    end
+    cnt
+end
 
 """
     shessian!(y1, y2, f, x, adj1, adj2)
