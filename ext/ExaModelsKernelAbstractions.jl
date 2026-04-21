@@ -134,7 +134,7 @@ end
 _grad_structure!(T, backend, ::Tuple{}, gsparsity) = nothing
 function _grad_structure!(T, backend, (obj, objs...), gsparsity)
     _grad_structure!(T, backend, objs, gsparsity)
-    ExaModels.sgradient!(backend, gsparsity, obj, ExaModels.NaNSource{T}(), ExaModels.NaNSource{T}(), T(NaN))
+    ExaModels.sgradient!(gsparsity, obj, ExaModels.NaNSource{T}(), ExaModels.NaNSource{T}(), T(NaN), 1, 0, 0, length(gsparsity), backend)
 end
 
 function ExaModels.jac_structure!(
@@ -150,7 +150,7 @@ end
 ExaModels._jac_structure!(T, backend, ::Tuple{}, rows, cols) = nothing
 function ExaModels._jac_structure!(T, backend, (con, cons...), rows, cols)
     ExaModels._jac_structure!(T, backend, cons, rows, cols)
-    ExaModels.sjacobian!(backend, rows, cols, con, ExaModels.NaNSource{T}(), ExaModels.NaNSource{T}(), T(NaN))
+    ExaModels.sjacobian!(rows, cols, con, ExaModels.NaNSource{T}(), ExaModels.NaNSource{T}(), T(NaN), 1, 0, 0, length(rows), backend)
 end
 
 
@@ -169,12 +169,12 @@ end
 ExaModels._obj_hess_structure!(T, backend, ::Tuple{}, rows, cols) = nothing
 function ExaModels._obj_hess_structure!(T, backend, (obj, objs...), rows, cols)
     ExaModels._obj_hess_structure!(T, backend, objs, rows, cols)
-    ExaModels.shessian!(backend, rows, cols, obj, ExaModels.NaNSource{T}(), ExaModels.NaNSource{T}(), T(NaN), T(NaN))
+    ExaModels.shessian!(rows, cols, obj, ExaModels.NaNSource{T}(), ExaModels.NaNSource{T}(), T(NaN), T(NaN), 1, 0, 0, length(rows), backend)
 end
 ExaModels._con_hess_structure!(T, backend, ::Tuple{}, rows, cols) = nothing
 function ExaModels._con_hess_structure!(T, backend, (con, cons...), rows, cols)
     ExaModels._con_hess_structure!(T, backend, cons, rows, cols)
-    ExaModels.shessian!(backend, rows, cols, con, ExaModels.NaNSource{T}(), ExaModels.NaNSource{T}(), T(NaN), T(NaN))
+    ExaModels.shessian!(rows, cols, con, ExaModels.NaNSource{T}(), ExaModels.NaNSource{T}(), T(NaN), T(NaN), 1, 0, 0, length(rows), backend)
 end
 
 
@@ -196,6 +196,19 @@ function _obj(backend, objbuffer, (obj, objs...), x, θ)
     if !isempty(obj.itr)
         kerf(backend)(objbuffer, obj.f, obj.itr, x, θ; ndrange = length(obj.itr))
     end
+end
+
+function ExaModels.obj!(
+    m::ExaModels.BatchExaModel{T,VT,E},
+    bx::AbstractMatrix,
+    bf::AbstractVector,
+) where {T,VT,E<:KAExtension}
+    fill!(bf, zero(T))
+    nb = ExaModels.get_nbatch(m)
+    nvar = NLPModels.get_nvar(m)
+    npar = size(m.θ, 1)
+    ExaModels._obj!(bf, m.objs, vec(bx), vec(m.θ), nb, nvar, npar, m.ext.backend)
+    return bf
 end
 
 
@@ -261,7 +274,7 @@ end
 _grad!(backend, y, ::Tuple{}, x, θ) = nothing
 function _grad!(backend, y, (obj, objs...), x, θ)
     _grad!(backend, y, objs, x, θ)
-    ExaModels.sgradient!(backend, y, obj, x, θ, one(eltype(y)))
+    ExaModels.sgradient!(y, obj, x, θ, one(eltype(y)), 1, length(x), length(θ), length(y), backend)
 end
 
 function ExaModels.jac_coord!(
@@ -276,7 +289,7 @@ end
 _jac_coord!(backend, y, ::Tuple{}, x, θ) = nothing
 function _jac_coord!(backend, y, (con, cons...), x, θ)
     _jac_coord!(backend, y, cons, x, θ)
-    ExaModels.sjacobian!(backend, y, nothing, con, x, θ, one(eltype(y)))
+    ExaModels.sjacobian!(y, nothing, con, x, θ, one(eltype(y)), 1, length(x), length(θ), length(y), backend)
 end
 
 function ExaModels.jprod_nln!(
@@ -456,145 +469,14 @@ end
 _obj_hess_coord!(backend, hess, ::Tuple{}, x, θ, obj_weight) = nothing
 function _obj_hess_coord!(backend, hess, (obj, objs...), x, θ, obj_weight)
     _obj_hess_coord!(backend, hess, objs, x, θ, obj_weight)
-    ExaModels.shessian!(backend, hess, nothing, obj, x, θ, obj_weight, zero(eltype(hess)))
+    ExaModels.shessian!(hess, nothing, obj, x, θ, obj_weight, zero(eltype(hess)), 1, length(x), length(θ), length(hess), backend)
 end
 _con_hess_coord!(backend, hess, ::Tuple{}, x, θ, y) = nothing
 function _con_hess_coord!(backend, hess, (con, cons...), x, θ, y)
     _con_hess_coord!(backend, hess, cons, x, θ, y)
-    ExaModels.shessian!(backend, hess, nothing, con, x, θ, y, zero(eltype(hess)))
+    ExaModels.shessian!(hess, nothing, con, x, θ, y, zero(eltype(hess)), 1, length(x), length(θ), length(y), length(hess), backend)
 end
 
-
-function ExaModels.sgradient!(
-    backend::B,
-    y,
-    f,
-    x,
-    θ,
-    adj,
-) where {B<:KernelAbstractions.Backend}
-
-    if !isempty(f.itr)
-        kerg(backend)(y, f.f, f.itr, x, θ, adj; ndrange = length(f.itr))
-    end
-end
-
-function ExaModels.sjacobian!(
-    backend::B,
-    y1,
-    y2,
-    f,
-    x,
-    θ,
-    adj,
-) where {B<:KernelAbstractions.Backend}
-    if !isempty(f.itr)
-        kerj(backend)(y1, y2, f.f, f.itr, x, θ, adj, ExaModels._constraint_dims(f); ndrange = length(f.itr))
-    end
-end
-
-function ExaModels.shessian!(
-    backend::B,
-    y1,
-    y2,
-    f,
-    x,
-    θ,
-    adj,
-    adj2,
-) where {B<:KernelAbstractions.Backend}
-    if !isempty(f.itr)
-        kerh(backend)(y1, y2, f.f, f.itr, x, θ, adj, adj2; ndrange = length(f.itr))
-    end
-end
-
-function ExaModels.shessian!(
-    backend::B,
-    y1,
-    y2,
-    f,
-    x,
-    θ,
-    adj::V,
-    adj2,
-) where {B<:KernelAbstractions.Backend,V<:AbstractVector}
-    if !isempty(f.itr)
-        kerh2(backend)(y1, y2, f.f, f.itr, x, θ, adj, adj2, ExaModels._constraint_dims(f); ndrange = length(f.itr))
-    end
-end
-
-@kernel function kerh(
-    y1,
-    y2,
-    @Const(f),
-    @Const(itr),
-    @Const(x),
-    @Const(θ),
-    @Const(adj1),
-    @Const(adj2)
-)
-    I = @index(Global)
-    @inbounds ExaModels.hrpass0(
-        f(itr[I], ExaModels.SecondAdjointNodeSource(x), θ),
-        f.comp2,
-        y1,
-        y2,
-        ExaModels.offset2(f, I),
-        0,
-        adj1,
-        adj2,
-    )
-end
-
-@kernel function kerh2(
-    y1,
-    y2,
-    @Const(f),
-    @Const(itr),
-    @Const(x),
-    @Const(θ),
-    @Const(adjs1),
-    @Const(adj2),
-    @Const(dims)
-)
-    I = @index(Global)
-    @inbounds ExaModels.hrpass0(
-        f(itr[I], ExaModels.SecondAdjointNodeSource(x), θ),
-        f.comp2,
-        y1,
-        y2,
-        ExaModels.offset2(f, I),
-        0,
-        adjs1[ExaModels.offset0(f, itr, I, dims)],
-        adj2,
-    )
-end
-
-@kernel function kerj(y1, y2, @Const(f), @Const(itr), @Const(x), @Const(θ), @Const(adj), @Const(dims))
-    I = @index(Global)
-    @inbounds ExaModels.jrpass(
-        f(itr[I], ExaModels.AdjointNodeSource(x), θ),
-        f.comp1,
-        ExaModels.offset0(f, itr, I, dims),
-        y1,
-        y2,
-        ExaModels.offset1(f, I),
-        0,
-        adj,
-    )
-end
-
-@kernel function kerg(y, @Const(f), @Const(itr), @Const(x), @Const(θ), @Const(adj))
-    I = @index(Global)
-    @inbounds ExaModels.grpass(
-        f(itr[I], ExaModels.AdjointNodeSource(x), θ),
-        f.comp1,
-        y,
-        ExaModels.offset1(f, I),
-        0,
-        adj,
-    )
-end
 
 @kernel function kerf(y, @Const(f), @Const(itr), @Const(x), @Const(θ))
     I = @index(Global)
@@ -710,15 +592,15 @@ end
 
 # --- Gradient ---
 
-function ExaModels.gradient!(y, f, x::AbstractVector, θ::AbstractVector, adj, nb::Integer, nvar::Integer, npar::Integer, backend::KernelAbstractions.Backend)
+function ExaModels.gradient!(y, f, x, θ, adj, nb::Integer, nvar::Integer, npar::Integer, backend::KernelAbstractions.Backend)
     nitr = length(f.itr)
     if nitr > 0
-        kerg_batch(backend)(y, f.f, f.itr, x, θ, adj, nvar, npar, nitr; ndrange = nb * nitr)
+        kerg(backend)(y, f.f, f.itr, x, θ, adj, nvar, npar, nitr; ndrange = nb * nitr)
     end
     return y
 end
 
-@kernel function kerg_batch(y, @Const(f), @Const(itr), @Const(x), @Const(θ), @Const(adj), @Const(nvar), @Const(npar), @Const(nitr))
+@kernel function kerg(y, @Const(f), @Const(itr), @Const(x), @Const(θ), @Const(adj), @Const(nvar), @Const(npar), @Const(nitr))
     I = @index(Global)
     s = (I - 1) ÷ nitr + 1
     k = (I - 1) % nitr + 1
@@ -732,16 +614,43 @@ end
     )
 end
 
-# --- Jacobian ---
+# --- Sparse gradient ---
 
-function ExaModels.sjacobian!(y1, y2, f, x::AbstractVector, θ::AbstractVector, adj, nb::Integer, nvar::Integer, npar::Integer, nout::Integer, backend::KernelAbstractions.Backend)
+function ExaModels.sgradient!(y, f, x, θ, adj, nb::Integer, nvar::Integer, npar::Integer, nout::Integer, backend::KernelAbstractions.Backend)
     nitr = length(f.itr)
     if nitr > 0
-        kerj_batch(backend)(y1, y2, f.f, f.itr, x, θ, adj, ExaModels._constraint_dims(f), nvar, npar, nout, nitr; ndrange = nb * nitr)
+        kerg_sparse(backend)(y, f.f, f.itr, x, θ, adj, nvar, npar, nout, nitr; ndrange = nb * nitr)
+    end
+    return y
+end
+
+@kernel function kerg_sparse(y, @Const(f), @Const(itr), @Const(x), @Const(θ), @Const(adj), @Const(nvar), @Const(npar), @Const(nout), @Const(nitr))
+    I = @index(Global)
+    s = (I - 1) ÷ nitr + 1
+    k = (I - 1) % nitr + 1
+    x_off = (s - 1) * nvar
+    θ_off = (s - 1) * npar
+    y_off = (s - 1) * nout
+    @inbounds ExaModels.grpass(
+        f(itr[k], ExaModels.AdjointNodeSource(ExaModels.OffsetVector(x, x_off)), ExaModels.OffsetVector(θ, θ_off)),
+        f.comp1,
+        ExaModels.OffsetVector(y, y_off),
+        ExaModels.offset1(f, k),
+        0,
+        adj,
+    )
+end
+
+# --- Jacobian ---
+
+function ExaModels.sjacobian!(y1, y2, f, x, θ, adj, nb::Integer, nvar::Integer, npar::Integer, nout::Integer, backend::KernelAbstractions.Backend)
+    nitr = length(f.itr)
+    if nitr > 0
+        kerj(backend)(y1, y2, f.f, f.itr, x, θ, adj, ExaModels._constraint_dims(f), nvar, npar, nout, nitr; ndrange = nb * nitr)
     end
 end
 
-@kernel function kerj_batch(y1, y2, @Const(f), @Const(itr), @Const(x), @Const(θ), @Const(adj), @Const(dims), @Const(nvar), @Const(npar), @Const(nout), @Const(nitr))
+@kernel function kerj(y1, y2, @Const(f), @Const(itr), @Const(x), @Const(θ), @Const(adj), @Const(dims), @Const(nvar), @Const(npar), @Const(nout), @Const(nitr))
     I = @index(Global)
     s = (I - 1) ÷ nitr + 1
     k = (I - 1) % nitr + 1
@@ -762,14 +671,14 @@ end
 
 # --- Hessian (objective) ---
 
-function ExaModels.shessian!(y1, y2, f, x::AbstractVector, θ::AbstractVector, adj1, adj2, nb::Integer, nvar::Integer, npar::Integer, nout::Integer, backend::KernelAbstractions.Backend)
+function ExaModels.shessian!(y1, y2, f, x, θ, adj1, adj2, nb::Integer, nvar::Integer, npar::Integer, nout::Integer, backend::KernelAbstractions.Backend)
     nitr = length(f.itr)
     if nitr > 0
-        kerh_batch(backend)(y1, y2, f.f, f.itr, x, θ, adj1, adj2, nvar, npar, nout, nitr; ndrange = nb * nitr)
+        kerh(backend)(y1, y2, f.f, f.itr, x, θ, adj1, adj2, nvar, npar, nout, nitr; ndrange = nb * nitr)
     end
 end
 
-@kernel function kerh_batch(y1, y2, @Const(f), @Const(itr), @Const(x), @Const(θ), @Const(adj1), @Const(adj2), @Const(nvar), @Const(npar), @Const(nout), @Const(nitr))
+@kernel function kerh(y1, y2, @Const(f), @Const(itr), @Const(x), @Const(θ), @Const(adj1), @Const(adj2), @Const(nvar), @Const(npar), @Const(nout), @Const(nitr))
     I = @index(Global)
     s = (I - 1) ÷ nitr + 1
     k = (I - 1) % nitr + 1
@@ -791,14 +700,14 @@ end
 
 # --- Hessian (constraints) ---
 
-function ExaModels.shessian!(y1, y2, f, x::AbstractVector, θ::AbstractVector, adj1s::AbstractVector, adj2, nb::Integer, nvar::Integer, npar::Integer, ncon::Integer, nout::Integer, backend::KernelAbstractions.Backend)
+function ExaModels.shessian!(y1, y2, f, x, θ, adj1s::AbstractVector, adj2, nb::Integer, nvar::Integer, npar::Integer, ncon::Integer, nout::Integer, backend::KernelAbstractions.Backend)
     nitr = length(f.itr)
     if nitr > 0
-        kerh2_batch(backend)(y1, y2, f.f, f.itr, x, θ, adj1s, adj2, ExaModels._constraint_dims(f), nvar, npar, ncon, nout, nitr; ndrange = nb * nitr)
+        kerh2(backend)(y1, y2, f.f, f.itr, x, θ, adj1s, adj2, ExaModels._constraint_dims(f), nvar, npar, ncon, nout, nitr; ndrange = nb * nitr)
     end
 end
 
-@kernel function kerh2_batch(y1, y2, @Const(f), @Const(itr), @Const(x), @Const(θ), @Const(adj1s), @Const(adj2), @Const(dims), @Const(nvar), @Const(npar), @Const(ncon), @Const(nout), @Const(nitr))
+@kernel function kerh2(y1, y2, @Const(f), @Const(itr), @Const(x), @Const(θ), @Const(adj1s), @Const(adj2), @Const(dims), @Const(nvar), @Const(npar), @Const(ncon), @Const(nout), @Const(nitr))
     I = @index(Global)
     s = (I - 1) ÷ nitr + 1
     k = (I - 1) % nitr + 1

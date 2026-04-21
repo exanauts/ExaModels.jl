@@ -184,6 +184,17 @@ function sgradient!(y, f, x, θ, adj)
     end
     return y
 end
+function sgradient!(y, f, x::AbstractArray, θ::AbstractArray, adj, nb::Integer, nvar::Integer, npar::Integer, nout::Integer, ::Nothing = nothing)
+    @inbounds for s in 1:nb
+        x_s = @view x[(s-1)*nvar+1 : s*nvar]
+        θ_s = @view θ[(s-1)*npar+1 : s*npar]
+        y_s = @view y[(s-1)*nout+1 : s*nout]
+        @simd for k in eachindex(f.itr)
+            sgradient!(y_s, f.f, f.itr[k], x_s, θ_s, f.itr.comp1, offset1(f, k), adj)
+        end
+    end
+    return y
+end
 
 function sgradient!(y, f, p, x, θ, comp, o1, adj)
     graph = f(p, AdjointNodeSource(x), θ)
