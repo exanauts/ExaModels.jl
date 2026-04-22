@@ -673,13 +673,33 @@ function ExaModels.op(s::Symbol)
         error("acsch not supported")
     elseif s === :acoth
         return acoth
-        # special
+        # special (commented will use `eval` which would succeed if SpecialFunctions is loaded)
     elseif s === :deg2rad
         error("deg2rad not supported")
     elseif s === :rad2deg
         error("rad2deg not supported")
+        # elseif s === :erf          error("erf not supported")
+        # elseif s === :erfinv       error("erfinv not supported")
+        # elseif s === :erfc         error("erfc not supported")
+        # elseif s === :erfcinv      error("erfcinv not supported")
+        # elseif s === :erfi         error("erfi not supported")
+        # elseif s === :gamma        error("gamma not supported")
     elseif s === :lgamma
         error("lgamma not supported")
+        # elseif s === :digamma      error("digamma not supported")
+        # elseif s === :invdigamma   error("invdigamma not supported")
+        # elseif s === :trigamma     error("trigamma not supported")
+        # elseif s === :airyai       error("airyai not supported")
+        # elseif s === :airybi       error("airybi not supported")
+        # elseif s === :airyaiprime  error("airyaiprime not supported")
+        # elseif s === :airybiprime  error("airybiprime not supported")
+        # elseif s === :besselj0     error("besselj0 not supported")
+        # elseif s === :besselj1     error("besselj1 not supported")
+        # elseif s === :bessely0     error("bessely0 not supported")
+        # elseif s === :bessely1     error("bessely1 not supported")
+        # elseif s === :erfcx        error("erfcx not supported")
+        # elseif s === :dawson       error("dawson not supported")
+
         # not in MOI
     elseif s === :exp10
         return exp10
@@ -691,6 +711,7 @@ function ExaModels.op(s::Symbol)
         return eval(s)
     end
 end
+
 
 # struct EmptyOptimizer{B}
 #     backend::B
