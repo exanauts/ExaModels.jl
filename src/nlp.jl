@@ -434,14 +434,7 @@ An ExaCore
 """,
 )
 
-"""
-    AbstractExaModel
-
-An abstract type for ExaModel, which is a subtype of `NLPModels.AbstractNLPModel`.
-"""
-abstract type AbstractExaModel{T,VT,E} <: NLPModels.AbstractNLPModel{T,VT} end
-
-struct ExaModel{T,VT,E,V,P,O,C,S,R,M} <: AbstractExaModel{T,VT,E}
+struct ExaModel{T,VT,E,V,P,O,C,S,R,M} <: NLPModels.AbstractNLPModel{T,VT}
     name::Symbol
     vars::V
     pars::P
@@ -466,7 +459,7 @@ function ExaModel(
     )
 end
 
-function Base.show(io::IO, m::AbstractExaModel{T,VT}) where {T,VT}
+function Base.show(io::IO, m::ExaModel{T,VT}) where {T,VT}
     nb = get_nbatch(m)
     batch_str = nb > 1 ? " (batch, $nb instances)" : ""
     println(io, "An ExaModel{$T, $VT, ...}$batch_str\n")
@@ -786,7 +779,7 @@ end
 @inline get_nbatch(c::ExaCore{T, <:AbstractMatrix}) where {T} = Base.size(c.x0, 2)
 @inline get_nbatch(::ExaCore) = 1
 @inline get_nbatch(m::ExaModel{T, <:AbstractMatrix}) where {T} = Base.size(m.meta.x0, 2)
-@inline get_nbatch(::AbstractExaModel) = 1
+@inline get_nbatch(::ExaModel) = 1
 @inline add_refs(refs, ::Nothing, var) = refs
 @inline add_refs(refs, ::Val{N}, var) where {N} = (; refs..., N => var)
 
@@ -1329,7 +1322,7 @@ c, s = add_expr(c, x[i, k]^2 for (i, k) in itr)
     return (ExaCore(c; refs = add_refs(c.refs, name, ex)), ex)
 end
 
-function jac_structure!(m::AbstractExaModel{T}, rows::AbstractVector, cols::AbstractVector) where T
+function jac_structure!(m::ExaModel{T}, rows::AbstractVector, cols::AbstractVector) where T
     _jac_structure!(T, m.cons, rows, cols)
     return rows, cols
 end
@@ -1342,7 +1335,7 @@ end
 # Backend-aware fallbacks (KA extension overrides these for GPU backends)
 _jac_structure!(T, ::Nothing, cons, rows, cols) = _jac_structure!(T, cons, rows, cols)
 
-function hess_structure!(m::AbstractExaModel{T}, rows::AbstractVector, cols::AbstractVector) where T
+function hess_structure!(m::ExaModel{T}, rows::AbstractVector, cols::AbstractVector) where T
     _obj_hess_structure!(T, m.objs, rows, cols)
     _con_hess_structure!(T, m.cons, rows, cols)
     return rows, cols
@@ -1370,7 +1363,7 @@ _con_hess_structure!(T, ::Nothing, cons, rows, cols) = _con_hess_structure!(T, c
 # once with views of the full arrays (no overhead).
 # ============================================================================
 
-function obj(m::AbstractExaModel{T}, x::AbstractVector) where {T}
+function obj(m::ExaModel{T}, x::AbstractVector) where {T}
     bf = fill!(similar(x, T, 1), zero(T))
     _obj!(bf, m.objs, x, m.θ, 1, length(x), length(m.θ))
     return @inbounds bf[1]
@@ -1392,7 +1385,7 @@ end
     end
 end
 
-function cons_nln!(m::AbstractExaModel, x::AbstractVector, g::AbstractVector)
+function cons_nln!(m::ExaModel, x::AbstractVector, g::AbstractVector)
     fill!(g, zero(eltype(g)))
     _cons_nln!(m.cons, x, m.θ, g, 1, length(x), length(m.θ), length(g))
     return g
@@ -1417,7 +1410,7 @@ end
 
 
 
-function grad!(m::AbstractExaModel, x::AbstractVector, f::AbstractVector)
+function grad!(m::ExaModel, x::AbstractVector, f::AbstractVector)
     fill!(f, zero(eltype(f)))
     _grad!(m.objs, x, m.θ, f, 1, length(x), length(m.θ))
     return f
@@ -1429,7 +1422,7 @@ end
 end
 _grad!(objs::Tuple{}, x, θ, f, nb, nvar, npar, backend = nothing) = nothing
 
-function jac_coord!(m::AbstractExaModel, x::AbstractVector, jac::AbstractVector)
+function jac_coord!(m::ExaModel, x::AbstractVector, jac::AbstractVector)
     fill!(jac, zero(eltype(jac)))
     _jac_coord!(m.cons, x, m.θ, jac, 1, length(x), length(m.θ), length(jac))
     return jac
@@ -1441,7 +1434,7 @@ _jac_coord!(cons::Tuple{}, x, θ, jac, nb, nvar, npar, nnzj, backend = nothing) 
     sjacobian!(jac, nothing, first(cons), x, θ, one(eltype(jac)), nb, nvar, npar, nnzj, backend)
 end
 
-function jprod_nln!(m::AbstractExaModel, x::AbstractVector, v::AbstractVector, Jv::AbstractVector)
+function jprod_nln!(m::ExaModel, x::AbstractVector, v::AbstractVector, Jv::AbstractVector)
     fill!(Jv, zero(eltype(Jv)))
     _jprod_nln!(m.cons, x, m.θ, v, Jv)
     return Jv
@@ -1453,7 +1446,7 @@ _jprod_nln!(cons::Tuple{}, x, θ, v, Jv) = nothing
     sjacobian!((Jv, v), nothing, first(cons), x, θ, one(eltype(Jv)))
 end
 
-function jtprod_nln!(m::AbstractExaModel, x::AbstractVector, v::AbstractVector, Jtv::AbstractVector)
+function jtprod_nln!(m::ExaModel, x::AbstractVector, v::AbstractVector, Jtv::AbstractVector)
     fill!(Jtv, zero(eltype(Jtv)))
     _jtprod_nln!(m.cons, x, m.θ, v, Jtv)
     return Jtv
@@ -1466,7 +1459,7 @@ _jtprod_nln!(cons::Tuple{}, x, θ, v, Jtv) = nothing
 end
 
 function hess_coord!(
-    m::AbstractExaModel,
+    m::ExaModel,
     x::AbstractVector,
     hess::AbstractVector;
     obj_weight = one(eltype(x)),
@@ -1477,7 +1470,7 @@ function hess_coord!(
 end
 
 function hess_coord!(
-    m::AbstractExaModel,
+    m::ExaModel,
     x::AbstractVector,
     y::AbstractVector,
     hess::AbstractVector;
@@ -1502,7 +1495,7 @@ _con_hess_coord!(cons::Tuple{}, x, θ, y, hess, nb, nvar, npar, ncon, nnzh, back
 end
 
 function hprod!(
-    m::AbstractExaModel,
+    m::ExaModel,
     x::AbstractVector,
     v::AbstractVector,
     Hv::AbstractVector;
@@ -1514,7 +1507,7 @@ function hprod!(
 end
 
 function hprod!(
-    m::AbstractExaModel,
+    m::ExaModel,
     x::AbstractVector,
     y::AbstractVector,
     v::AbstractVector,

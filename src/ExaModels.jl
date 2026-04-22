@@ -61,8 +61,6 @@ include("deprecated.jl")
 include("utils.jl")
 include("tags.jl")
 include("two_stage.jl")
-include("BatchNLPModels.jl")
-using .BatchNLPModels
 
 export ExaModel,
     ExaCore,
@@ -111,7 +109,6 @@ export ExaModel,
     set_lcon!,
     get_ucon,
     set_ucon!,
-    AbstractBatchNLPModel,
     FlatNLPModel,
     BatchExaCore,
     BatchExaModel,

@@ -8,8 +8,7 @@ import NLPModels:
     hess_structure!
 import NLPModels: obj!
 import ExaModels: var_indices, cons_block_indices, get_nbatch,
-    get_start, get_lvar, get_uvar, get_lcon, get_ucon, WrapperNLPModel
-using ExaModels.BatchNLPModels: FlatNLPModel
+    get_start, get_lvar, get_uvar, get_lcon, get_ucon, WrapperNLPModel, FlatNLPModel
 
 import NLPModelsIpopt: ipopt
 
