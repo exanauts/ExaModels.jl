@@ -609,7 +609,7 @@ end
     y_off = (s - 1) * nvar
     @inbounds ExaModels.drpass(
         f(itr[k], ExaModels.AdjointNodeSource(ExaModels.OffsetVector(x, x_off)), ExaModels.OffsetVector(θ, θ_off)),
-        ExaModels.OffsetVector(y, y_off),
+        view(y, y_off+1 : y_off+nvar),
         adj,
     )
 end
@@ -634,7 +634,7 @@ end
     @inbounds ExaModels.grpass(
         f(itr[k], ExaModels.AdjointNodeSource(ExaModels.OffsetVector(x, x_off)), ExaModels.OffsetVector(θ, θ_off)),
         f.comp1,
-        ExaModels.OffsetVector(y, y_off),
+        view(y, y_off+1 : y_off+nout),
         ExaModels.offset1(f, k),
         0,
         adj,
@@ -661,7 +661,7 @@ end
         f(itr[k], ExaModels.AdjointNodeSource(ExaModels.OffsetVector(x, x_off)), ExaModels.OffsetVector(θ, θ_off)),
         f.comp1,
         ExaModels.offset0(f, itr, k, dims),
-        ExaModels.OffsetVector(y1, y_off),
+        view(y1, y_off+1 : y_off+nout),
         y2,
         ExaModels.offset1(f, k),
         0,
@@ -689,7 +689,7 @@ end
     @inbounds ExaModels.hrpass0(
         f(itr[k], ExaModels.SecondAdjointNodeSource(ExaModels.OffsetVector(x, x_off)), ExaModels.OffsetVector(θ, θ_off)),
         f.comp2,
-        ExaModels.OffsetVector(y1, y_off),
+        view(y1, y_off+1 : y_off+nout),
         y2,
         ExaModels.offset2(f, k),
         0,
@@ -718,7 +718,7 @@ end
     @inbounds ExaModels.hrpass0(
         f(itr[k], ExaModels.SecondAdjointNodeSource(ExaModels.OffsetVector(x, x_off)), ExaModels.OffsetVector(θ, θ_off)),
         f.comp2,
-        ExaModels.OffsetVector(y1, y_off),
+        view(y1, y_off+1 : y_off+nout),
         y2,
         ExaModels.offset2(f, k),
         0,
