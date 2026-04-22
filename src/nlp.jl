@@ -3,9 +3,9 @@ abstract type AbstractParameter end
 abstract type AbstractConstraint end
 abstract type AbstractObjective end
 
-struct NaNSource{T} end
+struct NaNSource{T} <: AbstractVector{T} end
+Base.size(::NaNSource) = (typemax(Int),)
 Base.getindex(::NaNSource{T}, i) where {T} = T(NaN)
-Base.eltype(::NaNSource{T}) where {T} = T
 Base.eltype(::Type{NaNSource{T}}) where {T} = T
 
 """

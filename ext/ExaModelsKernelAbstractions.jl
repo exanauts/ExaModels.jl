@@ -568,7 +568,7 @@ end
     k = (I - 1) % nitr + 1
     x_off = (s - 1) * nvar
     θ_off = (s - 1) * npar
-    @inbounds buf[k, s] = f(itr[k], ExaModels.OffsetVector(x, x_off), ExaModels.OffsetVector(θ, θ_off))
+    @inbounds buf[k, s] = f(itr[k], view(x, x_off+1:x_off+nvar), view(θ, θ_off+1:θ_off+npar))
 end
 
 # --- Constraints ---
@@ -587,7 +587,7 @@ end
     x_off = (s - 1) * nvar
     θ_off = (s - 1) * npar
     g_off = (s - 1) * ncon
-    @inbounds g[g_off + ExaModels.offset0(f, itr, k)] += f(itr[k], ExaModels.OffsetVector(x, x_off), ExaModels.OffsetVector(θ, θ_off))
+    @inbounds g[g_off + ExaModels.offset0(f, itr, k)] += f(itr[k], view(x, x_off+1:x_off+nvar), view(θ, θ_off+1:θ_off+npar))
 end
 
 # --- Gradient ---
@@ -608,8 +608,8 @@ end
     θ_off = (s - 1) * npar
     y_off = (s - 1) * nvar
     @inbounds ExaModels.drpass(
-        f(itr[k], ExaModels.AdjointNodeSource(ExaModels.OffsetVector(x, x_off)), ExaModels.OffsetVector(θ, θ_off)),
-        view(y, y_off+1 : y_off+nvar),
+        f(itr[k], ExaModels.AdjointNodeSource(view(x, x_off+1:x_off+nvar)), view(θ, θ_off+1:θ_off+npar)),
+        view(y, y_off+1:y_off+nvar),
         adj,
     )
 end
@@ -632,9 +632,9 @@ end
     θ_off = (s - 1) * npar
     y_off = (s - 1) * nout
     @inbounds ExaModels.grpass(
-        f(itr[k], ExaModels.AdjointNodeSource(ExaModels.OffsetVector(x, x_off)), ExaModels.OffsetVector(θ, θ_off)),
+        f(itr[k], ExaModels.AdjointNodeSource(view(x, x_off+1:x_off+nvar)), view(θ, θ_off+1:θ_off+npar)),
         f.comp1,
-        view(y, y_off+1 : y_off+nout),
+        view(y, y_off+1:y_off+nout),
         ExaModels.offset1(f, k),
         0,
         adj,
@@ -658,10 +658,10 @@ end
     θ_off = (s - 1) * npar
     y_off = (s - 1) * nout
     @inbounds ExaModels.jrpass(
-        f(itr[k], ExaModels.AdjointNodeSource(ExaModels.OffsetVector(x, x_off)), ExaModels.OffsetVector(θ, θ_off)),
+        f(itr[k], ExaModels.AdjointNodeSource(view(x, x_off+1:x_off+nvar)), view(θ, θ_off+1:θ_off+npar)),
         f.comp1,
         ExaModels.offset0(f, itr, k, dims),
-        view(y1, y_off+1 : y_off+nout),
+        view(y1, y_off+1:y_off+nout),
         y2,
         ExaModels.offset1(f, k),
         0,
@@ -687,9 +687,9 @@ end
     y_off = (s - 1) * nout
     w_s = ExaModels._get_obj_weight(adj1, s)
     @inbounds ExaModels.hrpass0(
-        f(itr[k], ExaModels.SecondAdjointNodeSource(ExaModels.OffsetVector(x, x_off)), ExaModels.OffsetVector(θ, θ_off)),
+        f(itr[k], ExaModels.SecondAdjointNodeSource(view(x, x_off+1:x_off+nvar)), view(θ, θ_off+1:θ_off+npar)),
         f.comp2,
-        view(y1, y_off+1 : y_off+nout),
+        view(y1, y_off+1:y_off+nout),
         y2,
         ExaModels.offset2(f, k),
         0,
@@ -716,9 +716,9 @@ end
     y_off = (s - 1) * nout
     a_off = (s - 1) * ncon
     @inbounds ExaModels.hrpass0(
-        f(itr[k], ExaModels.SecondAdjointNodeSource(ExaModels.OffsetVector(x, x_off)), ExaModels.OffsetVector(θ, θ_off)),
+        f(itr[k], ExaModels.SecondAdjointNodeSource(view(x, x_off+1:x_off+nvar)), view(θ, θ_off+1:θ_off+npar)),
         f.comp2,
-        view(y1, y_off+1 : y_off+nout),
+        view(y1, y_off+1:y_off+nout),
         y2,
         ExaModels.offset2(f, k),
         0,
