@@ -70,9 +70,11 @@ bc = zeros(NLPModels.get_ncon(model), ns)
 NLPModels.cons!(model, bx, bc)
 println("Constraints: ", bc)
 
-# ## Solving via the Fused Model
-# For solving, use `FlatNLPModel(model)` to access the fused `FlatNLPModel` and
-# pass it to any NLPModels-compatible solver:
+# ## Solving Batch Models
+# There is currently no dedicated batch solver. To solve all instances, wrap
+# the batch model in `FlatNLPModel`, which concatenates the `ns` instances
+# into a single standard `AbstractNLPModel` that any NLPModels-compatible
+# solver can consume:
 flat = FlatNLPModel(model)
 result = ipopt(flat; print_level = 0)
 println("\nSolution status: ", result.status)
@@ -84,16 +86,46 @@ for i in 1:ns
     println("Instance $i: v* = ", round(v_sol[1], digits = 4))
 end
 
-# ## Updating Parameters
-# Parameters can be updated directly on the model using `set_value!`.
-# The updated values apply to all instances:
+# ## Per-Instance Parameters
+# By default, `@add_par` replicates the same value across all instances.
+# To give each instance its own parameter values, pass an `npar × ns`
+# matrix to `set_value!` after building the model. Each column supplies the
+# parameter vector for one instance.
 
-c2 = BatchExaCore(2)
-@add_var(c2, x, 2)
-@add_par(c2, p, [1.0, 2.0])
-@add_obj(c2, (x[j] - p[j])^2 for j in 1:2)
-model2 = ExaModel(c2)
+c3 = BatchExaCore(ns)
+@add_var(c3, w, nv)
+@add_par(c3, α, [0.0])   ## placeholder — will be overwritten per-instance
+@add_obj(c3, (w[j] - α[1])^2 for j in 1:nv)
+model3 = ExaModel(c3)
 
-# Update parameters (applies to all instances):
-ExaModels.set_value!(model2, p, [10.0, 20.0])
-println("\nParameter matrix shape: ", size(model2.θ))
+# Set different targets for each instance (npar=1 row, ns=3 columns):
+ExaModels.set_value!(model3, α, [2.0 4.0 6.0])
+
+flat3 = FlatNLPModel(model3)
+result3 = ipopt(flat3; print_level = 0)
+for i in 1:ns
+    v_sol = result3.solution[ExaModels.var_indices(model3, i)]
+    println("Instance $i: w* = ", round(v_sol[1], digits = 4))
+end
+
+# For problems with multiple parameters per instance, supply a matrix with one
+# row per parameter and one column per instance. For example, with `npar = 2`
+# parameters and `ns = 3` instances:
+#
+# ```julia
+# c4 = BatchExaCore(3)
+# @add_var(c4, x, 2)
+# @add_par(c4, p, [0.0, 0.0])
+# @add_obj(c4, sum((x[j] - p[j])^2 for j in 1:2))
+# model4 = ExaModel(c4)
+#
+# # 2×3 matrix: column i = parameter vector for instance i
+# ExaModels.set_value!(model4, p, [1.0 3.0 5.0;
+#                                   2.0 4.0 6.0])
+# ```
+#
+# The parameter matrix `model.θ` always has shape `(npar, ns)` and can be
+# inspected directly:
+
+println("\nParameter matrix (npar × ns): ", size(model3.θ))
+println("Values: ", model3.θ)
