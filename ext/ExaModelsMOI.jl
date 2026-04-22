@@ -456,16 +456,12 @@ function exafy_obj(o::MOI.ScalarNonlinearFunction, bin, var_to_idx)
                     bin = update_bin!(bin, e, p)
                 end
                 constant += m.constant
+            elseif m isa MOI.ScalarNonlinearFunction
+                e, p = _exafy(m, var_to_idx)
+                bin = update_bin!(bin, e, p)
             else
-                # Try extension hook first (e.g. for SumGenerator)
-                result = ExaModels.exafy_extension_obj_arg(m, var_to_idx)
-                if !isnothing(result)
-                    e, p = result
-                    bin = update_bin!(bin, e, p)
-                else
-                    e, p = _exafy(m, var_to_idx)
-                    bin = update_bin!(bin, e, p)
-                end
+                e, p = ExaModels.exafy_extension_obj_arg(m, var_to_idx)
+                bin = update_bin!(bin, e, p)
             end
         end
     else
