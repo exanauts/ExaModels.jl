@@ -202,7 +202,7 @@ function ExaModels.obj!(
     m::ExaModels.BatchExaModel{T,VT,E},
     bx::AbstractMatrix,
     bf::AbstractVector,
-) where {T,VT,E<:KAExtension}
+) where {T,VT<:AbstractMatrix{T},E<:KAExtension}
     fill!(bf, zero(T))
     nb = ExaModels.get_nbatch(m)
     nvar = NLPModels.get_nvar(m)
