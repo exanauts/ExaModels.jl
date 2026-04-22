@@ -262,13 +262,12 @@ end
 abstract type AbstractExaCore{T,VT,B,S} end
 
 """
-    ExaCore([T::Type; backend = nothing, concrete = Val(false), nbatch = Val(1), minimize = true, name = :Generic])
+    ExaCore([T::Type; backend = nothing, concrete = Val(false), batch = Val(false), nbatch = 1, minimize = true, name = :Generic])
 
 Creates an intermediate data object `ExaCore`, which later can be used for creating an `ExaModel`.
 
-When `nbatch = Val(N)` with `N > 1`, creates a batch core with matrix-valued
-storage arrays (columns = instances).  See [`BatchExaCore`](@ref) for a
-convenience alias.
+When `batch = Val(true)`, creates a batch core with matrix-valued storage arrays
+(`nbatch` columns = instances).  See [`BatchExaCore`](@ref) for a convenience alias.
 
 ## Example
 ```jldoctest
@@ -393,22 +392,22 @@ end
     )
 end
 
-@inline ExaCore(::Type{T}; backend = nothing, concrete = Val(false), nbatch = Val(1), kwargs...) where {T<:AbstractFloat} =
-    _make_exacore(concrete, T, backend, nbatch; kwargs...)
-@inline ExaCore(; backend = nothing, concrete = Val(false), nbatch = Val(1), kwargs...) = ExaCore(default_T(backend); backend, concrete, nbatch, kwargs...)
-@inline _make_exacore(::Val{true}, ::Type{T}, backend, ::Val{1}; kwargs...) where {T} =
+@inline ExaCore(::Type{T}; backend = nothing, concrete = Val(false), batch = Val(false), nbatch = 1, kwargs...) where {T<:AbstractFloat} =
+    _make_exacore(concrete, T, backend, batch, nbatch; kwargs...)
+@inline ExaCore(; backend = nothing, concrete = Val(false), batch = Val(false), nbatch = 1, kwargs...) = ExaCore(default_T(backend); backend, concrete, batch, nbatch, kwargs...)
+@inline _make_exacore(::Val{true}, ::Type{T}, backend, ::Val{false}, nbatch; kwargs...) where {T} =
     _exa_core(; x0 = convert_array(zeros(T, 0), backend), backend, kwargs...)
-@inline function _make_exacore(::Val{true}, ::Type{T}, backend, ::Val{NB}; kwargs...) where {T, NB}
-    x0 = convert_array(zeros(T, 0, NB), backend)
+@inline function _make_exacore(::Val{true}, ::Type{T}, backend, ::Val{true}, nbatch; kwargs...) where {T}
+    x0 = convert_array(zeros(T, 0, nbatch), backend)
     _exa_core(; x0, θ = similar(x0), lvar = similar(x0), uvar = similar(x0),
                 y0 = similar(x0), lcon = similar(x0), ucon = similar(x0), backend, kwargs...)
 end
 # Val{false} is overridden in deprecated.jl once LegacyExaCore is defined;
 # this fallback handles any other Val value by returning a concrete ExaCore.
-@inline _make_exacore(::Val, ::Type{T}, backend, ::Val{1}; kwargs...) where {T} =
+@inline _make_exacore(::Val, ::Type{T}, backend, ::Val{false}, nbatch; kwargs...) where {T} =
     _exa_core(; x0 = convert_array(zeros(T, 0), backend), backend, kwargs...)
-@inline function _make_exacore(::Val, ::Type{T}, backend, ::Val{NB}; kwargs...) where {T, NB}
-    x0 = convert_array(zeros(T, 0, NB), backend)
+@inline function _make_exacore(::Val, ::Type{T}, backend, ::Val{true}, nbatch; kwargs...) where {T}
+    x0 = convert_array(zeros(T, 0, nbatch), backend)
     _exa_core(; x0, θ = similar(x0), lvar = similar(x0), uvar = similar(x0),
                 y0 = similar(x0), lcon = similar(x0), ucon = similar(x0), backend, kwargs...)
 end
@@ -1758,7 +1757,7 @@ const BatchExaModel{T,VT<:AbstractMatrix{T},E,V,P,O,C,S,R,M} = ExaModel{T,VT,E,V
 """
     BatchExaCore(nbatch; kwargs...)
 
-Alias for `ExaCore(; concrete = Val(true), nbatch = Val(nbatch), kwargs...)`.
+Alias for `ExaCore(; concrete = Val(true), batch = Val(true), nbatch, kwargs...)`.
 
 Creates an [`ExaCore`](@ref) for building batch optimization models with
 `nbatch` independent instances. Generators should iterate over per-instance
@@ -1773,7 +1772,7 @@ c, _ = add_obj(c, v[i]^2 for i in 1:10)
 model = ExaModel(c)
 ```
 """
-BatchExaCore(nbatch::Integer; kwargs...) = ExaCore(; concrete = Val(true), nbatch = Val(nbatch), kwargs...)
+BatchExaCore(nbatch::Integer; kwargs...) = ExaCore(; concrete = Val(true), batch = Val(true), nbatch, kwargs...)
 
 
 """
