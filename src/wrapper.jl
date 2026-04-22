@@ -25,7 +25,6 @@ for ExaModels. `var_to_idx` maps `MOI.VariableIndex` to `(type, idx)` named tupl
 Returns `nothing` if the type is not handled by any extension.
 """
 function exafy_extension_obj_arg end
-exafy_extension_obj_arg(m, var_to_idx) = nothing
 
 """
     op(s::Symbol)
