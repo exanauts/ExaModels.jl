@@ -474,11 +474,10 @@ end
 
 # Fallback for extension objective types (e.g. SumGenerator as top-level objective)
 function exafy_obj(o, bin, var_to_idx)
-    result = ExaModels.exafy_extension_obj_arg(o, var_to_idx)
-    if isnothing(result)
-        error("Unsupported objective function type $(typeof(o))")
+    if !ExaModels.is_extension_type(typeof(o))
+        throw(MOI.UnsupportedAttribute(MOI.ObjectiveFunction{typeof(o)}()))
     end
-    e, p = result
+    e, p = ExaModels.exafy_extension_obj_arg(o, var_to_idx)
     return update_bin!(bin, e, p)
 end
 
