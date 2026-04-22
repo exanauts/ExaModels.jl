@@ -890,6 +890,20 @@ function set_value!(model::ExaModel, param::Parameter, values)
     return nothing
 end
 
+function set_value!(model::ExaModel{T, <:AbstractMatrix{T}}, param::Parameter, values::AbstractMatrix) where {T}
+    nb = get_nbatch(model)
+    if Base.size(values, 1) != param.length || Base.size(values, 2) != nb
+        throw(DimensionMismatch(
+            "expected $(param.length) × $nb matrix, got $(Base.size(values))"
+        ))
+    end
+    rng = param.offset+1 : param.offset+param.length
+    for col in 1:nb
+        copyto!(view(model.θ, rng, col), view(values, :, col))
+    end
+    return nothing
+end
+
 @inline _var_range(v::Variable) = v.offset+1 : v.offset+v.length
 @inline _con_range(c::Constraint) = c.offset+1 : c.offset+total(c.size)
 
