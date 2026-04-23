@@ -80,10 +80,16 @@ c, v = add_var(c, EachScenario(), 2)         # 2 recourse variables per scenario
 model = ExaModel(c)
 ```
 """
-function TwoStageExaCore(ns::Integer; backend = nothing, concrete = Val(false), kwargs...)
+_ts_nb(::Val{N}) where {N} = N
+_ts_nb(n::Integer) = Int(n)
+
+function TwoStageExaCore(ns::Integer; backend = nothing, concrete = Val(false), nbatch = Val(1), kwargs...)
+    nb = _ts_nb(nbatch)
     return ExaCore(;
         backend,
         concrete,
+        batch = Val(nb > 1),
+        nbatch = nb,
         tag = TwoStageExaModelTag(
             ns,
             convert_array(zeros(Int, 0), backend),

@@ -31,7 +31,7 @@ An ExaCore
 Adding parameters is very similar to adding variables -- just pass a vector of values denoting the initial values.
 
 ````julia
-@add_parameter(c_param, θ, [100.0, 1.0])  # [penalty_coeff, offset]
+@add_par(c_param, θ, [100.0, 1.0])  # [penalty_coeff, offset]
 ````
 
 ````
@@ -45,7 +45,7 @@ Define the variables as before:
 
 ````julia
 N = 10
-@add_variable(c_param, x_p, N; start = (mod(i, 2) == 1 ? -1.2 : 1.0 for i = 1:N))
+@add_var(c_param, x_p, N; start = (mod(i, 2) == 1 ? -1.2 : 1.0 for i = 1:N))
 ````
 
 ````
@@ -58,7 +58,7 @@ Variable
 Now we can use the parameters in our objective function just like variables:
 
 ````julia
-@add_objective(c_param, θ[1] * (x_p[i-1]^2 - x_p[i])^2 + (x_p[i-1] - θ[2])^2 for i = 2:N)
+@add_obj(c_param, θ[1] * (x_p[i-1]^2 - x_p[i])^2 + (x_p[i-1] - θ[2])^2 for i = 2:N)
 ````
 
 ````
@@ -73,7 +73,7 @@ Objective
 Add the same constraints as before:
 
 ````julia
-@add_constraint(
+@add_con(
     c_param,
     3x_p[i+1]^3 + 2 * x_p[i+2] - 5 +
     sin(x_p[i+1] - x_p[i+2])sin(x_p[i+1] + x_p[i+2]) +
@@ -178,7 +178,7 @@ Original objective: 6.232458632437464
 Now change the penalty coefficient and solve again:
 
 ````julia
-set_parameter!(c_param, θ, [200.0, 1.0])  # Double the penalty coefficient
+set_value!(m_param, θ, [200.0, 1.0])  # Double the penalty coefficient
 result2 = ipopt(m_param)
 println("Modified penalty objective: $(result2.objective)")
 ````
@@ -237,7 +237,7 @@ Modified penalty objective: 8.647439751691499
 Try a different offset parameter:
 
 ````julia
-set_parameter!(c_param, θ, [200.0, 0.5])  # Change the offset in the objective
+set_value!(m_param, θ, [200.0, 0.5])  # Change the offset in the objective
 result3 = ipopt(m_param)
 println("Modified offset objective: $(result3.objective)")
 ````

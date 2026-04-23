@@ -56,9 +56,6 @@ function ExaModel(c::LegacyExaCore; kwargs...)
     return ExaModel(c.inner; kwargs...)
 end
 
-function set_parameter!(c::LegacyExaCore, param::Parameter, values::AbstractArray)
-    return set_parameter!(c.inner, param, values)
-end
 
 # ---------------------------------------------------------------------------
 # Legacy named wrappers (deprecated)
