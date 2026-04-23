@@ -1359,7 +1359,7 @@ end
 # once with views of the full arrays (no overhead).
 # ============================================================================
 
-function NLPModels.obj(m::ExaModel{T, <:AbstractVector}, x::AbstractVector) where {T}
+function NLPModels.obj(m::ExaModel{T, <:AbstractVector, Nothing}, x::AbstractVector) where {T}
     return _obj_scalar(m.objs, x, m.θ)
 end
 function obj(m::ExaModel{T}, x::AbstractVector) where {T}
@@ -1393,7 +1393,7 @@ end
     end
 end
 
-function NLPModels.cons_nln!(m::ExaModel{T, <:AbstractVector}, x::AbstractVector, g::AbstractVector) where {T}
+function NLPModels.cons_nln!(m::ExaModel{T, <:AbstractVector, Nothing}, x::AbstractVector, g::AbstractVector) where {T}
     fill!(g, zero(T))
     _cons_nln!(m.cons, x, m.θ, g)
     return g
@@ -1433,7 +1433,7 @@ _cons_nln!(cons::Tuple{}, x, θ, g, nb, nvar, npar, ncon, backend = nothing) = n
     end
 end
 
-function NLPModels.grad!(m::ExaModel{T, <:AbstractVector}, x::AbstractVector, f::AbstractVector) where {T}
+function NLPModels.grad!(m::ExaModel{T, <:AbstractVector, Nothing}, x::AbstractVector, f::AbstractVector) where {T}
     fill!(f, zero(T))
     _grad!(m.objs, x, m.θ, f)
     return f
@@ -1458,12 +1458,12 @@ end
 end
 _grad!(objs::Tuple{}, x, θ, f, nb, nvar, npar, backend = nothing) = nothing
 
-@inline function _jac_coord_impl!(m::ExaModel{T, <:AbstractVector}, bx, jvals) where {T}
+@inline function _jac_coord_impl!(m::ExaModel{T, <:AbstractVector, Nothing}, x, jvals) where {T}
     fill!(jvals, zero(T))
-    _jac_coord!(m.cons, bx, m.θ, jvals)
+    _jac_coord!(m.cons, x, m.θ, jvals)
     return jvals
 end
-@inline function _jac_coord_impl!(m::ExaModel{T, <:AbstractMatrix}, bx, jvals) where {T}
+@inline function _jac_coord_impl!(m::ExaModel{T}, bx, jvals) where {T}
     fill!(vec(jvals), zero(T))
     nb   = get_nbatch(m)
     nvar = NLPModels.get_nvar(m)
@@ -1473,7 +1473,6 @@ end
     return jvals
 end
 NLPModels.jac_coord!(m::ExaModel{T}, bx::AbstractVecOrMat, jvals::AbstractVecOrMat) where {T} = _jac_coord_impl!(m, bx, jvals)
-NLPModels.jac_coord!(m::ExaModel{T}, x::AbstractVector, jac::AbstractVector) where {T} = _jac_coord_impl!(m, x, jac)
 
 _jac_coord!(cons::Tuple{}, x, θ, jac) = nothing
 @inline function _jac_coord!(cons::Tuple, x, θ, jac)
@@ -1513,12 +1512,12 @@ end
 _as_weight(::Type{T}, w::Number) where {T} = T(w)
 _as_weight(::Type{T}, w) where {T} = w
 
-@inline function _obj_hess_coord_impl!(m::ExaModel{T, <:AbstractVector}, x, hvals, obj_weight) where {T}
+@inline function _obj_hess_coord_impl!(m::ExaModel{T, <:AbstractVector, Nothing}, x, hvals, obj_weight) where {T}
     fill!(hvals, zero(T))
     _obj_hess_coord!(m.objs, x, m.θ, hvals, _as_weight(T, obj_weight))
     return hvals
 end
-@inline function _obj_hess_coord_impl!(m::ExaModel{T, <:AbstractMatrix}, bx, hvals, obj_weight) where {T}
+@inline function _obj_hess_coord_impl!(m::ExaModel{T}, bx, hvals, obj_weight) where {T}
     fill!(vec(hvals), zero(T))
     nb   = get_nbatch(m)
     nvar = NLPModels.get_nvar(m)
@@ -1528,15 +1527,14 @@ end
     return hvals
 end
 NLPModels.hess_coord!(m::ExaModel{T}, bx::AbstractVecOrMat, hvals::AbstractVecOrMat; obj_weight = one(T)) where {T} = _obj_hess_coord_impl!(m, bx, hvals, obj_weight)
-NLPModels.hess_coord!(m::ExaModel{T}, x::AbstractVector, hess::AbstractVector; obj_weight = one(T)) where {T} = _obj_hess_coord_impl!(m, x, hess, obj_weight)
 
-@inline function _hess_coord_impl!(m::ExaModel{T, <:AbstractVector}, x, y, hvals, obj_weight) where {T}
+@inline function _hess_coord_impl!(m::ExaModel{T, <:AbstractVector, Nothing}, x, y, hvals, obj_weight) where {T}
     fill!(hvals, zero(T))
     _obj_hess_coord!(m.objs, x, m.θ, hvals, _as_weight(T, obj_weight))
     _con_hess_coord!(m.cons, x, m.θ, y, hvals)
     return hvals
 end
-@inline function _hess_coord_impl!(m::ExaModel{T, <:AbstractMatrix}, bx, by, hvals, obj_weight) where {T}
+@inline function _hess_coord_impl!(m::ExaModel{T}, bx, by, hvals, obj_weight) where {T}
     fill!(vec(hvals), zero(T))
     nb      = get_nbatch(m)
     nvar    = NLPModels.get_nvar(m)
@@ -1549,7 +1547,6 @@ end
     return hvals
 end
 NLPModels.hess_coord!(m::ExaModel{T}, bx::AbstractVecOrMat, by::AbstractVecOrMat, hvals::AbstractVecOrMat; obj_weight = one(T)) where {T} = _hess_coord_impl!(m, bx, by, hvals, obj_weight)
-NLPModels.hess_coord!(m::ExaModel{T}, x::AbstractVector, y::AbstractVector, hess::AbstractVector; obj_weight = one(T)) where {T} = _hess_coord_impl!(m, x, y, hess, obj_weight)
 
 _obj_hess_coord!(objs::Tuple{}, x, θ, hess, obj_weight) = nothing
 @inline function _obj_hess_coord!(objs::Tuple, x, θ, hess, obj_weight)
