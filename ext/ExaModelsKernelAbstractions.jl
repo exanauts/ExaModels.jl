@@ -12,7 +12,7 @@ function ExaModels.getptr(backend, array; cmp = (x, y) -> x != y)
 end
 
 
-struct KAExtension{T,VT<:AbstractArray{T},H,VI1,VI2,B}
+struct KAExtension{T,VT<:AbstractVector{T},H,VI1,VI2,B}
     backend::B
     objbuffer::VT
     gradbuffer::VT
@@ -155,6 +155,36 @@ function ExaModels._con_hess_structure!(T, backend, (con, cons...), rows, cols)
 end
 
 
+function ExaModels.jac_structure!(
+    m::ExaModels.ExaModel{T,VT,E},
+    rows::AbstractVector,
+    cols::AbstractVector,
+) where {T,VT,E<:KAExtension}
+    if !isempty(rows)
+        ExaModels._jac_structure!(T, m.ext.backend, m.cons, rows, cols)
+    end
+    return rows, cols
+end
+
+function ExaModels.hess_structure!(
+    m::ExaModels.ExaModel{T,VT,E},
+    rows::AbstractVector,
+    cols::AbstractVector,
+) where {T,VT,E<:KAExtension}
+    if !isempty(rows)
+        ExaModels._obj_hess_structure!(T, m.ext.backend, m.objs, rows, cols)
+        ExaModels._con_hess_structure!(T, m.ext.backend, m.cons, rows, cols)
+    end
+    return rows, cols
+end
+
+function ExaModels.obj(
+    m::ExaModels.ExaModel{T,VT,E},
+    x::AbstractVector,
+) where {T,VT<:AbstractMatrix,E<:KAExtension}
+    ExaModels._batch_vector_error()
+end
+
 function ExaModels.obj(
     m::ExaModels.ExaModel{T,VT,E},
     x::AbstractVector,
@@ -231,6 +261,14 @@ function _conaugs_item!(backend, y, con::ExaModels.ConstraintAugmentation, x, θ
     end
 end
 _conaugs_item!(backend, y, con, x, θ) = nothing
+
+function ExaModels.grad!(
+    m::ExaModels.ExaModel{T,VT,E},
+    x::V,
+    y::V,
+) where {T,VT<:AbstractMatrix,E<:KAExtension,V<:AbstractVector}
+    ExaModels._batch_vector_error()
+end
 
 function ExaModels.grad!(
     m::ExaModels.ExaModel{T,VT,E},
@@ -411,7 +449,7 @@ end
     end
 end
 @kernel function kersyspmv2(y, @Const(x), @Const(coord), @Const(V), @Const(ptr))
-    idx = @index(Global)0
+    idx = @index(Global)
     @inbounds for l = ptr[idx]:(ptr[idx+1]-1)
         ((i, j), ind) = coord[l]
         if i != j

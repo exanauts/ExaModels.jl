@@ -596,13 +596,13 @@ end
 @inline function hrpass(
     t::T,
     comp,
-    y1::V,
-    y2::V,
+    y1::V1,
+    y2::V2,
     o2,
     cnt,
     adj,
     adj2,
-) where {T<:SecondAdjointNodeVar,I<:Integer,V<:AbstractVector{I}}
+) where {T<:SecondAdjointNodeVar,I<:Integer,V1<:AbstractVector{I},V2<:AbstractVector{I}}
     ind = o2 + comp(cnt += 1)
     @inbounds y1[ind] = t.i
     @inbounds y2[ind] = t.i
@@ -626,12 +626,12 @@ end
     t1::T1,
     t2::T2,
     comp,
-    y1::V,
-    y2::V,
+    y1::V1,
+    y2::V2,
     o2,
     cnt,
     adj,
-) where {T1<:SecondAdjointNodeVar,T2<:SecondAdjointNodeVar,I<:Integer,V<:AbstractVector{I}}
+) where {T1<:SecondAdjointNodeVar,T2<:SecondAdjointNodeVar,I<:Integer,V1<:AbstractVector{I},V2<:AbstractVector{I}}
     i, j = t1.i, t2.i
     ind = o2 + comp(cnt += 1)
     @inbounds if i >= j

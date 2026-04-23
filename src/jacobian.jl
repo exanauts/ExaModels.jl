@@ -70,12 +70,12 @@ end
     d::D,
     comp,
     i,
-    y1::V,
-    y2::V,
+    y1::V1,
+    y2::V2,
     o1,
     cnt,
     adj,
-) where {D<:AdjointNodeVar,I<:Integer,V<:AbstractVector{I}}
+) where {D<:AdjointNodeVar,I<:Integer,V1<:AbstractVector{I},V2<:AbstractVector{I}}
     ind = o1 + comp(cnt += 1)
     @inbounds y1[ind] = i
     @inbounds y2[ind] = d.i
