@@ -1473,6 +1473,7 @@ end
     return jvals
 end
 NLPModels.jac_coord!(m::ExaModel{T}, bx::AbstractVecOrMat, jvals::AbstractVecOrMat) where {T} = _jac_coord_impl!(m, bx, jvals)
+NLPModels.jac_coord!(m::ExaModel{T}, x::AbstractVector, jac::AbstractVector) where {T} = _jac_coord_impl!(m, x, jac)
 
 _jac_coord!(cons::Tuple{}, x, θ, jac) = nothing
 @inline function _jac_coord!(cons::Tuple, x, θ, jac)
@@ -1527,6 +1528,7 @@ end
     return hvals
 end
 NLPModels.hess_coord!(m::ExaModel{T}, bx::AbstractVecOrMat, hvals::AbstractVecOrMat; obj_weight = one(T)) where {T} = _obj_hess_coord_impl!(m, bx, hvals, obj_weight)
+NLPModels.hess_coord!(m::ExaModel{T}, x::AbstractVector, hess::AbstractVector; obj_weight = one(T)) where {T} = _obj_hess_coord_impl!(m, x, hess, obj_weight)
 
 @inline function _hess_coord_impl!(m::ExaModel{T, <:AbstractVector, Nothing}, x, y, hvals, obj_weight) where {T}
     fill!(hvals, zero(T))
@@ -1547,6 +1549,7 @@ end
     return hvals
 end
 NLPModels.hess_coord!(m::ExaModel{T}, bx::AbstractVecOrMat, by::AbstractVecOrMat, hvals::AbstractVecOrMat; obj_weight = one(T)) where {T} = _hess_coord_impl!(m, bx, by, hvals, obj_weight)
+NLPModels.hess_coord!(m::ExaModel{T}, x::AbstractVector, y::AbstractVector, hess::AbstractVector; obj_weight = one(T)) where {T} = _hess_coord_impl!(m, x, y, hess, obj_weight)
 
 _obj_hess_coord!(objs::Tuple{}, x, θ, hess, obj_weight) = nothing
 @inline function _obj_hess_coord!(objs::Tuple, x, θ, hess, obj_weight)
