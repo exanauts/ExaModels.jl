@@ -29,12 +29,8 @@ function exa_luksan_vlcek_parametric(
     @add_var(c, x, N, M; start = [luksan_vlcek_x0(i) for i = 1:N, j = 1:M])
 
     if use_parameters
-        @add_par(c, θ, zeros(7))
-        if !isnothing(param_values)
-            set_parameter!(c, θ, param_values)
-        else
-            set_parameter!(c, θ, [100.0, 1.0, 3.0, 2.0, 5.0, 4.0, 3.0])
-        end
+        default_params = isnothing(param_values) ? [100.0, 1.0, 3.0, 2.0, 5.0, 4.0, 3.0] : param_values
+        @add_par(c, θ, default_params)
 
         @add_con(c, s, luksan_vlcek_con1_param(x, θ, i, j) for i = 1:(N-2), j = 1:M)
         @add_con!(
@@ -349,7 +345,7 @@ function test_parametric_vs_nonparametric(backend)
             m_param, c_param, (_, θ_param), _ =
                 exa_luksan_vlcek_parametric(backend, 3, M = 2, use_parameters = true)
             new_params = [75.0, 1.5, 4.0, 3.0, 6.0, 5.0, 2.0]
-            set_parameter!(c_param, θ_param, new_params)
+            set_value!(m_param, θ_param, new_params)
             m_nonparam, _, _, _ = exa_luksan_vlcek_parametric(
                 backend,
                 3,

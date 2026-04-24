@@ -70,12 +70,12 @@ end
     d::D,
     comp,
     i,
-    y1::V,
-    y2::V,
+    y1::V1,
+    y2::V2,
     o1,
     cnt,
     adj,
-) where {D<:AdjointNodeVar,I<:Integer,V<:AbstractVector{I}}
+) where {D<:AdjointNodeVar,I<:Integer,V1<:AbstractVector{I},V2<:AbstractVector{I}}
     ind = o1 + comp(cnt += 1)
     @inbounds y1[ind] = i
     @inbounds y2[ind] = d.i
@@ -123,6 +123,27 @@ function sjacobian!(y1, y2, f, x, θ, adj)
             offset1(f, i),
             adj,
         )
+    end
+end
+function sjacobian!(y1, y2, f, x::AbstractArray, θ::AbstractArray, adj, nb::Integer, nvar::Integer, npar::Integer, nout::Integer, ::Nothing = nothing)
+    @inbounds for s in 1:nb
+        x_s = @view x[(s-1)*nvar+1 : s*nvar]
+        θ_s = @view θ[(s-1)*npar+1 : s*npar]
+        y1_s = @view y1[(s-1)*nout+1 : s*nout]
+        @simd for i in eachindex(f.itr)
+            sjacobian!(
+                y1_s,
+                y2,
+                f.f,
+                f.itr[i],
+                x_s,
+                θ_s,
+                f.f.comp1,
+                offset0(f, i),
+                offset1(f, i),
+                adj,
+            )
+        end
     end
 end
 

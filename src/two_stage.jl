@@ -60,7 +60,7 @@ const TwoStageExaModel{T,VT,E,V,P,O,C,R} = ExaModel{T,VT,E,V,P,O,C,<:TwoStageExa
 
 
 """
-    TwoStageExaCore(nscen; backend = nothing, concrete = Val(false), kwargs...)
+    TwoStageExaCore(nscen; backend = nothing, concrete = Val(false), nbatch = Val(1), kwargs...)
 
 Create an [`ExaCore`](@ref) for building two-stage stochastic programs with
 `nscen` scenarios.
@@ -68,6 +68,9 @@ Create an [`ExaCore`](@ref) for building two-stage stochastic programs with
 Use [`add_var`](@ref), [`add_par`](@ref), and [`add_con`](@ref) with
 [`EachScenario()`](@ref) to declare per-scenario components, or without it for
 first-stage (design) components.
+
+When `nbatch = Val(N)` with `N > 1`, creates a batched two-stage core that
+combines batch optimization with two-stage structure.
 
 ## Example
 ```julia
@@ -77,10 +80,16 @@ c, v = add_var(c, EachScenario(), 2)         # 2 recourse variables per scenario
 model = ExaModel(c)
 ```
 """
-function TwoStageExaCore(ns::Integer; backend = nothing, concrete = Val(false), kwargs...)
+_ts_nb(::Val{N}) where {N} = N
+_ts_nb(n::Integer) = Int(n)
+
+function TwoStageExaCore(ns::Integer; backend = nothing, concrete = Val(false), nbatch = Val(1), kwargs...)
+    nb = _ts_nb(nbatch)
     return ExaCore(;
         backend,
         concrete,
+        batch = Val(nb > 1),
+        nbatch = nb,
         tag = TwoStageExaModelTag(
             ns,
             convert_array(zeros(Int, 0), backend),
@@ -103,13 +112,14 @@ function add_var(
     start = zero(T),
     lvar = T(-Inf),
     uvar = T(Inf),
-    ) where {T,VT<:AbstractVector{T},B}
-    
+    ) where {T,VT<:AbstractArray{T},B}
+
     len = total(ns)
-    append!(c.backend, c.tag.var_scen, 0, len)
+    new_var_scen = append!(c.backend, c.tag.var_scen, 0, len)
+    c = ExaCore(c; tag = TwoStageExaModelTag(c.tag.nscen, new_var_scen, c.tag.con_scen))
     return _add_var(
         c, FirstStageTag(), name, start, lvar, uvar, ns...
-    )    
+    )
 end
 """
     add_var(core::TwoStageExaCore, ::EachScenario, dims...; start = 0, lvar = -Inf, uvar = Inf, name = nothing)
@@ -127,13 +137,14 @@ function add_var(
     start = zero(T),
     lvar = T(-Inf),
     uvar = T(Inf),
-    ) where {T,VT<:AbstractVector{T},B}
+    ) where {T,VT<:AbstractArray{T},B}
     nscen = c.tag.nscen
     len = total(ns)
-    append!(c.backend, c.tag.var_scen, _scen_each_tag(nscen, len), len * nscen)
+    new_var_scen = append!(c.backend, c.tag.var_scen, _scen_each_tag(nscen, len), len * nscen)
+    c = ExaCore(c; tag = TwoStageExaModelTag(c.tag.nscen, new_var_scen, c.tag.con_scen))
     return _add_var(
         c, SecondStageTag(), name, start, lvar, uvar, ns..., nscen
-    )    
+    )
 end
 
 """
@@ -153,7 +164,7 @@ function add_par(
     c::TwoStageExaCore{T,VT,B},
     value::AbstractArray;
     name = nothing,
-    ) where {T,VT<:AbstractVector{T},B}
+    ) where {T,VT<:AbstractArray{T},B}
     return _add_par(c, FirstStageTag(), name, value, Base.size(value)...)
 end
 function add_par(
@@ -161,7 +172,7 @@ function add_par(
     n::AbstractRange;
     name = nothing,
     value = zero(T),
-    ) where {T,VT<:AbstractVector{T},B}
+    ) where {T,VT<:AbstractArray{T},B}
     return _add_par(c, FirstStageTag(), name, value, n)
 end
 function add_par(
@@ -169,7 +180,7 @@ function add_par(
     ns...;
     name = nothing,
     value = zero(T),
-    ) where {T,VT<:AbstractVector{T},B}
+    ) where {T,VT<:AbstractArray{T},B}
     return _add_par(c, FirstStageTag(), name, value, ns...)
 end
 
@@ -184,7 +195,7 @@ function add_par(
     ::EachScenario,
     value::AbstractVector;
     name = nothing,
-    ) where {T,VT<:AbstractVector{T},B}
+    ) where {T,VT<:AbstractArray{T},B}
     combined = cat((value for _ in 1:c.tag.nscen)...; dims = ndims(value) + 1)
     return _add_par(c, SecondStageTag(), name, combined, Base.size(combined)...)
 end
@@ -203,7 +214,7 @@ function add_con(
     start = zero(T),
     lcon = zero(T),
     ucon = zero(T),
-    ) where {T,VT<:AbstractVector{T},B,S<:TwoStageExaModelTag,C<:ExaCore{T,VT,B,S}}
+    ) where {T,VT<:AbstractArray{T},B,S<:TwoStageExaModelTag,C<:ExaCore{T,VT,B,S}}
 
     gen = _get_generator(ns)
     dims = _get_con_dims(ns)
@@ -211,7 +222,8 @@ function add_con(
     f = _simdfunction(T, gen.f(DataSource()), c.ncon, c.nnzj, c.nnzh)
     pars = gen.iter
 
-    append!(c.backend, c.tag.con_scen, 0, length(pars))
+    new_con_scen = append!(c.backend, c.tag.con_scen, 0, length(pars))
+    c = ExaCore(c; tag = TwoStageExaModelTag(c.tag.nscen, c.tag.var_scen, new_con_scen))
     return _add_con(c, f, pars, dims, start, lcon, ucon, name, FirstStageConstraintTag())
 end
 
@@ -232,7 +244,7 @@ function add_con(
     start = zero(T),
     lcon = zero(T),
     ucon = zero(T),
-    ) where {T,VT<:AbstractVector{T},B,S<:TwoStageExaModelTag,C<:ExaCore{T,VT,B,S}}
+    ) where {T,VT<:AbstractArray{T},B,S<:TwoStageExaModelTag,C<:ExaCore{T,VT,B,S}}
 
     gen = _get_generator(ns)
     dims = _get_con_dims(ns)
@@ -242,7 +254,8 @@ function add_con(
 
     nscen = c.tag.nscen
     len = length(pars)
-    append!(c.backend, c.tag.con_scen, _scen_each_tag(nscen, div(len, nscen)), len)
+    new_con_scen = append!(c.backend, c.tag.con_scen, _scen_each_tag(nscen, div(len, nscen)), len)
+    c = ExaCore(c; tag = TwoStageExaModelTag(c.tag.nscen, c.tag.var_scen, new_con_scen))
     return _add_con(c, f, pars, dims, start, lcon, ucon, name, SecondStageConstraintTag())
 end
 

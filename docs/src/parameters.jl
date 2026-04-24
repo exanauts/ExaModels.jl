@@ -35,11 +35,11 @@ result1 = ipopt(m_param)
 println("Original objective: $(result1.objective)")
 
 # Now change the penalty coefficient and solve again:
-set_parameter!(c_param, θ, [200.0, 1.0])  # Double the penalty coefficient
+set_value!(m_param, θ, [200.0, 1.0])  # Double the penalty coefficient
 result2 = ipopt(m_param)
 println("Modified penalty objective: $(result2.objective)")
 
 # Try a different offset parameter:
-set_parameter!(c_param, θ, [200.0, 0.5])  # Change the offset in the objective
+set_value!(m_param, θ, [200.0, 0.5])  # Change the offset in the objective
 result3 = ipopt(m_param)
 println("Modified offset objective: $(result3.objective)")

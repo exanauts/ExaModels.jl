@@ -516,6 +516,113 @@ function runtests()
         end
 
     end
+
+    @testset "Batched two-stage" begin
+
+        @testset "Construction" begin
+            ns_scen, nb = 3, 2
+            core = TwoStageExaCore(ns_scen; nbatch = Val(nb))
+            v = @add_var(core, EachScenario(), 2)
+            core, d = add_var(core, 1)
+
+            model = ExaModel(core)
+            @test get_nscen(model) == ns_scen
+            @test ExaModels.get_nbatch(model) == nb
+            @test NLPModels.get_nvar(model) == ns_scen * 2 + 1
+            @test size(model.meta.x0) == (ns_scen * 2 + 1, nb)
+        end
+
+        @testset "Evaluation" begin
+            ns_scen, nb = 2, 3
+            nv, nd = 1, 1
+            θ_vals = [2.0, 4.0]
+
+            core = TwoStageExaCore(ns_scen; nbatch = Val(nb))
+            v = @add_var(core, EachScenario(), nv)
+            core, d = add_var(core, nd)
+            core, θ = add_par(core, θ_vals)
+
+            obj_data = [(i, (i-1)*nv+1, i) for i in 1:ns_scen]
+            @add_obj(core, (v[v_idx] - θ[θi])^2 + d[1]^2 for (i, v_idx, θi) in obj_data)
+
+            con_data = [(i, (i-1)*nv+1) for i in 1:ns_scen]
+            @add_con(core, EachScenario(), (v[v_idx] - d[1] for (i, v_idx) in con_data); lcon = 0.0)
+
+            model = ExaModel(core)
+            flat = ExaModels.FlatNLPModel(model)
+
+            nvar = NLPModels.get_nvar(model)
+            ncon = NLPModels.get_ncon(model)
+
+            # obj
+            bx = reshape(Float64.(1:(nvar*nb)), nvar, nb)
+            bf = zeros(nb)
+            NLPModels.obj!(model, bx, bf)
+            @test sum(bf) ≈ NLPModels.obj(flat, vec(bx))
+
+            # grad
+            bg = zeros(nvar, nb)
+            NLPModels.grad!(model, bx, bg)
+            g_flat = zeros(nvar * nb)
+            grad!(flat, vec(bx), g_flat)
+            @test vec(bg) ≈ g_flat
+
+            # cons
+            bc = zeros(ncon, nb)
+            NLPModels.cons!(model, bx, bc)
+            c_flat = zeros(ncon * nb)
+            cons_nln!(flat, vec(bx), c_flat)
+            @test vec(bc) ≈ c_flat
+
+            # jac
+            nnzj = NLPModels.get_nnzj(model)
+            jvals = zeros(nnzj, nb)
+            jac_coord!(model, bx, jvals)
+            jvals_flat = zeros(NLPModels.get_nnzj(flat))
+            jac_coord!(flat, vec(bx), jvals_flat)
+            @test vec(jvals) ≈ jvals_flat
+
+            # hess
+            nnzh = NLPModels.get_nnzh(model)
+            by = ones(ncon, nb)
+            hvals = zeros(nnzh, nb)
+            hess_coord!(model, bx, by, hvals)
+            hvals_flat = zeros(NLPModels.get_nnzh(flat))
+            hess_coord!(flat, vec(bx), vec(by), hvals_flat)
+            @test vec(hvals) ≈ hvals_flat
+        end
+
+        @testset "Ipopt" begin
+            ns_scen, nb = 2, 2
+            nv, nd = 1, 1
+            θ_vals = [2.0, 4.0]
+
+            core = TwoStageExaCore(ns_scen; nbatch = Val(nb))
+            v = @add_var(core, EachScenario(), nv)
+            core, d = add_var(core, nd)
+            core, θ = add_par(core, θ_vals)
+
+            @add_obj(core, d[1]^2)
+            @add_obj(core, (v[i] - θ[i])^2 for i in 1:ns_scen)
+            @add_con(core, EachScenario(), (v[i] - d[1] for i in 1:ns_scen); lcon = 0.0)
+
+            model = ExaModel(core)
+            flat = ExaModels.FlatNLPModel(model)
+
+            result = ipopt(flat; print_level = 0)
+            @test result.status == :first_order
+
+            # Each batch instance should have the same solution
+            nvar = NLPModels.get_nvar(model)
+            for b in 1:nb
+                x_b = result.solution[ExaModels.var_indices(model, b)]
+                # d² + Σ(v_i - θ_i)²  s.t. v_i = d  →  d* = Σθ / (1 + ns)
+                d_expected = sum(θ_vals) / (1 + ns_scen)
+                @test x_b[end] ≈ d_expected atol = 1e-4
+            end
+        end
+
+    end
 end
 
 end # module TwoStageTest

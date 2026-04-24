@@ -21,14 +21,21 @@ legacy mutating API (`variable`, `constraint`, etc.).
 `ExaCore(concrete = Val(true))` to obtain the bare immutable `ExaCore`
 required for AOT compilation.
 """
-mutable struct LegacyExaCore{T, VT <: AbstractVector{T}, B, S} <: AbstractExaCore{T,VT,B,S}
+mutable struct LegacyExaCore{T, VT <: AbstractArray{T}, B, S} <: AbstractExaCore{T,VT,B,S}
     inner::Any  # ExaCore{T,VT,B,S,...} — type erased so the tuple type params can grow
 end
 
 # Override the Val{false} dispatch defined in nlp.jl so ExaCore() returns a LegacyExaCore.
-@inline function _make_exacore(::Val{false}, ::Type{T}, backend; kwargs...) where {T}
+@inline function _make_exacore(::Val{false}, ::Type{T}, backend, ::Val{false}, nbatch; kwargs...) where {T}
     @warn "`ExaCore()` is deprecated, and will be removed in v0.11. Use `ExaCore(concrete = Val(true))` for the immutable ExaCore. The default behavior for `ExaCore()` will change to return the immutable ExaCore in v0.11."
     inner = _exa_core(; x0 = convert_array(zeros(T, 0), backend), backend, kwargs...)
+    return LegacyExaCore{T, typeof(inner.x0), typeof(backend), typeof(inner.tag)}(inner)
+end
+@inline function _make_exacore(::Val{false}, ::Type{T}, backend, ::Val{true}, nbatch; kwargs...) where {T}
+    @warn "`ExaCore()` is deprecated, and will be removed in v0.11. Use `ExaCore(concrete = Val(true))` for the immutable ExaCore. The default behavior for `ExaCore()` will change to return the immutable ExaCore in v0.11."
+    x0 = convert_array(zeros(T, 0, nbatch), backend)
+    inner = _exa_core(; x0, θ = similar(x0), lvar = similar(x0), uvar = similar(x0),
+                        y0 = similar(x0), lcon = similar(x0), ucon = similar(x0), backend, kwargs...)
     return LegacyExaCore{T, typeof(inner.x0), typeof(backend), typeof(inner.tag)}(inner)
 end
 
@@ -49,9 +56,6 @@ function ExaModel(c::LegacyExaCore; kwargs...)
     return ExaModel(c.inner; kwargs...)
 end
 
-function set_parameter!(c::LegacyExaCore, param::Parameter, values::AbstractArray)
-    return set_parameter!(c.inner, param, values)
-end
 
 # ---------------------------------------------------------------------------
 # Legacy named wrappers (deprecated)

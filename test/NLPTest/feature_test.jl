@@ -125,10 +125,9 @@ function test_add_par_dims(backend)
         @test g_vals ≈ [1.0, 5.0, 9.0]
     end
 
-    @testset "set_parameter! with range-sized parameter" begin
+    @testset "set_value! with range-sized parameter" begin
         c = ExaCore(; backend, concrete = Val(true))
-        c, θ = add_par(c, 2:4; value = ones(3))
-        set_parameter!(c, θ, [5.0, 6.0, 7.0])
+        c, θ = add_par(c, 2:4; value = [5.0, 6.0, 7.0])
         c, x = add_var(c, 1)
         c, g = add_con(c, θ[j] * x[1] for j in 2:4; lcon = 0.0, ucon = 0.0)
         m = ExaModel(c)

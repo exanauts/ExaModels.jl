@@ -579,3 +579,168 @@ function _structure!(I, J, ptr, sparsity, backend::Nothing)
 end
 
 export WrapperNLPModel, TimedNLPModel, CompressedNLPModel
+
+# ============================================================================
+# get_nbatch for generic AbstractNLPModel (used by FlatNLPModel)
+# ============================================================================
+
+get_nbatch(meta::NLPModels.NLPModelMeta{T, <:AbstractMatrix}) where {T} = Base.size(meta.x0, 2)
+get_nbatch(meta::NLPModels.NLPModelMeta) = 1
+get_nbatch(m::NLPModels.AbstractNLPModel) = get_nbatch(m.meta)
+
+# ============================================================================
+# FlatNLPModel
+# ============================================================================
+
+"""
+    FlatNLPModel{T, VT, M} <: AbstractNLPModel{T, VT}
+
+Wrapper that presents a batch NLP model as a flat (Vector-based) NLP model.
+All NLPModels callbacks delegate to the underlying batch model's matrix API.
+
+    FlatNLPModel(model::AbstractNLPModel)
+
+Construct a flat model from a batch model whose `meta.x0` is a matrix.
+"""
+struct FlatNLPModel{T, VT <: AbstractVector{T}, M <: NLPModels.AbstractNLPModel{T}} <: NLPModels.AbstractNLPModel{T, VT}
+    batch::M
+    meta::NLPModels.NLPModelMeta{T, VT}
+    counters::NLPModels.Counters
+end
+
+function FlatNLPModel(model::NLPModels.AbstractNLPModel{T}) where {T}
+    nb = get_nbatch(model)
+    nvar_s = NLPModels.get_nvar(model)
+    ncon_s = NLPModels.get_ncon(model)
+    nvar = nvar_s * nb
+    ncon = ncon_s * nb
+    nnzj = NLPModels.get_nnzj(model) * nb
+    nnzh = NLPModels.get_nnzh(model) * nb
+    x0   = vec(model.meta.x0)
+    lvar = vec(model.meta.lvar)
+    uvar = vec(model.meta.uvar)
+    y0   = vec(model.meta.y0)
+    lcon = vec(model.meta.lcon)
+    ucon = vec(model.meta.ucon)
+
+    meta = _build_meta(
+        nvar, x0, lvar, uvar,
+        ncon, y0, lcon, ucon;
+        nnzj = nnzj,
+        nnzh = nnzh,
+        minimize = model.meta.minimize,
+        name = String(model.meta.name),
+    )
+    return FlatNLPModel(model, meta, NLPModels.Counters())
+end
+
+function NLPModels.obj(m::FlatNLPModel{T}, x::AbstractVector) where {T}
+    nb = get_nbatch(m.batch)
+    nvar = NLPModels.get_nvar(m.batch)
+    bx = reshape(x, nvar, nb)
+    bf = similar(x, T, nb)
+    obj!(m.batch, bx, bf)
+    return sum(bf)
+end
+
+function NLPModels.grad!(m::FlatNLPModel{T}, x::AbstractVector, g::AbstractVector) where {T}
+    nb = get_nbatch(m.batch)
+    nvar = NLPModels.get_nvar(m.batch)
+    NLPModels.grad!(m.batch, reshape(x, nvar, nb), reshape(g, nvar, nb))
+    return g
+end
+
+function NLPModels.cons_nln!(m::FlatNLPModel{T}, x::AbstractVector, c::AbstractVector) where {T}
+    nb = get_nbatch(m.batch)
+    nvar = NLPModels.get_nvar(m.batch)
+    ncon = NLPModels.get_ncon(m.batch)
+    NLPModels.cons_nln!(m.batch, reshape(x, nvar, nb), reshape(c, ncon, nb))
+    return c
+end
+
+function NLPModels.jac_nln_structure!(m::FlatNLPModel, rows::AbstractVector{<:Integer}, cols::AbstractVector{<:Integer})
+    nb = get_nbatch(m.batch)
+    nvar = NLPModels.get_nvar(m.batch)
+    ncon = NLPModels.get_ncon(m.batch)
+    nnzj = NLPModels.get_nnzj(m.batch)
+
+    r1_dev = similar(m.batch.meta.x0, Int, nnzj)
+    c1_dev = similar(m.batch.meta.x0, Int, nnzj)
+    NLPModels.jac_structure!(m.batch, r1_dev, c1_dev)
+
+    r1 = Vector{Int}(r1_dev)
+    c1 = Vector{Int}(c1_dev)
+    r_cpu = Vector{Int}(undef, nnzj * nb)
+    c_cpu = Vector{Int}(undef, nnzj * nb)
+    copyto!(r_cpu, 1, r1, 1, nnzj)
+    copyto!(c_cpu, 1, c1, 1, nnzj)
+
+    @inbounds for s in 2:nb
+        offset = (s - 1) * nnzj
+        row_shift = (s - 1) * ncon
+        col_shift = (s - 1) * nvar
+        for k in 1:nnzj
+            r_cpu[offset + k] = r1[k] + row_shift
+            c_cpu[offset + k] = c1[k] + col_shift
+        end
+    end
+    copyto!(rows, r_cpu)
+    copyto!(cols, c_cpu)
+    return rows, cols
+end
+
+function NLPModels.jac_nln_coord!(m::FlatNLPModel{T}, x::AbstractVector, jvals::AbstractVector) where {T}
+    nb = get_nbatch(m.batch)
+    nvar = NLPModels.get_nvar(m.batch)
+    nnzj = NLPModels.get_nnzj(m.batch)
+    NLPModels.jac_coord!(m.batch, reshape(x, nvar, nb), reshape(jvals, nnzj, nb))
+    return jvals
+end
+
+function NLPModels.hess_structure!(m::FlatNLPModel, rows::AbstractVector{<:Integer}, cols::AbstractVector{<:Integer})
+    nb = get_nbatch(m.batch)
+    nvar = NLPModels.get_nvar(m.batch)
+    nnzh = NLPModels.get_nnzh(m.batch)
+
+    r1_dev = similar(m.batch.meta.x0, Int, nnzh)
+    c1_dev = similar(m.batch.meta.x0, Int, nnzh)
+    NLPModels.hess_structure!(m.batch, r1_dev, c1_dev)
+
+    r1 = Vector{Int}(r1_dev)
+    c1 = Vector{Int}(c1_dev)
+    r_cpu = Vector{Int}(undef, nnzh * nb)
+    c_cpu = Vector{Int}(undef, nnzh * nb)
+    copyto!(r_cpu, 1, r1, 1, nnzh)
+    copyto!(c_cpu, 1, c1, 1, nnzh)
+
+    @inbounds for s in 2:nb
+        offset = (s - 1) * nnzh
+        shift = (s - 1) * nvar
+        for k in 1:nnzh
+            r_cpu[offset + k] = r1[k] + shift
+            c_cpu[offset + k] = c1[k] + shift
+        end
+    end
+    copyto!(rows, r_cpu)
+    copyto!(cols, c_cpu)
+    return rows, cols
+end
+
+function NLPModels.hess_coord!(
+    m::FlatNLPModel{T}, x::AbstractVector, y::AbstractVector,
+    hvals::AbstractVector; obj_weight = one(T),
+) where {T}
+    nb = get_nbatch(m.batch)
+    nvar = NLPModels.get_nvar(m.batch)
+    ncon = NLPModels.get_ncon(m.batch)
+    nnzh = NLPModels.get_nnzh(m.batch)
+    NLPModels.hess_coord!(m.batch, reshape(x, nvar, nb), reshape(y, ncon, nb), reshape(hvals, nnzh, nb); obj_weight)
+    return hvals
+end
+
+function NLPModels.jtprod_nln!(m::FlatNLPModel{T}, x::AbstractVector, v::AbstractVector, Jtv::AbstractVector) where {T}
+    NLPModels.jtprod_nln!(m.batch, x, v, Jtv)
+    return Jtv
+end
+
+export FlatNLPModel

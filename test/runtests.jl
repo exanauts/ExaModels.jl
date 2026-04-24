@@ -20,8 +20,9 @@ include("ADTest/ADTest.jl")
 include("DeprecatedTest/DeprecatedTest.jl")
 include("JuMPTest/JuMPTest.jl")
 include("UtilsTest/UtilsTest.jl")
-include("JuliaCTest/JuliaCTest.jl")
 include("TwoStageTest/TwoStageTest.jl")
+include("BatchTest/BatchTest.jl")
+include("JuliaCTest/JuliaCTest.jl")
 include("GetterSetterTest/GetterSetterTest.jl")
 include("PrettyPrintTest.jl")
 # include("OptimalControlTest/OptimalControlTest.jl")
@@ -57,6 +58,8 @@ include("PrettyPrintTest.jl")
     # @info "Running OptimalControl Test"
     # OptimalControlTest.runtests()
 
+    @info "Running Batch Test"
+    BatchTest.runtests()
 end
 
 # Force full GC before Julia exits so that OpenCL/PoCL objects are finalized

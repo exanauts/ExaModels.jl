@@ -30,6 +30,7 @@ import Adapt: adapt
 import NLPModels:
     NLPModels,
     obj,
+    obj!,
     cons!,
     grad!,
     jac_coord!,
@@ -77,7 +78,6 @@ export ExaModel,
     @add_obj,
     @add_con,
     @add_con!,
-    set_parameter!,
     solution,
     multipliers,
     multipliers_L,
@@ -107,6 +107,12 @@ export ExaModel,
     get_lcon,
     set_lcon!,
     get_ucon,
-    set_ucon!
+    set_ucon!,
+    FlatNLPModel,
+    BatchExaCore,
+    BatchExaModel,
+    get_nbatch,
+    var_indices,
+    cons_block_indices
 
 end # module ExaModels

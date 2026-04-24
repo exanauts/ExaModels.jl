@@ -3,9 +3,9 @@ abstract type AbstractParameter end
 abstract type AbstractConstraint end
 abstract type AbstractObjective end
 
-struct NaNSource{T} end
+struct NaNSource{T} <: AbstractVector{T} end
+Base.size(::NaNSource) = (typemax(Int),)
 Base.getindex(::NaNSource{T}, i) where {T} = T(NaN)
-Base.eltype(::NaNSource{T}) where {T} = T
 Base.eltype(::Type{NaNSource{T}}) where {T} = T
 
 """
@@ -73,7 +73,7 @@ end
 
 A handle to a block of model parameters added to an [`ExaCore`](@ref) via
 [`add_par`](@ref) / [`@add_par`](@ref). Parameter values can be updated at any
-time with [`set_parameter!`](@ref) without rebuilding the model. Use indexing
+time with [`set_value!`](@ref) without rebuilding the model. Use indexing
 (e.g. `θ[i]`) to embed parameter values in expressions. An optional `tag` field
 carries user-defined metadata.
 """
@@ -262,9 +262,12 @@ end
 abstract type AbstractExaCore{T,VT,B,S} end
 
 """
-    ExaCore([array_eltype::Type; backend = nothing, minimize = true, name = :Generic])
+    ExaCore([T::Type; backend = nothing, concrete = Val(false), batch = Val(false), nbatch = 1, minimize = true, name = :Generic])
 
-Creates an intermediate data object `ExaCore`, which later can be used for creating an `ExaModel`
+Creates an intermediate data object `ExaCore`, which later can be used for creating an `ExaModel`.
+
+When `batch = Val(true)`, creates a batch core with matrix-valued storage arrays
+(`nbatch` columns = instances).  See [`BatchExaCore`](@ref) for a convenience alias.
 
 ## Example
 ```jldoctest
@@ -303,7 +306,7 @@ An ExaCore
   number of constraint patterns: ... 0
 ```
 """
-struct ExaCore{T,VT<:AbstractVector{T}, B, S, V, P, O, C, R} <: AbstractExaCore{T,VT,B,S}
+struct ExaCore{T,VT<:AbstractArray{T}, B, S, V, P, O, C, R} <: AbstractExaCore{T,VT,B,S}
     name::Symbol
     backend::B
     var::V
@@ -389,15 +392,25 @@ end
     )
 end
 
-@inline ExaCore(::Type{T}; backend = nothing, concrete = Val(false), kwargs...) where {T<:AbstractFloat} =
-    _make_exacore(concrete, T, backend; kwargs...)
-@inline ExaCore(; backend = nothing, concrete = Val(false), kwargs...) = ExaCore(default_T(backend); backend, concrete, kwargs...)
-@inline _make_exacore(::Val{true}, ::Type{T}, backend; kwargs...) where {T} =
+@inline ExaCore(::Type{T}; backend = nothing, concrete = Val(false), batch = Val(false), nbatch = 1, kwargs...) where {T<:AbstractFloat} =
+    _make_exacore(concrete, T, backend, batch, nbatch; kwargs...)
+@inline ExaCore(; backend = nothing, concrete = Val(false), batch = Val(false), nbatch = 1, kwargs...) = ExaCore(default_T(backend); backend, concrete, batch, nbatch, kwargs...)
+@inline _make_exacore(::Val{true}, ::Type{T}, backend, ::Val{false}, nbatch; kwargs...) where {T} =
     _exa_core(; x0 = convert_array(zeros(T, 0), backend), backend, kwargs...)
+@inline function _make_exacore(::Val{true}, ::Type{T}, backend, ::Val{true}, nbatch; kwargs...) where {T}
+    x0 = convert_array(zeros(T, 0, nbatch), backend)
+    _exa_core(; x0, θ = similar(x0), lvar = similar(x0), uvar = similar(x0),
+                y0 = similar(x0), lcon = similar(x0), ucon = similar(x0), backend, kwargs...)
+end
 # Val{false} is overridden in deprecated.jl once LegacyExaCore is defined;
 # this fallback handles any other Val value by returning a concrete ExaCore.
-@inline _make_exacore(::Val, ::Type{T}, backend; kwargs...) where {T} =
+@inline _make_exacore(::Val, ::Type{T}, backend, ::Val{false}, nbatch; kwargs...) where {T} =
     _exa_core(; x0 = convert_array(zeros(T, 0), backend), backend, kwargs...)
+@inline function _make_exacore(::Val, ::Type{T}, backend, ::Val{true}, nbatch; kwargs...) where {T}
+    x0 = convert_array(zeros(T, 0, nbatch), backend)
+    _exa_core(; x0, θ = similar(x0), lvar = similar(x0), uvar = similar(x0),
+                y0 = similar(x0), lcon = similar(x0), ucon = similar(x0), backend, kwargs...)
+end
 @inline ExaCore(c::C; kwargs...) where C <: ExaCore = _exa_core(
     ;
     zip(fieldnames(C), ntuple(i -> getfield(c, i), Val(fieldcount(C))))...,
@@ -420,30 +433,36 @@ An ExaCore
 """,
 )
 
-"""
-    AbstractExaModel
-
-An abstract type for ExaModel, which is a subtype of `NLPModels.AbstractNLPModel`.
-"""
-abstract type AbstractExaModel{T,VT,E} <: NLPModels.AbstractNLPModel{T,VT} end
-
-struct ExaModel{T,VT,E,V,P,O,C,S,R} <: AbstractExaModel{T,VT,E}
+struct ExaModel{T,VT,E,V,P,O,C,S,R,M} <: NLPModels.AbstractNLPModel{T,VT}
     name::Symbol
     vars::V
     pars::P
     objs::O
     cons::C
     θ::VT
-    meta::NLPModels.NLPModelMeta{T,VT}
+    meta::M
     counters::NLPModels.Counters
     ext::E
     tag::S
     refs::R
 end
 
-function Base.show(io::IO, c::AbstractExaModel{T,VT}) where {T,VT}
-    println(io, "An ExaModel{$T, $VT, ...}\n")
-    Base.show(io, c.meta)
+function ExaModel(
+    name::Symbol, vars, pars, objs, cons, θ::VT,
+    meta::M,
+    counters, ext, tag, refs,
+) where {T, VT <: AbstractArray{T}, M <: NLPModels.AbstractNLPModelMeta{T}}
+    ExaModel{T, VT, typeof(ext), typeof(vars), typeof(pars), typeof(objs),
+             typeof(cons), typeof(tag), typeof(refs), M}(
+        name, vars, pars, objs, cons, θ, meta, counters, ext, tag, refs,
+    )
+end
+
+function Base.show(io::IO, m::ExaModel{T,VT}) where {T,VT}
+    nb = get_nbatch(m)
+    batch_str = nb > 1 ? " (batch, $nb instances)" : ""
+    println(io, "An ExaModel{$T, $VT, ...}$batch_str\n")
+    Base.show(io, m.meta)
 end
 
 """
@@ -488,6 +507,7 @@ julia> result = ipopt(m; print_level=0)    # solve the problem
 ```
 """
 function ExaModel(c::C; prod = false, kwargs...) where {C<:ExaCore}
+    nvar, ncon, nnzj, nnzh = _meta_dims(c)
     return ExaModel(
         c.name,
         c.var,
@@ -495,20 +515,19 @@ function ExaModel(c::C; prod = false, kwargs...) where {C<:ExaCore}
         c.obj,
         c.cons,
         c.θ,
-        NLPModels.NLPModelMeta(
-            c.nvar,
-            ncon = c.ncon,
-            nnzj = c.nnzj,
-            nnzh = c.nnzh,
-            x0 = (c.x0),
-            lvar = (c.lvar),
-            uvar = (c.uvar),
-            y0 = (c.y0),
-            lcon = (c.lcon),
-            ucon = (c.ucon),
+        _build_meta(
+            nvar,
+            c.x0,
+            c.lvar,
+            c.uvar,
+            ncon,
+            c.y0,
+            c.lcon,
+            c.ucon;
+            nnzj = nnzj,
+            nnzh = nnzh,
             minimize = c.minimize,
-        )
-        ,
+        ),
         NLPModels.Counters(),
         build_extension(c; prod),
         c.tag,
@@ -516,7 +535,59 @@ function ExaModel(c::C; prod = false, kwargs...) where {C<:ExaCore}
     )
 end
 
+_meta_dims(c::ExaCore) = (c.nvar, c.ncon, c.nnzj, c.nnzh)
 build_extension(c::ExaCore; kwargs...) = nothing
+
+# ============================================================================
+# _build_meta: construct NLPModelMeta supporting both Vector and Matrix VT
+# ============================================================================
+
+_first_instance(v::AbstractVector) = v
+_first_instance(m::AbstractMatrix) = @view m[:, 1]
+
+function _classify_bounds(lb, ub, ::Type{T}) where {T}
+    lb_cpu = Array(lb)
+    ub_cpu = Array(ub)
+    ifix  = findall(lb_cpu .== ub_cpu)
+    ilow  = findall((lb_cpu .> T(-Inf)) .& (ub_cpu .== T(Inf)))
+    iupp  = findall((lb_cpu .== T(-Inf)) .& (ub_cpu .< T(Inf)))
+    irng  = findall((lb_cpu .> T(-Inf)) .& (ub_cpu .< T(Inf)) .& (lb_cpu .< ub_cpu))
+    ifree = findall((lb_cpu .== T(-Inf)) .& (ub_cpu .== T(Inf)))
+    iinf  = findall(lb_cpu .> ub_cpu)
+    return ifix, ilow, iupp, irng, ifree, iinf
+end
+
+function _build_meta(
+    nvar::Int, x0::VT, lvar::VT, uvar::VT,
+    ncon::Int, y0::VT, lcon::VT, ucon::VT;
+    nnzj::Int = nvar * ncon,
+    nnzh::Int = nvar * (nvar + 1) ÷ 2,
+    minimize::Bool = true,
+    islp::Bool = false,
+    name::String = "Generic",
+) where {VT}
+    T = eltype(VT)
+    ifix, ilow, iupp, irng, ifree, iinf = _classify_bounds(
+        _first_instance(lvar), _first_instance(uvar), T)
+    if ncon > 0
+        jfix, jlow, jupp, jrng, jfree, jinf = _classify_bounds(
+            _first_instance(lcon), _first_instance(ucon), T)
+    else
+        jfix = jlow = jupp = jrng = jfree = jinf = Int[]
+    end
+    nln = collect(1:ncon)
+    return NLPModels.NLPModelMeta{T, VT}(
+        nvar, x0, lvar, uvar,
+        ifix, ilow, iupp, irng, ifree, iinf,
+        nvar, nvar, nvar,
+        ncon, y0, lcon, ucon,
+        jfix, jlow, jupp, jrng, jfree, jinf,
+        nvar, nnzj, 0, nnzj, nnzh,
+        0, ncon, Int[], nln,
+        minimize, islp, name,
+        true, true, true, true, true, ncon > 0, true, ncon > 0, ncon > 0, true,
+    )
+end
 
 @inline function Base.getindex(v::V, i) where {V<:AbstractVariable}
     _bound_check(v.size, i)
@@ -589,41 +660,49 @@ function __bound_check(a::UnitRange{Int}, b::I) where {I<:Integer}
 end
 
 
-function append!(backend, a, b::Base.Generator, lb)
-    if lb != 0
-        b = _adapt_gen(b)
-        la = length(a)
-        resize!(a, la + lb)
-        map!(b.f, view(a, (la+1):(la+lb)), convert_array(b.iter, backend))
-    end
-    return a
+# Unified append! — works for both Vector and Matrix.
+# For Vector: grows length by lb.
+# For Matrix: grows rows by lb, broadcasting across columns.
+# The trailing dimensions (columns for Matrix, nothing for Vector) are preserved.
+
+@inline _trailing_dims(a) = Base.size(a)[2:end]
+
+function _expand_to_shape(col::AbstractVector{T}, trailing::Tuple{}) where {T}
+    return col  # Vector target — no expansion needed
+end
+function _expand_to_shape(col::AbstractVector{T}, trailing::Tuple) where {T}
+    return repeat(reshape(col, :, ntuple(_ -> 1, length(trailing))...), 1, trailing...)
 end
 
-function append!(backend, a, b::Base.Generator{UnitRange{I}}, lb) where {I}
-    if lb != 0
-        la = length(a)
-        resize!(a, la + lb)
-        map!(b.f, view(a, (la+1):(la+lb)), b.iter)
-    end
-    return a
-end
-
-function append!(backend, a, b::AbstractArray, lb)
-    if lb != 0
-        la = length(a)
-        resize!(a, la + lb)
-        map!(identity, view(a, (la+1):(la+lb)), convert_array(b, backend))
-    end
-    return a
+# Reshape an array to have the given trailing dimensions.
+# For vectors, delegates to _expand_to_shape. For matrices/higher-dim arrays,
+# reshapes using total elements / trailing to infer the first dimension.
+_reshape_to_match(arr::AbstractVector, trailing::Tuple{}) = arr
+_reshape_to_match(arr::AbstractVector, trailing::Tuple) = _expand_to_shape(arr, trailing)
+_reshape_to_match(arr::AbstractArray, trailing::Tuple{}) = vec(arr)
+function _reshape_to_match(arr::AbstractArray, trailing::Tuple)
+    n = length(arr) ÷ prod(trailing)
+    return reshape(arr, n, trailing...)
 end
 
 function append!(backend, a, b::Number, lb)
-    if lb != 0
-        la = length(a)
-        resize!(a, la + lb)
-        fill!(view(a, (la+1):(la+lb)), eltype(a)(b))
-    end
-    return a
+    lb == 0 && return a
+    new_part = fill(eltype(a)(b), lb, _trailing_dims(a)...)
+    return cat(a, new_part; dims = 1)
+end
+
+function append!(backend, a, b::AbstractArray, lb)
+    lb == 0 && return a
+    arr = convert_array(b, backend)
+    return cat(a, _reshape_to_match(arr, _trailing_dims(a)); dims = 1)
+end
+
+function append!(backend, a, b::Base.Generator, lb)
+    lb == 0 && return a
+    b = _adapt_gen(b)
+    col = Vector{eltype(a)}(undef, lb)
+    map!(b.f, col, convert_array(b.iter, backend))
+    return cat(a, _expand_to_shape(col, _trailing_dims(a)); dims = 1)
 end
 
 @inline total(ns) = _total(ns...)
@@ -684,7 +763,6 @@ Variable
 end
 
 @inline function _add_var(c, tag, name, start, lvar, uvar, ns...)
-    o = c.nvar
     len = total(ns)
     nvar = c.nvar + len
 
@@ -692,13 +770,17 @@ end
     lvar = append!(c.backend, c.lvar, lvar, len)
     uvar = append!(c.backend, c.uvar, uvar, len)
 
-    v = Variable(ns, len, o, _val_name(name), tag)
+    v = Variable(ns, len, c.nvar, _val_name(name), tag)
 
     (ExaCore(c; var = (v, c.var...), nvar=nvar, x0=x0, lvar=lvar, uvar=uvar, refs = add_refs(c.refs, name, v)), v)
 end
 
 @inline _val_name(::Val{N}) where {N} = N
 @inline _val_name(::Nothing) = :x
+@inline get_nbatch(c::ExaCore{T, <:AbstractMatrix}) where {T} = Base.size(c.x0, 2)
+@inline get_nbatch(::ExaCore) = 1
+@inline get_nbatch(m::ExaModel{T, <:AbstractMatrix}) where {T} = Base.size(m.meta.x0, 2)
+@inline get_nbatch(::ExaModel) = 1
 @inline add_refs(refs, ::Nothing, var) = refs
 @inline add_refs(refs, ::Val{N}, var) where {N} = (; refs..., N => var)
 
@@ -745,46 +827,13 @@ end
 end
 
 @inline function _add_par(c, tag, name, start, ns...)
-    o = c.npar
     len = total(ns)
     npar = c.npar + len
     θ = append!(c.backend, c.θ, start, len)
-    p = Parameter(ns, len, o, tag)
+    p = Parameter(ns, len, c.npar, tag)
     (ExaCore(c; par = (p, c.par...), θ=θ, npar=npar, refs = add_refs(c.refs, name, p)), p)
 end
 
-"""
-    set_parameter!(core, param, values)
-
-Updates the values of parameters in the core.
-
-## Example
-```jldoctest
-julia> using ExaModels
-
-julia> c = ExaCore(concrete = Val(true));
-
-julia> c, p = add_par(c, ones(5));
-
-julia> set_parameter!(c, p, ones(5))
-```
-"""
-function set_parameter!(c::ExaCore, param::Parameter, values::AbstractArray)
-    if length(values) != param.length
-        throw(
-            DimensionMismatch(
-                "Parameter size mismatch: expected $(param.length) elements, got $(length(values))",
-            ),
-        )
-    end
-
-    start_idx = param.offset + 1
-    end_idx = param.offset + param.length
-
-    copyto!(@view(c.θ[start_idx:end_idx]), values)
-
-    return nothing
-end
 
 """
     get_value(model, param)
@@ -803,66 +852,58 @@ end
 
 Update all values for `param` in `model.θ` to `values`.
 """
-function set_value!(model::ExaModel, param::Parameter, values)
+function set_value!(model::ExaModel{T, <:AbstractVector}, param::Parameter, values) where {T}
     if length(values) != param.length
         throw(DimensionMismatch(
             "expected $(param.length) elements, got $(length(values))"
         ))
     end
-    copyto!(view(model.θ, param.offset+1:param.offset+param.length), values)
+    rng = param.offset+1 : param.offset+param.length
+    copyto!(view(model.θ, rng), values)
+    return nothing
+end
+
+function set_value!(model::ExaModel{T, <:AbstractMatrix}, param::Parameter, values) where {T}
+    if length(values) != param.length
+        throw(DimensionMismatch(
+            "expected $(param.length) elements, got $(length(values))"
+        ))
+    end
+    rng = param.offset+1 : param.offset+param.length
+    for col in axes(model.θ, 2)
+        copyto!(view(model.θ, rng, col), values)
+    end
+    return nothing
+end
+
+function set_value!(model::ExaModel{T, <:AbstractMatrix{T}}, param::Parameter, values::AbstractMatrix) where {T}
+    nb = get_nbatch(model)
+    if Base.size(values, 1) != param.length || Base.size(values, 2) != nb
+        throw(DimensionMismatch(
+            "expected $(param.length) × $nb matrix, got $(Base.size(values))"
+        ))
+    end
+    rng = param.offset+1 : param.offset+param.length
+    for col in 1:nb
+        copyto!(view(model.θ, rng, col), view(values, :, col))
+    end
     return nothing
 end
 
 @inline _var_range(v::Variable) = v.offset+1 : v.offset+v.length
 @inline _con_range(c::Constraint) = c.offset+1 : c.offset+total(c.size)
 
-"""
-    get_start(model, var::Variable)
-    get_start(model, con::Constraint)
-
-Return a view of the initial-point values (`x0` for variables, `y0` for constraints).
-"""
 get_start(model::ExaModel, v::Variable)    = view(model.meta.x0,   _var_range(v))
 get_start(model::ExaModel, c::Constraint)  = view(model.meta.y0,   _con_range(c))
-
-"""
-    get_lvar(model, var::Variable)
-
-Return a view of the lower bounds for `var`.
-"""
 get_lvar(model::ExaModel, v::Variable) = view(model.meta.lvar, _var_range(v))
-
-"""
-    get_uvar(model, var::Variable)
-
-Return a view of the upper bounds for `var`.
-"""
 get_uvar(model::ExaModel, v::Variable) = view(model.meta.uvar, _var_range(v))
-
-"""
-    get_lcon(model, con::Constraint)
-
-Return a view of the lower bounds for `con`.
-"""
 get_lcon(model::ExaModel, c::Constraint) = view(model.meta.lcon, _con_range(c))
-
-"""
-    get_ucon(model, con::Constraint)
-
-Return a view of the upper bounds for `con`.
-"""
 get_ucon(model::ExaModel, c::Constraint) = view(model.meta.ucon, _con_range(c))
 
 @inline function _check_len(got, expected, label)
     got == expected || throw(DimensionMismatch("$label: expected $expected elements, got $got"))
 end
 
-"""
-    set_start!(model, var::Variable, values)
-    set_start!(model, con::Constraint, values)
-
-Update the initial-point values in-place (`x0` for variables, `y0` for constraints).
-"""
 function set_start!(model::ExaModel, v::Variable, values)
     _check_len(length(values), v.length, "set_start!")
     copyto!(view(model.meta.x0, _var_range(v)), values)
@@ -872,43 +913,19 @@ function set_start!(model::ExaModel, c::Constraint, values)
     _check_len(length(values), n, "set_start!")
     copyto!(view(model.meta.y0, _con_range(c)), values)
 end
-
-"""
-    set_lvar!(model, var::Variable, values)
-
-Update the lower bounds for `var` in-place.
-"""
 function set_lvar!(model::ExaModel, v::Variable, values)
     _check_len(length(values), v.length, "set_lvar!")
     copyto!(view(model.meta.lvar, _var_range(v)), values)
 end
-
-"""
-    set_uvar!(model, var::Variable, values)
-
-Update the upper bounds for `var` in-place.
-"""
 function set_uvar!(model::ExaModel, v::Variable, values)
     _check_len(length(values), v.length, "set_uvar!")
     copyto!(view(model.meta.uvar, _var_range(v)), values)
 end
-
-"""
-    set_lcon!(model, con::Constraint, values)
-
-Update the lower bounds for `con` in-place.
-"""
 function set_lcon!(model::ExaModel, c::Constraint, values)
     n = total(c.size)
     _check_len(length(values), n, "set_lcon!")
     copyto!(view(model.meta.lcon, _con_range(c)), values)
 end
-
-"""
-    set_ucon!(model, con::Constraint, values)
-
-Update the upper bounds for `con` in-place.
-"""
 function set_ucon!(model::ExaModel, c::Constraint, values)
     n = total(c.size)
     _check_len(length(values), n, "set_ucon!")
@@ -995,7 +1012,7 @@ is intended for code that builds expression trees programmatically.
 @inline function add_obj(c::C, expr::N, pars = 1:1; name = nothing) where {T,C<:ExaCore{T},N<:AbstractNode}
     f = _simdfunction(T, expr, c.nobj, c.nnzg, c.nnzh)
 
-      _add_obj(c, f, pars, name)
+    _add_obj(c, f, pars, name)
 end
 
 @inline function _add_obj(c, f, pars, name = nothing)
@@ -1075,20 +1092,19 @@ Constraint
 @inline function add_con(
     c::C,
     ns...;
-    tag = nothing, 
+    tag = nothing,
     name = nothing,
     start = zero(T),
     lcon = zero(T),
     ucon = zero(T),
     kwargs...
 ) where {T,C<:ExaCore{T}}
-
     gen = _get_generator(ns)
     dims = _get_con_dims(ns)
     gen = _adapt_gen(gen)
     f = _simdfunction(T, gen.f(DataSource()), c.ncon, c.nnzj, c.nnzh)
     pars = gen.iter
-    
+
     _add_con(c, f, pars, dims, start, lcon, ucon, name, tag)
 end
 
@@ -1198,6 +1214,11 @@ add_con!(c, bus, gen.bus => -pg[gen.i] for gen in data.gen)            # subtrac
     _add_con!(c, f, pars, _constraint_dims(c1), tag)
 end
 
+_probe_conaug(probe::ConAugPair) = probe.con
+_probe_conaug(probe) = error(
+    "add_con! two-argument form requires `constraint[idx] += expr` syntax in the generator body"
+)
+
 """
     add_con!(core::ExaCore, gen::Base.Generator; tag = nothing)
 
@@ -1221,11 +1242,7 @@ c, _ = add_con!(c, g[i] += x[i] + x[i+1] for i = 1:9)
     # Probe the generator: the result is a ConAugPair which carries the target
     # constraint alongside the index/expression pair.
     probe = gen.f(DataSource())
-    probe isa ConAugPair || error(
-        "add_con! two-argument form requires `constraint[idx] += expr` syntax " *
-        "in the generator body"
-    )
-    con = probe.con
+    con = _probe_conaug(probe)
 
     # The generator yields ConAugPair values; replace_T unwraps them to plain
     # Pairs before SIMDFunction stores them, so offset0 dispatch is unchanged.
@@ -1305,8 +1322,10 @@ c, s = add_expr(c, x[i, k]^2 for (i, k) in itr)
     return (ExaCore(c; refs = add_refs(c.refs, name, ex)), ex)
 end
 
-function jac_structure!(m::AbstractExaModel{T}, rows::AbstractVector, cols::AbstractVector) where T
-    _jac_structure!(T, m.cons, rows, cols)
+function jac_structure!(m::ExaModel{T}, rows::AbstractVector, cols::AbstractVector) where T
+    if !isempty(rows)
+        _jac_structure!(T, m.cons, rows, cols)
+    end
     return rows, cols
 end
 
@@ -1316,9 +1335,11 @@ _jac_structure!(T, cons::Tuple{}, rows, cols) = nothing
     sjacobian!(rows, cols, first(cons), NaNSource{T}(), NaNSource{T}(), T(NaN))
 end
 
-function hess_structure!(m::AbstractExaModel{T}, rows::AbstractVector, cols::AbstractVector) where T
-    _obj_hess_structure!(T, m.objs, rows, cols)
-    _con_hess_structure!(T, m.cons, rows, cols)
+function hess_structure!(m::ExaModel{T}, rows::AbstractVector, cols::AbstractVector) where T
+    if !isempty(rows)
+        _obj_hess_structure!(T, m.objs, rows, cols)
+        _con_hess_structure!(T, m.cons, rows, cols)
+    end
     return rows, cols
 end
 
@@ -1334,62 +1355,140 @@ _con_hess_structure!(T, cons::Tuple{}, rows, cols) = nothing
     shessian!(rows, cols, first(cons), NaNSource{T}(), NaNSource{T}(), T(NaN), T(NaN))
 end
 
-function obj(m::AbstractExaModel, x::AbstractVector)
-    return _obj(m.objs, x, m.θ)
+# ============================================================================
+# Batch-aware evaluation — all low-level functions loop over 1:nb,
+# striding x/θ/g/etc. by per-instance sizes. For nb=1, the loop runs
+# once with views of the full arrays (no overhead).
+# ============================================================================
+
+function NLPModels.obj(m::ExaModel{T, <:AbstractVector, Nothing}, x::AbstractVector) where {T}
+    return _obj_scalar(m.objs, x, m.θ)
+end
+function obj(m::ExaModel{T}, x::AbstractVector) where {T}
+    bf = similar(x, T, 1)
+    obj!(m, x, bf)
+    return @inbounds bf[1]
 end
 
-@inline function _obj((obj, objs...), x, θ)
-    s = _obj(objs, x, θ)
-    for i in obj.itr
+@inline function _obj_scalar((obj, objs...), x, θ)
+    s = _obj_scalar(objs, x, θ)
+    @inbounds for i in obj.itr
         s += obj.f(i, x, θ)
     end
     return s
 end
+@inline _obj_scalar(::Tuple{}, x, θ) = zero(eltype(x))
 
-@inline _obj(obj::Tuple{}, x, θ) = zero(eltype(x))
+@inline function _obj!(bf, (obj, objs...), x, θ, nb, nvar, npar, backend = nothing)
+    _obj!(bf, objs, x, θ, nb, nvar, npar, backend)
+    _obj_eval!(bf, obj, x, θ, nb, nvar, npar, backend)
+end
+@inline _obj!(bf, ::Tuple{}, x, θ, nb, nvar, npar, backend = nothing) = nothing
 
-function cons_nln!(m::AbstractExaModel, x::AbstractVector, g::AbstractVector)
-    fill!(g, zero(eltype(g)))
+@inline function _obj_eval!(bf, obj, x, θ, nb, nvar, npar, ::Nothing)
+    @inbounds for s in 1:nb
+        x_s = @view x[(s-1)*nvar+1 : s*nvar]
+        θ_s = @view θ[(s-1)*npar+1 : s*npar]
+        for i in obj.itr
+            bf[s] += obj.f(i, x_s, θ_s)
+        end
+    end
+end
+
+function NLPModels.cons_nln!(m::ExaModel{T, <:AbstractVector, Nothing}, x::AbstractVector, g::AbstractVector) where {T}
+    fill!(g, zero(T))
     _cons_nln!(m.cons, x, m.θ, g)
     return g
 end
+function NLPModels.cons_nln!(m::ExaModel{T}, bx::AbstractVecOrMat, bc::AbstractVecOrMat) where {T}
+    fill!(vec(bc), zero(T))
+    nb   = Base.size(bx, 2)
+    nvar = NLPModels.get_nvar(m)
+    ncon = NLPModels.get_ncon(m)
+    npar = Base.size(m.θ, 1)
+    _cons_nln!(m.cons, vec(bx), vec(m.θ), vec(bc), nb, nvar, npar, ncon, getbackend(m))
+    return bc
+end
 
+_cons_nln!(cons::Tuple{}, x, θ, g) = nothing
 @inline function _cons_nln!(cons::Tuple, x, θ, g)
     con = first(cons)
     _cons_nln!(Base.tail(cons), x, θ, g)
     @simd for i in eachindex(con.itr)
-        g[offset0(con, i)] += con.f(con.itr[i], x, θ)
+        @inbounds g[offset0(con, i)] += con.f(con.itr[i], x, θ)
     end
 end
-_cons_nln!(cons::Tuple{}, x, θ, g) = nothing
+@inline function _cons_nln!(cons::Tuple, x, θ, g, nb, nvar, npar, ncon, backend = nothing)
+    _cons_nln!(Base.tail(cons), x, θ, g, nb, nvar, npar, ncon, backend)
+    _cons_nln_eval!(first(cons), x, θ, g, nb, nvar, npar, ncon, backend)
+end
+_cons_nln!(cons::Tuple{}, x, θ, g, nb, nvar, npar, ncon, backend = nothing) = nothing
 
+@inline function _cons_nln_eval!(con, x, θ, g, nb, nvar, npar, ncon, ::Nothing)
+    @inbounds for s in 1:nb
+        x_s = @view x[(s-1)*nvar+1 : s*nvar]
+        θ_s = @view θ[(s-1)*npar+1 : s*npar]
+        g_s = @view g[(s-1)*ncon+1 : s*ncon]
+        @simd for i in eachindex(con.itr)
+            g_s[offset0(con, i)] += con.f(con.itr[i], x_s, θ_s)
+        end
+    end
+end
 
-
-function grad!(m::AbstractExaModel, x::AbstractVector, f::AbstractVector)
-    fill!(f, zero(eltype(f)))
+function NLPModels.grad!(m::ExaModel{T, <:AbstractVector, Nothing}, x::AbstractVector, f::AbstractVector) where {T}
+    fill!(f, zero(T))
     _grad!(m.objs, x, m.θ, f)
     return f
 end
+function NLPModels.grad!(m::ExaModel{T}, bx::AbstractVecOrMat, bg::AbstractVecOrMat) where {T}
+    fill!(vec(bg), zero(T))
+    nb   = Base.size(bx, 2)
+    nvar = NLPModels.get_nvar(m)
+    npar = Base.size(m.θ, 1)
+    _grad!(m.objs, vec(bx), vec(m.θ), vec(bg), nb, nvar, npar, getbackend(m))
+    return bg
+end
 
+_grad!(objs::Tuple{}, x, θ, f) = nothing
 @inline function _grad!(objs::Tuple, x, θ, f)
     _grad!(Base.tail(objs), x, θ, f)
     gradient!(f, first(objs), x, θ, one(eltype(f)))
 end
-_grad!(objs::Tuple{}, x, θ, f) = nothing
-
-function jac_coord!(m::AbstractExaModel, x::AbstractVector, jac::AbstractVector)
-    fill!(jac, zero(eltype(jac)))
-    _jac_coord!(m.cons, x, m.θ, jac)
-    return jac
+@inline function _grad!(objs::Tuple, x, θ, f, nb, nvar, npar, backend = nothing)
+    _grad!(Base.tail(objs), x, θ, f, nb, nvar, npar, backend)
+    gradient!(f, first(objs), x, θ, one(eltype(f)), nb, nvar, npar, backend)
 end
+_grad!(objs::Tuple{}, x, θ, f, nb, nvar, npar, backend = nothing) = nothing
+
+@inline function _jac_coord_impl!(m::ExaModel{T, <:AbstractVector, Nothing}, x, jvals) where {T}
+    fill!(jvals, zero(T))
+    _jac_coord!(m.cons, x, m.θ, jvals)
+    return jvals
+end
+@inline function _jac_coord_impl!(m::ExaModel{T}, bx, jvals) where {T}
+    fill!(vec(jvals), zero(T))
+    nb   = get_nbatch(m)
+    nvar = NLPModels.get_nvar(m)
+    npar = Base.size(m.θ, 1)
+    nnzj = NLPModels.get_nnzj(m)
+    _jac_coord!(m.cons, vec(bx), vec(m.θ), vec(jvals), nb, nvar, npar, nnzj, getbackend(m))
+    return jvals
+end
+NLPModels.jac_coord!(m::ExaModel{T}, bx::AbstractVecOrMat, jvals::AbstractVecOrMat) where {T} = _jac_coord_impl!(m, bx, jvals)
+NLPModels.jac_coord!(m::ExaModel{T}, x::AbstractVector, jac::AbstractVector) where {T} = _jac_coord_impl!(m, x, jac)
 
 _jac_coord!(cons::Tuple{}, x, θ, jac) = nothing
 @inline function _jac_coord!(cons::Tuple, x, θ, jac)
     _jac_coord!(Base.tail(cons), x, θ, jac)
     sjacobian!(jac, nothing, first(cons), x, θ, one(eltype(jac)))
 end
+_jac_coord!(cons::Tuple{}, x, θ, jac, nb, nvar, npar, nnzj, backend = nothing) = nothing
+@inline function _jac_coord!(cons::Tuple, x, θ, jac, nb, nvar, npar, nnzj, backend = nothing)
+    _jac_coord!(Base.tail(cons), x, θ, jac, nb, nvar, npar, nnzj, backend)
+    sjacobian!(jac, nothing, first(cons), x, θ, one(eltype(jac)), nb, nvar, npar, nnzj, backend)
+end
 
-function jprod_nln!(m::AbstractExaModel, x::AbstractVector, v::AbstractVector, Jv::AbstractVector)
+function jprod_nln!(m::ExaModel, x::AbstractVector, v::AbstractVector, Jv::AbstractVector)
     fill!(Jv, zero(eltype(Jv)))
     _jprod_nln!(m.cons, x, m.θ, v, Jv)
     return Jv
@@ -1401,7 +1500,7 @@ _jprod_nln!(cons::Tuple{}, x, θ, v, Jv) = nothing
     sjacobian!((Jv, v), nothing, first(cons), x, θ, one(eltype(Jv)))
 end
 
-function jtprod_nln!(m::AbstractExaModel, x::AbstractVector, v::AbstractVector, Jtv::AbstractVector)
+function jtprod_nln!(m::ExaModel, x::AbstractVector, v::AbstractVector, Jtv::AbstractVector)
     fill!(Jtv, zero(eltype(Jtv)))
     _jtprod_nln!(m.cons, x, m.θ, v, Jtv)
     return Jtv
@@ -1413,44 +1512,71 @@ _jtprod_nln!(cons::Tuple{}, x, θ, v, Jtv) = nothing
     sjacobian!(nothing, (Jtv, v), first(cons), x, θ, one(eltype(Jtv)))
 end
 
-function hess_coord!(
-    m::AbstractExaModel,
-    x::AbstractVector,
-    hess::AbstractVector;
-    obj_weight = one(eltype(x)),
-)
-    fill!(hess, zero(eltype(hess)))
-    _obj_hess_coord!(m.objs, x, m.θ, hess, obj_weight)
-    return hess
-end
+_as_weight(::Type{T}, w::Number) where {T} = T(w)
+_as_weight(::Type{T}, w) where {T} = w
 
-function hess_coord!(
-    m::AbstractExaModel,
-    x::AbstractVector,
-    y::AbstractVector,
-    hess::AbstractVector;
-    obj_weight = one(eltype(x)),
-)
-    fill!(hess, zero(eltype(hess)))
-    _obj_hess_coord!(m.objs, x, m.θ, hess, obj_weight)
-    _con_hess_coord!(m.cons, x, m.θ, y, hess, obj_weight)
-    return hess
+@inline function _obj_hess_coord_impl!(m::ExaModel{T, <:AbstractVector, Nothing}, x, hvals, obj_weight) where {T}
+    fill!(hvals, zero(T))
+    _obj_hess_coord!(m.objs, x, m.θ, hvals, _as_weight(T, obj_weight))
+    return hvals
 end
+@inline function _obj_hess_coord_impl!(m::ExaModel{T}, bx, hvals, obj_weight) where {T}
+    fill!(vec(hvals), zero(T))
+    nb   = get_nbatch(m)
+    nvar = NLPModels.get_nvar(m)
+    npar = Base.size(m.θ, 1)
+    nnzh = NLPModels.get_nnzh(m)
+    _obj_hess_coord!(m.objs, vec(bx), vec(m.θ), vec(hvals), _as_weight(T, obj_weight), nb, nvar, npar, nnzh, getbackend(m))
+    return hvals
+end
+NLPModels.hess_coord!(m::ExaModel{T}, bx::AbstractVecOrMat, hvals::AbstractVecOrMat; obj_weight = one(T)) where {T} = _obj_hess_coord_impl!(m, bx, hvals, obj_weight)
+NLPModels.hess_coord!(m::ExaModel{T}, x::AbstractVector, hess::AbstractVector; obj_weight = one(T)) where {T} = _obj_hess_coord_impl!(m, x, hess, obj_weight)
+
+@inline function _hess_coord_impl!(m::ExaModel{T, <:AbstractVector, Nothing}, x, y, hvals, obj_weight) where {T}
+    fill!(hvals, zero(T))
+    _obj_hess_coord!(m.objs, x, m.θ, hvals, _as_weight(T, obj_weight))
+    _con_hess_coord!(m.cons, x, m.θ, y, hvals)
+    return hvals
+end
+@inline function _hess_coord_impl!(m::ExaModel{T}, bx, by, hvals, obj_weight) where {T}
+    fill!(vec(hvals), zero(T))
+    nb      = get_nbatch(m)
+    nvar    = NLPModels.get_nvar(m)
+    ncon    = NLPModels.get_ncon(m)
+    npar    = Base.size(m.θ, 1)
+    nnzh    = NLPModels.get_nnzh(m)
+    backend = getbackend(m)
+    _obj_hess_coord!(m.objs, vec(bx), vec(m.θ), vec(hvals), _as_weight(T, obj_weight), nb, nvar, npar, nnzh, backend)
+    _con_hess_coord!(m.cons, vec(bx), vec(m.θ), vec(by), vec(hvals), nb, nvar, npar, ncon, nnzh, backend)
+    return hvals
+end
+NLPModels.hess_coord!(m::ExaModel{T}, bx::AbstractVecOrMat, by::AbstractVecOrMat, hvals::AbstractVecOrMat; obj_weight = one(T)) where {T} = _hess_coord_impl!(m, bx, by, hvals, obj_weight)
+NLPModels.hess_coord!(m::ExaModel{T}, x::AbstractVector, y::AbstractVector, hess::AbstractVector; obj_weight = one(T)) where {T} = _hess_coord_impl!(m, x, y, hess, obj_weight)
 
 _obj_hess_coord!(objs::Tuple{}, x, θ, hess, obj_weight) = nothing
 @inline function _obj_hess_coord!(objs::Tuple, x, θ, hess, obj_weight)
     _obj_hess_coord!(Base.tail(objs), x, θ, hess, obj_weight)
     shessian!(hess, nothing, first(objs), x, θ, obj_weight, zero(eltype(hess)))
 end
+_obj_hess_coord!(objs::Tuple{}, x, θ, hess, obj_weight, nb, nvar, npar, nnzh, backend = nothing) = nothing
+@inline function _obj_hess_coord!(objs::Tuple, x, θ, hess, obj_weight, nb, nvar, npar, nnzh, backend = nothing)
+    _obj_hess_coord!(Base.tail(objs), x, θ, hess, obj_weight, nb, nvar, npar, nnzh, backend)
+    shessian!(hess, nothing, first(objs), x, θ, obj_weight, zero(eltype(hess)), nb, nvar, npar, nnzh, backend)
+end
 
-_con_hess_coord!(cons::Tuple{}, x, θ, y, hess, obj_weight) = nothing
-@inline function _con_hess_coord!(cons::Tuple, x, θ, y, hess, obj_weight)
-    _con_hess_coord!(Base.tail(cons), x, θ, y, hess, obj_weight)
+_con_hess_coord!(cons::Tuple{}, x, θ, y, hess) = nothing
+@inline function _con_hess_coord!(cons::Tuple, x, θ, y, hess)
+    _con_hess_coord!(Base.tail(cons), x, θ, y, hess)
     shessian!(hess, nothing, first(cons), x, θ, y, zero(eltype(hess)))
+end
+_con_hess_coord!(cons::Tuple{}, x, θ, y, hess, nb, nvar, npar, ncon, nnzh, backend = nothing) = nothing
+@inline function _con_hess_coord!(cons::Tuple, x, θ, y, hess, nb, nvar, npar, ncon, nnzh, backend = nothing)
+    _con_hess_coord!(Base.tail(cons), x, θ, y, hess, nb, nvar, npar, ncon, nnzh, backend)
+    shessian!(hess, nothing, first(cons), x, θ, y, zero(eltype(hess)), nb, nvar, npar, ncon, nnzh, backend)
 end
 
 function hprod!(
-    m::AbstractExaModel,
+    m::ExaModel,
     x::AbstractVector,
     v::AbstractVector,
     Hv::AbstractVector;
@@ -1462,7 +1588,7 @@ function hprod!(
 end
 
 function hprod!(
-    m::AbstractExaModel,
+    m::ExaModel,
     x::AbstractVector,
     y::AbstractVector,
     v::AbstractVector,
@@ -1674,6 +1800,174 @@ end
 
 _adapt_gen(gen) = Base.Generator(gen.f, collect(gen.iter))
 _adapt_gen(gen::Base.Generator{P}) where {P<:Union{AbstractArray,AbstractRange}} = gen
+
+# ============================================================================
+# Batch ExaModel — dispatch on VT <: AbstractMatrix
+# ============================================================================
+#
+# BatchExaCore / BatchExaModel are determined by VT <: AbstractMatrix.
+# nbatch is derived from size(x0, 2).
+#
+# All evaluation is handled by the batch-aware low-level functions above
+# (_obj, _grad!, _cons_nln!, etc.) which loop over 1:nb with strided views.
+# This section provides type aliases, the BatchExaCore constructor,
+# and thin batch API wrappers (matrix-argument dispatch).
+
+# ============================================================================
+# Type aliases — determined by VT <: AbstractMatrix
+# ============================================================================
+
+"""
+    BatchExaCore{T,VT,B}
+
+Type alias for an [`ExaCore`](@ref) whose storage arrays are matrices
+(columns = instances).
+"""
+const BatchExaCore{T,VT<:AbstractMatrix{T},B} = ExaCore{T,VT,B}
+
+"""
+    BatchExaModel{T,VT,E,V,P,O,C,S,R,M}
+
+Type alias for an [`ExaModel`](@ref) built from a [`BatchExaCore`](@ref).
+"""
+const BatchExaModel{T,VT<:AbstractMatrix{T},E,V,P,O,C,S,R,M} = ExaModel{T,VT,E,V,P,O,C,S,R,M}
+
+# ============================================================================
+# BatchExaCore constructor — alias for ExaCore with nbatch
+# ============================================================================
+
+"""
+    BatchExaCore(nbatch; kwargs...)
+
+Alias for `ExaCore(; concrete = Val(true), batch = Val(true), nbatch, kwargs...)`.
+
+Creates an [`ExaCore`](@ref) for building batch optimization models with
+`nbatch` independent instances. Generators should iterate over per-instance
+dimensions only — the batch dimension is handled automatically at evaluation
+time by striding through the data.
+
+## Example
+```julia
+core = BatchExaCore(3)
+c, v = add_var(core, 10; start = 1.0, lvar = 0.0, uvar = 10.0)
+c, _ = add_obj(c, v[i]^2 for i in 1:10)
+model = ExaModel(c)
+```
+"""
+BatchExaCore(nbatch::Integer; kwargs...) = ExaCore(; concrete = Val(true), batch = Val(true), nbatch, kwargs...)
+
+
+"""
+    var_indices(model, i) -> UnitRange
+
+Variable index range for instance `i` in the fused model's global variable vector.
+"""
+var_indices(model::BatchExaModel, i::Int) =
+    ((i - 1) * NLPModels.get_nvar(model) + 1):(i * NLPModels.get_nvar(model))
+
+"""
+    cons_block_indices(model, i) -> UnitRange
+
+Constraint index range for instance `i` in the fused model's global constraint vector.
+"""
+cons_block_indices(model::BatchExaModel, i::Int) =
+    ((i - 1) * NLPModels.get_ncon(model) + 1):(i * NLPModels.get_ncon(model))
+
+# ============================================================================
+# Batch getters / setters
+# ============================================================================
+
+get_start(model::BatchExaModel, v::Variable)    = view(model.meta.x0,   _var_range(v), :)
+get_start(model::BatchExaModel, c::Constraint)  = view(model.meta.y0,   _con_range(c), :)
+get_start(model::BatchExaModel, v::Variable, i::Int)    = view(model.meta.x0,   _var_range(v), i)
+get_start(model::BatchExaModel, c::Constraint, i::Int)  = view(model.meta.y0,   _con_range(c), i)
+get_lvar(model::BatchExaModel, v::Variable) = view(model.meta.lvar, _var_range(v), :)
+get_lvar(model::BatchExaModel, v::Variable, i::Int) = view(model.meta.lvar, _var_range(v), i)
+get_uvar(model::BatchExaModel, v::Variable) = view(model.meta.uvar, _var_range(v), :)
+get_uvar(model::BatchExaModel, v::Variable, i::Int) = view(model.meta.uvar, _var_range(v), i)
+get_lcon(model::BatchExaModel, c::Constraint) = view(model.meta.lcon, _con_range(c), :)
+get_lcon(model::BatchExaModel, c::Constraint, i::Int) = view(model.meta.lcon, _con_range(c), i)
+get_ucon(model::BatchExaModel, c::Constraint) = view(model.meta.ucon, _con_range(c), :)
+get_ucon(model::BatchExaModel, c::Constraint, i::Int) = view(model.meta.ucon, _con_range(c), i)
+
+function set_start!(model::BatchExaModel, v::Variable, values)
+    copyto!(view(model.meta.x0, _var_range(v), :), values)
+end
+function set_start!(model::BatchExaModel, c::Constraint, values)
+    copyto!(view(model.meta.y0, _con_range(c), :), values)
+end
+function set_start!(model::BatchExaModel, v::Variable, values, i::Int)
+    _check_len(length(values), v.length, "set_start!")
+    copyto!(view(model.meta.x0, _var_range(v), i), values)
+end
+function set_start!(model::BatchExaModel, c::Constraint, values, i::Int)
+    n = total(c.size)
+    _check_len(length(values), n, "set_start!")
+    copyto!(view(model.meta.y0, _con_range(c), i), values)
+end
+function set_lvar!(model::BatchExaModel, v::Variable, values)
+    copyto!(view(model.meta.lvar, _var_range(v), :), values)
+end
+function set_lvar!(model::BatchExaModel, v::Variable, values, i::Int)
+    _check_len(length(values), v.length, "set_lvar!")
+    copyto!(view(model.meta.lvar, _var_range(v), i), values)
+end
+function set_uvar!(model::BatchExaModel, v::Variable, values)
+    copyto!(view(model.meta.uvar, _var_range(v), :), values)
+end
+function set_uvar!(model::BatchExaModel, v::Variable, values, i::Int)
+    _check_len(length(values), v.length, "set_uvar!")
+    copyto!(view(model.meta.uvar, _var_range(v), i), values)
+end
+function set_lcon!(model::BatchExaModel, c::Constraint, values)
+    copyto!(view(model.meta.lcon, _con_range(c), :), values)
+end
+function set_lcon!(model::BatchExaModel, c::Constraint, values, i::Int)
+    n = total(c.size)
+    _check_len(length(values), n, "set_lcon!")
+    copyto!(view(model.meta.lcon, _con_range(c), i), values)
+end
+function set_ucon!(model::BatchExaModel, c::Constraint, values)
+    copyto!(view(model.meta.ucon, _con_range(c), :), values)
+end
+function set_ucon!(model::BatchExaModel, c::Constraint, values, i::Int)
+    n = total(c.size)
+    _check_len(length(values), n, "set_ucon!")
+    copyto!(view(model.meta.ucon, _con_range(c), i), values)
+end
+
+# ============================================================================
+# Batch API: matrix-argument wrappers
+# These delegate to the unified batch-aware functions above.
+# ============================================================================
+
+function obj!(m::ExaModel{T}, bx::AbstractVecOrMat, bf::AbstractVector) where {T}
+    fill!(bf, zero(T))
+    nb   = Base.size(bx, 2)
+    nvar = NLPModels.get_nvar(m)
+    npar = Base.size(m.θ, 1)
+    _obj!(bf, m.objs, vec(bx), vec(m.θ), nb, nvar, npar, getbackend(m))
+    return bf
+end
+
+function obj(m::ExaModel{T}, bx::AbstractMatrix) where {T}
+    bf = similar(bx, T, Base.size(bx, 2))
+    obj!(m, bx, bf)
+    return bf
+end
+
+NLPModels.cons!(m::ExaModel{T}, bx::AbstractMatrix, bc::AbstractMatrix) where {T} =
+    NLPModels.cons_nln!(m, bx, bc)
+
+_batch_vector_error() = throw(ArgumentError("batch model requires matrix input; got vector"))
+
+obj(m::ExaModel{T, <:AbstractMatrix}, x::AbstractVector) where {T} = _batch_vector_error()
+NLPModels.grad!(m::ExaModel{T, <:AbstractMatrix}, x::AbstractVector, g::AbstractVector) where {T} = _batch_vector_error()
+NLPModels.cons!(m::ExaModel{T, <:AbstractMatrix}, x::AbstractVector, c::AbstractVector) where {T} = _batch_vector_error()
+NLPModels.cons_nln!(m::ExaModel{T, <:AbstractMatrix}, x::AbstractVector, c::AbstractVector) where {T} = _batch_vector_error()
+
+
+
 
 function Base.getproperty(core::E, name::Symbol) where {E <: Union{ExaCore, ExaModel}}
     if hasfield(E, name)
