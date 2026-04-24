@@ -11,6 +11,10 @@ import ExaModels: var_indices, cons_block_indices, get_nbatch,
     get_start, get_lvar, get_uvar, get_lcon, get_ucon, WrapperNLPModel, FlatNLPModel
 
 import NLPModelsIpopt: ipopt
+import MadNLP
+import MadNLP: madnlp, ERROR as MADNLP_ERROR
+import PowerModels
+import Downloads
 
 import ..BACKENDS
 using Adapt
@@ -429,6 +433,144 @@ function test_add_expr(; backend = nothing)
     @test vec(_to_cpu(bg)) ≈ _to_cpu(g_flat)
 end
 
+function _get_opf_case(filename)
+    isfile(filename) && return filename
+    tmpdir = tempname()
+    mkdir(tmpdir)
+    ff = joinpath(tmpdir, filename)
+    Downloads.download(
+        "https://raw.githubusercontent.com/power-grid-lib/pglib-opf/dc6be4b2f85ca0e776952ec22cbd4c22396ea5a3/$filename",
+        ff,
+    )
+    return ff
+end
+
+function _parse_opf_data(filename)
+    data = PowerModels.parse_file(_get_opf_case(filename))
+    PowerModels.standardize_cost_terms!(data, order = 2)
+    PowerModels.calc_thermal_limits!(data)
+    ref = PowerModels.build_ref(data)[:it][:pm][:nw][0]
+
+    arcdict    = Dict(a => k for (k, a) in enumerate(ref[:arcs]))
+    busdict    = Dict(k => i for (i, (k, v)) in enumerate(ref[:bus]))
+    branchdict = Dict(k => i for (i, (k, v)) in enumerate(ref[:branch]))
+
+    bus = [
+        begin
+            bus_loads  = [ref[:load][l]  for l in ref[:bus_loads][k]]
+            bus_shunts = [ref[:shunt][s] for s in ref[:bus_shunts][k]]
+            pd = sum(load["pd"] for load in bus_loads;  init = 0.0)
+            gs = sum(sh["gs"]   for sh   in bus_shunts; init = 0.0)
+            qd = sum(load["qd"] for load in bus_loads;  init = 0.0)
+            bs = sum(sh["bs"]   for sh   in bus_shunts; init = 0.0)
+            (i = busdict[k], pd = pd, gs = gs, qd = qd, bs = bs)
+        end for (k, v) in ref[:bus]
+    ]
+    gen = [
+        (i = gendict_i, cost1 = v["cost"][1], cost2 = v["cost"][2], cost3 = v["cost"][3],
+         bus = busdict[v["gen_bus"]])
+        for (gendict_i, (k, v)) in enumerate(ref[:gen])
+    ]
+    arc = [
+        (i = k, rate_a = ref[:branch][arc_l]["rate_a"], bus = busdict[arc_i])
+        for (k, (arc_l, arc_i, arc_j)) in enumerate(ref[:arcs])
+    ]
+    branch = [
+        begin
+            g, b = PowerModels.calc_branch_y(br)
+            tr, ti = PowerModels.calc_branch_t(br)
+            ttm = tr^2 + ti^2
+            (
+                i = branchdict[bi], j = 1,
+                f_idx = arcdict[bi, br["f_bus"], br["t_bus"]],
+                t_idx = arcdict[bi, br["t_bus"], br["f_bus"]],
+                f_bus = busdict[br["f_bus"]], t_bus = busdict[br["t_bus"]],
+                c1 = (-g*tr - b*ti)/ttm, c2 = (-b*tr + g*ti)/ttm,
+                c3 = (-g*tr + b*ti)/ttm, c4 = (-b*tr - g*ti)/ttm,
+                c5 = (g + br["g_fr"])/ttm, c6 = (b + br["b_fr"])/ttm,
+                c7 = (g + br["g_to"]),     c8 = (b + br["b_to"]),
+                rate_a_sq = br["rate_a"]^2,
+            )
+        end for (bi, br) in ref[:branch]
+    ]
+    return (
+        bus      = bus,
+        gen      = gen,
+        arc      = arc,
+        branch   = branch,
+        ref_buses = [busdict[i] for (i, _) in ref[:ref_buses]],
+        vmax = [v["vmax"] for (k, v) in ref[:bus]],
+        vmin = [v["vmin"] for (k, v) in ref[:bus]],
+        pmax = [v["pmax"] for (k, v) in ref[:gen]],
+        pmin = [v["pmin"] for (k, v) in ref[:gen]],
+        qmax = [v["qmax"] for (k, v) in ref[:gen]],
+        qmin = [v["qmin"] for (k, v) in ref[:gen]],
+        rate_a  = [ref[:branch][arc_l]["rate_a"] for (arc_l, arc_i, arc_j) in ref[:arcs]],
+        angmax  = [b["angmax"] for (k, b) in ref[:branch]],
+        angmin  = [b["angmin"] for (k, b) in ref[:branch]],
+    )
+end
+
+function _build_batch_opf(data; backend, nbatch)
+    core = BatchExaCore(nbatch; backend)
+    @add_var(core, va, length(data.bus))
+    @add_var(core, vm, length(data.bus);
+             start = fill!(similar(data.bus, Float64), 1.0),
+             lvar = data.vmin, uvar = data.vmax)
+    @add_var(core, pg, length(data.gen); lvar = data.pmin, uvar = data.pmax)
+    @add_var(core, qg, length(data.gen); lvar = data.qmin, uvar = data.qmax)
+    @add_var(core, p,  length(data.arc); lvar = -data.rate_a, uvar = data.rate_a)
+    @add_var(core, q,  length(data.arc); lvar = -data.rate_a, uvar = data.rate_a)
+
+    @add_obj(core, g.cost1 * pg[g.i]^2 + g.cost2 * pg[g.i] + g.cost3 for g in data.gen)
+
+    @add_con(core, c_ref_angle, va[i] for i in data.ref_buses)
+    @add_con(core, c_from_p,
+             p[b.f_idx] - b.c5*vm[b.f_bus]^2 -
+             b.c3*(vm[b.f_bus]*vm[b.t_bus]*cos(va[b.f_bus]-va[b.t_bus])) -
+             b.c4*(vm[b.f_bus]*vm[b.t_bus]*sin(va[b.f_bus]-va[b.t_bus]))
+             for b in data.branch)
+    @add_con(core, c_from_q,
+             q[b.f_idx] + b.c6*vm[b.f_bus]^2 +
+             b.c4*(vm[b.f_bus]*vm[b.t_bus]*cos(va[b.f_bus]-va[b.t_bus])) -
+             b.c3*(vm[b.f_bus]*vm[b.t_bus]*sin(va[b.f_bus]-va[b.t_bus]))
+             for b in data.branch)
+    @add_con(core, c_to_p,
+             p[b.t_idx] - b.c7*vm[b.t_bus]^2 -
+             b.c1*(vm[b.t_bus]*vm[b.f_bus]*cos(va[b.t_bus]-va[b.f_bus])) -
+             b.c2*(vm[b.t_bus]*vm[b.f_bus]*sin(va[b.t_bus]-va[b.f_bus]))
+             for b in data.branch)
+    @add_con(core, c_to_q,
+             q[b.t_idx] + b.c8*vm[b.t_bus]^2 +
+             b.c2*(vm[b.t_bus]*vm[b.f_bus]*cos(va[b.t_bus]-va[b.f_bus])) -
+             b.c1*(vm[b.t_bus]*vm[b.f_bus]*sin(va[b.t_bus]-va[b.f_bus]))
+             for b in data.branch)
+    @add_con(core, c_angle_diff,
+             va[b.f_bus] - va[b.t_bus] for b in data.branch;
+             lcon = data.angmin, ucon = data.angmax)
+    @add_con(core, c_thermal_f,
+             p[b.f_idx]^2 + q[b.f_idx]^2 - b.rate_a_sq for b in data.branch;
+             lcon = fill!(similar(data.branch, Float64, length(data.branch)), -Inf))
+    @add_con(core, c_thermal_t,
+             p[b.t_idx]^2 + q[b.t_idx]^2 - b.rate_a_sq for b in data.branch;
+             lcon = fill!(similar(data.branch, Float64, length(data.branch)), -Inf))
+    @add_con(core, c_p_balance, b.pd + b.gs*vm[b.i]^2 for b in data.bus)
+    @add_con(core, c_q_balance, b.qd - b.bs*vm[b.i]^2 for b in data.bus)
+    @add_con!(core, c_p_balance, a.bus => p[a.i]    for a in data.arc)
+    @add_con!(core, c_q_balance, a.bus => q[a.i]    for a in data.arc)
+    @add_con!(core, c_p_balance, g.bus => -pg[g.i]  for g in data.gen)
+    @add_con!(core, c_q_balance, g.bus => -qg[g.i]  for g in data.gen)
+
+    return FlatNLPModel(ExaModel(core; prod = true))
+end
+
+function test_batch_opf_flat(; backend = nothing)
+    data = _parse_opf_data("pglib_opf_case3_lmbd.m")
+    m = _build_batch_opf(data; backend, nbatch = 3)
+    result = madnlp(m; print_level = MADNLP_ERROR)
+    @test result.status == MadNLP.SOLVE_SUCCEEDED
+end
+
 function test_per_instance_accessors(; backend = nothing)
     ns, nv = 2, 3
     c = BatchExaCore(ns; backend)
@@ -475,6 +617,7 @@ function runtests()
                 @testset "add_con!" test_add_con_aug(; backend)
                 @testset "add_expr" test_add_expr(; backend)
                 @testset "Per-instance accessors" test_per_instance_accessors(; backend)
+                @testset "Batch OPF FlatNLPModel" test_batch_opf_flat(; backend)
             end
         end
     end

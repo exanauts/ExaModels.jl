@@ -238,6 +238,26 @@ function ExaModels.cons_nln!(
         end
     return y
 end
+
+function ExaModels.cons_nln!(
+    m::ExaModels.ExaModel{T,VT,E},
+    x::V,
+    y::V,
+) where {T,VT<:AbstractMatrix,E<:KAExtension,V<:AbstractVector}
+    fill!(y, zero(T))
+    _cons_nln!(m.ext.backend, y, m.cons, x, m.θ)
+    _conaugs!(m.ext.backend, m.ext.conbuffer, m.cons, x, m.θ)
+    if length(m.ext.conaugptr) > 1
+        compress_to_dense(m.ext.backend)(
+            y,
+            m.ext.conbuffer,
+            m.ext.conaugptr,
+            m.ext.conaugsparsity;
+            ndrange = length(m.ext.conaugptr) - 1,
+        )
+    end
+    return y
+end
 _cons_nln!(backend, y, ::Tuple{}, x, θ) = nothing
 function _cons_nln!(backend, y, (con, cons...), x, θ)
     _cons_nln!(backend, y, cons, x, θ)
@@ -562,6 +582,13 @@ function ExaModels._cons_nln_eval!(con, x, θ, g, nb, nvar, npar, ncon, backend:
     end
 end
 
+function ExaModels._cons_nln_eval!(con::ExaModels.ConstraintAugmentation, x, θ, g, nb, nvar, npar, ncon, backend::KernelAbstractions.Backend)
+    nitr = length(con.itr)
+    if nitr > 0
+        kerf_con_aug_batch(backend)(g, con.f, con.itr, x, θ, nvar, npar, ncon, nitr; ndrange = nb * nitr)
+    end
+end
+
 @kernel function kerf_con_batch(g, @Const(f), @Const(itr), @Const(x), @Const(θ), @Const(nvar), @Const(npar), @Const(ncon), @Const(nitr))
     I = @index(Global)
     s = (I - 1) ÷ nitr + 1
@@ -570,6 +597,17 @@ end
     θ_off = (s - 1) * npar
     g_off = (s - 1) * ncon
     @inbounds g[g_off + ExaModels.offset0(f, itr, k)] += f(itr[k], view(x, x_off+1:x_off+nvar), view(θ, θ_off+1:θ_off+npar))
+end
+
+@kernel function kerf_con_aug_batch(g, @Const(f), @Const(itr), @Const(x), @Const(θ), @Const(nvar), @Const(npar), @Const(ncon), @Const(nitr))
+    I = @index(Global)
+    s = (I - 1) ÷ nitr + 1
+    k = (I - 1) % nitr + 1
+    x_off = (s - 1) * nvar
+    θ_off = (s - 1) * npar
+    g_off = (s - 1) * ncon
+    val = f(itr[k], view(x, x_off+1:x_off+nvar), view(θ, θ_off+1:θ_off+npar))
+    @inbounds KernelAbstractions.@atomic g[g_off + ExaModels.offset0(f, itr, k)] += val
 end
 
 # --- Gradient ---

@@ -610,24 +610,26 @@ end
 
 function FlatNLPModel(model::NLPModels.AbstractNLPModel{T}) where {T}
     nb = get_nbatch(model)
-    nvar = NLPModels.get_nvar(model) * nb
-    ncon = NLPModels.get_ncon(model) * nb
+    nvar_s = NLPModels.get_nvar(model)
+    ncon_s = NLPModels.get_ncon(model)
+    nvar = nvar_s * nb
+    ncon = ncon_s * nb
     nnzj = NLPModels.get_nnzj(model) * nb
     nnzh = NLPModels.get_nnzh(model) * nb
-    x0 = vec(model.meta.x0)
-    VT = typeof(x0)
-    meta = NLPModels.NLPModelMeta{T, VT}(
-        nvar,
-        x0, vec(model.meta.lvar), vec(model.meta.uvar),
-        Int[], Int[], Int[], Int[], collect(1:nvar), Int[],
-        nvar, nvar, nvar,
-        ncon,
-        vec(model.meta.y0), vec(model.meta.lcon), vec(model.meta.ucon),
-        Int[], Int[], Int[], Int[], Int[], Int[],
-        nvar, nnzj, 0, nnzj, nnzh,
-        0, ncon, Int[], collect(1:ncon),
-        model.meta.minimize, false, String(model.meta.name),
-        false, false, true, true, true, ncon > 0, true, ncon > 0, ncon > 0, true,
+    x0   = vec(model.meta.x0)
+    lvar = vec(model.meta.lvar)
+    uvar = vec(model.meta.uvar)
+    y0   = vec(model.meta.y0)
+    lcon = vec(model.meta.lcon)
+    ucon = vec(model.meta.ucon)
+
+    meta = _build_meta(
+        nvar, x0, lvar, uvar,
+        ncon, y0, lcon, ucon;
+        nnzj = nnzj,
+        nnzh = nnzh,
+        minimize = model.meta.minimize,
+        name = String(model.meta.name),
     )
     return FlatNLPModel(model, meta, NLPModels.Counters())
 end
@@ -652,7 +654,7 @@ function NLPModels.cons_nln!(m::FlatNLPModel{T}, x::AbstractVector, c::AbstractV
     nb = get_nbatch(m.batch)
     nvar = NLPModels.get_nvar(m.batch)
     ncon = NLPModels.get_ncon(m.batch)
-    NLPModels.cons!(m.batch, reshape(x, nvar, nb), reshape(c, ncon, nb))
+    NLPModels.cons_nln!(m.batch, reshape(x, nvar, nb), reshape(c, ncon, nb))
     return c
 end
 
@@ -734,6 +736,21 @@ function NLPModels.hess_coord!(
     nnzh = NLPModels.get_nnzh(m.batch)
     NLPModels.hess_coord!(m.batch, reshape(x, nvar, nb), reshape(y, ncon, nb), reshape(hvals, nnzh, nb); obj_weight)
     return hvals
+end
+
+function NLPModels.jtprod_nln!(m::FlatNLPModel{T}, x::AbstractVector, v::AbstractVector, Jtv::AbstractVector) where {T}
+    nb = get_nbatch(m.batch)
+    nvar = NLPModels.get_nvar(m.batch)
+    ncon = NLPModels.get_ncon(m.batch)
+    for s in 1:nb
+        NLPModels.jtprod_nln!(
+            m.batch,
+            x[(s-1)*nvar+1:s*nvar],
+            v[(s-1)*ncon+1:s*ncon],
+            view(Jtv, (s-1)*nvar+1:s*nvar),
+        )
+    end
+    return Jtv
 end
 
 export FlatNLPModel
