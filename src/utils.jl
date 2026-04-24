@@ -739,17 +739,7 @@ function NLPModels.hess_coord!(
 end
 
 function NLPModels.jtprod_nln!(m::FlatNLPModel{T}, x::AbstractVector, v::AbstractVector, Jtv::AbstractVector) where {T}
-    nb = get_nbatch(m.batch)
-    nvar = NLPModels.get_nvar(m.batch)
-    ncon = NLPModels.get_ncon(m.batch)
-    for s in 1:nb
-        NLPModels.jtprod_nln!(
-            m.batch,
-            x[(s-1)*nvar+1:s*nvar],
-            v[(s-1)*ncon+1:s*ncon],
-            view(Jtv, (s-1)*nvar+1:s*nvar),
-        )
-    end
+    NLPModels.jtprod_nln!(m.batch, x, v, Jtv)
     return Jtv
 end
 
