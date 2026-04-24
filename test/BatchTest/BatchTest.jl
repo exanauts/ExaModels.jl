@@ -567,7 +567,7 @@ end
 function test_batch_opf_flat(; backend = nothing)
     data = _parse_opf_data("pglib_opf_case3_lmbd.m")
     m = _build_batch_opf(data; backend, nbatch = 3)
-    result = madnlp(m; print_level = MADNLP_ERROR)
+    result = madnlp(m; print_level = MADNLP_ERROR, fixed_variable_treatment = MadNLP.RelaxBound)
     @test result.status == MadNLP.SOLVE_SUCCEEDED
 end
 
