@@ -546,12 +546,14 @@ _first_instance(v::AbstractVector) = v
 _first_instance(m::AbstractMatrix) = @view m[:, 1]
 
 function _classify_bounds(lb, ub, ::Type{T}) where {T}
-    ifix  = findall(lb .== ub)
-    ilow  = findall((lb .> T(-Inf)) .& (ub .== T(Inf)))
-    iupp  = findall((lb .== T(-Inf)) .& (ub .< T(Inf)))
-    irng  = findall((lb .> T(-Inf)) .& (ub .< T(Inf)) .& (lb .< ub))
-    ifree = findall((lb .== T(-Inf)) .& (ub .== T(Inf)))
-    iinf  = findall(lb .> ub)
+    lb_cpu = Array(lb)
+    ub_cpu = Array(ub)
+    ifix  = findall(lb_cpu .== ub_cpu)
+    ilow  = findall((lb_cpu .> T(-Inf)) .& (ub_cpu .== T(Inf)))
+    iupp  = findall((lb_cpu .== T(-Inf)) .& (ub_cpu .< T(Inf)))
+    irng  = findall((lb_cpu .> T(-Inf)) .& (ub_cpu .< T(Inf)) .& (lb_cpu .< ub_cpu))
+    ifree = findall((lb_cpu .== T(-Inf)) .& (ub_cpu .== T(Inf)))
+    iinf  = findall(lb_cpu .> ub_cpu)
     return ifix, ilow, iupp, irng, ifree, iinf
 end
 
