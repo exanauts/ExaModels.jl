@@ -314,6 +314,13 @@ end
 @inline _vec_to_cpu(oracle, backend, vin, cpu_buf) =
     _vec_to_cpu(oracle.adapt, backend, vin, cpu_buf)
 
+# Allocate the inner-callback scratch buffer for `embed_oracle` with a
+# concrete type known at construction time (juliac `--trim=safe` friendly).
+# `adapt = Val(true)` means the inner callback always receives CPU arrays;
+# `Val(false)` follows whatever array type the model's backend uses.
+@inline _embed_scratch(::Val{true},  _,  n::Int) = zeros(n)
+@inline _embed_scratch(::Val{false}, x0, n::Int) = similar(x0, n)
+
 
 # ── Registration ──────────────────────────────────────────────────────────────
 
@@ -1444,14 +1451,14 @@ function embed_oracle(
     x_idx = (x_off + 1):(x_off + input_dim)
     z_idx = (z_off + 1):(z_off + output_dim)
 
-    # Lazy-allocated scratch for the inner-`vjp!`/`hvp!` results.  We can't
-    # preallocate eagerly because the array type (Vector / CuArray / etc.) is
-    # only known once the model is solved, but caching after first call still
-    # gives the steady-state zero-alloc property.  `Ref{Any}` is type-unstable
-    # at the access site but the captured array's element type stabilizes
-    # through the broadcast in `Jtv[x_idx] .= .-Jtv_x` regardless.
-    jtv_x_buf = Ref{Any}(nothing)
-    hv_x_buf  = Ref{Any}(nothing)
+    # Preallocate `Jtv_x` / `Hv_x` scratch with a concrete type at construction
+    # time so the closures below remain type-stable (juliac `--trim=safe`
+    # friendly).  The right side is determined by the oracle's `adapt` mode:
+    #   - Val(true): callbacks always receive CPU `Array`s, so a CPU `Vector`.
+    #   - Val(false): callbacks receive whatever the model's backend uses;
+    #     `similar(core.x0, input_dim)` carries that type forward.
+    jtv_x_buf = _embed_scratch(adapt, core.x0, input_dim)
+    hv_x_buf  = _embed_scratch(adapt, core.x0, input_dim)
 
     _f! = let x_idx = x_idx, z_idx = z_idx
         (c, xv) -> begin
@@ -1469,13 +1476,8 @@ function embed_oracle(
         end
     end
 
-    _vjp! = let x_idx = x_idx, z_idx = z_idx, input_dim = input_dim, buf = jtv_x_buf
+    _vjp! = let x_idx = x_idx, z_idx = z_idx, Jtv_x = jtv_x_buf
         (Jtv, xv, w) -> begin
-            Jtv_x = buf[]
-            if Jtv_x === nothing
-                Jtv_x = similar(xv, input_dim)
-                buf[] = Jtv_x
-            end
             vjp!(Jtv_x, view(xv, x_idx), w)
             fill!(Jtv, zero(eltype(Jtv)))
             Jtv[x_idx] .= .-Jtv_x
@@ -1485,13 +1487,8 @@ function embed_oracle(
     end
 
     _hvp! = if hvp! !== nothing
-        let x_idx = x_idx, input_dim = input_dim, buf = hv_x_buf
+        let x_idx = x_idx, Hv_x = hv_x_buf
             (Hv, xv, w, v) -> begin
-                Hv_x = buf[]
-                if Hv_x === nothing
-                    Hv_x = similar(xv, input_dim)
-                    buf[] = Hv_x
-                end
                 hvp!(Hv_x, view(xv, x_idx), w, view(v, x_idx))
                 fill!(Hv, zero(eltype(Hv)))
                 Hv[x_idx] .= .-Hv_x
