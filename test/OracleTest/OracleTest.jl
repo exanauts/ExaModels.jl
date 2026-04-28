@@ -668,6 +668,13 @@ function test_scalar_oracle()
         @test m isa ExaModelWithOracle
         @test NLPModels.obj(m, [3.0, 4.0]) ≈ 25.0
         @test Array(NLPModels.grad(m, [3.0, 4.0])) ≈ [6.0, 8.0]
+
+        # Lock in zero-allocation steady state for grad! — Issue 6 regression.
+        # Was ~oracle.nvar * sizeof(Float64) bytes per call before preallocation.
+        xv = [3.0, 4.0]
+        g = zeros(2)
+        for _ in 1:3 NLPModels.grad!(m, xv, g) end   # warm up JIT
+        @test (@allocated NLPModels.grad!(m, xv, g)) == 0
     end
 end
 
