@@ -748,6 +748,22 @@ function test_legacy_oracle_forwarding()
         g = zeros(1)
         NLPModels.cons_nln!(m, [3.0, 4.0], g)
         @test g[1] ≈ 7.0
+
+        # embed_oracle forwarder must return (core, z, oracle) to match the
+        # immutable signature and the rest of the LegacyExaCore add_* family.
+        c2 = ExaCore(Float64)
+        x2 = variable(c2, 2; start = [1.0, 2.0])
+        ret = embed_oracle(
+            c2, x2, 2;
+            f!   = (y, xv) -> (y .= xv .^ 2; nothing),
+            jvp! = (Jv, xv, v) -> (Jv .= 2 .* xv .* v; nothing),
+            vjp! = (Jtv, xv, w) -> (Jtv .= 2 .* xv .* w; nothing),
+            adapt = Val(true),
+        )
+        @test ret isa Tuple && length(ret) == 3
+        @test ret[1] === c2                              # same legacy core, mutated in place
+        @test ret[2] isa ExaModels.Variable
+        @test ret[3] isa VectorNonlinearOracle
     end
 end
 

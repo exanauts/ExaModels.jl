@@ -181,7 +181,7 @@ end
 function embed_oracle(c::LegacyExaCore, args...; kwargs...)
     new_core, z, oracle = embed_oracle(c.inner, args...; kwargs...)
     c.inner = new_core
-    return z, oracle
+    return (c, z, oracle)
 end
 
 function add_eval(c::LegacyExaCore, args...; kwargs...)
