@@ -649,6 +649,108 @@ function test_matfree_backward_compat()
     end
 end
 
+# ── Minimal happy-path tests for the rest of the oracle API surface ────────────
+# CPU-only (backend = nothing). One assertion per API, just enough to catch
+# regressions in code paths the backend-looped tests above don't exercise.
+
+function test_scalar_oracle()
+    return @testset "ScalarNonlinearOracle" begin
+        c = ExaCore(Float64; concrete = Val(true))
+        c, x = add_var(c, 2; start = [1.0, 2.0])
+        oracle = ScalarNonlinearOracle(
+            nvar  = 2,
+            f     = xv -> xv[1]^2 + xv[2]^2,
+            grad! = (g, xv) -> (g[1] = 2 * xv[1]; g[2] = 2 * xv[2]; nothing),
+            adapt = Val(true),
+        )
+        c = objective(c, oracle)
+        m = ExaModel(c)
+        @test m isa ExaModelWithOracle
+        @test NLPModels.obj(m, [3.0, 4.0]) ≈ 25.0
+        @test Array(NLPModels.grad(m, [3.0, 4.0])) ≈ [6.0, 8.0]
+    end
+end
+
+function test_add_eval()
+    return @testset "add_eval (function form)" begin
+        c = ExaCore(Float64; concrete = Val(true))
+        c, x = add_var(c, 2)
+        c, con = add_con(c, 0.0 * x[i] for i in 1:2; lcon = 0.0, ucon = 0.0)
+        c, _ = add_eval(
+            c, (con,), (x,),
+            (res, xv) -> (res .= xv .^ 2; nothing);
+            jac! = (vals, xv) -> (vals .= 2 .* xv; nothing),
+            nnzj = 2,
+            jac_structure! = (rows, cols) -> (append!(rows, 1:2); append!(cols, 1:2)),
+            adapt = Val(true),
+        )
+        m = ExaModel(c)
+        g = zeros(2)
+        NLPModels.cons_nln!(m, [3.0, 4.0], g)
+        @test g ≈ [9.0, 16.0]                    # SIMD writes 0, evaluator adds x.^2
+    end
+end
+
+function test_add_con_macro_oracle()
+    return @testset "@add_con! oracle form" begin
+        c = ExaCore(Float64; concrete = Val(true))
+        @add_var(c, x, 2)
+        con = @add_con(c, 0.0 * x[i] for i in 1:2; lcon = 0.0, ucon = 0.0)
+        @add_con!(c, (con,), (x,),
+            (res, xv) -> (res .= xv .^ 2; nothing);
+            jac! = (vals, xv) -> (vals .= 2 .* xv; nothing),
+            nnzj = 2,
+            jac_structure! = (rows, cols) -> (append!(rows, 1:2); append!(cols, 1:2)),
+            adapt = Val(true),
+        )
+        m = ExaModel(c)
+        g = zeros(2)
+        NLPModels.cons_nln!(m, [3.0, 4.0], g)
+        @test g ≈ [9.0, 16.0]
+    end
+end
+
+function test_embed_oracle()
+    return @testset "embed_oracle" begin
+        c = ExaCore(Float64; concrete = Val(true))
+        c, x = add_var(c, 2)
+        c, z, _ = embed_oracle(
+            c, x, 2;
+            f!   = (y, xv) -> (y .= xv .^ 2; nothing),
+            jvp! = (Jv, xv, v) -> (Jv .= 2 .* xv .* v; nothing),
+            vjp! = (Jtv, xv, w) -> (Jtv .= 2 .* xv .* w; nothing),
+            adapt = Val(true),
+        )
+        m = ExaModel(c)
+        @test m isa ExaModelWithOracle
+        @test m.meta.nvar == 4 && m.meta.ncon == 2          # 2 x's + 2 z's, 2 oracle rows
+        g = zeros(2)
+        NLPModels.cons_nln!(m, [1.0, 2.0, 3.0, 4.0], g)     # x = [1,2]; z = [3,4]
+        @test g ≈ [2.0, 0.0]                                 # z .- x.^2 = [3-1, 4-4]
+    end
+end
+
+function test_legacy_oracle_forwarding()
+    return @testset "LegacyExaCore oracle forwarding" begin
+        c = ExaCore(Float64)                                 # legacy mutable wrapper
+        x = variable(c, 2; start = [1.0, 2.0])
+        oracle = VectorNonlinearOracle(
+            nvar = 2, ncon = 1, nnzj = 2, nnzh = 0,
+            jac_rows = [1, 1], jac_cols = [1, 2],
+            lcon = [0.0], ucon = [0.0],
+            adapt = Val(true),
+            f! = (cv, xv) -> (cv[1] = xv[1] + xv[2]; nothing),
+            jac! = (vv, xv) -> (vv[1] = 1.0; vv[2] = 1.0; nothing),
+        )
+        constraint(c, oracle)
+        m = ExaModel(c)
+        @test m isa ExaModelWithOracle
+        g = zeros(1)
+        NLPModels.cons_nln!(m, [3.0, 4.0], g)
+        @test g[1] ≈ 7.0
+    end
+end
+
 function runtests()
     return @testset "OracleTest" begin
         @testset "VectorNonlinearOracle type checks" begin
@@ -681,6 +783,14 @@ function runtests()
                     test_matfree_hprod(backend)
                 end
             end
+        end
+
+        @testset "Other oracle APIs" begin
+            test_scalar_oracle()
+            test_add_eval()
+            test_add_con_macro_oracle()
+            test_embed_oracle()
+            test_legacy_oracle_forwarding()
         end
     end
 end
