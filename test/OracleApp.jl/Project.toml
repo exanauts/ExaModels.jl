@@ -1,0 +1,11 @@
+name = "OracleApp"
+uuid = "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+version = "0.1.0"
+
+[deps]
+ExaModels = "1037b233-b668-4ce9-9b63-f9f681f55dd2"
+NLPModelsIpoptLite = "48c312a9-6620-4177-b859-0e15058d61ee"
+
+[sources]
+ExaModels = {path = "../.."}
+NLPModelsIpoptLite = {path = "../NLPModelsIpoptLite.jl"}
