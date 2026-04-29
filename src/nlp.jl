@@ -1075,7 +1075,7 @@ Constraint
 @inline function add_con(
     c::C,
     ns...;
-    tag = nothing, 
+    tag = nothing,
     name = nothing,
     start = zero(T),
     lcon = zero(T),
@@ -1088,7 +1088,7 @@ Constraint
     gen = _adapt_gen(gen)
     f = _simdfunction(T, gen.f(DataSource()), c.ncon, c.nnzj, c.nnzh)
     pars = gen.iter
-    
+
     _add_con(c, f, pars, dims, start, lcon, ucon, name, tag)
 end
 
@@ -1319,7 +1319,7 @@ end
 function hess_structure!(m::AbstractExaModel{T}, rows::AbstractVector, cols::AbstractVector) where T
     _obj_hess_structure!(T, m.objs, rows, cols)
     _con_hess_structure!(T, m.cons, rows, cols)
-    return rows, cols
+    return nothing
 end
 
 _obj_hess_structure!(T, objs::Tuple{}, rows, cols) = nothing
