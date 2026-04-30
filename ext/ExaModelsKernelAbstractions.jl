@@ -534,7 +534,8 @@ end
 )
     I = @index(Global)
     @inbounds ExaModels.hrpass0(
-        f(itr[I], ExaModels.SecondAdjointNodeSource(x), θ),
+        nothing, nothing, nothing, nothing, nothing, nothing,
+        f(itr[I], ExaModels.SecondAdjointNodeSource(x, nothing), θ),
         f.comp2,
         y1,
         y2,
@@ -558,7 +559,8 @@ end
 )
     I = @index(Global)
     @inbounds ExaModels.hrpass0(
-        f(itr[I], ExaModels.SecondAdjointNodeSource(x), θ),
+        nothing, nothing, nothing, nothing, nothing, nothing,
+        f(itr[I], ExaModels.SecondAdjointNodeSource(x, nothing), θ),
         f.comp2,
         y1,
         y2,
@@ -572,7 +574,8 @@ end
 @kernel function kerj(y1, y2, @Const(f), @Const(itr), @Const(x), @Const(θ), @Const(adj), @Const(dims))
     I = @index(Global)
     @inbounds ExaModels.jrpass(
-        f(itr[I], ExaModels.AdjointNodeSource(x), θ),
+        f(itr[I], ExaModels.AdjointNodeSource(x, nothing), θ),
+        nothing, nothing, nothing,
         f.comp1,
         ExaModels.offset0(f, itr, I, dims),
         y1,
@@ -586,7 +589,7 @@ end
 @kernel function kerg(y, @Const(f), @Const(itr), @Const(x), @Const(θ), @Const(adj))
     I = @index(Global)
     @inbounds ExaModels.grpass(
-        f(itr[I], ExaModels.AdjointNodeSource(x), θ),
+        f(itr[I], ExaModels.AdjointNodeSource(x, nothing), θ),
         f.comp1,
         y,
         ExaModels.offset1(f, I),

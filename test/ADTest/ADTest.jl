@@ -3,6 +3,8 @@ module ADTest
 using ExaModels
 using Test, ForwardDiff, SpecialFunctions
 
+include("expression.jl")
+
 const FUNCTIONS = [
     ("basic-functions-:+", x -> +(x[1])),
     ("basic-functions-:-", x -> -(x[1])),
@@ -138,7 +140,7 @@ function sgradient(f, x)
     T = eltype(x)
 
     ff = f(ExaModels.VarSource())
-    d = ff(ExaModels.Identity(), ExaModels.AdjointNodeSource(ExaModels.NaNSource{T}()), ExaModels.NaNSource{T}())
+    d = ff(ExaModels.Identity(), ExaModels.AdjointNodeSource(ExaModels.NaNSource{T}(), nothing), ExaModels.NaNSource{T}())
     y1, a1 = ExaModels.grpass(d, nothing, nothing, ExaModels.NaNSource{T}(), ((),()), T(NaN))
 
     comp = ExaModels.Compressor(y1)
@@ -147,8 +149,8 @@ function sgradient(f, x)
     buffer = fill!(similar(x, n), zero(T))
     buffer_I = similar(x, Tuple{Int,Int}, n)
 
-    ExaModels.sgradient!(buffer_I, ff, nothing, ExaModels.NaNSource{T}(), ExaModels.NaNSource{T}(), comp, 0, T(NaN))
-    ExaModels.sgradient!(buffer, ff, nothing, x, nothing, comp, 0, one(T))
+    ExaModels.sgradient!(buffer_I, ff, nothing, ExaModels.NaNSource{T}(), ExaModels.NaNSource{T}(), comp, 0, T(NaN), nothing)
+    ExaModels.sgradient!(buffer, ff, nothing, x, nothing, comp, 0, one(T), nothing)
 
     y = zeros(length(x))
     y[collect(i for (i, j) in buffer_I)] += buffer
@@ -160,7 +162,7 @@ function sgradient_with_params(f, x, θ)
     T = eltype(x)
 
     ff = f(ExaModels.VarSource(), ExaModels.ParameterSource())
-    d = ff(ExaModels.Identity(), ExaModels.AdjointNodeSource(ExaModels.NaNSource{T}()), ExaModels.NaNSource{T}())
+    d = ff(ExaModels.Identity(), ExaModels.AdjointNodeSource(ExaModels.NaNSource{T}(), nothing), ExaModels.NaNSource{T}())
     y1, a1 = ExaModels.grpass(d, nothing, nothing, ExaModels.NaNSource{T}(), ((),()), T(NaN))
 
     comp = ExaModels.Compressor(y1)
@@ -169,8 +171,8 @@ function sgradient_with_params(f, x, θ)
     buffer = fill!(similar(x, n), zero(T))
     buffer_I = similar(x, Tuple{Int,Int}, n)
 
-    ExaModels.sgradient!(buffer_I, ff, ExaModels.NaNSource{T}(), ExaModels.NaNSource{T}(), θ, comp, 0, T(NaN))
-    ExaModels.sgradient!(buffer, ff, nothing, x, θ, comp, 0, one(T))
+    ExaModels.sgradient!(buffer_I, ff, ExaModels.NaNSource{T}(), ExaModels.NaNSource{T}(), θ, comp, 0, T(NaN), nothing)
+    ExaModels.sgradient!(buffer, ff, nothing, x, θ, comp, 0, one(T), nothing)
 
     y = zeros(length(x))
     y[collect(i for (i, j) in buffer_I)] += buffer
@@ -182,7 +184,7 @@ function sjacobian(f, x)
     T = eltype(x)
 
     ff = f(ExaModels.VarSource())
-    d = ff(ExaModels.Identity(), ExaModels.AdjointNodeSource(ExaModels.NaNSource{T}()), ExaModels.NaNSource{T}())
+    d = ff(ExaModels.Identity(), ExaModels.AdjointNodeSource(ExaModels.NaNSource{T}(), nothing), ExaModels.NaNSource{T}())
     y1, a1 = ExaModels.grpass(d, nothing, nothing, ExaModels.NaNSource{T}(), ((),()), T(NaN))
 
     comp = ExaModels.Compressor(y1)
@@ -192,8 +194,8 @@ function sjacobian(f, x)
     buffer_I = similar(x, Int, n)
     buffer_J = similar(x, Int, n)
 
-    ExaModels.sjacobian!(buffer_I, buffer_J, ff, nothing, ExaModels.NaNSource{T}(), ExaModels.NaNSource{T}(), comp, 0, 0, T(NaN))
-    ExaModels.sjacobian!(buffer, nothing, ff, nothing, x, nothing, comp, 0, 0, one(T))
+    ExaModels.sjacobian!(nothing, buffer_I, buffer_J, ff, nothing, nothing, nothing, nothing, ExaModels.NaNSource{T}(), ExaModels.NaNSource{T}(), comp, 0, 0, T(NaN))
+    ExaModels.sjacobian!(nothing, buffer, nothing, ff, nothing, nothing, nothing, nothing, x, nothing, comp, 0, 0, one(T))
 
     y = zeros(length(x))
     y[buffer_J] += buffer
@@ -205,7 +207,7 @@ function sjacobian_with_params(f, x, θ)
     T = eltype(x)
 
     ff = f(ExaModels.VarSource(), ExaModels.ParameterSource())
-    d = ff(ExaModels.Identity(), ExaModels.AdjointNodeSource(ExaModels.NaNSource{T}()), ExaModels.NaNSource{T}())
+    d = ff(ExaModels.Identity(), ExaModels.AdjointNodeSource(ExaModels.NaNSource{T}(), nothing), ExaModels.NaNSource{T}())
     y1, a1 = ExaModels.grpass(d, nothing, nothing, nothing, ((),()), T(NaN))
 
     comp = ExaModels.Compressor(y1)
@@ -215,8 +217,8 @@ function sjacobian_with_params(f, x, θ)
     buffer_I = similar(x, Int, n)
     buffer_J = similar(x, Int, n)
 
-    ExaModels.sjacobian!(buffer_I, buffer_J, ff, ExaModels.NaNSource{T}(), ExaModels.NaNSource{T}(), θ, comp, 0, 0, T(NaN))
-    ExaModels.sjacobian!(buffer, nothing, ff, nothing, x, θ, comp, 0, 0, one(T))
+    ExaModels.sjacobian!(nothing, buffer_I, buffer_J, ff, nothing, nothing, nothing, ExaModels.NaNSource{T}(), ExaModels.NaNSource{T}(), θ, comp, 0, 0, T(NaN))
+    ExaModels.sjacobian!(nothing, buffer, nothing, ff, nothing, nothing, nothing, nothing, x, θ, comp, 0, 0, one(T))
 
     y = zeros(length(x))
     y[buffer_J] += buffer
@@ -228,8 +230,8 @@ function shessian(f, x)
     T = eltype(x)
 
     ff = f(ExaModels.VarSource())
-    t = ff(ExaModels.Identity(), ExaModels.SecondAdjointNodeSource(ExaModels.NaNSource{T}()), ExaModels.NaNSource{T}())
-    y2, a2 = ExaModels.hrpass0(t, nothing, nothing, ExaModels.NaNSource{T}(), ExaModels.NaNSource{T}(), ((),()), T(NaN), T(NaN))
+    t = ff(ExaModels.Identity(), ExaModels.SecondAdjointNodeSource(ExaModels.NaNSource{T}(), nothing), ExaModels.NaNSource{T}())
+    y2, a2 = ExaModels.hrpass0(nothing, nothing, nothing, nothing, nothing, nothing, t, nothing, nothing, ExaModels.NaNSource{T}(), ExaModels.NaNSource{T}(), ((),()), T(NaN), T(NaN))
 
     comp = ExaModels.Compressor(y2)
 
@@ -268,8 +270,8 @@ function shessian_with_params(f, x, θ)
     T = eltype(x)
 
     ff = f(ExaModels.VarSource(), ExaModels.ParameterSource())
-    t = ff(ExaModels.Identity(), ExaModels.SecondAdjointNodeSource(ExaModels.NaNSource{T}()), ExaModels.NaNSource{T}())
-    y2, a2 = ExaModels.hrpass0(t, nothing, nothing, ExaModels.NaNSource{T}(), ExaModels.NaNSource{T}(), ((),()), T(NaN), T(NaN))
+    t = ff(ExaModels.Identity(), ExaModels.SecondAdjointNodeSource(ExaModels.NaNSource{T}(), nothing), ExaModels.NaNSource{T}())
+    y2, a2 = ExaModels.hrpass0(nothing, nothing, nothing, nothing, nothing, nothing, t, nothing, nothing, ExaModels.NaNSource{T}(), ExaModels.NaNSource{T}(), ((),()), T(NaN), T(NaN))
 
     comp = ExaModels.Compressor(y2)
 
