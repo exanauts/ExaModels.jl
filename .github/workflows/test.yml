@@ -64,6 +64,9 @@ jobs:
           Pkg.Registry.update()
           Pkg.develop(path=".")
           Pkg.instantiate()'
+    - name: Add OpenCL.jl to test environment
+      run: |
+        julia --startup-file=no --project=test -e 'using Pkg; Pkg.add(["OpenCL", "pocl_jll"])'
     - name: Run tests
       env:
         EXAMODELS_SKIP_AOT: "1"
@@ -73,7 +76,7 @@ jobs:
           push!(ARGS, "EXAMODELS_TEST_KA")
           push!(ARGS, "EXAMODELS_TEST_POCL")
           include("test/runtests.jl")'
-    
+
   gpu:
     strategy:
       matrix:
@@ -103,6 +106,18 @@ jobs:
           Pkg.Registry.update()
           Pkg.develop(path=".")
           Pkg.instantiate()'
+    - name: Add AMDGPU.jl to test environment
+      if: matrix.backend == 'amdgpu'
+      run: |
+        julia --startup-file=no --project=test -e 'using Pkg; Pkg.add("AMDGPU")'
+    - name: Add CUDA.jl to test environment
+      if: matrix.backend == 'cuda'
+      run: |
+        julia --startup-file=no --project=test -e 'using Pkg; Pkg.add("CUDA")'
+    - name: Add oneAPI.jl to test environment
+      if: matrix.backend == 'oneapi'
+      run: |
+        julia --startup-file=no --project=test -e 'using Pkg; Pkg.add("oneAPI")'
     - name: Run tests
       env:
         EXAMODELS_SKIP_AOT: "1"
@@ -134,6 +149,9 @@ jobs:
             Pkg.Registry.update()
             Pkg.develop(path=".")
             Pkg.instantiate()'
+      - name: Add Metal.jl to test environment
+        run: |
+          julia --startup-file=no --project=test -e 'using Pkg; Pkg.add("Metal")'
       - name: Show platform info
         run: |
           uname -a
