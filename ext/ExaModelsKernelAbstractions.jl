@@ -767,12 +767,14 @@ function ExaModels.grad!(
             ndrange = length(m.ext.gptr) - 1,
         )
     end
-    for oracle in m.scalar_oracles
+    backend = m.ext.backend
+    for (i, oracle) in enumerate(m.scalar_oracles)
+        cache = m.scalar_oracle_caches[i]
         xin = ExaModels._oracle_input(oracle, x)
-        g_cpu = zeros(T, oracle.nvar)
-        oracle.grad!(g_cpu, xin)
-        g_dev = ExaModels.convert_array(g_cpu, m.ext.backend)
-        y .+= g_dev
+        ExaModels._run_with_buf!(oracle, backend, cache.buf_nvar, cache.cpu_nvar) do b
+            oracle.grad!(b, xin)
+        end
+        y .+= cache.buf_nvar
     end
     return y
 end
@@ -787,10 +789,16 @@ function ExaModels.jac_structure!(
     end
     for (i, oracle) in enumerate(m.oracles)
         cache = m.oracle_caches[i]
-        off_c = m.oracle_con_offsets[i]
         if oracle.nnzj > 0
             rows[cache.jac_idx] .= cache.jac_rows_shifted
             cols[cache.jac_idx] .= cache.jac_cols_copy
+        end
+    end
+    for (i, ev) in enumerate(m.evals)
+        cache = m.eval_caches[i]
+        if ev.nnzj > 0
+            rows[cache.jac_idx] .= cache.jac_rows_global
+            cols[cache.jac_idx] .= cache.jac_cols_global
         end
     end
     return rows, cols
@@ -812,6 +820,13 @@ function ExaModels.hess_structure!(
             cols[cache.hess_idx] .= cache.hess_cols_copy
         end
     end
+    for (i, ev) in enumerate(m.evals)
+        cache = m.eval_caches[i]
+        if ev.nnzh > 0
+            rows[cache.hess_idx] .= cache.hess_rows_global
+            cols[cache.hess_idx] .= cache.hess_cols_global
+        end
+    end
     return rows, cols
 end
 
@@ -831,14 +846,22 @@ function ExaModels.cons_nln!(
             ndrange = length(m.ext.conaugptr) - 1,
         )
     end
+    backend = m.ext.backend
     for (i, oracle) in enumerate(m.oracles)
         cache = m.oracle_caches[i]
         xin = ExaModels._oracle_input(oracle, x)
-        cv = similar(xin, oracle.ncon)
-        oracle.f!(cv, xin)
-        # cache.buf_ncon lives on device; copy CPU result there, then scatter.
-        copyto!(cache.buf_ncon, cv)
+        ExaModels._run_with_buf!(oracle, backend, cache.buf_ncon, cache.cpu_ncon) do b
+            oracle.f!(b, xin)
+        end
         y[cache.con_idx] .= cache.buf_ncon
+    end
+    for (i, ev) in enumerate(m.evals)
+        cache = m.eval_caches[i]
+        xin = ExaModels._eval_input(ev, x[cache.var_global_idx])
+        ExaModels._run_with_buf!(ev, backend, cache.buf_ncon, cache.cpu_ncon) do b
+            ev.f!(b, xin)
+        end
+        y[cache.con_global_idx] .+= cache.buf_ncon
     end
     return y
 end
@@ -851,17 +874,31 @@ function ExaModels.jac_coord!(
     fill!(jac, zero(eltype(jac)))
     # SIMD part: GPU-accelerated.
     _jac_coord!(m.ext.backend, jac, m.cons, x, m.θ)
+    backend = m.ext.backend
     for (i, oracle) in enumerate(m.oracles)
         cache = m.oracle_caches[i]
         oracle.nnzj == 0 && continue
         if oracle.jac! !== nothing
             xin = ExaModels._oracle_input(oracle, x)
-            jv = similar(xin, oracle.nnzj)
-            oracle.jac!(jv, xin)
-            copyto!(cache.buf_nnzj, jv)
+            ExaModels._run_with_buf!(oracle, backend, cache.buf_nnzj, cache.cpu_nnzj) do b
+                oracle.jac!(b, xin)
+            end
             jac[cache.jac_idx] .= cache.buf_nnzj
         else
-            ExaModels._jac_reconstruct_via_jvp!(oracle, x, jac, cache, m.ext.backend)
+            ExaModels._jac_reconstruct_via_jvp!(oracle, x, jac, cache, backend)
+        end
+    end
+    for (i, ev) in enumerate(m.evals)
+        cache = m.eval_caches[i]
+        ev.nnzj == 0 && continue
+        xin = ExaModels._eval_input(ev, x[cache.var_global_idx])
+        if ev.jac! !== nothing
+            ExaModels._run_with_buf!(ev, backend, cache.buf_nnzj, cache.cpu_nnzj) do b
+                ev.jac!(b, xin)
+            end
+            jac[cache.jac_idx] .= cache.buf_nnzj
+        elseif ev.jvp! !== nothing
+            ExaModels._eval_jac_reconstruct_via_jvp!(ev, xin, jac, cache, backend)
         end
     end
     return jac
@@ -877,18 +914,33 @@ function ExaModels.hess_coord!(
     fill!(hess, zero(eltype(hess)))
     _obj_hess_coord!(m.ext.backend, hess, m.objs, x, m.θ, T(obj_weight))
     _con_hess_coord!(m.ext.backend, hess, m.cons, x, m.θ, y)
+    backend = m.ext.backend
     for (i, oracle) in enumerate(m.oracles)
         cache = m.oracle_caches[i]
         oracle.nnzh == 0 && continue
         if oracle.hess! !== nothing
             xin = ExaModels._oracle_input(oracle, x)
             win = ExaModels._oracle_input(oracle, y[cache.con_idx])
-            hv = similar(xin, oracle.nnzh)
-            oracle.hess!(hv, xin, win)
-            copyto!(cache.buf_nnzh, hv)
+            ExaModels._run_with_buf!(oracle, backend, cache.buf_nnzh, cache.cpu_nnzh) do b
+                oracle.hess!(b, xin, win)
+            end
             hess[cache.hess_idx] .= cache.buf_nnzh
         else
-            ExaModels._hess_reconstruct_via_hvp!(oracle, x, y, hess, cache, m.ext.backend)
+            ExaModels._hess_reconstruct_via_hvp!(oracle, x, y, hess, cache, backend)
+        end
+    end
+    for (i, ev) in enumerate(m.evals)
+        cache = m.eval_caches[i]
+        ev.nnzh == 0 && continue
+        xin = ExaModels._eval_input(ev, x[cache.var_global_idx])
+        win = ExaModels._eval_input(ev, y[cache.con_global_idx])
+        if ev.hess! !== nothing
+            ExaModels._run_with_buf!(ev, backend, cache.buf_nnzh, cache.cpu_nnzh) do b
+                ev.hess!(b, xin, win)
+            end
+            hess[cache.hess_idx] .= cache.buf_nnzh
+        elseif ev.hvp! !== nothing
+            ExaModels._eval_hess_reconstruct_via_hvp!(ev, xin, win, hess, cache, backend)
         end
     end
     return hess
@@ -968,20 +1020,23 @@ function ExaModels.jprod_nln!(
             ndrange = _n,
         )
     end
+    backend = m.ext.backend
     for (i, oracle) in enumerate(m.oracles)
         cache = m.oracle_caches[i]
         oracle.nnzj == 0 && continue
         xin = ExaModels._oracle_input(oracle, x)
         vin = ExaModels._oracle_input(oracle, v)
         if ExaModels.has_matfree_jac(oracle)
-            Jv_oracle = similar(xin, oracle.ncon)
-            oracle.jvp!(Jv_oracle, xin, vin)
-            copyto!(cache.buf_ncon, Jv_oracle)
+            ExaModels._run_with_buf!(oracle, backend, cache.buf_ncon, cache.cpu_ncon) do b
+                oracle.jvp!(b, xin, vin)
+            end
             Jv[cache.con_idx] .+= cache.buf_ncon
         elseif oracle.adapt === Val(false)
-            off_j = m.oracle_jac_offsets[i]
             prod_cache = m.ext.prodhelper.oracle_prod[i]
-            oracle.jac!(m.ext.prodhelper.jacbuffer[cache.jac_idx], xin)
+            # `view` (not `getindex`) so the user's `jac!` writes into the buffer
+            # in place; `jacbuffer[cache.jac_idx]` would return a fresh copy and
+            # the kerspmv below would read zeros from the oracle slice.
+            oracle.jac!(view(m.ext.prodhelper.jacbuffer, cache.jac_idx), xin)
             let _n = length(prod_cache.jacptri) - 1
                 _n > 0 && kerspmv(m.ext.backend)(
                     Jv, v, prod_cache.jacsparsityi, m.ext.prodhelper.jacbuffer, prod_cache.jacptri;
@@ -989,18 +1044,44 @@ function ExaModels.jprod_nln!(
                 )
             end
         else
-            jac_buf = similar(xin, oracle.nnzj)
-            oracle.jac!(jac_buf, xin)
             off_c = m.oracle_con_offsets[i]
-            jac_cpu = Adapt.adapt(Array, jac_buf)
-            v_cpu = Adapt.adapt(Array, vin)
-            delta = zeros(T, length(Jv))
+            ExaModels._run_with_buf!(oracle, backend, cache.buf_nnzj, cache.cpu_nnzj) do b
+                oracle.jac!(b, xin)
+            end
+            jac_cpu = ExaModels._to_cpu!(backend, cache.buf_nnzj, cache.cpu_nnzj)
+            v_cpu   = ExaModels._vec_to_cpu(oracle, backend, vin, cache.cpu_nvar)
+            delta   = m.work_ncon_cpu
+            fill!(delta, zero(eltype(delta)))
             for k in 1:oracle.nnzj
                 delta[oracle.jac_rows[k] + off_c] += jac_cpu[k] * v_cpu[oracle.jac_cols[k]]
             end
-            buf = similar(Jv)
-            copyto!(buf, delta)
-            Jv .+= buf
+            copyto!(m.work_ncon, delta)
+            Jv .+= m.work_ncon
+        end
+    end
+    for (i, ev) in enumerate(m.evals)
+        cache = m.eval_caches[i]
+        ev.nnzj == 0 && continue
+        xin = ExaModels._eval_input(ev, x[cache.var_global_idx])
+        vin_local = ExaModels._eval_input(ev, v[cache.var_global_idx])
+        if ev.jvp! !== nothing
+            ExaModels._run_with_buf!(ev, backend, cache.buf_ncon, cache.cpu_ncon) do b
+                ev.jvp!(b, xin, vin_local)
+            end
+            Jv[cache.con_global_idx] .+= cache.buf_ncon
+        elseif ev.jac! !== nothing
+            ExaModels._run_with_buf!(ev, backend, cache.buf_nnzj, cache.cpu_nnzj) do b
+                ev.jac!(b, xin)
+            end
+            jac_cpu = ExaModels._to_cpu!(backend, cache.buf_nnzj, cache.cpu_nnzj)
+            v_cpu   = ExaModels._vec_to_cpu(ev, backend, vin_local, cache.cpu_nvar)
+            delta   = cache.cpu_ncon
+            fill!(delta, zero(eltype(delta)))
+            for k in 1:ev.nnzj
+                delta[ev.jac_rows[k]] += jac_cpu[k] * v_cpu[ev.jac_cols[k]]
+            end
+            copyto!(cache.buf_ncon, delta)
+            Jv[cache.con_global_idx] .+= cache.buf_ncon
         end
     end
     return Jv
@@ -1024,20 +1105,21 @@ function ExaModels.jtprod_nln!(
             ndrange = _n,
         )
     end
+    backend = m.ext.backend
     for (i, oracle) in enumerate(m.oracles)
         cache = m.oracle_caches[i]
         oracle.nnzj == 0 && continue
         xin = ExaModels._oracle_input(oracle, x)
         if ExaModels.has_matfree_jac(oracle)
             w = ExaModels._oracle_input(oracle, v[cache.con_idx])
-            Jtv_oracle = similar(xin, oracle.nvar)
-            oracle.vjp!(Jtv_oracle, xin, w)
-            copyto!(cache.buf_nvar, Jtv_oracle)
+            ExaModels._run_with_buf!(oracle, backend, cache.buf_nvar, cache.cpu_nvar) do b
+                oracle.vjp!(b, xin, w)
+            end
             Jtv .+= cache.buf_nvar
         elseif oracle.adapt === Val(false)
-            off_j = m.oracle_jac_offsets[i]
             prod_cache = m.ext.prodhelper.oracle_prod[i]
-            oracle.jac!(m.ext.prodhelper.jacbuffer[cache.jac_idx], xin)
+            # See `jprod_nln!` for the `view` vs `getindex` rationale.
+            oracle.jac!(view(m.ext.prodhelper.jacbuffer, cache.jac_idx), xin)
             let _n = length(prod_cache.jacptrj) - 1
                 _n > 0 && kerspmv2(m.ext.backend)(
                     Jtv, v, prod_cache.jacsparsityj, m.ext.prodhelper.jacbuffer, prod_cache.jacptrj;
@@ -1047,17 +1129,43 @@ function ExaModels.jtprod_nln!(
         else
             off_c = m.oracle_con_offsets[i]
             vin = ExaModels._oracle_input(oracle, v)
-            jac_buf = similar(xin, oracle.nnzj)
-            oracle.jac!(jac_buf, xin)
-            jac_cpu = Adapt.adapt(Array, jac_buf)
-            v_cpu = Adapt.adapt(Array, vin)
-            delta = zeros(T, length(Jtv))
+            ExaModels._run_with_buf!(oracle, backend, cache.buf_nnzj, cache.cpu_nnzj) do b
+                oracle.jac!(b, xin)
+            end
+            jac_cpu = ExaModels._to_cpu!(backend, cache.buf_nnzj, cache.cpu_nnzj)
+            v_cpu   = ExaModels._vec_to_cpu(oracle, backend, vin, m.work_ncon_cpu)
+            delta   = m.work_nvar_cpu
+            fill!(delta, zero(eltype(delta)))
             for k in 1:oracle.nnzj
                 delta[oracle.jac_cols[k]] += jac_cpu[k] * v_cpu[oracle.jac_rows[k] + off_c]
             end
-            buf = similar(Jtv)
-            copyto!(buf, delta)
-            Jtv .+= buf
+            copyto!(m.work_nvar, delta)
+            Jtv .+= m.work_nvar
+        end
+    end
+    for (i, ev) in enumerate(m.evals)
+        cache = m.eval_caches[i]
+        ev.nnzj == 0 && continue
+        xin     = ExaModels._eval_input(ev, x[cache.var_global_idx])
+        w_local = ExaModels._eval_input(ev, v[cache.con_global_idx])
+        if ev.vjp! !== nothing
+            ExaModels._run_with_buf!(ev, backend, cache.buf_nvar, cache.cpu_nvar) do b
+                ev.vjp!(b, xin, w_local)
+            end
+            Jtv[cache.var_global_idx] .+= cache.buf_nvar
+        elseif ev.jac! !== nothing
+            ExaModels._run_with_buf!(ev, backend, cache.buf_nnzj, cache.cpu_nnzj) do b
+                ev.jac!(b, xin)
+            end
+            jac_cpu = ExaModels._to_cpu!(backend, cache.buf_nnzj, cache.cpu_nnzj)
+            w_cpu   = ExaModels._vec_to_cpu(ev, backend, w_local, cache.cpu_ncon)
+            delta   = cache.cpu_nvar
+            fill!(delta, zero(eltype(delta)))
+            for k in 1:ev.nnzj
+                delta[ev.jac_cols[k]] += jac_cpu[k] * w_cpu[ev.jac_rows[k]]
+            end
+            copyto!(cache.buf_nvar, delta)
+            Jtv[cache.var_global_idx] .+= cache.buf_nvar
         end
     end
     return Jtv
@@ -1094,6 +1202,7 @@ function ExaModels.hprod!(
             ndrange = _n,
         )
     end
+    backend = m.ext.backend
     for (i, oracle) in enumerate(m.oracles)
         cache = m.oracle_caches[i]
         oracle.nnzh == 0 && continue
@@ -1101,15 +1210,17 @@ function ExaModels.hprod!(
         win = ExaModels._oracle_input(oracle, y[cache.con_idx])
         vin = ExaModels._oracle_input(oracle, v)
         if ExaModels.has_matfree_hess(oracle)
-            Hv_oracle = similar(xin, oracle.nvar)
-            oracle.hvp!(Hv_oracle, xin, win, vin)
-            copyto!(cache.buf_nvar, Hv_oracle)
+            ExaModels._run_with_buf!(oracle, backend, cache.buf_nvar, cache.cpu_nvar) do b
+                oracle.hvp!(b, xin, win, vin)
+            end
             Hv .+= cache.buf_nvar
         elseif oracle.adapt === Val(false)
             prod_cache = m.ext.prodhelper.oracle_prod[i]
-            hess_buf = similar(xin, oracle.nnzh)
-            oracle.hess!(hess_buf, xin, win)
-            m.ext.prodhelper.hessbuffer[cache.hess_idx] .= hess_buf
+            # In-place: `[idx] .= rhs` is `setindex!`, so the buffer slice is
+            # actually written. (Contrast with `jprod_nln!`/`jtprod_nln!` where
+            # the user's `jac!` is called positionally with `view(...)`.)
+            buf_slice = view(m.ext.prodhelper.hessbuffer, cache.hess_idx)
+            oracle.hess!(buf_slice, xin, win)
             let _n = length(prod_cache.hessptri) - 1
                 _n > 0 && kersyspmv(m.ext.backend)(
                     Hv, v, prod_cache.hesssparsityi, m.ext.prodhelper.hessbuffer, prod_cache.hessptri;
@@ -1123,19 +1234,54 @@ function ExaModels.hprod!(
                 )
             end
         else
-            hess_buf = similar(xin, oracle.nnzh)
-            oracle.hess!(hess_buf, xin, win)
-            h_cpu = Adapt.adapt(Array, hess_buf)
-            v_cpu = Adapt.adapt(Array, vin)
-            delta = zeros(T, length(Hv))
+            ExaModels._run_with_buf!(oracle, backend, cache.buf_nnzh, cache.cpu_nnzh) do b
+                oracle.hess!(b, xin, win)
+            end
+            hess_cpu = ExaModels._to_cpu!(backend, cache.buf_nnzh, cache.cpu_nnzh)
+            v_cpu    = ExaModels._vec_to_cpu(oracle, backend, vin, cache.cpu_nvar)
+            delta    = m.work_nvar_cpu
+            fill!(delta, zero(eltype(delta)))
             for k in 1:oracle.nnzh
                 r, c_ = oracle.hess_rows[k], oracle.hess_cols[k]
-                delta[r] += h_cpu[k] * v_cpu[c_]
-                r != c_ && (delta[c_] += h_cpu[k] * v_cpu[r])
+                delta[r] += hess_cpu[k] * v_cpu[c_]
+                if r != c_
+                    delta[c_] += hess_cpu[k] * v_cpu[r]
+                end
             end
-            buf = similar(Hv)
-            copyto!(buf, delta)
-            Hv .+= buf
+            copyto!(m.work_nvar, delta)
+            Hv .+= m.work_nvar
+        end
+    end
+    for (i, ev) in enumerate(m.evals)
+        cache = m.eval_caches[i]
+        ev.nnzh == 0 && continue
+        xin = ExaModels._eval_input(ev, x[cache.var_global_idx])
+        win = ExaModels._eval_input(ev, y[cache.con_global_idx])
+        vin = ExaModels._eval_input(ev, v[cache.var_global_idx])
+        if ev.hvp! !== nothing
+            ExaModels._run_with_buf!(ev, backend, cache.buf_nvar, cache.cpu_nvar) do b
+                ev.hvp!(b, xin, win, vin)
+            end
+            Hv[cache.var_global_idx] .+= cache.buf_nvar
+        elseif ev.hess! !== nothing
+            ExaModels._run_with_buf!(ev, backend, cache.buf_nnzh, cache.cpu_nnzh) do b
+                ev.hess!(b, xin, win)
+            end
+            hess_cpu = ExaModels._to_cpu!(backend, cache.buf_nnzh, cache.cpu_nnzh)
+            v_cpu    = ExaModels._vec_to_cpu(ev, backend, vin, cache.cpu_nvar)
+            # `cpu_nvar2` is a separate buffer from `cpu_nvar` (which `v_cpu`
+            # may alias) so we can both read v_cpu and write the delta.
+            delta    = cache.cpu_nvar2
+            fill!(delta, zero(eltype(delta)))
+            for k in 1:ev.nnzh
+                r, c_ = ev.hess_rows[k], ev.hess_cols[k]
+                delta[r] += hess_cpu[k] * v_cpu[c_]
+                if r != c_
+                    delta[c_] += hess_cpu[k] * v_cpu[r]
+                end
+            end
+            copyto!(cache.buf_nvar2, delta)
+            Hv[cache.var_global_idx] .+= cache.buf_nvar2
         end
     end
     return Hv

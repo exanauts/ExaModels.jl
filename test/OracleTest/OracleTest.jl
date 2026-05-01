@@ -297,6 +297,61 @@ function test_hprod(backend)
     end
 end
 
+function test_val_false_jprod_jtprod_hprod(backend)
+    # Regression test for the `oracle.adapt === Val(false)` branch in
+    # `jprod_nln!` / `jtprod_nln!` / `hprod!` on KA backends.  Earlier code wrote
+    # `oracle.jac!(jacbuffer[cache.jac_idx], xin)` — `getindex` returns a copy,
+    # so the buffer was never updated and the subsequent kerspmv silently read
+    # zeros for the oracle's slice.  Mirror `test_jprod_jtprod` / `test_hprod`
+    # but with `adapt = Val(false)` and broadcast callbacks so the path is
+    # exercised end-to-end against the analytic Jacobian / Hessian.
+    return @testset "adapt=Val(false) jprod/jtprod/hprod (prod=true)" begin
+        c = ExaCore(Float64; backend = backend)
+        x = variable(c, 4; lvar = -Inf, uvar = Inf, start = [0.5, 0.5, 0.6, 0.4])
+        objective(c, x[i]^2 for i in 1:4)
+        constraint(c, x[1] + x[2]; lcon = 1.0, ucon = 1.0)
+        oracle_A = VectorNonlinearOracle(
+            nvar = 4, ncon = 1, nnzj = 2, nnzh = 0,
+            jac_rows = [1, 1], jac_cols = [3, 4],
+            lcon = [0.0], ucon = [0.0],
+            adapt = Val(false),
+            f!   = (cv, xv) -> (cv .= xv[3:3] .- xv[4:4]; nothing),
+            jac! = (vv, xv) -> (vv .= [1.0, -1.0]; nothing),
+        )
+        constraint(c, oracle_A)
+        oracle_B = VectorNonlinearOracle(
+            nvar = 4, ncon = 1, nnzj = 2, nnzh = 2,
+            jac_rows = [1, 1], jac_cols = [3, 4],
+            hess_rows = [3, 4], hess_cols = [3, 4],
+            lcon = [-Inf], ucon = [Inf],
+            adapt = Val(false),
+            f!    = (cv, xv) -> (cv .= xv[3:3] .^ 2 .+ xv[4:4] .^ 2; nothing),
+            jac!  = (vv, xv) -> (vv .= 2 .* xv[3:4]; nothing),
+            hess! = (hv, xv, yv) -> (hv .= 2 .* yv[1:1]; nothing),
+        )
+        constraint(c, oracle_B)
+        m = ExaModel(c; prod = true)
+
+        x0 = ExaModels.convert_array(X0, backend)
+        v  = ExaModels.convert_array([1.0, -1.0, 2.0, -0.5], backend)
+        w  = ExaModels.convert_array([1.0, 2.0, -1.0], backend)
+        y0 = ExaModels.convert_array([0.0, 0.0, 1.0], backend)
+        J  = analytic_jac_dense(X0)
+        H  = analytic_hess_dense(X0, [0.0, 0.0, 1.0])
+
+        Jv  = similar(x0, m.meta.ncon)
+        Jtw = similar(x0, m.meta.nvar)
+        Hv  = similar(x0, m.meta.nvar)
+        ExaModels.jprod_nln!(m, x0, v, Jv)
+        ExaModels.jtprod_nln!(m, x0, w, Jtw)
+        ExaModels.hprod!(m, x0, y0, v, Hv)
+
+        @test Array(Jv)  ≈ J  * [1.0, -1.0, 2.0, -0.5] atol = _atol(backend, 1.0e-10)
+        @test Array(Jtw) ≈ J' * [1.0, 2.0, -1.0]       atol = _atol(backend, 1.0e-10)
+        @test Array(Hv)  ≈ H  * [1.0, -1.0, 2.0, -0.5] atol = _atol(backend, 1.0e-10)
+    end
+end
+
 function test_multiple_oracles(backend)
     return @testset "multiple oracles offsets" begin
         c = ExaCore(Float64; backend = backend)
@@ -789,6 +844,7 @@ function runtests()
                 test_hess(backend)
                 test_jprod_jtprod(backend)
                 test_hprod(backend)
+                test_val_false_jprod_jtprod_hprod(backend)
                 test_multiple_oracles(backend)
                 test_gpu_oracle(backend)
             end
