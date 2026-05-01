@@ -316,7 +316,13 @@ function test_val_false_jprod_jtprod_hprod(backend)
             lcon = [0.0], ucon = [0.0],
             adapt = Val(false),
             f!   = (cv, xv) -> (cv .= xv[3:3] .- xv[4:4]; nothing),
-            jac! = (vv, xv) -> (vv .= [1.0, -1.0]; nothing),
+            # Constants written one element at a time via 1-element broadcast —
+            # `vv .= [1.0, -1.0]` would pass a CPU `Vector` into a CUDA kernel.
+            jac! = (vv, xv) -> begin
+                vv[1:1] .=  one(eltype(xv))
+                vv[2:2] .= -one(eltype(xv))
+                nothing
+            end,
         )
         constraint(c, oracle_A)
         oracle_B = VectorNonlinearOracle(
