@@ -29,7 +29,10 @@ end
 @inline function _make_exacore(::Val{false}, ::Type{T}, backend; kwargs...) where {T}
     @warn "`ExaCore()` is deprecated, and will be removed in v0.11. Use `ExaCore(concrete = Val(true))` for the immutable ExaCore. The default behavior for `ExaCore()` will change to return the immutable ExaCore in v0.11."
     inner = _exa_core(; x0 = convert_array(zeros(T, 0), backend), backend, kwargs...)
-    return LegacyExaCore{T, typeof(inner.x0), typeof(backend), typeof(inner.tag)}(inner)
+    # Use the element type of x0 rather than T, since some backends promote the
+    # float type (e.g. Metal converts Float64 → Float32).
+    Ti = eltype(inner.x0)
+    return LegacyExaCore{Ti, typeof(inner.x0), typeof(backend), typeof(inner.tag)}(inner)
 end
 
 # ---------------------------------------------------------------------------
@@ -84,6 +87,10 @@ end
 
 Deprecated. Use [`add_obj`](@ref) instead.
 """
+function objective(c::LegacyExaCore, oracle::ScalarNonlinearOracle)
+    c.inner = objective(c.inner, oracle)
+    return oracle
+end
 function objective(c::LegacyExaCore, args...; kwargs...)
     new_core, o = add_obj(c.inner, args...; kwargs...)
     c.inner = new_core
@@ -95,6 +102,11 @@ end
 
 Deprecated. Use [`add_con`](@ref) instead.
 """
+function constraint(c::LegacyExaCore, oracle::VectorNonlinearOracle)
+    c.inner = constraint(c.inner, oracle)
+    return oracle
+end
+
 function constraint(c::LegacyExaCore, args...; kwargs...)
     new_core, con = add_con(c.inner, args...; kwargs...)
     c.inner = new_core
@@ -164,6 +176,18 @@ function add_expr(c::LegacyExaCore, args...; kwargs...)
     new_core, ex = add_expr(c.inner, args...; kwargs...)
     c.inner = new_core
     return (c, ex)
+end
+
+function embed_oracle(c::LegacyExaCore, args...; kwargs...)
+    new_core, z, oracle = embed_oracle(c.inner, args...; kwargs...)
+    c.inner = new_core
+    return (c, z, oracle)
+end
+
+function add_eval(c::LegacyExaCore, args...; kwargs...)
+    new_core, ev = add_eval(c.inner, args...; kwargs...)
+    c.inner = new_core
+    return (c, ev)
 end
 
 export LegacyExaCore, variable, parameter, objective, constraint, constraint!, subexpr
