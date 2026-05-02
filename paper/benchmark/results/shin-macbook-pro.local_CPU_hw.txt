@@ -1,0 +1,9 @@
+cpu: Apple M2 Pro
+cpu_cores: 12
+device: CPU
+examodels: 0.10.0
+hostname: shin-macbook-pro.local
+julia: 1.12.6
+os: Darwin arm64-apple-darwin24.0.0
+threads: 1
+total_memory: 16.0 GiB

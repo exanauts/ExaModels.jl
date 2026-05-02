@@ -1,0 +1,191 @@
+\usepackage[usenames,dvipsnames]{xcolor}
+\usepackage{listings}
+\usepackage{graphicx}
+\usepackage{tikz}
+\usetikzlibrary{positioning,backgrounds,fit}
+\usepackage{amsmath,amssymb,amsthm,amsfonts} % assumes amsmath package installed
+\usepackage[linktocpage=true,colorlinks=true,linkcolor=blue,citecolor=blue,urlcolor=blue]{hyperref}
+\usepackage[letterpaper,margin=1in]{geometry}
+\usepackage{DejaVuSans}
+
+% \newtheorem{definition}{Definition}
+% \newtheorem{assumption}{Assumption}
+% \newtheorem{theorem}{Theorem}
+% \newtheorem{lemma}{Lemma}
+% \newtheorem{proposition}{Proposition}
+% \newtheorem{remark}{Remark}
+
+\newcommand{\bx}{\boldsymbol{x}}
+\newcommand{\blambda}{\boldsymbol{\lambda}}
+\newcommand{\bu}{\boldsymbol{u}}
+\newcommand{\bw}{\boldsymbol{w}}
+\newcommand{\by}{\boldsymbol{y}}
+\newcommand{\bz}{\boldsymbol{z}}
+\newcommand{\bV}{\boldsymbol{V}}
+\newcommand{\bX}{\boldsymbol{X}}
+\newcommand{\bY}{\boldsymbol{Y}}
+\newcommand{\bZ}{\boldsymbol{Z}}
+\newcommand{\bv}{\boldsymbol{v}}
+\newcommand{\bxi}{\boldsymbol{\xi}}
+\newcommand{\bpi}{\boldsymbol{\pi}}
+\newcommand{\bphi}{\boldsymbol{\phi}}
+\newcommand{\bbeta}{\boldsymbol{\eta}}
+\newcommand{\bpsi}{\boldsymbol{\psi}}
+\newcommand{\bzeta}{\boldsymbol{\zeta}}
+\newcommand{\bmu}{\boldsymbol{\mu}}
+\newcommand{\bq}{\boldsymbol{q}}
+\newcommand{\bQ}{\boldsymbol{Q}}
+\newcommand{\bK}{\boldsymbol{K}}
+\newcommand{\bP}{\boldsymbol{P}}
+\newcommand{\bS}{\boldsymbol{S}}
+\newcommand{\bT}{\boldsymbol{T}}
+\newcommand{\bF}{\boldsymbol{F}}
+\newcommand{\bG}{\boldsymbol{G}}
+\newcommand{\bd}{\boldsymbol{d}}
+\newcommand{\bp}{\boldsymbol{p}}
+\newcommand{\bff}{\boldsymbol{f}}
+\newcommand{\bc}{\boldsymbol{c}}
+\newcommand{\bg}{\boldsymbol{g}}
+\newcommand{\bA}{\boldsymbol{A}}
+\newcommand{\bL}{\boldsymbol{L}}
+\newcommand{\ba}{\boldsymbol{a}}
+\newcommand{\bB}{\boldsymbol{B}}
+\newcommand{\bC}{\boldsymbol{C}}
+\newcommand{\bE}{\boldsymbol{E}}
+\newcommand{\bH}{\boldsymbol{H}}
+\newcommand{\bR}{\boldsymbol{R}}
+\newcommand{\bn}{\boldsymbol{n}}
+\newcommand{\bm}{\boldsymbol{m}}
+\newcommand{\br}{\boldsymbol{r}}
+\newcommand{\bl}{\boldsymbol{l}}
+\newcommand{\bI}{\boldsymbol{I}}
+\newcommand{\osigma}{\overline{\sigma}}
+\newcommand{\usigma}{\underline{\sigma}}
+\newcommand{\oosigma}{\overline{\osigma}}
+\newcommand{\uusigma}{\underline{\usigma}}
+\newcommand{\olambda}{\overline{\lambda}}
+\newcommand{\ulambda}{\underline{\lambda}}
+\newcommand{\oolambda}{\overline{\olambda}}
+\newcommand{\uulambda}{\underline{\ulambda}}
+\newcommand{\bzero}{\boldsymbol{0}}
+\newcommand{\st}{\mathop{\text{\normalfont s.t.}}}
+\newcommand{\diag}{\mathop{\text{\normalfont diag}}}
+\newcommand{\amin}{\mathop{\text{\normalfont argmin}}}
+\newcommand{\interior}{\mathop{\text{\normalfont interior}}}
+\newcommand{\ReH}{\mathop{\text{\normalfont ReH}}}
+\newcommand{\bbZ}{\mathbb{Z}}
+\newcommand{\cG}{\mathcal{G}}
+\newcommand{\cV}{\mathcal{V}}
+\newcommand{\cW}{\mathcal{W}}
+\newcommand{\cA}{\mathcal{A}}
+\newcommand{\cB}{\mathcal{B}}
+\newcommand{\cL}{\mathcal{L}}
+\newcommand{\cE}{\mathcal{E}}
+\newcommand{\cP}{\mathcal{P}}
+\newcommand{\cQ}{\mathcal{Q}}
+\newcommand{\cK}{\mathcal{K}}
+\newcommand{\cM}{\mathcal{M}}
+\newcommand{\cN}{\mathcal{N}}
+\newcommand{\cI}{\mathcal{I}}
+\newcommand{\cJ}{\mathcal{J}}
+\newcommand{\cT}{\mathcal{T}}
+
+
+
+% ── Julia syntax highlighting colours ──────────────────────────────────
+\definecolor{jlkw}{HTML}{7B3294}      % keywords: purple
+\definecolor{jltype}{HTML}{1F78B4}    % types: blue
+\definecolor{jlmacro}{HTML}{E31A1C}   % macros: red
+\definecolor{jlstr}{HTML}{A6761D}     % strings: brown
+\definecolor{jlcmt}{HTML}{636363}     % comments: grey
+\definecolor{jlnum}{HTML}{1B7837}     % numbers: dark green
+\definecolor{jlbg}{HTML}{F7F7F7}      % background: light grey
+
+% ── Julia language definition for listings ────────────────────────────
+\lstdefinelanguage{Julia}{%
+  morekeywords={abstract,break,case,catch,const,continue,do,else,elseif,%
+    end,export,false,for,function,global,if,import,in,let,local,%
+    macro,module,mutable,nothing,quote,return,struct,true,try,%
+    type,typealias,using,where,while},
+  morekeywords=[2]{Int,Int64,Int32,Float64,Float32,Bool,String,Symbol,%
+    Vector,Matrix,Array,Dict,Tuple,NamedTuple,Any,Nothing,Type,%
+    AbstractFloat,AbstractArray,AbstractVector,AbstractMatrix,%
+    UnitRange,StepRange},
+  morekeywords=[3]{@add_var,@add_par,@add_obj,@add_con,@add_con!,%
+    @add_expr,@register_univariate,@register_bivariate,%
+    @simd,@inbounds,@kernel,@index,@sprintf,@info,@eval},
+  sensitive=true,
+  alsoother={\$},
+  morecomment=[l]\#,
+  morecomment=[n]{\#=}{=\#},
+  morestring=[s]{"}{"},
+  morestring=[m]{'}{'},
+}[keywords,comments,strings]
+
+% ── Default listing style ─────────────────────────────────────────────
+\lstset{%
+  language         = Julia,
+  basicstyle       = \small\ttfamily,
+  columns          = fullflexible,
+  keywordstyle     = \bfseries\color{jlkw},
+  keywordstyle     = [2]\color{jltype},
+  keywordstyle     = [3]\bfseries\color{jlmacro},
+  stringstyle      = \color{jlstr},
+  commentstyle     = \itshape\color{jlcmt},
+  showstringspaces = false,
+  numbers          = left,
+  numberstyle      = \scriptsize\ttfamily\color{Gray},
+  stepnumber       = 1,
+  numbersep        = 8pt,
+  tabsize          = 4,
+  breaklines       = true,
+  backgroundcolor  = \color{jlbg},
+  frame            = single,
+  rulecolor        = \color{Gray!40},
+  framesep         = 3pt,
+  xleftmargin      = 2em,
+  framexleftmargin = 2em,
+  texcl            = true,
+  literate         =
+    {!=}{{{\color{jlkw}!=}}}2
+    {<=}{{{\color{jlkw}<=}}}2
+    {>=}{{{\color{jlkw}>=}}}2
+    {==}{{{\color{jlkw}==}}}2
+    {=>}{{{\color{jlkw}=>}}}2
+    {->}{{{\color{jlkw}->}}}2
+    {+=}{{{\color{jlkw}+=}}}2
+    {0}{{{\color{jlnum}0}}}1
+    {1}{{{\color{jlnum}1}}}1
+    {2}{{{\color{jlnum}2}}}1
+    {3}{{{\color{jlnum}3}}}1
+    {4}{{{\color{jlnum}4}}}1
+    {5}{{{\color{jlnum}5}}}1
+    {6}{{{\color{jlnum}6}}}1
+    {7}{{{\color{jlnum}7}}}1
+    {8}{{{\color{jlnum}8}}}1
+    {9}{{{\color{jlnum}9}}}1,
+  % ExaModels-specific identifiers
+  emph={ExaCore,ExaModel,ExaModels,Variable,Constraint,Objective,Expression,%
+    SIMDFunction,Compressor,NLPModelMeta,CUDABackend,ROCmBackend,%
+    NLPModelsIpopt,ipopt,solution,multipliers,set_value!,set_start!,%
+    get_start,get_lvar,set_lvar!,get_uvar,set_uvar!,get_lcon,set_lcon!,%
+    get_ucon,set_ucon!,get_value,convert_array,replace_T},
+  emphstyle=\color{jltype},
+}
+
+\providecommand{\keywords}[1]{%
+  \small\textbf{\textit{Keywords---}} #1%
+}
+
+\definecolor{j1}{rgb}{0.0,0.6056031611752245,0.9786801175696073}
+\definecolor{j2}{rgb}{0.8888735002725198,0.43564919034818994,0.2781229361419438}
+\definecolor{j3}{rgb}{0.2422242978521988,0.6432750931576305,0.3044486515341153}
+\definecolor{j4}{rgb}{0.7644401754934356,0.4441117794687767,0.8242975359232758}
+\definecolor{j5}{rgb}{0.6755439572114057,0.5556623322045815,0.09423433626639477}
+
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage{parskip}
+\usepackage[font=small,labelfont=bf]{caption}
+\usepackage{booktabs}
+\usepackage{longtable}
