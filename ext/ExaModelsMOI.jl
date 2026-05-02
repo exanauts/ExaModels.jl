@@ -43,7 +43,10 @@ function update_bin!(bin, e, p)
     if _update_bin!(bin, e, p) # if update succeeded, return the original bin
         return bin
     else # if update has failed, return a new bin
-        return Bin(e, [p], bin)
+        if p isa Tuple
+            p = [p]
+        end
+        return Bin(e, p, bin)
     end
 end
 function _update_bin!(bin::Bin{E,P,I}, e, p) where {E,P,I}
@@ -61,6 +64,9 @@ end
 function check_supported(T, moim)
     con_types = MOI.get(moim, MOI.ListOfConstraintTypesPresent())
     for (F, S) in con_types
+        if ExaModels.is_extension_type(F)
+            continue
+        end
         !(F <: SUPPORTED_FUNC_TYPE_WITH_VAR) && error("Unsupported function type $F.")
         if F <: MOI.VariableIndex
             !(S <: SUPPORTED_VAR_SET_TYPE) &&
@@ -71,7 +77,7 @@ function check_supported(T, moim)
     end
 
     obj_type = MOI.get(moim, MOI.ObjectiveFunctionType())
-    !(obj_type <: SUPPORTED_FUNC_TYPE_WITH_VAR) &&
+    !(obj_type <: SUPPORTED_FUNC_TYPE_WITH_VAR || ExaModels.is_extension_type(obj_type)) &&
         error("Unsupported objective function type $obj_type.")
 
     obj_sense = MOI.get(moim, MOI.ObjectiveSense())
@@ -204,22 +210,18 @@ function copy_constraints!(c, moim, var_to_idx, T)
 
     con_types = MOI.get(moim, MOI.ListOfConstraintTypesPresent())
     for (F, S) in con_types
+        F <: MOI.VariableIndex && continue
+        ExaModels.is_extension_type(F) && continue
         cis = MOI.get(moim, MOI.ListOfConstraintIndices{F,S}())
-        if F <: MOI.VariableIndex
-            for ci in cis
-                vi = MOI.get(moim, MOI.ConstraintFunction(), ci)
-                vartype, var_idx = var_to_idx[vi]
-                if vartype === :variable
-                    con_to_idx[ci] = var_idx
-                end
-            end
-            continue
-        end
-        bin, offset =
-            exafy_con(moim, cis, bin, offset, lcon, ucon, y0, var_to_idx, con_to_idx)
+        bin, offset = exafy_con(moim, cis, bin, offset, lcon, ucon, y0, var_to_idx, con_to_idx)
     end
     c, cons = ExaModels.add_con(c, offset; start = y0, lcon = lcon, ucon = ucon)
     c = build_constraint!(c, cons, bin)
+
+    # Hook for extensions (e.g. GenOpt) to add their constraint types
+    if applicable(ExaModels.copy_extra_constraints!, c, moim, var_to_idx, con_to_idx, T)
+        c = ExaModels.copy_extra_constraints!(c, moim, var_to_idx, con_to_idx, T)
+    end
 
     return c, con_to_idx
 end
@@ -323,7 +325,9 @@ function exafy_con(
     var_to_idx,
     con_to_idx,
 ) where {V<:Vector{<:MOI.ConstraintIndex}}
-    l = length(cons)
+    l = sum(cons) do ci
+        MOI.dimension(MOI.get(moim, MOI.ConstraintSet(), ci))
+    end
 
     resize!(lcon, offset + l)
     resize!(ucon, offset + l)
@@ -331,7 +335,7 @@ function exafy_con(
     for (i, ci) in enumerate(cons)
         func = MOI.get(moim, MOI.ConstraintFunction(), ci)
         set = MOI.get(moim, MOI.ConstraintSet(), ci)
-        con_to_idx[ci] = offset + i
+        con_to_idx[ci] = offset + 1
         start = if MOI.supports(
             moim, MOI.ConstraintPrimalStart(), typeof(ci)
         )
@@ -342,8 +346,9 @@ function exafy_con(
         _exafy_con_update_start(ci, start, y0, con_to_idx)
         _exafy_con_update_vector(ci, set, lcon, ucon, con_to_idx)
         bin = _exafy_con(ci, func, bin, var_to_idx, con_to_idx)
+        offset += MOI.dimension(set)
     end
-    return bin, (offset += l)
+    return bin, offset
 end
 
 function _exafy_con_update_start(i, start, y0, con_to_idx)
@@ -451,8 +456,11 @@ function exafy_obj(o::MOI.ScalarNonlinearFunction, bin, var_to_idx)
                     bin = update_bin!(bin, e, p)
                 end
                 constant += m.constant
-            else
+            elseif m isa MOI.ScalarNonlinearFunction
                 e, p = _exafy(m, var_to_idx)
+                bin = update_bin!(bin, e, p)
+            else
+                e, p = ExaModels.exafy_extension_obj_arg(m, var_to_idx)
                 bin = update_bin!(bin, e, p)
             end
         end
@@ -462,6 +470,15 @@ function exafy_obj(o::MOI.ScalarNonlinearFunction, bin, var_to_idx)
     end
 
     return update_bin!(bin, ExaModels.Null(constant), (1,)) # TODO see if this can be empty tuple
+end
+
+# Fallback for extension objective types (e.g. SumGenerator as top-level objective)
+function exafy_obj(o, bin, var_to_idx)
+    if !ExaModels.is_extension_type(typeof(o))
+        throw(MOI.UnsupportedAttribute(MOI.ObjectiveFunction{typeof(o)}()))
+    end
+    e, p = ExaModels.exafy_extension_obj_arg(o, var_to_idx)
+    return update_bin!(bin, e, p)
 end
 
 function _exafy(v::MOI.VariableIndex, var_to_idx, p = ())
@@ -481,7 +498,7 @@ function _exafy(i::R, var_to_idx, p) where {R<:Real}
 end
 
 function _exafy(e::MOI.ScalarNonlinearFunction, var_to_idx, p = ())
-    return op(e.head)((begin
+    return ExaModels.op(e.head)((begin
         c, p = _exafy(e, var_to_idx, p)
         c
     end for e in e.args)...), p
@@ -542,8 +559,7 @@ function _exafy(e::MOI.ScalarQuadraticTerm{T}, var_to_idx, p = ()) where {T}
     end
 end
 
-# eval can be a performance killer -- we want to explicitly include symbols for frequently used operations.
-function op(s::Symbol)
+function ExaModels.op(s::Symbol)
     # uni/multi
     if s === :+
         return +
@@ -712,6 +728,14 @@ MOI.is_empty(model::Optimizer) = isnothing(model.model)
 
 function MOI.supports_constraint(
     ::Optimizer,
+    ::Type{F},
+    ::Type{S},
+) where {F<:MOI.AbstractFunction, S<:MOI.AbstractSet}
+    return ExaModels.is_extension_type(F)
+end
+
+function MOI.supports_constraint(
+    ::Optimizer,
     ::Type{<:SUPPORTED_FUNC_TYPE},
     ::Type{<:SUPPORTED_FUNC_SET_TYPE},
 )
@@ -729,6 +753,9 @@ function MOI.supports(::Optimizer, ::MOI.ObjectiveSense)
 end
 function MOI.supports(::Optimizer, ::MOI.ObjectiveFunction{<:SUPPORTED_FUNC_TYPE_WITH_VAR})
     return true
+end
+function MOI.supports(::Optimizer, ::MOI.ObjectiveFunction{F}) where {F}
+    return ExaModels.is_extension_type(F)
 end
 function MOI.supports(::Optimizer, ::MOI.VariablePrimalStart, ::Type{MOI.VariableIndex})
     return true
@@ -863,7 +890,7 @@ function _make_index_map(model::MOI.ModelLike, var_to_idx, con_to_idx)
         end
     end
     for (F, S) in MOI.get(model, MOI.ListOfConstraintTypesPresent())
-        _make_constraints_map(model, map.con_map[F, S], con_to_idx)
+        _make_constraints_map(model, map.con_map[F, S], con_to_idx, var_to_idx)
     end
     return map
 end
@@ -871,9 +898,27 @@ function _make_constraints_map(
     model,
     map::MOI.Utilities.DoubleDicts.IndexDoubleDictInner{F,S},
     con_to_idx,
+    var_to_idx,
 ) where {F,S}
     for c in MOI.get(model, MOI.ListOfConstraintIndices{F,S}())
-        map[c] = typeof(c)(con_to_idx[c])
+        if haskey(con_to_idx, c)
+            map[c] = typeof(c)(con_to_idx[c])
+        end
+    end
+    return
+end
+function _make_constraints_map(
+    model,
+    map::MOI.Utilities.DoubleDicts.IndexDoubleDictInner{MOI.VariableIndex,S},
+    con_to_idx,
+    var_to_idx,
+) where {S}
+    for c in MOI.get(model, MOI.ListOfConstraintIndices{MOI.VariableIndex,S}())
+        vi = MOI.get(model, MOI.ConstraintFunction(), c)
+        entry = var_to_idx[vi]
+        if entry.type === :variable
+            map[c] = typeof(c)(entry.idx)
+        end
     end
     return
 end
