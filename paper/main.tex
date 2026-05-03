@@ -20,7 +20,7 @@
 \keywords{algebraic modeling system, automatic differentiation, nonlinear programming, parallel computing, GPU computing}
 
 %% ====================================================================
-%% OUTLINE — section and subsection structure
+%% OUTLINE — section and subsection structure 
 %% ====================================================================
 
 \section{Introduction}
@@ -228,10 +228,10 @@ where $\mathcal{G}_b$ is the set of generators at bus $b$, and $p_{bj}$, $p_{jb}
 
 With \texttt{@add\_con!}, the problem decomposes cleanly:
 \begin{lstlisting}
-@add_con(c, -pd[i] for i in bus_data)           % base: one row per bus
-@add_con!(c, con[b] += pg[i] for i in gen_data) % generator injection
-@add_con!(c, con[b] += pf[i] for i in line_from)% line flow (from end)
-@add_con!(c, con[b] += pt[i] for i in line_to)  % line flow (to end)
+@add_con(c, -pd[i] for i in bus_data)           # base: one row per bus
+@add_con!(c, con[b] += pg[i] for i in gen_data) # generator injection
+@add_con!(c, con[b] += pf[i] for i in line_from)# line flow (from end)
+@add_con!(c, con[b] += pt[i] for i in line_to)  # line flow (to end)
 \end{lstlisting}
 Each \texttt{@add\_con!} call creates a separate \texttt{ConstraintAugmentation} with its own fixed-structure expression tree, evaluated over its own data collection (generators, from-lines, to-lines). The augmentation mechanism accumulates all contributions into the correct constraint rows at evaluation time. Without it, the user would need to construct one monolithic expression per bus that inlines every generator and line contribution---destroying the pattern--data separation and preventing SIMD/GPU parallelism.
 
@@ -255,13 +255,13 @@ To illustrate the end-to-end workflow, the following code builds and solves the 
 \begin{lstlisting}
 using ExaModels, NLPModelsIpopt
 
-nh = 200                               % number of time steps
+nh = 200                               # number of time steps
 h_0, v_0, m_0, g_0 = 1.0, 0.0, 1.0, 1.0
 T_c, h_c, v_c, m_c  = 3.5, 500.0, 620.0, 0.6
 c_e = 0.5*sqrt(g_0*h_0); m_f = m_c*m_0
 D_c = 0.5*v_c*(m_0/g_0); T_max = T_c*m_0*g_0
 
-core = ExaCore(minimize = false)        % maximize $h_T$
+core = ExaCore(minimize = false)        # maximize final altitude
 @add_var(core, h, 0:nh; start = 1.0, lvar = 1.0)
 @add_var(core, v, 0:nh; start = (i/nh*(1-i/nh) for i=0:nh))
 @add_var(core, m, 0:nh;
@@ -269,38 +269,38 @@ core = ExaCore(minimize = false)        % maximize $h_T$
 @add_var(core, T, 0:nh; start = T_max/2, lvar = 0.0, uvar = T_max)
 @add_var(core, step, 1; start = 1/nh, lvar = 0.0)
 
-@add_obj(core, h[nh])                  % objective: final altitude
-@add_con(core, c1,                     % altitude dynamics \eqref{eq:rocket:h}
+@add_obj(core, h[nh])                  # objective: final altitude
+@add_con(core, c1,                     # altitude dynamics
   -h[i]+h[i-1] + 0.5*step[1]*(v[i]+v[i-1]) for i=1:nh)
-@add_con(core, c2,                     % velocity dynamics \eqref{eq:rocket:v}
+@add_con(core, c2,                     # velocity dynamics
   -v[i]+v[i-1] + 0.5*step[1]*(
     (T[i] - D_c*v[i]^2*exp(-h_c*(h[i]-h_0))/h_0
       - m[i]*g_0*(h_0/h[i])^2)/m[i]
     + (T[i-1] - D_c*v[i-1]^2*exp(-h_c*(h[i-1]-h_0))/h_0
       - m[i-1]*g_0*(h_0/h[i-1])^2)/m[i-1]) for i=1:nh)
-@add_con(core, c3,                     % mass dynamics \eqref{eq:rocket:m}
+@add_con(core, c3,                     # mass dynamics
   -m[i]+m[i-1] + 0.5*step[1]*(-T[i]/c_e - T[i-1]/c_e) for i=1:nh)
-@add_con(core, bc,                     % boundary conditions
+@add_con(core, bc,                     # boundary conditions
   h[0]-h_0; v[0]-v_0; m[0]-m_0; m[nh]-m_f)
 
-model = ExaModel(core)                 % compile: ExaCore $\to$ ExaModel
-result = ipopt(model)                  % solve via Ipopt
+model = ExaModel(core)                 # compile: ExaCore -> ExaModel
+result = ipopt(model)                  # solve via Ipopt
 \end{lstlisting}
 The five patterns (\texttt{c1}--\texttt{c3} dynamics, boundary conditions, and the objective) directly correspond to the mathematical formulation \eqref{eq:rocket}. The same model runs on a GPU by replacing the first line with \texttt{core = ExaCore(minimize = false, backend = CUDABackend())}; no other changes are needed.
 
 \paragraph{Getters, setters, and solution access.}
 After the model is built, the user can query and modify bounds, initial points, and parameters:
 \begin{lstlisting}
-get_start(model, h)              % initial values for h
-set_start!(model, h, ones(nh+1)) % update initial values
-get_lvar(model, T)               % lower bounds on T
-set_lvar!(model, T, zeros(nh+1)) % update lower bounds
+get_start(model, h)              # initial values for h
+set_start!(model, h, ones(nh+1)) # update initial values
+get_lvar(model, T)               # lower bounds on T
+set_lvar!(model, T, zeros(nh+1)) # update lower bounds
 \end{lstlisting}
 After solving, the solution is accessed per variable and constraint block:
 \begin{lstlisting}
-h_sol = solution(result, h)      % primal: altitude trajectory
-v_sol = solution(result, v)      % primal: velocity trajectory
-lam   = multipliers(result, c2)  % dual: velocity dynamics multipliers
+h_sol = solution(result, h)      # primal: altitude trajectory
+v_sol = solution(result, v)      # primal: velocity trajectory
+lam   = multipliers(result, c2)  # dual: velocity dynamics multipliers
 \end{lstlisting}
 These per-block accessors use the offset and dimension information stored in each \texttt{Variable} and \texttt{Constraint} struct to extract the relevant slice without copying. For parametric models, the parameter values can be updated without model reconstruction via \texttt{set\_value!(model, p, new\_vals)}, since the expression tree structure and all compiled AD code remain unchanged---only the data in $\theta$ is modified.
 
@@ -533,66 +533,94 @@ The reverse pass traverses the adjoint tree from root to leaves, propagating the
   \item At \texttt{AdjointNodeVar} with index $i$: accumulate $\nabla f[i] \mathrel{+}= \bar{v}$.
 \end{itemize}
 
-Figure~\ref{fig:ad} illustrates both passes on the expression $f(x) = \sin(x_1) + x_1 \cdot x_2$.
+Figure~\ref{fig:ad} illustrates both passes on the Rosenbrock pattern from \eqref{eq:rosenbrock}, using the same expression tree as Figure~\ref{fig:tree}. For readability we write $a = x_{i-1}$ and $b = x_i$, and let $s = a^2 - b$, $t = a - 1$.
 
 \begin{figure}[t]
 \centering
 \begin{tikzpicture}[
-  scale=0.82, transform shape,
-  op/.style={circle, draw, thick, minimum size=9mm, inner sep=1pt, font=\small\ttfamily},
-  var/.style={rectangle, rounded corners=2pt, draw, thick, fill=j1!20, minimum size=7mm, inner sep=2pt, font=\small\ttfamily},
-  fwdlabel/.style={font=\scriptsize, text=ForestGreen, anchor=west},
-  revlabel/.style={font=\scriptsize, text=Maroon, anchor=east},
-  edge from parent/.style={draw, thick},
-  level 1/.style={sibling distance=32mm, level distance=14mm},
-  level 2/.style={sibling distance=18mm, level distance=14mm},
+  scale=0.85, transform shape,
+  nd/.style={rectangle, rounded corners=3pt, draw=gray!60, thick, fill=white,
+    minimum height=7.5mm, minimum width=10mm, inner sep=2pt, font=\footnotesize\ttfamily},
+  ndvar/.style={nd, draw=j1!80, fill=j1!10},
+  ndconst/.style={nd, draw=j4!70, fill=j4!8},
+  fwd/.style={font=\scriptsize, text=ForestGreen},
+  rev/.style={font=\scriptsize, text=Maroon},
+  edge from parent/.style={draw, gray!60, semithick},
+  level 1/.style={sibling distance=68mm, level distance=16mm},
+  level 2/.style={sibling distance=34mm, level distance=16mm},
+  level 3/.style={sibling distance=28mm, level distance=16mm},
+  level 4/.style={sibling distance=20mm, level distance=16mm},
 ]
 
-% Forward pass (left)
-\node[font=\small\bfseries, anchor=south] at (0,1.2) {Forward pass};
-\node[op] (plus) {$+$}
-  child { node[op] (sin) {sin}
-    child { node[var] (x1a) {$x_1$} }
+% --- Single tree with both annotations ---
+\node[nd] (plus) {$+$}
+  child { node[nd] (times) {$\times$}
+    child { node[ndconst] (c100) {100} }
+    child { node[nd] (sq1) {abs2}
+      child { node[nd] (sub1) {$-$}
+        child { node[nd] (sq2) {abs2}
+          child { node[ndvar] (va1) {$a$} }
+        }
+        child { node[ndvar] (vb) {$b$} }
+      }
+    }
   }
-  child { node[op] (times) {$\times$}
-    child { node[var] (x1b) {$x_1$} }
-    child { node[var] (x2) {$x_2$} }
+  child { node[nd] (sq3) {abs2}
+    child { node[nd] (sub2) {$-$}
+      child { node[ndvar] (va2) {$a$} }
+      child { node[ndconst] (c1) {1} }
+    }
   };
 
-% Forward annotations (primal value, local derivative)
-\node[fwdlabel, right=2pt of plus] {$v{=}\sin x_1 {+} x_1 x_2$};
-\node[fwdlabel, right=2pt of sin] {$v{=}\sin x_1,\; F'{=}\cos x_1$};
-\node[fwdlabel, right=2pt of times] {$v{=}x_1 x_2,\; \partial_1{=}x_2,\; \partial_2{=}x_1$};
+% --- Forward pass annotations (green, right side) ---
+\node[fwd, right=4pt of plus, anchor=west] {$v = 100s^2 + t^2$};
+\node[fwd, left=4pt of times, anchor=east] {$\partial_1 = s^2,\; \partial_2 = 100$};
+\node[fwd, right=4pt of sq1, anchor=west] {$v = s^2,\; F' = 2s$};
+\node[fwd, left=4pt of sub1, anchor=east] {$\partial_1 = 1,\; \partial_2 = {-}1$};
+\node[fwd, left=4pt of sq2, anchor=east] {$v = a^2,\; F' = 2a$};
+\node[fwd, right=4pt of sq3, anchor=west] {$v = t^2,\; F' = 2t$};
+\node[fwd, right=4pt of sub2, anchor=west] {$\partial_1 = 1,\; \partial_2 = {-}1$};
 
-% Reverse pass (right)
-\begin{scope}[xshift=85mm]
-\node[font=\small\bfseries, anchor=south] at (0,1.2) {Reverse pass};
-\node[op] (rplus) {$+$}
-  child { node[op] (rsin) {sin}
-    child { node[var] (rx1a) {$x_1$} }
-  }
-  child { node[op] (rtimes) {$\times$}
-    child { node[var] (rx1b) {$x_1$} }
-    child { node[var] (rx2) {$x_2$} }
-  };
+% --- Reverse pass annotations (maroon, arrows with edge labels) ---
+\node[rev, above=2pt of plus, anchor=south] {$\bar{v} = 1$};
 
-% Reverse annotations (adjoint values)
-\node[revlabel, left=2pt of rplus] {$\bar{v}{=}1$};
-\node[revlabel, left=2pt of rsin] {$\bar{v}{=}1$};
-\node[revlabel, left=2pt of rtimes] {$\bar{v}{=}1$};
-\node[revlabel, left=10pt of rx1a] {$\bar{v}{=}\cos x_1$};
-\node[revlabel, left=2pt of rx1b] {$\bar{v}{=}x_2$};
-\node[font=\scriptsize, text=Maroon, anchor=west, right=2pt of rx2] {$\bar{v}{=}x_1$};
+% Adjoint propagation arrows (dashed, maroon)
+\draw[->, Maroon, semithick, dashed] ([xshift=-2pt]plus.south west) --
+  node[left, rev, pos=0.4] {$\bar{v}{\cdot}1$} ([xshift=2pt]times.north east);
+\draw[->, Maroon, semithick, dashed] ([xshift=2pt]plus.south east) --
+  node[right, rev, pos=0.4] {$\bar{v}{\cdot}1$} ([xshift=-2pt]sq3.north west);
 
-% Arrows showing adjoint flow
-\draw[->, Maroon, thick, dashed] (rplus) -- node[left, font=\scriptsize\color{Maroon}, pos=0.4] {$1{\cdot}1$} (rsin);
-\draw[->, Maroon, thick, dashed] (rplus) -- node[right, font=\scriptsize\color{Maroon}, pos=0.4] {$1{\cdot}1$} (rtimes);
-\draw[->, Maroon, thick, dashed] (rsin) -- node[left, font=\scriptsize\color{Maroon}, pos=0.4] {$1{\cdot}\cos x_1$} (rx1a);
-\draw[->, Maroon, thick, dashed] (rtimes) -- node[left, font=\scriptsize\color{Maroon}, pos=0.4] {$1{\cdot}x_2$} (rx1b);
-\draw[->, Maroon, thick, dashed] (rtimes) -- node[right, font=\scriptsize\color{Maroon}, pos=0.4] {$1{\cdot}x_1$} (rx2);
-\end{scope}
+\draw[->, Maroon, semithick, dashed] ([xshift=2pt]times.south east) --
+  node[right, rev, pos=0.4] {$1{\cdot}100$} ([xshift=-2pt]sq1.north west);
+
+\draw[->, Maroon, semithick, dashed] (sq1.south) --
+  node[right, rev, pos=0.4] {$100{\cdot}2s$} (sub1.north);
+
+\draw[->, Maroon, semithick, dashed] ([xshift=-2pt]sub1.south west) --
+  node[left, rev, pos=0.4] {$200s{\cdot}1$} ([xshift=2pt]sq2.north east);
+\draw[->, Maroon, semithick, dashed] ([xshift=2pt]sub1.south east) --
+  node[right, rev, pos=0.4] {$200s{\cdot}({-}1)$} ([xshift=-2pt]vb.north west);
+
+\draw[->, Maroon, semithick, dashed] (sq2.south) --
+  node[left, rev, pos=0.4] {$200s{\cdot}2a$} (va1.north);
+
+\draw[->, Maroon, semithick, dashed] (sq3.south) --
+  node[right, rev, pos=0.4] {$1{\cdot}2t$} (sub2.north);
+\draw[->, Maroon, semithick, dashed] ([xshift=-2pt]sub2.south west) --
+  node[left, rev, pos=0.4] {$2t{\cdot}1$} ([xshift=2pt]va2.north east);
+
+% --- Gradient results at leaves ---
+\node[rev, font=\scriptsize\bfseries, below=4pt of va1, anchor=north] {$\nabla\!f[a] \mathrel{+}= 400sa$};
+\node[rev, font=\scriptsize\bfseries, below=4pt of vb, anchor=north] {$\nabla\!f[b] \mathrel{+}= {-}200s$};
+\node[rev, font=\scriptsize\bfseries, below=4pt of va2, anchor=north] {$\nabla\!f[a] \mathrel{+}= 2t$};
+
+% --- Legend ---
+\node[anchor=north, font=\scriptsize] at ([yshift=-5mm]current bounding box.south) {
+  \textcolor{ForestGreen}{\rule{8pt}{2pt}}~Forward (primal $v$, local derivatives)\qquad
+  \textcolor{Maroon}{\rule{8pt}{2pt}}~\textcolor{Maroon}{- -}~Reverse (adjoint $\bar{v}$ propagation)
+};
 \end{tikzpicture}
-\caption{First-order AD for $f(x) = \sin(x_1) + x_1 x_2$. \textbf{Left:} The forward pass evaluates the adjoint tree, storing the primal value $v$ and local derivatives $F'$, $\partial_1$, $\partial_2$ at each node.  \textbf{Right:} The reverse pass propagates the adjoint $\bar{v}$ from root to leaves; at each \texttt{AdjointNodeVar} leaf, the accumulated adjoint gives the gradient entry: $\nabla f = (\cos x_1 + x_2,\; x_1)^\top$.}
+\caption{First-order reverse-mode AD on the Rosenbrock pattern $f_i = 100(a^2 - b)^2 + (a - 1)^2$ with $a = x_{i-1}$, $b = x_i$, $s = a^2 - b$, $t = a - 1$ (same tree as Figure~\ref{fig:tree}, with \texttt{Var} index subtrees collapsed). \textcolor{ForestGreen}{Green} labels show the forward pass: each node stores its primal value $v$ and local derivatives $F'$ or $\partial_1, \partial_2$. \textcolor{Maroon}{Maroon} dashed arrows show the reverse pass: the adjoint $\bar{v}=1$ at the root is multiplied by each node's local derivative and propagated to its children. At the leaves, accumulated adjoints give the gradient: $\partial f_i/\partial x_{i-1} = 400sa + 2t$ and $\partial f_i/\partial x_i = -200s$.}
 \label{fig:ad}
 \end{figure}
 
@@ -978,9 +1006,34 @@ Table~\ref{tab:sgm} summarizes the results. ExaModels.jl is consistently faster 
 \subsection{GPU Acceleration}
 \label{sec:numerics:gpu}
 
-We compare ExaModels.jl on CPU (single-threaded, no KernelAbstractions) against GPU backends (CUDA, ROCm) on the same problem instances. The GPU timings include kernel execution time but exclude the one-time model construction (which runs on the CPU). We report speedup relative to the CPU baseline for each callback.
+We compare ExaModels.jl on CPU (single-threaded, no KernelAbstractions) against two GPU backends on the same LV and COPS instances. The hardware is an NVIDIA Quadro GV100 (CUDA) and an AMD Radeon VII (ROCm/AMDGPU). The GPU timings include kernel execution and synchronization but exclude the one-time model construction (which runs on the CPU). We report speedup as the ratio of CPU wall time to GPU wall time for each callback.
 
-% TODO: insert GPU speedup figure here once benchmark results are collected
+Table~\ref{tab:gpu} summarizes the GPU speedups by size class. The results confirm the expected scaling behavior of the SIMD abstraction. For small instances ($\text{nnz} < 10^3$), GPU overhead (kernel launch, memory allocation) dominates and the GPU is slower than the CPU. For medium instances ($10^3 \leq \text{nnz} < 10^5$), the GPU roughly matches the CPU, with Hessian evaluation already showing a modest speedup ($1.8$--$2.1\times$ on LV). For large instances ($\text{nnz} \geq 10^5$), the GPU delivers substantial speedups: up to $172\times$ (CUDA) and $198\times$ (AMDGPU) for \texttt{hess\_coord!} on the LV suite, and $61\times$/$70\times$ on COPS.
+
+The LV problems show larger speedups than COPS because their expression trees are simpler and more uniform, yielding higher arithmetic intensity per data point. COPS problems have more complex expression trees (e.g., the rocket dynamics involve exponentials and divisions), which increases register pressure and reduces GPU occupancy.
+
+Both GPU backends achieve similar speedups despite different hardware architectures, validating the portability of the KernelAbstractions.jl approach: the same ExaModels.jl code runs on NVIDIA, AMD, and (with Float32 precision) Intel GPUs without modification.
+
+\begin{table}[t]
+\centering
+\caption{GPU speedup over single-threaded CPU for AD callbacks (shifted geometric mean, $s = 10^{-5}$\,s). All runs use Float64. Values below $1\times$ indicate GPU overhead exceeds the computation.}
+\label{tab:gpu}
+\begin{tabular*}{\textwidth}{@{\extracolsep{\fill}}ll rrr rrr@{}}
+  \toprule
+  & & \multicolumn{3}{c}{\textbf{CUDA} (Quadro GV100)} & \multicolumn{3}{c@{}}{\textbf{AMDGPU} (Radeon VII)} \\
+  \cmidrule(lr){3-5} \cmidrule(l){6-8}
+  suite & size & grad & jac & hess & grad & jac & hess \\
+  \midrule
+  LV & Small & $0.0\times$ & $0.0\times$ & $0.0\times$ & $0.0\times$ & $0.0\times$ & $0.0\times$ \\
+   & Medium & $0.9\times$ & $0.4\times$ & $1.8\times$ & $0.9\times$ & $0.5\times$ & $2.1\times$ \\
+   & Large & $82.0\times$ & $21.0\times$ & $172.1\times$ & $87.4\times$ & $22.2\times$ & $198.0\times$ \\
+  \midrule
+  COPS & Small & $0.0\times$ & $0.0\times$ & $0.0\times$ & $0.0\times$ & $0.0\times$ & $0.0\times$ \\
+   & Medium & $0.2\times$ & $0.6\times$ & $1.0\times$ & $0.2\times$ & $0.6\times$ & $1.1\times$ \\
+   & Large & $3.3\times$ & $26.3\times$ & $61.4\times$ & $3.4\times$ & $28.4\times$ & $69.5\times$ \\
+  \bottomrule
+\end{tabular*}
+\end{table}
 
 \section{Conclusions}
 \label{sec:conclusions}
