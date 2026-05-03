@@ -12,9 +12,7 @@
 \begin{document}
 \maketitle
 \begin{abstract}
-  We present ExaModels.jl, an algebraic modeling system for nonlinear programming implemented in Julia. ExaModels.jl is built on a \emph{single-instruction, multiple-data (SIMD) abstraction} that decomposes a nonlinear program into a small number of computational patterns, each evaluated over many data points.
-  % SS: decomposes can 
-  This pattern--data separation enables three key capabilities: (i) a \emph{parameterized expression tree} whose structure is encoded entirely in the Julia type system, enabling compile-time specialization with no runtime dispatch; (ii) \emph{coloring-free sparse automatic differentiation} that exploits the regular sparsity structure of each pattern to compute exact Jacobians and Hessians without graph coloring; and (iii) \emph{GPU acceleration} via KernelAbstractions.jl, where each pattern becomes a GPU kernel and each data point becomes a thread, achieving high occupancy with no thread divergence. ExaModels.jl implements the NLPModels.jl callback interface and connects to a broad ecosystem of nonlinear programming solvers including Ipopt, KNITRO, MadNLP.jl, and Uno. The system supports parameterized problems, two-stage stochastic programs, and batch optimization. Full type stability enables ahead-of-time compilation to standalone binaries via \texttt{juliac}. We demonstrate the approach on scalable benchmark problems from the Luk\v{s}an--Vlc\v{e}k collection, COPS test suite, and AC optimal power flow instances from PGLIB.
+  Large-scale nonlinear programs almost always exhibit highly repetitive structure, yet existing algebraic modeling systems often neglect it, flattening it into monolithic expression graphs and forgoing the parallelism it affords. We present ExaModels.jl, an algebraic modeling system for nonlinear programming implemented in Julia that preserves and exploits this structure for scalable, GPU-compatible derivative evaluation. At its core is a \emph{single-instruction, multiple-data (SIMD) abstraction} that represents a nonlinear program as a small number of computational patterns, each evaluated over many data points; problem structure is recognized at compile time, so function and derivative evaluation reduces to embarrassingly parallel loops over data points, making the system \emph{natively compatible with GPUs}. The sparse automatic differentiation built on this abstraction further exploits the regular per-pattern sparsity to compute Jacobians and Hessians in a partially compressed sparse form without graph coloring. These ideas deliver substantial speedups in sparse first- and second-order derivative evaluation over existing algebraic modeling systems on CPU and up to two orders of magnitude further acceleration on GPUs. Additionally, our implementation supports arbitrary numeric precision, cross-platform GPU portability across NVIDIA, AMD, Intel, and Apple devices, ahead-of-time compilation to standalone binaries that do not depend on the Julia runtime (currently supported on CPU), as well as extensions to parametric problems, problems with user-defined external oracles, two-stage stochastic programs, and batch optimization. We demonstrate the approach with ExaModels-native implementations of the Luk\v{s}an--Vlc\v{e}k, COPS, and PGLIB-OPF benchmark libraries, comparing AD performance against JuMP and AMPL on CPU and across multiple GPU backends.
 \end{abstract}
 
 \keywords{algebraic modeling system, automatic differentiation, nonlinear programming, parallel computing, GPU computing}
@@ -55,7 +53,7 @@ Prominent AMSs span a range of problem classes and design philosophies. AMPL \ci
   \caption{Comparison of algebraic modeling systems. ``Pattern-aware'' indicates whether the system preserves the repetitive structure of the model for SIMD-parallel derivative evaluation.}
   \label{tab:ams}
   \small
-  \begin{tabular*}{\textwidth}{@{\extracolsep{\fill}}l l l c c@{}}
+  \begin{tabular}{l l l c c}
     \toprule
     System & Language & Problem classes & AD & Pattern-aware \\
     \midrule
@@ -68,7 +66,7 @@ Prominent AMSs span a range of problem classes and design philosophies. AMPL \ci
     \midrule
     ExaModels.jl & Julia (embedded) & NLP & built-in & yes \\
     \bottomrule
-  \end{tabular*}
+  \end{tabular}
 \end{table}
 
 \paragraph{Monolithic vs.\ structured representations.}
@@ -925,16 +923,16 @@ These can be combined: \texttt{TwoStageExaCore(nscen; nbatch = Val(B))} creates 
 \begin{lstlisting}
 B, S = 4, 10                                # 4 instances, 10 scenarios each
 core = TwoStageExaCore(S; nbatch = Val(B))
-core, d = @add_var(core, d, n_d)                  # design (shared across scenarios)
-core, v = @add_var(core, EachScenario(), v, n_v)   # recourse (per scenario)
-core, $\theta$ = @add_par(core, EachScenario(), $\theta$_vals)      # scenario parameters
+@add_var(core, d, n_d)                  # design (shared across scenarios)
+@add_var(core, EachScenario(), v, n_v)   # recourse (per scenario)
+@add_par(core, EachScenario(), $\theta$_vals)      # scenario parameters
 @add_obj(core, f0(d, i) for i in data0)            # first-stage objective
 @add_obj(core, EachScenario(),
          fs(d, v, $\theta$, i) for i in data_s)           # second-stage objective
 @add_con(core, EachScenario(),
          gs(d, v, $\theta$, i) for i in data_s)           # scenario constraints
 m = ExaModel(core)
-\end{lstlisting}
+\end{lstlisting} 
 
 \subsection{Parameterized Problems}
 \label{sec:extensions:parameters}
@@ -980,6 +978,23 @@ For each LV and COPS problem, we select three discretization sizes targeting app
 
 In the summary table (Table~\ref{tab:sgm}), we classify instances into three size categories based on $\text{nnz} = \max(\text{nnzj}, \text{nnzh})$: \emph{Small} ($\text{nnz} < 10^3$), \emph{Medium} ($10^3 \leq \text{nnz} < 10^5$), and \emph{Large} ($10^5 \leq \text{nnz}$). This classification captures the regime where data-parallel AD provides the most benefit (large problems with many nonzeros) versus the regime where fixed overheads dominate (small problems).
 
+\paragraph{Hardware and software.}
+Table~\ref{tab:hardware} summarizes the hardware used in the experiments. The AD comparison (Section~\ref{sec:numerics:ad}) runs single-threaded on the CPU of Machine~A. The GPU experiments (Section~\ref{sec:numerics:gpu}) compare this CPU baseline against two GPU backends on the same machines. All experiments use Julia~1.12.6, ExaModels.jl~v0.10.0, and Float64 arithmetic.
+
+\begin{table}[t]
+\centering
+\caption{Hardware configurations used in the benchmark experiments.}
+\label{tab:hardware}
+\begin{tabular}{lllr}
+  \toprule
+  Machine & CPU & GPU & RAM \\
+  \midrule
+  A & Intel Xeon Platinum 8160 (2.10\,GHz, 96 cores) & NVIDIA Quadro GV100 (32\,GB) & 377\,GB \\
+  B & Intel Xeon Gold 6130 (2.10\,GHz, 64 cores) & AMD Radeon VII (16\,GB) & 251\,GB \\
+  \bottomrule
+\end{tabular}
+\end{table}
+
 \subsection{AD Performance Comparison}
 \label{sec:numerics:ad}
 
@@ -1000,8 +1015,8 @@ Table~\ref{tab:sgm} summarizes the results. ExaModels.jl is consistently faster 
     Speedup = JuMP\,/\,ExaModels (higher is better for ExaModels).
     All timings on Apple M2 Pro, single-threaded, Julia 1.12.}
   \label{tab:sgm}
-  \input{benchmark/results/tables/sgm_summary}
-\end{table}
+  \input{benchmark/results/tables/sgm_summary} 
+\end{table} 
 
 \subsection{GPU Acceleration}
 \label{sec:numerics:gpu}
@@ -1018,9 +1033,9 @@ Both GPU backends achieve similar speedups despite different hardware architectu
 \centering
 \caption{GPU speedup over single-threaded CPU for AD callbacks (shifted geometric mean, $s = 10^{-5}$\,s). All runs use Float64. Values below $1\times$ indicate GPU overhead exceeds the computation.}
 \label{tab:gpu}
-\begin{tabular*}{\textwidth}{@{\extracolsep{\fill}}ll rrr rrr@{}}
+\begin{tabular}{ll rrr rrr}
   \toprule
-  & & \multicolumn{3}{c}{\textbf{CUDA} (Quadro GV100)} & \multicolumn{3}{c@{}}{\textbf{AMDGPU} (Radeon VII)} \\
+  & & \multicolumn{3}{c}{\textbf{CUDA} (Quadro GV100)} & \multicolumn{3}{c}{\textbf{AMDGPU} (Radeon VII)} \\
   \cmidrule(lr){3-5} \cmidrule(l){6-8}
   suite & size & grad & jac & hess & grad & jac & hess \\
   \midrule
@@ -1032,7 +1047,7 @@ Both GPU backends achieve similar speedups despite different hardware architectu
    & Medium & $0.2\times$ & $0.6\times$ & $1.0\times$ & $0.2\times$ & $0.6\times$ & $1.1\times$ \\
    & Large & $3.3\times$ & $26.3\times$ & $61.4\times$ & $3.4\times$ & $28.4\times$ & $69.5\times$ \\
   \bottomrule
-\end{tabular*}
+\end{tabular}
 \end{table}
 
 \section{Conclusions}
@@ -1040,7 +1055,7 @@ Both GPU backends achieve similar speedups despite different hardware architectu
 
 We have presented ExaModels.jl, an algebraic modeling system for nonlinear programming that exploits the repetitive pattern structure inherent in large-scale optimization problems arising from engineering applications. The system is built on three interlocking ideas:
 \begin{enumerate}
-  \item A \emph{single-instruction, multiple-data (SIMD) abstraction} that decomposes a nonlinear program into a small number of computational patterns, each evaluated over many data points. This abstraction captures a broad class of problems---including optimal control, PDE-constrained optimization, network optimization, and stochastic programming---while enabling data-parallel execution.
+  \item A \emph{single-instruction, multiple-data (SIMD) abstraction} that represents a nonlinear program as a small number of computational patterns, each evaluated over many data points. This abstraction captures a broad class of problems---including optimal control, PDE-constrained optimization, network optimization, and stochastic programming---while enabling data-parallel execution.
   \item A \emph{parameterized expression tree} whose structure is fully encoded in the Julia type system. This design enables compile-time specialization of all evaluation and automatic differentiation code, eliminates runtime dispatch, and supports ahead-of-time compilation to standalone binaries.
   \item \emph{Coloring-free sparse automatic differentiation} that exploits the regular per-pattern sparsity structure. The \texttt{Compressor} and offset mechanism precompute exact nonzero positions at model-construction time, avoiding the graph coloring step required by conventional algebraic modeling systems.
 \end{enumerate}

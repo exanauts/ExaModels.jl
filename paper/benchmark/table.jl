@@ -83,7 +83,7 @@ function generate_sgm_summary_table(df; fname = joinpath("results", "tables", "s
 
     open(fname, "w") do io
         # Columns: suite, callback, ExaModels, JuMP, Small speedup, Medium speedup, Large speedup, Total speedup
-        println(io, "\\begin{tabular*}{\\textwidth}{@{\\extracolsep{\\fill}}ll rr rrrr@{}}")
+        println(io, "\\begin{tabular}{ll rr rrrr}")
         println(io, "  \\toprule")
         println(io, "  & & & & \\multicolumn{4}{c@{}}{\\textbf{Speedup} (JuMP\\,/\\,ExaModels)} \\\\")
         println(io, "  \\cmidrule(l){5-8}")
@@ -150,7 +150,7 @@ function generate_sgm_summary_table(df; fname = joinpath("results", "tables", "s
         end
 
         println(io, "  \\bottomrule")
-        println(io, "\\end{tabular*}")
+        println(io, "\\end{tabular}")
     end
 
     @info "SGM summary table written to $fname"
