@@ -2298,7 +2298,7 @@
   issn = {0036-1445},
   doi = {10.1137/15M1020575},
   urldate = {2023-11-30},
-  abstract = {Diverse problems in optimization, engineering, and economics have natural formulations in terms of complementarity conditions, which state (in their simplest form) that either a certain nonnegative variable must be zero or a corresponding inequality must hold with equality, or both. A variety of algorithms has been devised for solving problems expressed in terms of complementarity conditions. It is thus attractive to consider extending algebraic modeling languages, which are widely used for sending ordinary equations and inequality constraints to solvers, so that they can express complementarity problems directly. We describe an extension to the AMPL modeling language that can express the most common complementarity conditions in a concise and flexible way, through the introduction of a single new "complements" operator. We present details of an efficient implementation that incorporates an augmented presolve phase to simplify complementarity problems, and that converts complementarity conditions to a canonical form convenient for solvers.}
+  abstract = {JuMP is an open-source modeling language that allows users to express a wide range of optimization problems (linear, mixed-integer, quadratic, conic-quadratic, semidefinite, and nonlinear) in a high-level, algebraic syntax. JuMP takes advantage of advanced features of the Julia programming language to offer unique functionality while achieving performance on par with commercial modeling tools for standard tasks. In this work we will provide benchmarks, present the novel aspects of the implementation, and discuss how JuMP can be extended to new problem classes and composed with state-of-the-art tools for visualization and interactivity.}
 }
 
 @misc{DynamicRegretMinimization,
@@ -8428,4 +8428,115 @@ Subject\_term: Hydrology, Climate change, Environmental sciences, Policy}
   institution = {Smithsonian Institution},
   type = {Smithsonian Miscellaneous Collections},
   number = {71(2)},
+}
+
+@incollection{bussieckGeneralAlgebraicModeling2004,
+  title = {General {{Algebraic Modeling System}} ({{GAMS}})},
+  booktitle = {Modeling {{Languages}} in {{Mathematical Optimization}}},
+  author = {Bussieck, Michael R. and Meeraus, Alexander},
+  editor = {Kallrath, Josef},
+  series = {Applied {{Optimization}}},
+  volume = {88},
+  publisher = {Springer},
+  address = {Boston, MA},
+  pages = {137--157},
+  year = {2004},
+  doi = {10.1007/978-1-4613-0215-5_8},
+  isbn = {978-1-4613-0215-5}
+}
+
+@article{bealGEKKOOptimizationSuite2018,
+  title = {{{GEKKO Optimization Suite}}},
+  author = {Beal, Logan D. R. and Hill, Daniel and Martin, R. Abraham and Hedengren, John D.},
+  journal = {Processes},
+  volume = {6},
+  number = {8},
+  pages = {106},
+  year = {2018},
+  publisher = {{MDPI}},
+  doi = {10.3390/pr6080106}
+}
+
+@misc{grantCVXMATLABSoftware2014,
+  title = {{{CVX}}: {{Matlab}} Software for Disciplined Convex Programming, Version 2.1},
+  author = {Grant, Michael and Boyd, Stephen},
+  year = {2014},
+  month = mar,
+  howpublished = {\url{http://cvxr.com/cvx}},
+  note = {Software}
+}
+
+@inproceedings{udellConvexOptimizationJulia2014,
+  title = {Convex Optimization in {{Julia}}},
+  author = {Udell, Madeleine and Mohan, Karanveer and Zeng, David and Hong, Jenny and Diamond, Steven and Boyd, Stephen},
+  booktitle = {2014 First {{Workshop}} for {{High Performance Technical Computing}} in {{Dynamic Languages}}},
+  pages = {18--28},
+  year = {2014},
+  publisher = {{IEEE}},
+  doi = {10.1109/HPTCDL.2014.5}
+}
+
+@inproceedings{lofbergYALMIPToolboxModeling2004,
+  title = {{{YALMIP}}: A Toolbox for Modeling and Optimization in {{MATLAB}}},
+  shorttitle = {{{YALMIP}}},
+  author = {L{\"o}fberg, Johan},
+  booktitle = {{{IEEE International Symposium}} on {{Computer Aided Control Systems Design}}},
+  pages = {284--289},
+  year = {2004},
+  doi = {10.1109/CACSD.2004.1393890}
+}
+
+@article{nicholsonPyomoDAEModeling2018,
+  title = {pyomo.dae: A Modeling and Automatic Discretization Framework for Optimization with Differential and Algebraic Equations},
+  shorttitle = {pyomo.dae},
+  author = {Nicholson, Bethany and Siirola, John D. and Watson, Jean-Paul and Zavala, Victor M. and Biegler, Lorenz T.},
+  journal = {Mathematical Programming Computation},
+  volume = {10},
+  number = {2},
+  pages = {187--223},
+  year = {2018},
+  publisher = {Springer},
+  doi = {10.1007/s12532-017-0127-0}
+}
+
+@misc{bradburyJAXComposableTransformations2018,
+  title = {{{JAX}}: Composable Transformations of {{Python}}+{{NumPy}} Programs},
+  shorttitle = {{{JAX}}},
+  author = {Bradbury, James and Frostig, Roy and Hawkins, Peter and Johnson, Matthew James and Leary, Chris and Maclaurin, Dougal and Necula, George and Paszke, Adam and {VanderPlas}, Jake and {Wanderman-Milne}, Skye and Zhang, Qiao},
+  year = {2018},
+  url = {http://github.com/jax-ml/jax}
+}
+
+@inproceedings{abadiTensorFlowLargescaleMachine2016,
+  title = {{{TensorFlow}}: A System for Large-Scale Machine Learning},
+  shorttitle = {{{TensorFlow}}},
+  author = {Abadi, Mart{\'i}n and Barham, Paul and Chen, Jianmin and Chen, Zhifeng and Davis, Andy and Dean, Jeffrey and Devin, Matthieu and Ghemawat, Sanjay and Irving, Geoffrey and Isard, Michael and Kudlur, Manjunath and Levenberg, Josh and Monga, Rajat and Moore, Sherry and Murray, Derek G. and Steiner, Benoit and Tucker, Paul and Vasudevan, Vijay and Warden, Pete and Wicke, Martin and Yu, Yuan and Zheng, Xiaoqiang},
+  booktitle = {12th {{USENIX Symposium}} on {{Operating Systems Design}} and {{Implementation}} ({{OSDI}} 16)},
+  pages = {265--283},
+  year = {2016}
+}
+
+@misc{innesDontUnrollAdjoint2018,
+  title = {Don't Unroll Adjoint: Differentiating {{SSA-Form}} Programs},
+  shorttitle = {Don't Unroll Adjoint},
+  author = {Innes, Mike},
+  year = {2018},
+  number = {arXiv:1810.07951},
+  eprint = {1810.07951},
+  archiveprefix = {arXiv},
+  primaryclass = {cs}
+}
+
+@misc{legatGenOptJl2025,
+  title = {{{GenOpt.jl}}: {{JuMP}} Extension for Constraint and Term Generators},
+  author = {Legat, Beno{\^i}t},
+  year = {2025},
+  url = {https://github.com/blegat/GenOpt.jl}
+}
+
+@misc{jsoNLPModelsJl,
+  title = {{{NLPModels.jl}}: Data Structures for Optimization Models},
+  author = {{JuliaSmoothOptimizers}},
+  year = {2025},
+  url = {https://github.com/JuliaSmoothOptimizers/NLPModels.jl}
 }
