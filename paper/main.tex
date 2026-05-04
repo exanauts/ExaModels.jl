@@ -12,7 +12,7 @@
 \begin{document}
 \maketitle
 \begin{abstract}
-  Large-scale nonlinear programs almost always exhibit highly repetitive structure, yet existing algebraic modeling systems often neglect it, forgoing the parallelism it affords. We present ExaModels.jl, an algebraic modeling system for nonlinear programming implemented in Julia that preserves and exploits this structure for scalable, GPU-compatible derivative evaluation. At its core is a \emph{single-instruction, multiple-data abstraction} that represents a nonlinear program as a small number of algebraic patterns, each evaluated over many data points; because problem structure is recognized at compile time, function and derivative evaluation reduces to embarrassingly parallel loops, making the system \emph{natively compatible with GPUs}. The sparse derivative evaluation built on this abstraction further exploits regular per-pattern sparsity to compute Jacobians and Hessians in partially compressed sparse form without graph coloring. These ideas deliver substantial speedups in sparse derivative evaluation over existing algebraic modeling systems on CPU and up to two orders of magnitude further acceleration on GPUs. Additionally, our implementation supports arbitrary numeric precision, cross-platform GPU portability across NVIDIA, AMD, Intel, and Apple devices, ahead-of-time compilation to standalone binaries independent of the Julia runtime (currently on CPU), and extensions to parametric problems, user-defined external oracles, two-stage stochastic programs, and batch optimization. We demonstrate the approach with ExaModels-native implementations of the Luk\v{s}an--Vlc\v{e}k, COPS, and PGLIB-OPF benchmark libraries, comparing derivative evaluation performance against JuMP and AMPL on CPU and across multiple GPU backends.
+  Large-scale nonlinear programs almost always exhibit highly repetitive structure, yet existing algebraic modeling systems often neglect it, forgoing the parallelism it affords. We present ExaModels.jl, an algebraic modeling system for nonlinear programming implemented in Julia that preserves and exploits this structure for scalable, GPU-compatible derivative evaluation. At its core is a \emph{single-instruction, multiple-data abstraction} that represents a nonlinear program as a small number of algebraic patterns, each evaluated over many data points; because problem structure is recognized at compile time, function and derivative evaluation reduces to embarrassingly parallel loops, making the system \emph{natively compatible with GPUs}. The sparse derivative evaluation built on this abstraction further exploits regular per-pattern sparsity to compute Jacobians and Lagrangian Hessians in partially compressed sparse form without graph coloring. These ideas deliver substantial speedups in sparse derivative evaluation over existing algebraic modeling systems on CPU and up to two orders of magnitude further acceleration on GPUs. Additionally, our implementation supports arbitrary numeric precision, cross-platform GPU portability across NVIDIA, AMD, Intel, and Apple devices, ahead-of-time compilation to standalone binaries independent of the Julia runtime (currently on CPU), and extensions to parametric problems, user-defined external oracles, two-stage stochastic programs, and batch optimization. We demonstrate the approach with ExaModels-native implementations of the Luk\v{s}an--Vlc\v{e}k, COPS, and PGLIB-OPF benchmark libraries, comparing derivative evaluation performance against JuMP and AMPL on CPU and across multiple GPU backends.
 \end{abstract}
 
 \keywords{algebraic modeling system, automatic differentiation, nonlinear programming, parallel computing, GPU computing}
@@ -25,7 +25,7 @@
 \label{sec:intro}
 
 Large-scale nonlinear programs (NLPs) arising in engineering, statistics, and scientific applications almost always exhibit highly repetitive structure: the same algebraic pattern appears across many data points in both the objective and constraints.
-For instance, the alternating current optimal power flow (ACOPF) problem---one of the most widely studied NLPs in power systems---can be expressed with only 15 distinct computational patterns, regardless of whether the network contains hundreds or tens of thousands of buses \citep{shinAcceleratingOptimalPower2024}. Exploiting this repetitive structure is key to efficiently evaluating model functions and their derivatives, which in turn is crucial for the overall performance of the nonlinear optimization solution procedure. This paper presents a modeling abstraction, an automatic differentiation (AD) algorithm, and their software implementation in ExaModels.jl that exploit this structure for scalable derivative evaluation and GPU acceleration for large-scale NLPs.
+For instance, the alternating current optimal power flow (ACOPF) problem---one of the most widely studied NLPs in power systems---can be expressed with only 15 distinct algebraic patterns, regardless of whether the network contains hundreds or tens of thousands of buses \citep{shinAcceleratingOptimalPower2024}. Exploiting this repetitive structure is key to efficiently evaluating model functions and their derivatives, which in turn is crucial for the overall performance of the nonlinear optimization solution procedure. This paper presents a modeling abstraction, an automatic differentiation (AD) algorithm, and their software implementation in ExaModels.jl that exploit this structure for scalable derivative evaluation and GPU acceleration for large-scale NLPs.
 
 To make this concrete, consider the Goddard rocket problem \citep{goddardMethodReachingExtreme1919} from the COPS benchmark suite \citep{dolanBenchmarkingOptimizationSoftware2001}, discretized via the trapezoidal rule with $T$ time steps:
 \begin{subequations}\label{eq:rocket}
@@ -39,11 +39,11 @@ To make this concrete, consider the Goddard rocket problem \citep{goddardMethodR
   & h_0 = h^0,\; v_0 = 0,\; m_0 = m^0,\; m_T = m^f,
 \end{align}
 \end{subequations}
-The goal is to maximize the final altitude of a vertically ascending rocket subject to aerodynamic drag and gravity, where $h_t$, $v_t$, $m_t$, and $\tau_t$ are the altitude, velocity, mass, and thrust at time $t$; $D(h,v) = D_c v^2 e^{-h_c(h - h_0)/h_0}$ is the aerodynamic drag; $g(h) = g_0 (h_0/h)^2$ is the gravitational acceleration; and $c$ is the exhaust velocity. This is a classical optimal control problem representative of the discretize-then-optimize approach widely used in trajectory optimization, chemical process control, and PDE-constrained optimization; variants include multi-stage rockets, three-dimensional trajectories, and problems with path constraints on dynamic pressure or heating. 
+where $h_t$, $v_t$, $m_t$, and $\tau_t$ are the altitude, velocity, mass, and thrust at time $t$; $D(h,v) = D_c v^2 e^{-h_c(h - h_0)/h_0}$ is the aerodynamic drag; $g(h) = g_0 (h_0/h)^2$ is the gravitational acceleration; and $c$ is the exhaust velocity. The problem aims to maximize the final altitude of a vertically ascending rocket subject to aerodynamic drag and gravity. This is a classical optimal control problem representative of the discretize-then-optimize approach widely used in trajectory optimization.
 
 The function and derivative evaluations of this problem are naturally iterator-representable. Consider the altitude dynamics \cref{eq:rocket:h}: the algebraic expression $h_t - h_{t-1} - \tfrac{\Delta t}{2}(v_t + v_{t-1}) = 0$ has the same functional form for every $t \in [T]$---only the variable indices change. The same holds for the velocity dynamics \cref{eq:rocket:v} and the mass dynamics \cref{eq:rocket:m}. Each constraint type defines a single algebraic pattern, and the time indices $t = 1, \ldots, T$ are the data points over which that pattern is evaluated. Evaluating the constraint function or its derivatives therefore reduces to a \texttt{for} loop over $t$ for each pattern, and these loops are embarrassingly parallel across data points. A consequence is that when the discretization is refined, the problem size grows proportionally in $T$, but the number of distinct algebraic patterns---the three dynamics constraints \cref{eq:rocket:h}--\cref{eq:rocket:m} and the boundary conditions---remains fixed at five.
 
-This iterator-representable structure is not peculiar to the Goddard rocket problem in \cref{eq:rocket}. Large-scale NLPs arising in engineering, statistics, and scientific applications---optimal power flow, PDE-constrained optimization, model predictive control, network design, maximum likelihood estimation---routinely involve millions of variables and constraints, yet their mathematical formulations fit on at most a few pages precisely because the same algebraic expressions are repeated over spatial nodes, time steps, scenarios, or data samples. The problem size is driven by the number of data points, not the number of distinct algebraic patterns.
+This iterator-representable structure is not peculiar to the Goddard rocket problem in \cref{eq:rocket}. Large-scale NLPs arising in engineering, statistics, and scientific applications---optimal power flow, PDE-constrained optimization, model predictive control, network design, maximum likelihood estimation---routinely involve millions of variables and constraints, yet their mathematical formulations fit on at most a few pages precisely because the same algebraic expressions are repeated over spatial nodes, time steps, scenarios, or data samples. The problem size is driven by the number of data points, not the number of distinct algebraic patterns. 
 
 Thus, for a modeling system to effectively and concisely express this structure, it should allow users to write their model in a way that preserves the pattern--data separation. When this separation is maintained, each algebraic pattern needs to be analyzed and differentiated only once; the resulting kernels can then be applied across all data points in parallel if needed, opening the door to GPU acceleration and other structure-exploiting optimizations in derivative evaluation. This observation motivates the following question:
 \begin{quote}
@@ -53,50 +53,71 @@ Thus, for a modeling system to effectively and concisely express this structure,
 \subsection{Related work}
 \label{sec:intro:related}
 
-\subsubsection{Algebraic modeling systems}
-An algebraic modeling system (AMS) is a software layer that sits between the user's mathematical formulation and the numerical solver. The user specifies the optimization problem in a high-level syntax, and the AMS translates it into the callback functions---objective, gradient, constraints, Jacobian, Hessian---that the solver requires. This decoupling is central to modern optimization software: the modeling layer and the solver layer are independent modules, and ExaModels.jl is concerned exclusively with the modeling layer. It is \emph{not} a solver; it provides the model information that solvers consume.
+An algebraic modeling system (AMS) sits between the user's mathematical formulation and the numerical solver. The user writes the problem in a high-level syntax. The AMS produces the data the solver consumes: matrices and vectors for linear and quadratic problems, and callbacks---objective, gradient, constraints, Jacobian, Lagrangian Hessian---for nonlinear problems. Automatic differentiation is relevant only to the nonlinear case, and many AMSs delegate it to external tooling rather than implementing their own. ExaModels.jl is an AMS that ships its own AD; it is not a solver, and provides only the modeling interface and callback functions. NLP solvers---e.g., Ipopt \citep{wachterImplementationInteriorpointFilter2006}, KNITRO \citep{byrdKnitroIntegratedPackage2006}, and MadNLP.jl \citep{shinMadNLPjl2025}---are not reviewed here. The comparison below is restricted to AMSs that target general smooth NLPs of the form \cref{eq:nlp} and ship with their own AD. Pyomo and CVXPY do not satisfy these criteria and are discussed at the end of the section.
 
-Prominent AMSs span a range of problem classes and design philosophies. AMPL \citep{fourerModelingLanguageMathematical1990} is a dedicated modeling language with its own compiler and AD engine, supporting linear, integer, and nonlinear programs. JuMP \citep{lubinJuMP10Recent2023} is an embedded modeling language in Julia that targets a broad class of optimization problems---linear, conic, integer, and nonlinear---through the MathOptInterface (MOI) abstraction layer. CasADi \citep{anderssonCasADiSoftwareFramework2019} is a symbolic framework for algorithmic differentiation, widely used in optimal control and robotics, that generates efficient C code for function and derivative evaluation. Pyomo \citep{hartPyomoModelingSolving2011} is a Python-based framework for mathematical programming that supports a wide range of problem types including stochastic and disjunctive programs. CVXPY \citep{diamondCVXPYPythonEmbeddedModeling2016} is a Python-embedded language for convex optimization based on disciplined convex programming (DCP). Gravity \citep{hijaziGravityMathematicalModeling2018} is a C++-based AMS that introduces ``constraint templates'' to preserve the pattern structure of network optimization problems. \Cref{tab:ams} summarizes these systems. We note that ExaModels.jl targets a narrower problem class than most of these systems: we focus exclusively on smooth nonlinear programs (NLPs) as defined in \cref{eq:nlp}, and do not handle integer variables, conic constraints, or disciplined convex programming constructs.
+\paragraph{Algebraic modeling systems with own AD.}
+\Cref{tab:ams} summarizes the six AMSs we consider. AMPL \citep{fourerModelingLanguageMathematical1990} is a standalone language with its own parser. Function and derivative callbacks are exposed through the AMPL Solver Library (ASL) via the \texttt{.nl} interchange format. GAMS \citep{bussieckGeneralAlgebraicModeling2004} is contemporaneous and similar in design. JuMP \citep{dunningJuMPModelingLanguage2017,lubinJuMP10Recent2023} is embedded in Julia. It uses syntactic macros---rather than operator overloading---to build a per-scalar expression graph, and runs reverse-mode AD on the graph. CasADi \citep{anderssonCasADiSoftwareFramework2019} is a C++ symbolic framework. Its central abstraction is the \texttt{Function}: a compiled expression graph that can be reused, embedded, or emitted as standalone C code. CasADi supports forward and reverse AD with graph-coloring sparsity detection. GEKKO \citep{bealGEKKOOptimizationSuite2018} is a Python frontend; its APMonitor backend handles compilation, AD, and dynamic discretization. Gravity \citep{hijaziGravityMathematicalModeling2018} introduces ``constraint templates'' to preserve the pattern structure of indexed constraints, and reports order-of-magnitude function-evaluation and memory improvements over JuMP on network optimization.
 
 \begin{table}[t]
   \centering
-  \caption{Comparison of algebraic modeling systems. ``Pattern-aware'' indicates whether the system preserves the repetitive structure of the model for SIMD-parallel derivative evaluation.}
+  \caption{Algebraic modeling systems with their own AD that target smooth NLPs. ``Pattern-aware'' indicates whether the system preserves the repetitive structure of indexed constraints for SIMD-parallel derivative evaluation.}
   \label{tab:ams}
   \small
-  \begin{tabular}{l l l c c}
+  \setlength{\tabcolsep}{4pt}
+  \begin{tabular}{l l l l c}
     \toprule
     System & Language & Problem classes & AD & Pattern-aware \\
     \midrule
-    AMPL & Own language & LP, MILP, NLP & built-in & no \\
-    JuMP & Julia (embedded) & LP, MILP, conic, NLP & symbolic & no \\
-    CasADi & C++/Python/MATLAB & NLP, OCP & source-generated & no \\
-    Pyomo & Python (embedded) & LP, MILP, NLP, stochastic & external & no \\
-    CVXPY & Python (embedded) & convex (DCP) & reduction-based & no \\
-    Gravity & C++ & NLP (network) & built-in & yes \\
+    AMPL         & own           & LP, MILP, NLP        & ASL (built-in)            & no \\
+    GAMS         & own           & LP, MILP, NLP        & built-in                  & no \\
+    JuMP         & Julia         & LP, MILP, conic, NLP & reverse-mode on graph     & no \\
+    CasADi       & C++/Py/MATLAB & NLP, OCP             & source transform          & partial \\
+    GEKKO        & Python        & NLP, dynamic         & APMonitor backend         & no \\
+    Gravity      & C++           & NLP (network)        & symbolic                  & yes \\
     \midrule
-    ExaModels.jl & Julia (embedded) & NLP & built-in & yes \\
+    ExaModels.jl & Julia         & NLP                  & type-stable per-pattern   & yes \\
     \bottomrule
   \end{tabular}
 \end{table}
 
-\subsubsection{Monolithic vs.\ structured representations}
-Most AMSs---including AMPL, JuMP, CasADi, and Pyomo---flatten the model into a monolithic expression graph during the model construction phase. This flattening loses the pattern structure and makes it difficult to apply AD in a single-instruction, multiple-data (SIMD) fashion, which is essential for GPU acceleration. As a result, existing AMSs are not designed to exploit the repetitive structure of large-scale NLPs and generally do not support GPU-based derivative evaluation. Gravity is a notable exception: its ``constraint templates'' preserve the pattern structure, and it has demonstrated excellent AD scalability on ACOPF problems. 
+AMPL, GAMS, and JuMP construct flat, per-scalar expression graphs at model construction. Every constraint instance becomes a node in a single large graph. AD traverses this graph at evaluation time. JuMP is the canonical example of iterator flattening: indexed-constraint syntax such as \texttt{@constraint(model, [i=1:N], ...)} is lowered to a flat scalar collection before AD, so the iteration visible to the user is no longer visible to the AD machinery. 
+
+For users who already have JuMP models, ExaModels.jl provides a translation layer (\texttt{ExaModelsMOI.jl}) that recovers patterns from an MOI model by bucketing scalar constraints with matching expression heads into templatized sums. This is structurally limited: pattern recognition runs after JuMP has already enumerated each constraint, and structure that JuMP collapsed at submission cannot be reconstructed. \texttt{GenOpt.jl} \citep{legatGenOptJl2025} is an actively developed JuMP extension that adds constraint and sum generators, preserving iteration structure at JuMP-side construction so ExaModels receives the patterns intact.
+
+CasADi compiles each \texttt{Function} once and reuses it across calls; its symbolic types are scalar (SX) and matrix (MX). User-side iteration written as a Python or MATLAB loop is enumerated into the symbolic graph regardless of which type. Vectorized MX expressions are the exception: the slice \texttt{x[1:] - x[:-1]} stays a single matrix-level node, and both the symbolic graph and the generated C function body remain constant-size as the discretization grows---only the loop bound and workspace offsets change. SX and Python-loop MX both expand fully: a 100-step problem produces hundreds of lines of unrolled C, and a 10{,}000-step problem produces tens of thousands. Vectorized MX, however, requires the model to be written as matrix algebra. Heterogeneous indexed structure---variable-size sums per index, as in ACOPF power balance over each bus's generators and incident lines---can be encoded via sparse incidence matrices and sparse matrix-vector products. The result is mathematically equivalent to a templatized model, but uses a different abstraction: matrix algebra over pre-constructed sparsity patterns versus per-index expressions over data sets.
+
+Two strategies preserve indexed-constraint structure at the modeling layer: vectorization and templatizing. Vectorization expresses an indexed family as a single matrix-algebra operation; CasADi's vectorized MX is the canonical example. Templatizing parameterizes a single expression over a data set and evaluates it across instances; Gravity's constraint templates and ExaModels.jl's (pattern, data iterator) pair are the canonical examples. The two strategies differ in abstraction rather than reach: heterogeneous indexed structure---variable-size sums per index---can be expressed in either form, but vectorization shifts the work to pre-constructing sparse incidence matrices while templatizing exposes per-index sums directly. ExaModels.jl falls in the templatizing family and is closest in spirit to Gravity, with two refinements: type-stable parameterized expression trees compiled per pattern via the Julia compiler (\Cref{sec:graph}), and GPU-native derivative evaluation through KernelAbstractions.jl (\Cref{sec:gpu}). Neither CasADi nor Gravity supports GPU-native derivative evaluation. CusADi \citep{jeonCusADiGPUParallelization2025} is an external CasADi extension that targets GPU parallelism across many independent problem instances, a setting common in reinforcement-learning policy training and parameter sweeps. The within-instance pattern parallelism considered here is a complementary axis.
+
+A second axis is the evaluation path: compiled vs interpreted. Compilation reduces per-callback runtime overhead at the cost of longer build time. AMPL parses models to the \texttt{.nl} format, which is evaluated by ASL with compiled operator implementations; a legacy \texttt{nlc} tool can emit standalone C. GAMS uses a similar built-in pipeline. CasADi provides both options: by default a \texttt{Function} is evaluated through CasADi's runtime, which walks a flat operation sequence with compiled operator implementations; alternatively, standalone C code can be emitted via codegen. GEKKO compiles to bytecode through APMonitor; the bytecode is interpreted at evaluation time. Gravity uses symbolic differentiation and dispatches compiled C++ templates. JuMP is embedded in Julia. Its default AD walks the symbolic expression graph at every callback and is interpreted in practice; an alternative backend, SymbolicAD.jl, generates compiled callbacks via symbolic differentiation. ExaModels.jl is type-stable end-to-end, and the Julia compiler specializes a dedicated evaluator for each pattern. Compilation is also necessary for GPU execution, where dynamic dispatch is not supported (\Cref{sec:aot}).
+
+\paragraph{Out of scope: Pyomo and CVXPY.}
+Pyomo \citep{hartPyomoModelingSolving2011,hartPyomoOptimizationModeling2017} supports general NLP but does not implement its own AD. Models are serialized to \texttt{.nl} and derivatives are obtained from ASL. A direct benchmark would measure ASL, not the modeling layer, and Pyomo would duplicate AMPL in \Cref{tab:ams}. CVXPY \citep{diamondCVXPYPythonEmbeddedModeling2016} canonicalizes convex problems into cone form and dispatches them to a cone solver. It targets a different problem class and a different solution route from \cref{eq:nlp}, and has no derivative-callback API. The same scope criteria exclude DCP-based systems---CVX \citep{grantCVXMATLABSoftware2014}, Convex.jl \citep{udellConvexOptimizationJulia2014}, and YALMIP \citep{lofbergYALMIPToolboxModeling2004}---and AD-delegating bridges such as \texttt{AmplNLWriter.jl}.
+
+\paragraph{Machine-learning AD frameworks.}
+PyTorch \citep{paszkePyTorchImperativeStyle2019}, JAX \citep{bradburyJAXComposableTransformations2018}, TensorFlow \citep{abadiTensorFlowLargescaleMachine2016}, Zygote.jl \citep{innesDontUnrollAdjoint2018}, and Enzyme \citep{mosesInsteadRewritingForeign2020} provide AD and GPU support. They could in principle express a smooth NLP as a differentiable function. They are not modeling systems: declaring constraints, objectives, and variable bounds is left to the user. Their AD is tuned for dense gradients with batch dimensions; sparse second-order derivatives in $(r, c, v)$ form are limited (\texttt{jax.experimental.sparse}) or absent. Their parallelism primitives (\texttt{vmap}, \texttt{pmap}) act at the array level, not the algebraic-pattern level. ExaModels.jl, like the AMSs in \Cref{tab:ams}, sits at a higher level of abstraction.
+
+\paragraph{Domain-specific extensions.}
+AMSs are commonly extended for particular problem classes. JuMP extensions include Plasmo.jl \citep{jalvingGraphbasedModelingAbstraction2022}, InfiniteOpt.jl \citep{pulsipherUnifyingModelingAbstraction2022}, PowerModels.jl \citep{coffrinPowerModelsJLOpenSource2018}, and SDDP.jl \citep{dowsonSDDPjlJuliaPackage2021}. Pyomo extensions include IDAES \citep{leeIDAESProcessModeling2021}, pyomo.dae \citep{nicholsonPyomoDAEModeling2018}, and OMLT \citep{cecconOMLTOptimizationMachine2022}. ExaModelsPower.jl \citep{shinExaModelsPowerjl2024} provides AC and DC OPF formulations and serves as a benchmark library in \Cref{sec:numerics}.
 
 \subsection{Our approach}
 \label{sec:intro:approach}
-ExaModels.jl adopts a philosophy that is slightly more restrictive than general-purpose AMSs: it \emph{requires} the user to express the model in a structured form where each objective term and constraint is specified as a computational pattern paired with a data iterator. This is a deliberate design choice---by asking the user to expose the parallelizable structure of their problem, ExaModels.jl can exploit it for efficient derivative evaluation. The resulting NLP model information is stored as a collection of patterns and their associated data points. For each pattern, a single derivative evaluation kernel is compiled once and executed across all data points in a SIMD fashion. This is the key to enabling GPU acceleration for large-scale NLPs.
+ExaModels.jl adopts a philosophy that is slightly more restrictive than general-purpose AMSs: it \emph{requires} the user to express the model in a structured form where each objective term and constraint is specified as a algebraic pattern paired with a data iterator. This is a deliberate design choice---by asking the user to expose the parallelizable structure of their problem, ExaModels.jl can exploit it for efficient derivative evaluation. The resulting NLP model information is stored as a collection of patterns and their associated data points. For each pattern, a single derivative evaluation kernel is compiled once and executed across all data points in a SIMD fashion. This is the key to enabling GPU acceleration for large-scale NLPs.
 
-Another key contribution of ExaModels.jl is the \emph{parameterized expression tree}, the core data structure for representing NLP model information. Each expression tree encodes a computational pattern as a type-stable graph of operations, parameterized by problem data supplied at evaluation time. This design allows the expression tree to be evaluated and differentiated with different data and arguments without recompilation---a property that is crucial for GPU execution, where we compile the derivative evaluation kernels once and execute them across many data points.
+Another key contribution of ExaModels.jl is the \emph{parameterized expression tree}, the core data structure for representing NLP model information. Each expression tree encodes a algebraic pattern as a type-stable graph of operations, parameterized by problem data supplied at evaluation time. This design allows the expression tree to be evaluated and differentiated with different data and arguments without recompilation---a property that is crucial for GPU execution, where we compile the derivative evaluation kernels once and execute them across many data points.
 
-Furthermore, we implement a novel sparse reverse-mode AD algorithm that does not require graph coloring. This is enabled by an \emph{a priori} sparsity analysis in which the relative index sequence of nonzero entries within each pattern is analyzed at model-construction time and compressed into a compact mapping. This allows us to directly compute the sparse Jacobian and Hessian in coordinate format without the overhead of coloring, which is especially beneficial for GPU execution where dynamic control flow can be costly. 
+Furthermore, we implement a novel sparse reverse-mode AD algorithm that does not require graph coloring. This is enabled by an \emph{a priori} sparsity analysis in which the relative index sequence of nonzero entries within each pattern is analyzed at model-construction time and compressed into a compact mapping. This allows us to directly compute the sparse Jacobian and Lagrangian Hessian in coordinate format without the overhead of coloring, which is especially beneficial for GPU execution where dynamic control flow can be costly. 
 
-ExaModels.jl provides a convenient user syntax for model construction, including macros for adding variables, parameters, objectives, and constraints, as well as for registering custom functions with their first and second derivatives. Multi-backend GPU execution is supported via KernelAbstractions.jl \citep{churavyKernelAbstractionsjl2025}, allowing users to run on NVIDIA (CUDA), AMD (ROCm), Intel (oneAPI), or Apple (Metal) accelerators without modifying their model code. We demonstrate the performance of ExaModels.jl on a variety of benchmark problems, showing significant speedups over existing AMSs and effective GPU acceleration.
+ExaModels.jl provides a convenient user syntax for model construction, including macros for adding variables, parameters, objectives, and constraints, as well as for registering custom functions with their first and second derivatives. Multi-backend GPU execution is supported via KernelAbstractions.jl \citep{churavyKernelAbstractionsjl2025}, allowing users to run on NVIDIA (CUDA), AMD (ROCm), Intel (oneAPI), or Apple (Metal) accelerators without modifying their model code. We demonstrate the performance of ExaModels.jl on a range of benchmark problems and quantify the speedup over existing AMSs and over CPU baselines.
 
 We also provide three extensions that address core use cases for scalable NLPs: \emph{parametric} NLPs, where problem data can be updated without model reconstruction; \emph{two-stage stochastic} programs, with first-stage (design) and second-stage (recourse) variables replicated across scenarios; and \emph{batch} models, where multiple independent NLP instances sharing the same structure are evaluated simultaneously. The underlying SIMD abstraction and AD algorithms apply directly to all three extensions.
 
 ExaModels.jl is implemented in Julia \citep{bezansonJuliaFreshApproach2017}, a just-in-time (JIT) compiled language with a powerful type system and multiple dispatch. The user constructs the model in a high-level syntax, and the underlying data structures and AD algorithms are compiled and optimized for the specific model structure. We leverage Julia's multiple dispatch to enable efficient function registration and maintain type stability throughout the model construction and derivative evaluation process. Importantly, ExaModels.jl is designed to be compatible with ahead-of-time (AOT) compilation via \texttt{juliac} with trimming: it does not rely on runtime code generation or dynamic dispatch in the hot evaluation paths. This makes ExaModels.jl suitable for deployment in production environments where AOT compilation is required, placing it on equal footing with AMSs that feature dedicated code generation, such as CasADi \citep{anderssonCasADiSoftwareFramework2019}.
 
-\paragraph{Contributions.}
+\paragraph{Relationship to prior work.}
+The SIMD abstraction first appeared in \citet{shinAcceleratingOptimalPower2024} as part of an ACOPF-specific GPU optimization framework, but the abstraction itself, the parameterized expression tree, the coloring-free sparse AD algorithm, and the multi-backend GPU implementation have not previously been elaborated; this is the role of the present paper. Several subsequent works use ExaModels.jl as the modeling layer: \citet{shinExaModelsPowerjl2024} provides a power-systems library on top of it; the GPU-native condensed-space interior-point methods of \citet{pacaudCondensedspaceMethodsNonlinear2024} consume its callbacks; and \citet{pacaudGPUacceleratedNonlinearModel2024} reports a fully GPU-resident optimization pipeline pairing ExaModels.jl with MadNLP.jl~\citep{shinMadNLPjl2025}.
+
+\subsection{Contributions}
+\label{sec:intro:contributions}
 The contributions of this paper are methodological (M), implementational (I), and experimental (E).
 \begin{enumerate}
   \item[\textbf{M1.}] A \emph{single-instruction, multiple-data abstraction} for NLPs that represents a problem as a small number of algebraic patterns, each evaluated over many data points. This abstraction is realized through a parameterized expression tree, associated data structures, and a user-facing interface that preserve the pattern--data separation throughout model construction. Because problem structure is recognized at compile time, function and derivative evaluation reduces to embarrassingly parallel loops over data points, making the system natively compatible with GPUs.
@@ -104,15 +125,17 @@ The contributions of this paper are methodological (M), implementational (I), an
   \item[\textbf{I1.}] A full implementation of the above ideas in ExaModels.jl with cross-platform GPU portability across NVIDIA, AMD, Intel, and Apple devices via KernelAbstractions.jl \citep{churavyKernelAbstractionsjl2025}---the same model code runs on all backends without modification.
   \item[\textbf{I2.}] Ahead-of-time compilation to standalone binaries independent of the Julia runtime, with no separate code generation step: the same code paths serve both just-in-time and ahead-of-time compilation.
   \item[\textbf{I3.}] Support for arbitrary numeric precision---the same model code runs in Float32, Float64, or user-defined types without modification.
-  \item[\textbf{I4.}] Extensions to parametric problems, user-defined external oracles, two-stage stochastic programs, and batch optimization.
-  \item[\textbf{E1.}] ExaModels-native implementations of the Luk\v{s}an--Vlc\v{e}k \citep{lukVsanSparsePartiallySeparable}, COPS \citep{dolanBenchmarkingOptimizationSoftware2001}, and PGLIB-OPF benchmark libraries, with systematic comparison of derivative evaluation performance against JuMP and AMPL on CPU and across multiple GPU backends. We demonstrate substantial speedups over existing AMSs on CPU and up to two orders of magnitude further acceleration on GPUs.
+  \item[\textbf{I4.}] Variants for parametric problems, user-defined external oracles, two-stage stochastic programs, and batch optimization.
+  \item[\textbf{E1.}] ExaModels-native implementations of the Luk\v{s}an--Vlc\v{e}k \citep{lukVsanSparsePartiallySeparable}, COPS \citep{dolanBenchmarkingOptimizationSoftware2001}, and PGLIB-OPF benchmark libraries, with systematic comparison of derivative evaluation performance against JuMP and AMPL on CPU and across multiple GPU backends. We report speedups over existing AMSs on CPU and up to two orders of magnitude further acceleration on GPUs.
 \end{enumerate}
 
-\paragraph{Outline.}
-The remainder of this paper is organized as follows. \Cref{sec:modeling} introduces the modeling abstraction, the SIMD formulation, the core data structures, and the user-facing syntax. \Cref{sec:graph} presents the parameterized expression tree. \Cref{sec:ad} develops the sparse automatic differentiation algorithm. \Cref{sec:gpu} describes GPU acceleration via KernelAbstractions.jl. \Cref{sec:aot} addresses type stability and ahead-of-time compilation. \Cref{sec:interface} discusses the solver interface. \Cref{sec:extensions} introduces the parametric, two-stage, and batch extensions. \Cref{sec:numerics} reports numerical experiments. \Cref{sec:conclusions} concludes the paper.
+\subsection{Outline}
+\label{sec:intro:outline}
+The remainder of this paper is organized as follows. \Cref{sec:modeling} introduces the modeling abstraction, the SIMD formulation, and the user-facing syntax. \Cref{sec:data} describes the core data structures. \Cref{sec:graph} presents the parameterized expression tree. \Cref{sec:ad} develops the sparse automatic differentiation algorithm. \Cref{sec:gpu} describes GPU acceleration via KernelAbstractions.jl. \Cref{sec:aot} addresses compile-time design. \Cref{sec:extensions} introduces parametric, two-stage, and batch variants. \Cref{sec:numerics} reports numerical experiments. \Cref{sec:conclusions} concludes the paper.
 
-\paragraph{Notation.}
-We use $[N] := \{1,\ldots,N\}$ for index sets and $\mathbb{R}^n$ for $n$-dimensional real space. Decision variables are denoted $x \in \mathbb{R}^n$ with bounds $x^\flat \leq x \leq x^\sharp$; dual variables (Lagrange multipliers) are $\blambda \in \mathbb{R}^m$. The parameter vector is $\theta$. In \cref{eq:simd}, $f^{(\ell)}$, $g^{(m)}$, $h^{(n)}$ denote computational patterns with associated data collections $\mathcal{D}_\ell$, and $p$, $q$, $s$ denote data points within those collections. Gradients $\nabla f$ are column vectors; the Jacobian $\nabla g$ has dimensions $m \times n$ with rows $\nabla g_j^\top$. Code identifiers are typeset in \texttt{monospace}.
+\subsection{Notation}
+\label{sec:intro:notation}
+We use $[N] := \{1,\ldots,N\}$ for index sets and $\mathbb{R}^n$ for $n$-dimensional real space. Decision variables are denoted $x \in \mathbb{R}^n$ with bounds $x^\flat \leq x \leq x^\sharp$; dual variables (Lagrange multipliers) are $\blambda \in \mathbb{R}^m$. The parameter vector is $\theta$. In \cref{eq:simd}, $f^{(\ell)}$, $g^{(m)}$, $h^{(n)}$ denote algebraic patterns with associated data collections $\mathcal{D}_\ell$, and $p$, $q$, $s$ denote data points within those collections. Gradients $\nabla f$ are column vectors; the Jacobian $\nabla g$ has dimensions $m \times n$ with rows $\nabla g_j^\top$. Code identifiers are typeset in \texttt{monospace}.
 
 \section{Modeling Abstraction}
 \label{sec:modeling}
@@ -126,20 +149,20 @@ We consider the standard nonlinear program (NLP):
   \st\quad g^\flat \leq g(x) \leq g^\sharp,\quad x^\flat \leq x \leq x^\sharp,
 \end{equation}
 where $f:\mathbb{R}^n \to \mathbb{R}$ is the objective function, $g:\mathbb{R}^n \to \mathbb{R}^m$ is the constraint function, and $x^\flat, x^\sharp, g^\flat, g^\sharp$ are the variable and constraint bounds. Interior-point methods \citep{wachterImplementationInteriorpointFilter2006,nocedalNumericalOptimization2006} and other NLP solvers require the following five callbacks from the modeling layer:
-\begin{subequations}\label{eq:callbacks}
-\begin{align}
-  &\texttt{NLPModels.obj}(m, x) & &\to\; f(x) \in \mathbb{R}, \label{eq:cb:obj}\\
-  &\texttt{NLPModels.grad!}(m, x, \nabla\!f) & &\to\; \nabla f(x) \in \mathbb{R}^n, \label{eq:cb:grad}\\
-  &\texttt{NLPModels.cons!}(m, x, c) & &\to\; g(x) \in \mathbb{R}^m, \label{eq:cb:cons}\\
-  &\texttt{NLPModels.jac\_coord!}(m, x, v) & &\to\; \nabla g(x) \in \mathbb{R}^{m \times n} \;\text{(sparse)}, \label{eq:cb:jac}\\
-  &\texttt{NLPModels.hess\_coord!}(m, x, \blambda, v) & &\to\; \nabla^2 f(x) + \textstyle\sum_{j=1}^m \lambda_j \nabla^2 g_j(x) \in \mathbb{R}^{n \times n} \;\text{(sparse)}, \label{eq:cb:hess}
-\end{align}
-\end{subequations}
-where $m$ is the model object. These callbacks follow the NLPModels.jl\footnote{\url{https://github.com/JuliaSmoothOptimizers/NLPModels.jl}} interface developed by the JuliaSmoothOptimizers (JSO) organization. NLPModels.jl defines the abstract type \texttt{AbstractNLPModel} and a standardized callback API that decouples the modeling layer from the solver layer: any model that implements this interface can be used with any solver in the JSO ecosystem, including Ipopt (via NLPModelsIpopt.jl), MadNLP.jl \citep{shinMadNLPjl2025}, Percival.jl, DCISolver.jl, and others. The \texttt{!}-suffixed callbacks write their result into a preallocated output array. The Jacobian and Hessian are stored in coordinate (COO) format---triplets $(r, c, v)$ of row indices, column indices, and values---since the sparsity structure is fixed across solver iterations and only the values $v$ change. The efficiency of these five callbacks dominates the per-iteration cost of the solver, and a key goal of any AMS is to provide them as efficiently as possible.
+\begin{itemize}
+  \item \texttt{NLPModels.obj}$(m, x) \to f(x) \in \mathbb{R}$ --- objective value;
+  \item \texttt{NLPModels.grad!}$(m, x, \nabla\!f) \to \nabla f(x) \in \mathbb{R}^n$ --- objective gradient;
+  \item \texttt{NLPModels.cons!}$(m, x, c) \to g(x) \in \mathbb{R}^m$ --- constraint values;
+  \item \texttt{NLPModels.jac\_coord!}$(m, x, v) \to \nabla g(x) \in \mathbb{R}^{m \times n}$ --- sparse Jacobian;
+  \item \texttt{NLPModels.hess\_coord!}$(m, x, \blambda, v) \to \nabla^2 f(x) + \sum_{j=1}^m \lambda_j \nabla^2 g_j(x) \in \mathbb{R}^{n \times n}$ --- sparse Lagrangian Hessian,
+\end{itemize}
+where $m$ is the model object. These callbacks follow the NLPModels.jl interface \citep{jsoNLPModelsJl} developed by the JuliaSmoothOptimizers (JSO) organization. NLPModels.jl defines the abstract type \texttt{AbstractNLPModel} and a standardized callback API that decouples the modeling layer from the solver layer: any model that implements this interface is accepted by any compatible solver. Compatible NLP solvers include Ipopt \citep{wachterImplementationInteriorpointFilter2006} (via NLPModelsIpopt.jl), KNITRO \citep{byrdKnitroIntegratedPackage2006} (via NLPModelsKnitro.jl), MadNLP.jl \citep{shinMadNLPjl2025}, Uno (via Uno.jl), Percival.jl, DCISolver.jl, and FletcherPenaltySolver.jl. The \texttt{!}-suffixed callbacks write their result into a preallocated output array. The Jacobian and Lagrangian Hessian are stored in coordinate (COO) format---triplets $(r, c, v)$ of row indices, column indices, and values---since the sparsity structure is fixed across solver iterations and only the values $v$ change. The efficiency of these five callbacks dominates the per-iteration cost of the solver, and a key goal of any AMS is to provide them as efficiently as possible.
 
-The role of an algebraic modeling system (AMS) is to bridge the gap between the user's mathematical formulation and these solver callbacks. The AMS provides: (i) a user-facing syntax for expressing the model, (ii) an internal representation (typically an expression graph) for storing the model, (iii) automatic differentiation for evaluating derivatives, and (iv) sparsity detection for constructing the sparse Jacobian and Hessian structures. Established AMSs include AMPL \citep{fourerModelingLanguageMathematical1990}, JuMP \citep{lubinJuMP10Recent2023}, CasADi \citep{anderssonCasADiSoftwareFramework2019}, and Pyomo \citep{hartPyomoModelingSolving2011}.
+The role of an algebraic modeling system (AMS) is to bridge the gap between the user's mathematical formulation and these solver callbacks. The AMS provides: (i) a user-facing syntax for expressing the model, (ii) an internal representation (typically an expression graph) for storing the model, (iii) automatic differentiation for evaluating derivatives, and (iv) sparsity detection for constructing the sparse Jacobian and Lagrangian Hessian structures. Established AMSs include AMPL \citep{fourerModelingLanguageMathematical1990}, JuMP \citep{lubinJuMP10Recent2023}, CasADi \citep{anderssonCasADiSoftwareFramework2019}, and Pyomo \citep{hartPyomoModelingSolving2011}.
 
-A common design pattern across these systems is that the model is \emph{flattened} into a monolithic expression graph during construction. That is, each scalar constraint and objective term is recorded as an individual node in a single large graph. While this approach is general and flexible, it discards the repetitive structure present in most engineering models. As a consequence, the AD engine must traverse the entire graph without knowledge of which subexpressions share the same computational pattern, precluding SIMD-parallel derivative evaluation.
+An AMS operates over two distinct phases. \emph{Model creation} is the one-time work performed when the user constructs the model: parsing the user's expressions, building an internal representation, and analyzing sparsity. \emph{Derivative evaluation} is the per-callback work performed at every solver iteration to fill the outputs of the callbacks above. Solvers invoke each callback many times, so per-callback cost dominates the total solve time once the problem is large. ExaModels.jl is structured around this distinction: \Cref{sec:graph} describes the model-creation work, and \Cref{sec:ad} the derivative-evaluation work, with a single parameterized expression tree shared between them.
+
+A common design pattern across these systems is that the model is \emph{flattened} into a monolithic expression graph during construction. That is, each scalar constraint and objective term is recorded as an individual node in a single large graph. While this approach is general and flexible, it discards the repetitive structure present in most engineering models. As a consequence, the AD engine must traverse the entire graph without knowledge of which subexpressions share the same algebraic pattern, precluding SIMD-parallel derivative evaluation.
 
 \subsection{SIMD Abstraction of Nonlinear Programs}
 \label{sec:modeling:simd}
@@ -156,7 +179,7 @@ To address this limitation, we adopt a structured representation of NLPs in whic
   \quad \forall\, m \in [M], \label{eq:simd:con}
 \end{align}
 \end{subequations}
-where $x \in \mathbb{R}^{n}$ is the vector of decision variables with bounds $x^\flat, x^\sharp$; $f^{(\ell)}$, $g^{(m)}$, and $h^{(n)}$ are twice-differentiable scalar functions referred to as \emph{computational patterns}; and $p_i^{(\ell)}$, $q_j^{(m)}$, $s_k^{(n)}$ are problem data that parameterize each pattern instance. We use $[N] := \{1,\ldots,N\}$ to denote index sets.
+where $x \in \mathbb{R}^{n}$ is the vector of decision variables with bounds $x^\flat, x^\sharp$; $f^{(\ell)}$, $g^{(m)}$, and $h^{(n)}$ are twice-differentiable scalar functions referred to as \emph{algebraic patterns}; and $p_i^{(\ell)}$, $q_j^{(m)}$, $s_k^{(n)}$ are problem data that parameterize each pattern instance. We use $[N] := \{1,\ldots,N\}$ to denote index sets.
 
 The objective \cref{eq:simd:obj} is decomposed into $L$ groups of objective patterns, where pattern $f^{(\ell)}$ is evaluated over $I_\ell$ data points. The constraints \cref{eq:simd:con} consist of $M$ blocks: within block $m$, the ``base'' pattern $g^{(m)}$ defines $J_m$ constraints, and the ``augmentation'' patterns $h^{(n)}$ contribute additive terms to these constraints. This augmentation structure arises naturally in network models (e.g., summing arc flows into nodal balance equations) and is discussed further in \Cref{sec:data:core}.
 
@@ -164,93 +187,18 @@ The key observation is that many large-scale NLPs arising from engineering appli
 
 Because each pattern evaluation is independent across data indices, the derivative computations inherit the same embarrassingly parallel structure. For a given pattern $f^{(\ell)}$, the gradient contributions $\nabla_x f^{(\ell)}(x; p_i^{(\ell)})$ for $i \in [I_\ell]$ can be evaluated in parallel, as can the Hessian contributions. This is in contrast to monolithic expression graphs, where the AD engine must traverse the full graph sequentially (or rely on graph coloring to identify parallelism after the fact). By preserving the pattern structure at the modeling level, ExaModels.jl makes this parallelism directly available to the AD implementation.
 
-In ExaModels.jl, each computational pattern is compiled into a \texttt{SIMDFunction} that provides a per-data-point callback $\tilde{f}(i, x, \theta)$, where $i$ is a data point, $x$ is the decision variable vector, and $\theta$ is the parameter vector. The global objective, for instance, is evaluated as
+In ExaModels.jl, each algebraic pattern is compiled into a \texttt{SIMDFunction} that provides a per-data-point callback $\tilde{f}(i, x, \theta)$, where $i$ is a data point, $x$ is the decision variable vector, and $\theta$ is the parameter vector. The global objective, for instance, is evaluated as
 \begin{equation}\label{eq:simdfunction}
   f(x) = \sum_{\ell \in [L]} \sum_{i \in \mathcal{D}_\ell} \tilde{f}^{(\ell)}(i,\, x,\, \theta),
 \end{equation}
 where $\mathcal{D}_\ell$ is the data collection associated with pattern $\ell$. The constraints, gradient, Jacobian, and Hessian callbacks follow the same structure: for each pattern, a single compiled kernel is applied across all data points in its collection. The model is therefore stored as a collection of \texttt{SIMDFunction}s---one per pattern---together with their associated data.
 
-Concretely, each \texttt{SIMDFunction} bundles: (i) the parameterized expression tree $\tilde{f}$ (\Cref{sec:graph}), (ii) compressor maps for the Jacobian and Hessian that translate the AD traversal into sparse coordinate indices (\Cref{sec:ad:sparsity}), and (iii) integer offsets and strides that locate this pattern's contributions within the global output arrays. Given these offsets, each callback in \cref{eq:callbacks} reduces to a loop over patterns, where each pattern's \texttt{SIMDFunction} is evaluated across all its data points---an embarrassingly parallel operation that maps directly to a GPU kernel (\Cref{sec:gpu}). The \texttt{SIMDFunction} is constructed once during model compilation and is immutable thereafter; updating the decision variables $x$ or the parameters $\theta$ requires no recompilation.
-
-% \section{Core Data Structures} — merged into Section 2
-\label{sec:data}
-
-We now introduce the two central data structures in ExaModels.jl: \texttt{ExaCore}, the mutable accumulator used during model construction, and \texttt{ExaModel}, the immutable compiled model that implements the NLPModels.jl callback interface.
-
-Both types follow a Julian design pattern: they are \emph{parametric structs} whose type parameters encode the floating-point type \texttt{T}, the array type \texttt{VT}, the backend \texttt{B}, and the concrete types of all stored objectives, constraints, and variables. For example, \texttt{ExaCore\{Float64, Vector\{Float64\}, Nothing, ...\}} represents a CPU model in double precision, while \texttt{ExaCore\{Float32, CuArray\{Float32\}, CUDABackend, ...\}} represents a single-precision model on an NVIDIA GPU. Because these choices are captured as type parameters, Julia's compiler specializes all downstream code---model construction, AD passes, and solver callbacks---for each concrete combination. A single codebase thus handles CPU, CUDA, ROCm, oneAPI, and Metal backends without runtime dispatch or conditional branching.
-
-\subsection{ExaCore: Incremental Model Construction}
-\label{sec:data:core}
-
-An \texttt{ExaCore} object serves as the workspace in which the user incrementally builds an optimization model. It is created with a call to \texttt{ExaCore()} (optionally specifying a GPU backend), and the user then adds variables, parameters, objectives, and constraints one at a time via the macros \texttt{@add\_var}, \texttt{@add\_par}, \texttt{@add\_obj}, and \texttt{@add\_con}. Each call appends a new entry to the appropriate tuple stored in the core and updates internal counters. The key fields of \texttt{ExaCore} are:
-\begin{itemize}
-  \item \texttt{var} --- a tuple of \texttt{Variable} structs, each recording the variable's dimensions, offset into the global variable vector $x$, name, and tag.
-  \item \texttt{par} --- a tuple of parameter arrays, whose values are concatenated into the global parameter vector $\theta$.
-  \item \texttt{obj} --- a tuple of \texttt{Objective} structs. Each objective stores a \texttt{SIMDFunction} (the compiled pattern) and the collected data iterator.
-  \item \texttt{cons} --- a tuple of \texttt{Constraint} and \texttt{ConstraintAugmentation} structs. A \texttt{Constraint} defines a new block of constraints with bounds; a \texttt{ConstraintAugmentation} (created via \texttt{@add\_con!}) adds terms to an existing constraint block without introducing new rows.
-  \item Running counters: \texttt{nvar}, \texttt{ncon}, \texttt{nobj}, and the nonzero counts \texttt{nnzj} (Jacobian) and \texttt{nnzh} (Hessian), which are accumulated as patterns are added.
-  \item Primal and dual arrays: \texttt{x0}, $\theta$, \texttt{lvar}, \texttt{uvar}, \texttt{y0}, \texttt{lcon}, \texttt{ucon}.
-  \item \texttt{backend} --- the KernelAbstractions.jl backend (e.g., \texttt{CUDABackend()}) or \texttt{nothing} for CPU execution.
-\end{itemize}
-Because each \texttt{@add\_obj}/\texttt{@add\_con} call constructs a \texttt{SIMDFunction} eagerly---probing sparsity and building compressor maps at the time the pattern is registered---the \texttt{ExaCore} accumulates all the information needed for the final model. The tuples \texttt{var}, \texttt{obj}, and \texttt{cons} grow heterogeneously: each entry has a different concrete type (reflecting a different expression tree type), so they are stored as Julia tuples rather than arrays.
-
-\subsection{ExaModel: The Compiled NLP Model}
-\label{sec:data:model}
-
-Once all variables, objectives, and constraints have been added, the user calls \texttt{ExaModel(c)} to compile the \texttt{ExaCore} into an immutable \texttt{ExaModel}. This compilation step:
-\begin{enumerate}
-  \item Constructs the \texttt{NLPModelMeta} object, which stores the problem dimensions ($n$, $m$), initial primal and dual iterates ($x_0$, $y_0$), variable and constraint bounds ($x^\flat$, $x^\sharp$, $g^\flat$, $g^\sharp$), bound classification indices (free, lower-bounded, upper-bounded, fixed), and the nonzero counts \texttt{nnzj} and \texttt{nnzh}. This metadata follows the NLPModels.jl specification and is queried by solvers to allocate sparse structures and select algorithmic options.
-  \item Transfers the \texttt{var}, \texttt{par}, \texttt{obj}, and \texttt{cons} tuples from the core, together with the parameter vector $\theta$.
-  \item Builds a backend-specific extension (\texttt{ext}) when a GPU backend is active (e.g., pre-allocating device-side workspace arrays).
-  \item Initializes an \texttt{NLPModels.Counters} object to track callback invocations during the solve.
-\end{enumerate}
-The resulting \texttt{ExaModel} is a subtype of \texttt{NLPModels.AbstractNLPModel\{T,VT\}}, where \texttt{T} is the floating-point type and \texttt{VT} is the array type (\texttt{Vector\{T\}} for CPU, \texttt{CuArray\{T\}} for CUDA, etc.). This means it can be passed directly to any solver in the JuliaSmoothOptimizers ecosystem---including Ipopt (via NLPModelsIpopt.jl) and MadNLP.jl \citep{shinMadNLPjl2025}---without any adapter code. The solver calls the five callbacks \cref{eq:callbacks}, and ExaModels.jl dispatches each callback to a loop over the stored \texttt{SIMDFunction}s.
-
-\subsection{Internal Data Types}
-\label{sec:data:internal}
-
-Before describing the user-facing syntax, we briefly describe the internal types that connect the data structures of this section to the expression trees of \Cref{sec:graph} and the AD machinery of \Cref{sec:ad}.
-
-\paragraph{AbstractNode and expression trees.}
-Every mathematical expression in ExaModels.jl is represented as a tree of \texttt{AbstractNode} subtypes. A node is callable as \texttt{node(i, x, $\theta$)}: given a data point~$i$, a primal vector~$x$, and a parameter vector~$\theta$, it returns a scalar value. Interior nodes (\texttt{Node1}, \texttt{Node2}) store a function and references to their children; leaf nodes (\texttt{Var}, \texttt{DataIndexed}, \texttt{Constant}, \texttt{DataSource}) provide access to variables, data, compile-time constants, and the data-point sentinel, respectively. The full node hierarchy and tree construction mechanism are described in \Cref{sec:graph}.
-
-\paragraph{SIMDFunction.}
-A \texttt{SIMDFunction\{F,C1,C2\}} bundles the compiled representation of a single computational pattern. It contains:
-\begin{itemize}
-  \item \texttt{f::F} --- the parameterized expression tree (an \texttt{AbstractNode}).
-  \item \texttt{comp1::C1}, \texttt{comp2::C2} --- \texttt{Compressor} mappings for Jacobian and Hessian sparsity (\Cref{sec:ad:sparsity}).
-  \item Offset and stride integers (\texttt{o0}, \texttt{o1}, \texttt{o2}, \texttt{o1step}, \texttt{o2step}) that locate this pattern's entries within the global constraint, Jacobian COO, and Hessian COO arrays.
-\end{itemize}
-The \texttt{SIMDFunction} is the central compilation artifact: it is constructed at model-construction time by probing the expression tree for sparsity and building the compressor maps, and it is the unit of work for both CPU loops and GPU kernels (\Cref{sec:gpu}).
-
-\paragraph{Objective, Constraint, and ConstraintAugmentation.}
-Each entry in the \texttt{obj} and \texttt{cons} tuples of an \texttt{ExaCore}/\texttt{ExaModel} is one of three wrapper types:
-\begin{itemize}
-  \item \texttt{Objective\{F,I\}} --- wraps a \texttt{SIMDFunction} \texttt{f} and a collected data iterator \texttt{itr}. Corresponds to one objective pattern $\tilde{f}^{(\ell)}$ in \cref{eq:simd:obj}.
-  \item \texttt{Constraint\{F,I,O,S,T\}} --- wraps a \texttt{SIMDFunction}, a data iterator, an offset into the global constraint vector, dimension information, and a tag. Corresponds to one base constraint pattern $\tilde{g}^{(m)}$ in \cref{eq:simd:con}.
-  \item \texttt{ConstraintAugmentation\{F,I,D,T\}} --- wraps a \texttt{SIMDFunction} whose expression tree is a \texttt{Pair\{index\_expr, value\_expr\}}. The index expression determines \emph{which} constraint row to augment, and the value expression provides the additive term. Corresponds to the augmentation patterns $\tilde{h}^{(n)}$ in \cref{eq:simd:con}.
-\end{itemize}
-This three-type design keeps the number of expression trees minimal. To see why \texttt{ConstraintAugmentation} is essential, consider the active power balance constraint in ACOPF:
-\begin{equation*}
-  \sum_{g \in \mathcal{G}_b} p_g - p^d_b = \sum_{(b,j) \in \mathcal{E}} p_{bj}  + \sum_{(j,b) \in \mathcal{E}} p_{jb}, \quad \forall b \in \mathcal{B},
-\end{equation*}
-where $\mathcal{G}_b$ is the set of generators at bus $b$, and $p_{bj}$, $p_{jb}$ are the power flows on lines incident to $b$. Each bus has a different number of generators and incident lines, so the full expression cannot be written as a single parameterized tree evaluated over buses---the tree \emph{structure} varies from bus to bus, violating the SIMD requirement that all data points share the same tree.
-
-With \texttt{@add\_con!}, the problem decomposes cleanly:
-\begin{lstlisting}
-@add_con(c, -pd[i] for i in bus_data)           # base: one row per bus
-@add_con!(c, con[b] += pg[i] for i in gen_data) # generator injection
-@add_con!(c, con[b] += pf[i] for i in line_from)# line flow (from end)
-@add_con!(c, con[b] += pt[i] for i in line_to)  # line flow (to end)
-\end{lstlisting}
-Each \texttt{@add\_con!} call creates a separate \texttt{ConstraintAugmentation} with its own fixed-structure expression tree, evaluated over its own data collection (generators, from-lines, to-lines). The augmentation mechanism accumulates all contributions into the correct constraint rows at evaluation time. Without it, the user would need to construct one monolithic expression per bus that inlines every generator and line contribution---destroying the pattern--data separation and preventing SIMD/GPU parallelism.
-
-More broadly, \texttt{@add\_con!} arises naturally whenever a constraint sums over heterogeneous sets. In ACOPF, reactive power balance has the same structure; in optimal control on networks, nodal flow balance constraints are analogous. The augmentation mechanism ensures that the number of distinct patterns scales with the number of \emph{types of contributions} (generator, line-from, line-to), not with the number of constraints or the network topology.
+Concretely, each \texttt{SIMDFunction} bundles: (i) the parameterized expression tree $\tilde{f}$ (\Cref{sec:graph}), (ii) compressor maps for the Jacobian and Hessian that translate the AD traversal into sparse coordinate indices (\Cref{sec:ad:sparsity}), and (iii) integer offsets and strides that locate this pattern's contributions within the global output arrays. Given these offsets, each callback in the callbacks above reduces to a loop over patterns, where each pattern's \texttt{SIMDFunction} is evaluated across all its data points---an embarrassingly parallel operation that maps directly to a GPU kernel (\Cref{sec:gpu}). The \texttt{SIMDFunction} is constructed once during model compilation and is immutable thereafter; updating the decision variables $x$ or the parameters $\theta$ requires no recompilation.
 
 \subsection{User-Facing Syntax}
 \label{sec:data:syntax}
 
-This section provides a concise overview of the modeling API. For a complete reference---including all function signatures, keyword arguments, and usage examples---we refer the reader to the online documentation.\footnote{\url{https://exanauts.github.io/ExaModels.jl/stable/}}
+This section provides a concise overview of the modeling API. For a complete reference---including all function signatures, keyword arguments, and usage examples---we refer the reader to the online documentation \citep{shinExaModelsjl2025}.
 
 The following macros constitute the user-facing API for building an \texttt{ExaCore}:
 \begin{itemize}
@@ -290,8 +238,10 @@ core = ExaCore(minimize = false)        # maximize final altitude
       - m[i-1]*g_0*(h_0/h[i-1])^2)/m[i-1]) for i=1:nh)
 @add_con(core, c3,                     # mass dynamics
   -m[i]+m[i-1] + 0.5*step[1]*(-T[i]/c_e - T[i-1]/c_e) for i=1:nh)
-@add_con(core, bc,                     # boundary conditions
-  h[0]-h_0; v[0]-v_0; m[0]-m_0; m[nh]-m_f)
+@add_con(core, h[0] - h_0)            # boundary: initial altitude
+@add_con(core, v[0] - v_0)            # boundary: initial velocity
+@add_con(core, m[0] - m_0)            # boundary: initial mass
+@add_con(core, m[nh] - m_f)           # boundary: final mass
 
 model = ExaModel(core)                 # compile: ExaCore -> ExaModel
 result = ipopt(model)                  # solve via Ipopt
@@ -314,10 +264,99 @@ lam   = multipliers(result, c2)  # dual: velocity dynamics multipliers
 \end{lstlisting}
 These per-block accessors use the offset and dimension information stored in each \texttt{Variable} and \texttt{Constraint} struct to extract the relevant slice without copying. For parametric models, the parameter values can be updated without model reconstruction via \texttt{set\_value!(model, p, new\_vals)}, since the expression tree structure and all compiled AD code remain unchanged---only the data in $\theta$ is modified.
 
+\section{Core Data Structures}
+\label{sec:data}
+
+
+We now introduce the two central data structures in ExaModels.jl: \texttt{ExaCore}, the mutable accumulator used during model construction, and \texttt{ExaModel}, the immutable compiled model that implements the NLPModels.jl callback interface.
+
+Both types follow a Julian design pattern: they are \emph{parametric structs} whose type parameters encode the floating-point type \texttt{T}, the array type \texttt{VT}, the backend \texttt{B}, and the concrete types of all stored objectives, constraints, and variables. For example, \texttt{ExaCore\{Float64, Vector\{Float64\}, Nothing, ...\}} represents a CPU model in double precision, while \texttt{ExaCore\{Float32, CuArray\{Float32\}, CUDABackend, ...\}} represents a single-precision model on an NVIDIA GPU. Because these choices are captured as type parameters, Julia's compiler specializes all downstream code---model construction, AD passes, and solver callbacks---for each concrete combination. A single codebase thus handles CPU, CUDA, ROCm, oneAPI, and Metal backends without runtime dispatch or conditional branching.
+
+\subsection{ExaCore: Incremental Model Construction}
+\label{sec:data:core}
+
+An \texttt{ExaCore} object serves as the workspace in which the user incrementally builds an optimization model. It is created with a call to \texttt{ExaCore()} (optionally specifying a GPU backend), and the user then adds variables, parameters, objectives, and constraints one at a time via the macros \texttt{@add\_var}, \texttt{@add\_par}, \texttt{@add\_obj}, and \texttt{@add\_con}. Each call appends a new entry to the appropriate tuple stored in the core and updates internal counters. The key fields of \texttt{ExaCore} are:
+\begin{itemize}
+  \item \texttt{var} --- a tuple of \texttt{Variable} structs, each recording the variable's dimensions, offset into the global variable vector $x$, name, and tag.
+  \item \texttt{par} --- a tuple of parameter arrays, whose values are concatenated into the global parameter vector $\theta$.
+  \item \texttt{obj} --- a tuple of \texttt{Objective} structs. Each objective stores a \texttt{SIMDFunction} (the compiled pattern) and the collected data iterator.
+  \item \texttt{cons} --- a tuple of \texttt{Constraint} and \texttt{ConstraintAugmentation} structs. A \texttt{Constraint} defines a new block of constraints with bounds; a \texttt{ConstraintAugmentation} (created via \texttt{@add\_con!}) adds terms to an existing constraint block without introducing new rows.
+  \item Running counters: \texttt{nvar}, \texttt{ncon}, \texttt{nobj}, and the nonzero counts \texttt{nnzj} (Jacobian) and \texttt{nnzh} (Hessian), which are accumulated as patterns are added.
+  \item Primal and dual arrays: \texttt{x0}, $\theta$, \texttt{lvar}, \texttt{uvar}, \texttt{y0}, \texttt{lcon}, \texttt{ucon}.
+  \item \texttt{backend} --- the KernelAbstractions.jl backend (e.g., \texttt{CUDABackend()}) or \texttt{nothing} for CPU execution.
+\end{itemize}
+Because each \texttt{@add\_obj}/\texttt{@add\_con} call constructs a \texttt{SIMDFunction} eagerly---probing sparsity and building compressor maps at the time the pattern is registered---the \texttt{ExaCore} accumulates all the information needed for the final model. The tuples \texttt{var}, \texttt{obj}, and \texttt{cons} grow heterogeneously: each entry has a different concrete type (reflecting a different expression tree type), so they are stored as Julia tuples rather than arrays.
+
+\subsection{ExaModel: The Compiled NLP Model}
+\label{sec:data:model}
+
+Once all variables, objectives, and constraints have been added, the user calls \texttt{ExaModel(c)} to compile the \texttt{ExaCore} into an immutable \texttt{ExaModel}. This compilation step:
+\begin{enumerate}
+  \item Constructs the \texttt{NLPModelMeta} object, which stores the problem dimensions ($n$, $m$), initial primal and dual iterates ($x_0$, $y_0$), variable and constraint bounds ($x^\flat$, $x^\sharp$, $g^\flat$, $g^\sharp$), bound classification indices (free, lower-bounded, upper-bounded, fixed), and the nonzero counts \texttt{nnzj} and \texttt{nnzh}. This metadata follows the NLPModels.jl specification and is queried by solvers to allocate sparse structures and select algorithmic options.
+  \item Transfers the \texttt{var}, \texttt{par}, \texttt{obj}, and \texttt{cons} tuples from the core, together with the parameter vector $\theta$.
+  \item Builds a backend-specific extension (\texttt{ext}) when a GPU backend is active (e.g., pre-allocating device-side workspace arrays).
+  \item Initializes an \texttt{NLPModels.Counters} object to track callback invocations during the solve.
+\end{enumerate}
+The resulting \texttt{ExaModel} is a subtype of \texttt{NLPModels.AbstractNLPModel\{T,VT\}}, where \texttt{T} is the floating-point type and \texttt{VT} is the array type (\texttt{Vector\{T\}} for CPU, \texttt{CuArray\{T\}} for CUDA, etc.). This means it can be passed directly to any solver in the JuliaSmoothOptimizers ecosystem---including Ipopt (via NLPModelsIpopt.jl) and MadNLP.jl \citep{shinMadNLPjl2025}---without any adapter code. The solver calls the five callbacks the callbacks above, and ExaModels.jl dispatches each callback to a loop over the stored \texttt{SIMDFunction}s.
+
+\subsection{Internal Data Types}
+\label{sec:data:internal}
+
+This subsection describes the internal types that connect the data structures above to the expression trees of \Cref{sec:graph} and the AD machinery of \Cref{sec:ad}. We work top-down: from the wrapper types stored in \texttt{obj}/\texttt{cons} tuples, to the \texttt{SIMDFunction} that each wrapper bundles, to the expression-tree node types underneath.
+
+\paragraph{Objective, Constraint, and ConstraintAugmentation.}
+Each entry in the \texttt{obj} and \texttt{cons} tuples of an \texttt{ExaCore}/\texttt{ExaModel} is one of three wrapper types:
+\begin{itemize}
+  \item \texttt{Objective\{F,I\}} --- wraps a \texttt{SIMDFunction} \texttt{f} and a collected data iterator \texttt{itr}. Corresponds to one objective pattern $\tilde{f}^{(\ell)}$ in \cref{eq:simd:obj}.
+  \item \texttt{Constraint\{F,I,O,S,T\}} --- wraps a \texttt{SIMDFunction}, a data iterator, an offset into the global constraint vector, dimension information, and a tag. Corresponds to one base constraint pattern $\tilde{g}^{(m)}$ in \cref{eq:simd:con}.
+  \item \texttt{ConstraintAugmentation\{F,I,D,T\}} --- wraps a \texttt{SIMDFunction} whose expression tree is a \texttt{Pair\{index\_expr, value\_expr\}}. The index expression determines \emph{which} constraint row to augment, and the value expression provides the additive term. Corresponds to the augmentation patterns $\tilde{h}^{(n)}$ in \cref{eq:simd:con}.
+\end{itemize}
+This three-type design keeps the number of expression trees minimal.
+
+\paragraph{SIMDFunction.}
+A \texttt{SIMDFunction\{F,C1,C2\}} bundles the compiled representation of a single algebraic pattern. It contains:
+\begin{itemize}
+  \item \texttt{f::F} --- the parameterized expression tree (an \texttt{AbstractNode}).
+  \item \texttt{comp1::C1}, \texttt{comp2::C2} --- \texttt{Compressor} mappings for Jacobian and Lagrangian Hessian sparsity (\Cref{sec:ad:sparsity}).
+  \item Offset and stride integers (\texttt{o0}, \texttt{o1}, \texttt{o2}, \texttt{o1step}, \texttt{o2step}) that locate this pattern's entries within the global constraint, Jacobian COO, and Hessian COO arrays.
+\end{itemize}
+The \texttt{SIMDFunction} is the central compilation artifact: it is constructed at model-construction time by probing the expression tree for sparsity and building the compressor maps, and it is the unit of work for both CPU loops and GPU kernels (\Cref{sec:gpu}).
+
+\paragraph{AbstractNode and expression trees.}
+The \texttt{f::F} field of each \texttt{SIMDFunction} is a tree of \texttt{AbstractNode} subtypes. A node is callable as \texttt{node(i, x, $\theta$)}: given a data point~$i$, a primal vector~$x$, and a parameter vector~$\theta$, it returns a scalar value. Interior nodes (\texttt{Node1}, \texttt{Node2}) store a function and references to their children; leaf nodes (\texttt{Var}, \texttt{DataIndexed}, \texttt{Constant}, \texttt{DataSource}) provide access to variables, data, compile-time constants, and the data-point sentinel, respectively. The full node hierarchy and the multiple-dispatch machinery that constructs the tree are deferred to \Cref{sec:graph}. To see why \texttt{ConstraintAugmentation} is essential, consider the active power balance constraint in ACOPF:
+\begin{equation*}
+  \sum_{g \in \mathcal{G}_b} p_g - p^d_b = \sum_{(b,j) \in \mathcal{E}} p_{bj}  + \sum_{(j,b) \in \mathcal{E}} p_{jb}, \quad \forall b \in \mathcal{B},
+\end{equation*}
+where $\mathcal{G}_b$ is the set of generators at bus $b$, and $p_{bj}$, $p_{jb}$ are the power flows on lines incident to $b$. Each bus has a different number of generators and incident lines, so the full expression cannot be written as a single parameterized tree evaluated over buses---the tree \emph{structure} varies from bus to bus, violating the SIMD requirement that all data points share the same tree.
+
+With \texttt{@add\_con!}, the problem decomposes cleanly:
+\begin{lstlisting}
+@add_con(c, c_p, -b.pd for b in bus_data)             # base: one row per bus
+@add_con!(c, c_p, g.bus => -pg[g.i] for g in gen_data) # generator injection
+@add_con!(c, c_p, l.from => pf[l.i] for l in line_data) # line flow (from end)
+@add_con!(c, c_p, l.to   => pt[l.i] for l in line_data) # line flow (to end)
+\end{lstlisting}
+Each \texttt{@add\_con!} call creates a separate \texttt{ConstraintAugmentation} with its own fixed-structure expression tree, evaluated over its own data collection (generators, from-lines, to-lines). The augmentation mechanism accumulates all contributions into the correct constraint rows at evaluation time. Without it, the user would need to construct one monolithic expression per bus that inlines every generator and line contribution---destroying the pattern--data separation and preventing SIMD/GPU parallelism.
+
+More broadly, \texttt{@add\_con!} arises naturally whenever a constraint sums over heterogeneous sets. In ACOPF, reactive power balance has the same structure; in optimal control on networks, nodal flow balance constraints are analogous. The augmentation mechanism ensures that the number of distinct patterns scales with the number of \emph{types of contributions} (generator, line-from, line-to), not with the number of constraints or the network topology.
+
 \section{Parameterized Expression Tree}
 \label{sec:graph}
 
-The parameterized expression tree is the core data structure in ExaModels.jl for representing computational patterns. Each objective, constraint, and reusable subexpression in the model is stored as a single expression tree that is \emph{parameterized} by the data supplied at evaluation time. Unlike conventional expression graphs that store one tree per scalar expression, a single parameterized expression tree represents an entire family of expressions---one for each data point in the pattern---enabling the SIMD evaluation and differentiation described in \Cref{sec:modeling:simd}.
+During model creation, ExaModels.jl captures each user-supplied generator body---objective or constraint---as a single \emph{parameterized expression tree}: a Julia data structure that represents one algebraic pattern from \cref{eq:simd} and is evaluated across every data point in the pattern without per-instance unrolling. Unlike conventional expression graphs that store one tree per scalar expression, a single parameterized expression tree represents an entire family of expressions---one for each data point---which is what enables the SIMD evaluation and differentiation of \Cref{sec:modeling:simd}. This section describes the tree representation, the source sentinels that drive its construction, and the registered-function machinery that builds it from natural mathematical syntax.
+
+\subsection{Source Sentinels}
+\label{sec:graph:sources}
+
+Consider a constraint pattern such as
+\begin{lstlisting}
+@add_con(c, x[i+1]^2 - x[i] for i = 1:N-1)
+\end{lstlisting}
+The macro lifts the generator body into a Julia function $f(i, x, \theta)$ taking a data point $i$, the primal vector $x$, and the parameter vector $\theta$. Because $f$ dispatches on the types of its arguments, ExaModels.jl can call it with different \emph{source sentinels} in place of the natural numeric arguments and obtain different outputs from a single function definition: a symbolic expression tree, a numeric value, an AD-augmented value, or a sparsity record.
+
+At tree-construction time, $f$ is called with \texttt{i = DataSource()}, \texttt{x = VarSource()}, and \texttt{$\theta$ = ParameterSource()}. The sentinels' \texttt{getindex} and \texttt{getproperty} methods dispatch to constructors that return the symbolic leaves \texttt{DataIndexed}, \texttt{Var}, and \texttt{ParameterNode} (\Cref{sec:graph:nodes}); the registered arithmetic operators (\Cref{sec:graph:register}) compose them into interior \texttt{Node1}/\texttt{Node2} nodes. The result is a parameterized expression tree whose evaluation rule is the same function $f$, now called with numeric arguments at run time.
+
+The remaining source types---\texttt{AdjointNodeSource}, \texttt{SecondAdjointNodeSource}, and the sparsity-probe sentinels---are introduced in \Cref{sec:ad}, where they drive the AD reverse passes.
 
 \subsection{Node Types}
 \label{sec:graph:nodes}
@@ -497,7 +536,7 @@ These rules reduce the depth of the expression tree and eliminate unnecessary op
 \subsection{Function Registration}
 \label{sec:graph:register}
 
-For a function to appear in an ExaModels.jl expression, it must be \emph{registered}: the system needs to know both the function itself and its first and second derivatives, which are required for the gradient, Jacobian, and Hessian computations in \Cref{sec:ad}. ExaModels.jl provides two macros for this purpose:
+For a function to appear in an ExaModels.jl expression, it must be \emph{registered}: the system needs to know both the function itself and its first and second derivatives, which are required for the gradient, Jacobian, and Lagrangian Hessian computations in \Cref{sec:ad}. ExaModels.jl provides two macros for this purpose:
 \begin{itemize}
   \item \texttt{@register\_univariate(f, df, ddf)} --- registers a unary function with its first and second derivatives.
   \item \texttt{@register\_bivariate(f, df1, df2, ddf11, ddf12, ddf22)} --- registers a binary function with its partial derivatives up to second order.
@@ -506,19 +545,20 @@ Each macro generates four method groups via multiple dispatch: (i) a primal meth
 
 ExaModels.jl ships with over 40 pre-registered functions covering standard arithmetic ($+$, $-$, $*$, $/$ , \texttt{\^{}}), transcendentals (\texttt{sin}, \texttt{cos}, \texttt{tan}, \texttt{exp}, \texttt{log}), hyperbolic functions, inverse trigonometric functions, and utility functions (\texttt{abs}, \texttt{abs2}, \texttt{sqrt}, \texttt{cbrt}, \texttt{max}, \texttt{min}). Users can register custom functions with the same macros, and the registered derivatives are incorporated into the type system through multiple dispatch---no modification of ExaModels.jl internals is required.
 
-
 \section{Sparse Automatic Differentiation}
 \label{sec:ad}
 
-Computing the derivatives required by the callbacks \cref{eq:callbacks} is a central task of any AMS. Three broad approaches exist. \emph{Symbolic differentiation} applies the chain rule at the level of mathematical expressions, producing closed-form derivative expressions; this can lead to expression swell for complex functions and is difficult to apply to general programs. \emph{Finite differences} approximate derivatives via function evaluations at perturbed points (e.g., $(f(x+he_j) - f(x))/h$); this is straightforward to implement but introduces truncation error, is expensive for large $n$ (requiring $O(n)$ evaluations for a gradient), and is numerically unreliable for second-order derivatives. \emph{Automatic differentiation} (AD) computes exact derivatives of a function specified as a computer program by systematically applying the chain rule to each elementary operation, achieving machine-precision accuracy at a cost proportional to the function evaluation itself.
+During derivative evaluation, ExaModels.jl reuses the parameterized expression tree of \Cref{sec:graph} to compute the gradient, Jacobian, and Lagrangian Hessian required by the solver callbacks the callbacks above. The same Julia function $f(i, x, \theta)$ that built the tree at model creation also produces derivatives when $x$ is replaced by a derivative-carrying source sentinel: an \texttt{AdjointNodeSource} for first order, or a \texttt{SecondAdjointNodeSource} for second order. Each \texttt{Var} leaf then returns a derivative-augmented value, and the registered overloads of \Cref{sec:graph:register} propagate derivatives through the same expression structure. Reverse-mode AD in ExaModels.jl is not a separate code path; it is a re-evaluation of the same tree with a different source type, followed by a reverse traversal that accumulates adjoints into a sparse coordinate output.
 
-Within AD, two fundamental modes exist: \emph{forward mode}, which propagates directional derivatives from inputs to outputs, and \emph{reverse mode}, which propagates adjoint (sensitivity) information from outputs to inputs. For a function $f:\mathbb{R}^n \to \mathbb{R}$, forward mode requires $n$ passes to compute the full gradient, while reverse mode computes it in a single pass---making reverse mode the natural choice for the NLP callbacks \cref{eq:callbacks}, where $n$ is typically large.
+Three broad approaches to derivative computation exist. \emph{Symbolic differentiation} applies the chain rule at the level of mathematical expressions, producing closed-form derivative expressions; this can lead to expression swell for complex functions and is difficult to apply to general programs. \emph{Finite differences} approximate derivatives via function evaluations at perturbed points (e.g., $(f(x+he_j) - f(x))/h$); this is straightforward to implement but introduces truncation error, is expensive for large $n$ (requiring $O(n)$ evaluations for a gradient), and is numerically unreliable for second-order derivatives. \emph{Automatic differentiation} (AD) computes exact derivatives of a function specified as a computer program by systematically applying the chain rule to each elementary operation, achieving machine-precision accuracy at a cost proportional to the function evaluation itself.
+
+Within AD, two fundamental modes exist: \emph{forward mode}, which propagates directional derivatives from inputs to outputs, and \emph{reverse mode}, which propagates adjoint (sensitivity) information from outputs to inputs. For a function $f:\mathbb{R}^n \to \mathbb{R}$, forward mode requires $n$ passes to compute the full gradient, while reverse mode computes it in a single pass---making reverse mode the natural choice for the NLP callbacks the callbacks above, where $n$ is typically large.
 
 AD implementations also differ in how they access the program structure. \emph{Operator overloading} (OO) redefines arithmetic operators to record operations on augmented types (e.g., dual numbers or tape entries) as the program executes. \emph{Source code transformation} (SCT) analyzes and rewrites the program source to produce a new program that computes derivatives alongside the original values. OO is easier to implement and integrate with existing code; SCT can apply global optimizations across the entire computation.
 
 ExaModels.jl takes a hybrid approach that combines advantages of both. Operator overloading via Julia's multiple dispatch is used to construct the parameterized expression tree at model-construction time (\Cref{sec:graph:construction}): arithmetic on \texttt{AbstractNode} operands builds symbolic \texttt{Node1}/\texttt{Node2} nodes rather than computing numeric values. Once the expression tree is built, ExaModels.jl applies its own reverse-mode AD algorithm directly on this symbolic graph---a form of expression-graph-based AD analogous to the approach used by CasADi \citep{anderssonCasADiSoftwareFramework2019} and AMPL \citep{fourerModelingLanguageMathematical1990}. Because the expression tree type is fully concrete and known at compile time (\Cref{sec:graph:type}), the Julia compiler aggressively inlines the AD traversal, producing specialized machine code for each pattern with no interpretive overhead. The result is a system where the user writes natural mathematical expressions, dispatch builds the graph, and the compiler produces code whose performance is competitive with hand-written source transformations.
 
-This section describes the reverse-mode AD algorithm used by ExaModels.jl, including first-order (gradient/Jacobian) and second-order (Hessian) derivative computations, and the coloring-free sparsity detection that exploits the SIMD structure.
+This section describes the reverse-mode AD algorithm used by ExaModels.jl, including first-order (gradient/Jacobian) and second-order (Lagrangian Hessian) derivative computations, and the coloring-free sparsity detection that exploits the SIMD structure.
 
 \subsection{First-Order Derivatives}
 \label{sec:ad:first}
@@ -697,7 +737,7 @@ The resulting Jacobian and Hessian are stored in a \emph{partially compressed} c
 \section{GPU Acceleration and Implementation}
 \label{sec:gpu}
 
-The SIMD abstraction of \Cref{sec:modeling:simd} maps naturally to GPU execution: each computational pattern becomes a GPU kernel, and each data point becomes a thread. Because all threads within a pattern execute the same compiled expression tree on different data indices, there is no thread divergence---every thread follows the same control flow, which is ideal for GPU hardware. This section describes how ExaModels.jl implements this mapping, using KernelAbstractions.jl~\citep{churavyKernelAbstractionsjl2025} for backend-agnostic GPU kernels, and discusses the key implementation choices that affect performance on both CPU and GPU.
+The heavy lifting for GPU support has already been done in \Cref{sec:modeling,sec:graph}: the SIMD abstraction expresses each pattern as a single function evaluated over a data iterator, and the parameterized expression tree is type-stable end-to-end so that the Julia compiler specializes a dedicated evaluator per pattern. What remains is to apply the AD passes of \Cref{sec:ad} as GPU kernels. The mapping is direct: each algebraic pattern becomes a GPU kernel, and each data point becomes a thread. Because all threads within a pattern execute the same compiled expression tree on different data indices, there is no thread divergence---every thread follows the same control flow, which is ideal for GPU hardware. This section describes how ExaModels.jl implements this mapping, using KernelAbstractions.jl~\citep{churavyKernelAbstractionsjl2025} for backend-agnostic GPU kernels, and discusses the key implementation choices that affect performance on both CPU and GPU.
 
 \subsection{SIMDFunction: the Compiled Pattern}
 \label{sec:gpu:simdfunction}
@@ -726,17 +766,16 @@ On the CPU, each callback iterates over patterns using a tuple-recursive dispatc
 \begin{lstlisting}
 # CPU constraint evaluation (simplified)
 @simd for i in eachindex(con.itr)
-    @inbounds g[offset0(con, i)] += con.f(con.itr[i], x, $\theta$)
+    @inbounds g[offset0(con, i)] += con.f(con.itr[i], x, θ)
 end
 \end{lstlisting}
 The call \texttt{con.f(con.itr[i], x, $\theta$)} evaluates the parameterized expression tree for data point $i$; the SIMD annotation enables the compiler to vectorize across data points using CPU SIMD instructions.
 
 On the GPU, the same loop body becomes the kernel function, and data points are mapped to GPU threads. The following listing shows the actual KernelAbstractions.jl kernel used for constraint evaluation in \texttt{ExaModelsKernelAbstractions.jl}:
 \begin{lstlisting}
-@kernel function kerf(y, @Const(f), @Const(itr),
-                      @Const(x), @Const($\theta$))
+@kernel function kerf(y, @Const(f), @Const(itr), @Const(x), @Const(θ))
     I = @index(Global)
-    @inbounds y[offset0(f, itr, I)] = f(itr[I], x, $\theta$)
+    @inbounds y[offset0(f, itr, I)] = f(itr[I], x, θ)
 end
 \end{lstlisting}
 Each GPU thread computes exactly one data point: \texttt{@index(Global)} provides the thread's global index $I$, and the expression tree \texttt{f} is evaluated at data point \texttt{itr[I]} to produce the constraint value. The kernel is launched with \texttt{ndrange = length(itr)}, assigning one thread per data point. Because \texttt{f} is a fully typed, compile-time-specialized expression tree (\Cref{sec:graph:type}), the kernel contains no dynamic dispatch---a requirement for GPU compilation.
@@ -744,10 +783,10 @@ Each GPU thread computes exactly one data point: \texttt{@index(Global)} provide
 The same pattern applies to derivative kernels. The sparse gradient kernel launches one thread per data point and executes the full forward--reverse AD pass (\Cref{sec:ad}) within that thread:
 \begin{lstlisting}
 @kernel function kerg_sparse(y, @Const(f), @Const(itr),
-        @Const(x), @Const($\theta$), @Const(adj), ...)
+        @Const(x), @Const(θ), @Const(adj))
     I = @index(Global)
     @inbounds grpass(
-        f(itr[I], AdjointNodeSource(x), $\theta$),
+        f(itr[I], AdjointNodeSource(x), θ),
         f.comp1, y, offset1(f, I), 0, adj)
 end
 \end{lstlisting}
@@ -769,8 +808,7 @@ The objective callback evaluates $f(x) = \sum_\ell \sum_{i=1}^{I_\ell} \tilde{f}
 \paragraph{Gradient: sparse evaluation then compression.}
 On the CPU, the gradient is computed by the dense reverse pass (\texttt{drpass}, \Cref{sec:ad:first}), which directly accumulates $\nabla f[i] \mathrel{+}= \bar{v}$ into the dense gradient vector. On the GPU, the sparse reverse pass (\texttt{grpass}) is used instead: each thread writes gradient contributions into a sparse buffer indexed by \texttt{(variable\_index, position)}, and a subsequent \texttt{compress\_to\_dense} kernel reduces the sparse buffer into the dense gradient vector. This two-phase approach is necessary because multiple threads (from different patterns) may contribute to the same gradient entry, and atomic additions to a dense vector would cause contention:
 \begin{lstlisting}
-@kernel function compress_to_dense(y, @Const(y0),
-        @Const(ptr), @Const(sparsity))
+@kernel function compress_to_dense(y, @Const(y0), @Const(ptr), @Const(sparsity))
     I = @index(Global)
     @inbounds for j = ptr[I]:(ptr[I+1]-1)
         (k, l) = sparsity[j]
@@ -784,7 +822,7 @@ The \texttt{ptr} array partitions the sparse buffer entries by target variable, 
 ExaModels.jl parallelizes at the data-point level: each thread executes the full forward--reverse AD pass for one data point of one pattern. The expression tree itself is \emph{not} decomposed or parallelized internally---there is no intra-tree parallelism. This design keeps the kernel simple and avoids the synchronization overhead that would arise from parallelizing the tree traversal. For typical NLP patterns, the expression trees are small (tens of nodes), so the parallelism from thousands of data points is more than sufficient to saturate GPU hardware. The result is high occupancy with minimal kernel launch overhead: one kernel launch per pattern per callback.
 
 
-\section{Type Stability and Ahead-of-Time Compilation}
+\section{Compile-Time Design}
 \label{sec:aot}
 
 A Julia function is \emph{type-stable} if the compiler can infer the concrete type of every variable and return value from the types of the arguments alone, with no runtime dispatch. Type stability is not merely a performance optimization: GPU kernels \emph{require} it (dynamic dispatch is not supported on GPU hardware), and Julia's ahead-of-time (AOT) compiler \texttt{juliac --trim=safe} relies on it to produce standalone binaries with unused code eliminated. This section explains how ExaModels.jl achieves full type stability through its design, and how this enables AOT compilation of complete optimization applications.
@@ -872,29 +910,10 @@ function my_model(data; T = Float64, backend = nothing)
 end
 \end{lstlisting}
 
-\section{Solver Interface}
-\label{sec:interface}
-
-ExaModels.jl connects to NLP solvers through the NLPModels.jl callback interface\footnote{\url{https://github.com/JuliaSmoothOptimizers/NLPModels.jl}}, which was introduced in \Cref{sec:modeling:nlp}. An \texttt{ExaModel} is a concrete subtype of \texttt{AbstractNLPModel} and implements the five callbacks \cref{eq:callbacks} using the AD machinery of \Cref{sec:ad}. The solver never sees the expression trees or the SIMD decomposition---it interacts with the model exclusively through the callback API, receiving objective values, gradient vectors, constraint vectors, and sparse Jacobian/Hessian entries in COO format.
-
-This callback-based interface is fundamentally different from the approach taken by MathOptInterface (MOI)~\citep{lubinJuMP10Recent2023}, which transmits the problem to the solver as an algebraic expression tree or a structured matrix representation. MOI is well suited for LP, QP, and MIP solvers that exploit problem structure at the formulation level. For nonlinear interior-point solvers---which require repeated derivative evaluations at changing iterates---the callback-based approach is the natural fit: the AMS retains control over the derivative computation, and the solver simply requests numerical values.
-
-The NLPModels.jl interface gives ExaModels.jl access to the broad solver ecosystem of the JuliaSmoothOptimizers (JSO) organization. Any solver that accepts an \texttt{AbstractNLPModel} works out of the box. The following general-purpose NLP solvers are currently available:
-\begin{itemize}
-  \item \textbf{Ipopt}~\citep{wachterImplementationInteriorpointFilter2006} (via NLPModelsIpopt.jl) --- interior-point filter line-search method,
-  \item \textbf{KNITRO}~\citep{byrdKnitroIntegratedPackage2006} (via NLPModelsKnitro.jl) --- commercial interior-point / active-set solver,
-  \item \textbf{MadNLP.jl}~\citep{shinMadNLPjl2025} --- Julia-native interior-point solver with GPU support, enabling a fully GPU-resident optimization pipeline when paired with ExaModels.jl,
-  \item \textbf{Uno}\footnote{\url{https://github.com/cvanaret/Uno}} (via Uno.jl) --- modular SQP and barrier solver,
-  \item \textbf{Percival.jl} --- augmented Lagrangian method for equality-constrained problems,
-  \item \textbf{DCISolver.jl} --- dynamic control of infeasibility method,
-  \item \textbf{FletcherPenaltySolver.jl} --- Fletcher's smooth exact penalty method.
-\end{itemize}
-Additionally, the JSO ecosystem provides unconstrained and bound-constrained solvers (JSOSolvers.jl, AdaptiveRegularization.jl) and specialized solvers for least-squares problems (CaNNOLeS.jl) and linear/quadratic programs (RipQP.jl), all of which accept \texttt{AbstractNLPModel} inputs. The ecosystem also includes utility packages such as NLPModelsModifiers.jl, which provides model transformations (e.g., slack reformulations, feasibility problems, and regularization wrappers) that can be composed with any \texttt{AbstractNLPModel}---including \texttt{ExaModel}---without modifying the underlying model code. No glue code or solver-specific adaptation is needed: the user constructs an \texttt{ExaModel} and passes it directly to any of these solvers or utilities.
-
-\section{Extensions}
+\section{Variants}
 \label{sec:extensions}
 
-\Cref{eq:simd} captures a single deterministic NLP. Many applications require solving families of related NLPs---varying parameters, coupling through shared design variables, or solving independent instances simultaneously. ExaModels.jl supports these through three orthogonal extensions that can be \emph{combined simultaneously}: parameterized problems, two-stage stochastic programs, and batch models.
+\Cref{eq:simd} captures a single deterministic NLP. Many applications require solving families of related NLPs---varying parameters, coupling through shared design variables, or solving independent instances simultaneously. ExaModels.jl supports these through three orthogonal extensions that can be \emph{combined simultaneously}: parameterized problems, two-stage stochastic programs, and batch models. An additional escape hatch---external oracles---accommodates components that cannot be expressed as parameterized expression trees.
 
 \subsection{Unified Formulation}
 \label{sec:extensions:formulation}
@@ -923,29 +942,6 @@ A critical design principle is that all scenarios and batch instances share the 
 \end{itemize}
 These accessors modify only the underlying numerical arrays ($\theta$, $x_0$, bounds) without touching the compiled model structure.
 
-\subsection{Syntax: \texttt{EachScenario()} and \texttt{BatchExaCore}}
-\label{sec:extensions:syntax}
-
-ExaModels.jl provides two core constructors and one marker type to express \cref{eq:extensions}:
-\begin{itemize}
-  \item \texttt{TwoStageExaCore(nscen)} creates a core for \texttt{nscen} scenarios. The marker type \texttt{EachScenario()} distinguishes first-stage from second-stage declarations: \texttt{@add\_var(c, x, n)} adds design variables shared across all scenarios, while \texttt{@add\_var(c, EachScenario(), v, n)} adds recourse variables replicated per scenario. The same marker works for \texttt{@add\_par}, \texttt{@add\_obj}, and \texttt{@add\_con}.
-  \item \texttt{BatchExaCore(nbatch)} creates a core for \texttt{nbatch} independent instances. All declarations are implicitly replicated across instances; internally, the storage switches from vectors to matrices of size $n \times B$.
-\end{itemize}
-These can be combined: \texttt{TwoStageExaCore(nscen; nbatch = Val(B))} creates a batched two-stage core. The following example illustrates all three extensions simultaneously:
-\begin{lstlisting}
-B, S = 4, 10                                # 4 instances, 10 scenarios each
-core = TwoStageExaCore(S; nbatch = Val(B))
-@add_var(core, d, n_d)                  # design (shared across scenarios)
-@add_var(core, EachScenario(), v, n_v)   # recourse (per scenario)
-@add_par(core, EachScenario(), $\theta$_vals)      # scenario parameters
-@add_obj(core, f0(d, i) for i in data0)            # first-stage objective
-@add_obj(core, EachScenario(),
-         fs(d, v, $\theta$, i) for i in data_s)           # second-stage objective
-@add_con(core, EachScenario(),
-         gs(d, v, $\theta$, i) for i in data_s)           # scenario constraints
-m = ExaModel(core)
-\end{lstlisting} 
-
 \subsection{Parameterized Problems}
 \label{sec:extensions:parameters}
 
@@ -954,16 +950,46 @@ When only the parameter dimension is active ($S = 1$, $B = 1$), \cref{eq:extensi
 \subsection{Two-Stage Stochastic Programs}
 \label{sec:extensions:twostage}
 
-The two-stage structure ($S > 1$) couples design variables $d$ with scenario-specific recourse variables $v_s$. Internally, recourse variables and constraints are replicated $S$ times and tagged with scenario indices via \texttt{FirstStageTag}/\texttt{SecondStageTag}. After solving, the scenario structure can be queried via \texttt{get\_nscen(m)}, \texttt{get\_var\_scen(m)} (returning a vector of scenario indices per variable, with 0 for first-stage), and \texttt{get\_con\_scen(m)}. Per-scenario parameter updates use \texttt{set\_value!(m, $\theta$, vals, scen)}.
+The two-stage structure ($S > 1$) couples design variables $d$ with scenario-specific recourse variables $v_s$. ExaModels.jl provides \texttt{TwoStageExaCore(nscen)} for \texttt{nscen} scenarios, together with a marker type \texttt{EachScenario()} that distinguishes first-stage from second-stage declarations: \texttt{@add\_var(c, x, n)} adds design variables shared across all scenarios, while \texttt{@add\_var(c, EachScenario(), v, n)} adds recourse variables replicated per scenario. The same marker works for \texttt{@add\_par}, \texttt{@add\_obj}, and \texttt{@add\_con}.
+
+Internally, recourse variables and constraints are replicated $S$ times and tagged with scenario indices via \texttt{FirstStageTag}/\texttt{SecondStageTag}. After solving, the scenario structure can be queried via \texttt{get\_nscen(m)}, \texttt{get\_var\_scen(m)} (returning a vector of scenario indices per variable, with 0 for first-stage), and \texttt{get\_con\_scen(m)}. Per-scenario parameter updates use \texttt{set\_value!(m, $\theta$, vals, scen)}.
 
 The pattern--data separation is preserved: the second-stage patterns are compiled once (as \texttt{SIMDFunction}s) and evaluated across all $S$ scenarios in parallel, with the scenario index acting as an additional data dimension. This makes ExaModels.jl well suited for decomposition algorithms (e.g., Benders, progressive hedging) that repeatedly update scenario parameters and re-solve.
+
+The two-stage core can be combined with batching (\Cref{sec:extensions:batch}): \texttt{TwoStageExaCore(nscen; nbatch = Val(B))} creates a batched two-stage core. The following example illustrates all three orthogonal extensions simultaneously:
+\begin{lstlisting}
+B, S = 4, 10                              # 4 instances, 10 scenarios each
+core = TwoStageExaCore(S; nbatch = Val(B))
+@add_var(core, d, n_d)                    # design (shared across scenarios)
+@add_var(core, EachScenario(), v, n_v)    # recourse (per scenario)
+@add_par(core, EachScenario(), θ_vals)                 # scenario parameters
+@add_obj(core, f0(d, i) for i in data0)                # first-stage obj
+@add_obj(core, EachScenario(), fs(d, v, θ, i) for i in data_s) # 2nd-stage obj
+@add_con(core, EachScenario(), gs(d, v, θ, i) for i in data_s) # 2nd-stage cons
+m = ExaModel(core)
+\end{lstlisting}
 
 \subsection{Batch Models}
 \label{sec:extensions:batch}
 
-The batch structure ($B > 1$) solves $B$ fully independent NLP instances that share the same compiled expression trees but differ in parameter values. All arrays use matrix-valued storage: variables are stored as $n \times B$ matrices, parameters as $p \times B$, and so on. The NLPModels.jl callbacks evaluate all $B$ instances in a single kernel launch on the GPU (or a single vectorized loop on the CPU), with each data-point--instance pair mapped to a separate thread. This provides two levels of parallelism: across data points within a pattern, and across instances.
+\texttt{BatchExaCore(nbatch)} creates a core for \texttt{nbatch} independent instances. All declarations are implicitly replicated across instances; internally, the storage switches from vectors to matrices of size $n \times B$. The batch structure ($B > 1$) solves $B$ fully independent NLP instances that share the same compiled expression trees but differ in parameter values. The NLPModels.jl callbacks evaluate all $B$ instances in a single kernel launch on the GPU (or a single vectorized loop on the CPU), with each data-point--instance pair mapped to a separate thread. This provides two levels of parallelism: across data points within a pattern, and across instances.
 
 Batch models are useful for warm-starting, parametric sweeps, and ensemble optimization. A \texttt{FlatNLPModel} wrapper converts the matrix-valued batch model into a standard vector-valued \texttt{AbstractNLPModel} by flattening the storage, enabling the use of standard solvers that expect vector inputs.
+
+\subsection{External Oracles}
+\label{sec:extensions:oracles}
+
+Some model components are not naturally expressed as a parameterized expression tree: neural-network layers, complex simulation residuals, PDE solvers, or custom GPU kernels. For these cases, ExaModels.jl provides an \emph{external oracle} mechanism (currently under development) that lets users register callbacks for function evaluation, Jacobian, and Hessian computation. The oracle bypasses ExaModels' built-in AD; the user supplies derivatives directly, and ExaModels integrates the oracle's outputs into the global COO arrays.
+
+External oracles come with several limitations that follow from their design as escape hatches:
+\begin{itemize}
+  \item \textbf{No SIMD parallelism.} An oracle call is a black box; ExaModels cannot factor out shared computation across instances or parallelize evaluation over a data dimension.
+  \item \textbf{Manual derivatives.} The user is responsible for the correctness, sparsity pattern, and storage layout of the Jacobian and Hessian contributions; mistakes are silent.
+  \item \textbf{Reduced compile-time specialization.} Dynamic dispatch through the oracle callback breaks type stability across that boundary, and the compiler cannot inline through it.
+  \item \textbf{GPU compatibility is the user's responsibility.} If the oracle is not implemented as a GPU-native kernel, callbacks fall back to host-side execution, breaking the GPU-resident pipeline.
+  \item \textbf{Composition.} Oracle outputs must be inserted into the global Jacobian and Hessian COO arrays at the correct offsets; ExaModels provides scaffolding, but the user must align the index conventions.
+\end{itemize}
+External oracles are an escape hatch, not a primary modeling primitive. For problems that fit the SIMD abstraction, the templatized form is preferable.
 
 \section{Numerical Experiments}
 \label{sec:numerics}
@@ -980,7 +1006,7 @@ The Luk\v{s}an--Vl\v{c}ek collection~\citep{lukVsanSparsePartiallySeparable} con
 The Constrained and Unconstrained Problems Standard (COPS)~\citep{dolanBenchmarkingOptimizationSoftware2001} is a collection of 18 scalable nonlinear programs from applications in optimal control, fluid dynamics, parameter estimation, PDE-constrained optimization, and mesh generation. The problems include, among others, the Goddard rocket, robot arm, glider trajectory, journal bearing, minimum surface, torsion, catenary chain, and several chemical engineering models (gas--oil, methanol, pinene, catalytic mixing). Each problem is parameterized by a discretization resolution and spans a wide range of problem structures: some are unconstrained, others have equality or inequality constraints, and several involve nonlinear PDEs discretized on 2D grids. Implementations for ExaModels and JuMP are provided in \texttt{COPSBenchmark.jl}.
 
 \paragraph{PGLIB-OPF problems.}
-The PGLib-OPF benchmark library~\citep{babaeinejadsarookolaeePowerGridLibrary2021} provides standardized AC optimal power flow instances ranging from 3 to 78{,}484 buses. We test all 25 instances in both the polar (ACP) and rectangular (ACR) voltage formulations using \texttt{ExaModelsPower.jl}~\citep{shinExaModelsPowerjl2024}, which provides ExaModels implementations for both forms. All instances within a given formulation share the same expression tree structure---the same 15 computational patterns---and differ only in the network data (bus parameters, line admittances, power demands). This means ExaModels compiles the expression trees and AD kernels only once per formulation; changing the network simply updates the data arrays. The polar and rectangular formulations, however, have different expression tree structures and are compiled separately. Unlike the LV problems, which are unconstrained or equality-constrained with simple structure, the OPF problems exercise all five NLPModels.jl callbacks, including \texttt{cons!} and \texttt{jac\_coord!}. The OPF instances are parameterized by the network topology rather than a scalar discretization size, making them complementary to the scalable LV and COPS problems.
+The PGLib-OPF benchmark library~\citep{babaeinejadsarookolaeePowerGridLibrary2021} provides standardized AC optimal power flow instances ranging from 3 to 78{,}484 buses. We test all 25 instances in both the polar (ACP) and rectangular (ACR) voltage formulations using \texttt{ExaModelsPower.jl}~\citep{shinExaModelsPowerjl2024}, which provides ExaModels implementations for both forms. All instances within a given formulation share the same expression tree structure---the same 15 algebraic patterns---and differ only in the network data (bus parameters, line admittances, power demands). This means ExaModels compiles the expression trees and AD kernels only once per formulation; changing the network simply updates the data arrays. The polar and rectangular formulations, however, have different expression tree structures and are compiled separately. Unlike the LV problems, which are unconstrained or equality-constrained with simple structure, the OPF problems exercise all five NLPModels.jl callbacks, including \texttt{cons!} and \texttt{jac\_coord!}. The OPF instances are parameterized by the network topology rather than a scalar discretization size, making them complementary to the scalable LV and COPS problems.
 
 \paragraph{Why not CUTEst?}
 CUTEst~\citep{gouldCUTEstConstrainedUnconstrained2015} is the standard test environment for mathematical optimization. We do not use it for three reasons: (i) many CUTEst instances are small (fewer than 100 variables), where GPU acceleration provides no benefit and the overhead of kernel launches dominates; (ii) the problems are not parameterized by a scalable size parameter, preventing controlled scaling studies; and (iii) the large CUTEst instances are often drawn from the LV, COPS, or OPF families that we benchmark directly.
@@ -1035,7 +1061,7 @@ where $s = 10^{-5}$\,s. The SGM is less sensitive to outliers than the arithmeti
 
 We compare ExaModels.jl on CPU (single-threaded, no KernelAbstractions) against two GPU backends on the same LV and COPS instances. The hardware is an NVIDIA Quadro GV100 (CUDA) and an AMD Radeon VII (ROCm/AMDGPU). The GPU timings include kernel execution and synchronization but exclude the one-time model construction (which runs on the CPU). We report speedup as the ratio of CPU wall time to GPU wall time for each callback.
 
-\Cref{tab:gpu} summarizes the GPU speedups by size class. The results confirm the expected scaling behavior of the SIMD abstraction. For small instances ($\text{nnz} < 10^3$), GPU overhead (kernel launch, memory allocation) dominates and the GPU is slower than the CPU. For medium instances ($10^3 \leq \text{nnz} < 10^5$), the GPU roughly matches the CPU, with Hessian evaluation already showing a modest speedup ($1.8$--$2.1\times$ on LV). For large instances ($\text{nnz} \geq 10^5$), the GPU delivers substantial speedups: up to $172\times$ (CUDA) and $198\times$ (AMDGPU) for \texttt{hess\_coord!} on the LV suite, and $61\times$/$70\times$ on COPS.
+\Cref{tab:gpu} summarizes the GPU speedups by size class. The results confirm the expected scaling behavior of the SIMD abstraction. For small instances ($\text{nnz} < 10^3$), GPU overhead (kernel launch, memory allocation) dominates and the GPU is slower than the CPU. For medium instances ($10^3 \leq \text{nnz} < 10^5$), the GPU roughly matches the CPU, with Hessian evaluation already showing a modest speedup ($1.8$--$2.1\times$ on LV). For large instances ($\text{nnz} \geq 10^5$), the GPU delivers speedups of up to $172\times$ (CUDA) and $198\times$ (AMDGPU) for \texttt{hess\_coord!} on the LV suite, and $61\times$/$70\times$ on COPS.
 
 The LV problems show larger speedups than COPS because their expression trees are simpler and more uniform, yielding higher arithmetic intensity per data point. COPS problems have more complex expression trees (e.g., the rocket dynamics involve exponentials and divisions), which increases register pressure and reduces GPU occupancy.
 
@@ -1070,7 +1096,7 @@ Large-scale nonlinear programs almost always exhibit highly repetitive structure
   \item A \emph{single-instruction, multiple-data abstraction} that represents a nonlinear program as a small number of algebraic patterns, each evaluated over many data points, realized through a parameterized expression tree fully encoded in the Julia type system. Because problem structure is recognized at compile time, function and derivative evaluation reduces to embarrassingly parallel loops over data points, making the system natively compatible with GPUs.
   \item A \emph{coloring-free sparse automatic differentiation algorithm} that exploits regular per-pattern sparsity to compute Jacobians and Hessians in partially compressed sparse form without graph coloring.
 \end{enumerate}
-Compile-time specialization delivers substantial speedups in sparse derivative evaluation over existing algebraic modeling systems on CPU, and data-parallel execution yields up to two orders of magnitude further acceleration on GPUs. The implementation supports arbitrary numeric precision, cross-platform GPU portability across NVIDIA, AMD, Intel, and Apple devices via KernelAbstractions.jl, ahead-of-time compilation to standalone binaries independent of the Julia runtime, and extensions to parametric problems, user-defined external oracles, two-stage stochastic programs, and batch optimization. ExaModels.jl connects to a broad solver ecosystem through the NLPModels.jl callback interface, including Ipopt, MadNLP.jl, and Uno.
+Compile-time specialization delivers speedups in sparse derivative evaluation over existing algebraic modeling systems on CPU, and data-parallel execution yields up to two orders of magnitude further acceleration on GPUs. The implementation supports arbitrary numeric precision, cross-platform GPU portability across NVIDIA, AMD, Intel, and Apple devices via KernelAbstractions.jl, ahead-of-time compilation to standalone binaries independent of the Julia runtime, and extensions to parametric problems, user-defined external oracles, two-stage stochastic programs, and batch optimization. ExaModels.jl connects to a broad solver ecosystem through the NLPModels.jl callback interface, including Ipopt, MadNLP.jl, and Uno.
 
 \paragraph{Limitations and future work.}
 The current system has several limitations that suggest directions for future work. First, the requirement that all instances of a pattern share the same expression tree structure means that problems with data-dependent branching (e.g., complementarity constraints with different active sets) cannot be expressed as a single pattern. More broadly, certain model components---such as neural network layers or complex simulation residuals---are not naturally expressed as parameterized expression trees. For such cases, ExaModels.jl provides a \emph{nonlinear oracle} mechanism (currently under development) that allows users to register external callbacks for function evaluation, Jacobian, and Hessian computation. The oracle bypasses ExaModels' built-in AD and integrates external derivative information directly into the NLPModels.jl callbacks, enabling hybrid models where some components are expressed as SIMD patterns and others are handled by external tools (e.g., Flux.jl for neural networks, or custom GPU kernels for PDE residuals). Second, AOT compilation currently supports CPU backends only; extending it to GPU backends requires advances in Julia's GPU compilation pipeline. Third, the parameterized expression tree approach requires that the user express the problem in the SIMD form \cref{eq:simd}, which may require restructuring compared to the monolithic formulation natural in JuMP or AMPL. Finally, while ExaModels.jl evaluates derivatives efficiently, the overall solve time is dominated by the linear algebra within the interior-point solver; realizing the full benefit of GPU acceleration therefore requires a GPU-native solver such as MadNLP.jl~\citep{shinMadNLPjl2025} with condensed-space methods~\citep{pacaudCondensedspaceMethodsNonlinear2024}.
@@ -1114,5 +1140,6 @@ This appendix contains the complete per-instance benchmark data for all problems
 
 %%% Local Variables:
 %%% mode: LaTeX
+%%% TeX-master: t
 %%% TeX-master: t
 %%% End:

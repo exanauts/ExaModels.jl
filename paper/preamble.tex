@@ -146,7 +146,9 @@
   xleftmargin      = 2em,
   framexleftmargin = 2em,
   texcl            = true,
+  extendedchars    = true,
   literate         =
+    {θ}{{$\theta$}}1
     {!=}{{{\color{jlkw}!=}}}2
     {<=}{{{\color{jlkw}<=}}}2
     {>=}{{{\color{jlkw}>=}}}2
@@ -189,7 +191,7 @@
 \usepackage[font=small,labelfont=bf]{caption}
 \usepackage{booktabs}
 \usepackage{longtable}
-\usepackage[style=authoryear,backend=biber,natbib=true,doi=false,url=false,maxbibnames=999]{biblatex}
+\usepackage[style=authoryear,backend=biber,natbib=true,doi=true,url=true,eprint=true,isbn=false,maxbibnames=999]{biblatex}
 \addbibresource{main.bib}
 \usepackage[capitalise,noabbrev]{cleveref}
 \crefformat{equation}{(#2#1#3)}
