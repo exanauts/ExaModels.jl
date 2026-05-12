@@ -31,7 +31,7 @@ jobs:
       - uses: julia-actions/julia-buildpkg@latest
       - name: Run tests
         run: |
-          julia --startup-file=no --color=yes --project=./test -e '
+          julia --startup-file=no --color=yes --code-coverage=user --project=./test -e '
             using Pkg
             Pkg.develop(path=".")
             Pkg.instantiate()
