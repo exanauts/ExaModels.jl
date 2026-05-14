@@ -4,7 +4,7 @@ using Test, JuliaC
 
 const LUKSANVLCEK_APP_DIR = abspath(joinpath(@__DIR__, "..", "LuksanVlcekApp.jl"))
 const COPS_APP_DIR        = abspath(joinpath(@__DIR__, "..", "COPSApp.jl"))
-const ORACLE_APP_DIR      = abspath(joinpath(@__DIR__, "..", "OracleApp.jl"))
+const ORACLE_APP_DIR = abspath(joinpath(@__DIR__, "..", "OracleApp.jl"))
 
 # Compile app_dir into an executable at exe_path using the JuliaC programmatic API.
 # Returns true on success, false if JuliaC API is not available.
@@ -29,8 +29,9 @@ function _stage_app(app_dir::String)
         text = read(fpath, String)
         # Match path = "..." entries with relative paths and absolutize them
         # relative to the *original* app_dir.
-        text = replace(text, r"path\s*=\s*\"([^\"]+)\""m =>
-            s -> begin
+        text = replace(
+            text, r"path\s*=\s*\"([^\"]+)\""m =>
+                s -> begin
                 m = match(r"path\s*=\s*\"([^\"]+)\"", s)
                 rel = m.captures[1]
                 isabspath(rel) && return s
@@ -54,7 +55,7 @@ function _compile_exe(app_dir::String, exe_path::String)
     staged_app = _stage_app(app_dir)
 
     img = JuliaC.ImageRecipe(
-        file        = staged_app,
+        file = staged_app,
         output_type = "--output-exe",
         trim_mode   = "safe",
         julia_args  = ["--experimental"],
@@ -152,7 +153,7 @@ function runtests()
             compiled = false
             @testset "juliac compiles OracleApp" begin
                 compiled = _compile_exe(ORACLE_APP_DIR, exe_path)
-                @test compiled skip=!_HAS_JULIAC_API
+                @test compiled skip = !_HAS_JULIAC_API
                 compiled && @test isfile(exe_path)
             end
 

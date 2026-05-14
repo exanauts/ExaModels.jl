@@ -61,7 +61,7 @@ core = ExaCore(Float64; concrete = Val(true), backend = CUDABackend())
 
 core, z, _ = embed_oracle(
     core, x, N;
-    f!   = (y, xv) -> (y .= xv .^ 2; nothing),
+    f! = (y, xv) -> (y .= xv .^ 2; nothing),
     jvp! = (Jv, xv, v) -> (Jv .= 2 .* xv .* v; nothing),
     vjp! = (Jtv, xv, w) -> (Jtv .= 2 .* xv .* w; nothing),
     hvp! = (Hv, xv, w, v) -> (Hv .= 2 .* w .* v; nothing),

@@ -39,15 +39,15 @@ end
     c3, _ = add_con(c2, x[1] + x[2]; lcon = T(1), ucon = T(1))
 
     oracle = VectorNonlinearOracle(
-        nvar    = 4, ncon = 2,
-        nnzj    = 4, nnzh = 2,
+        nvar = 4, ncon = 2,
+        nnzj = 4, nnzh = 2,
         jac_rows = [1, 1, 2, 2], jac_cols = [3, 4, 3, 4],
         hess_rows = [3, 4], hess_cols = [3, 4],
-        lcon    = T[0, T(1)/2], ucon = T[0, T(1)/2],
-        adapt   = Val(true),
-        f!      = _oracle_f!,
-        jac!    = _oracle_jac!,
-        hess!   = _oracle_hess!,
+        lcon = T[0, T(1) / 2], ucon = T[0, T(1) / 2],
+        adapt = Val(true),
+        f! = _oracle_f!,
+        jac! = _oracle_jac!,
+        hess! = _oracle_hess!,
     )
     c4 = constraint(c3, oracle)
 

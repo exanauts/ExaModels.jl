@@ -302,7 +302,7 @@ An ExaCore
   number of constraint patterns: ... 0
 ```
 """
-struct ExaCore{T,VT<:AbstractVector{T}, B, S, V, P, O, C, R, OR, SOR, EV} <: AbstractExaCore{T,VT,B,S}
+struct ExaCore{T, VT <: AbstractVector{T}, B, S, V, P, O, C, R, OR, SOR, EV} <: AbstractExaCore{T, VT, B, S}
     name::Symbol
     backend::B
     var::V
@@ -359,10 +359,10 @@ end
     ucon = similar(x0),
     minimize = true,
     tag = nothing,
-    refs = (;),
-    oracles = (),
-    scalar_oracles = (),
-    evals = (),
+        refs = (;),
+        oracles = (),
+        scalar_oracles = (),
+        evals = (),
     )
 
     return ExaCore(
@@ -496,7 +496,7 @@ julia> result = ipopt(m; print_level=0)    # solve the problem
 ```
 """
 # No-oracle path: always returns ExaModel (type-stable for juliac --trim=safe).
-function ExaModel(c::ExaCore{T,VT,B,S,V,P,O,C,R,Tuple{},Tuple{},Tuple{}}; prod = false, kwargs...) where {T,VT,B,S,V,P,O,C,R}
+function ExaModel(c::ExaCore{T, VT, B, S, V, P, O, C, R, Tuple{}, Tuple{}, Tuple{}}; prod = false, kwargs...) where {T, VT, B, S, V, P, O, C, R}
     return ExaModel(
         c.name,
         c.var,
@@ -1952,7 +1952,7 @@ macro add_con!(exs...)
     if length(parts) >= 4 && Meta.isexpr(parts[2], :tuple)
         cons_expr = parts[2]
         vars_expr = parts[3]
-        f_expr    = parts[4]
+        f_expr = parts[4]
         ev = gensym(:ev)
         return quote
             local $ev

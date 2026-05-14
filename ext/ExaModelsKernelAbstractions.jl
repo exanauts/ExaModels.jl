@@ -63,7 +63,7 @@ function ExaModels.build_extension(
 
         total_nnzj = c.nnzj + sum(getproperty(o, :nnzj) for o in c.oracles; init = 0)
         total_nnzh = c.nnzh + sum(getproperty(o, :nnzh) for o in c.oracles; init = 0) +
-                              sum(getproperty(o, :nnzh) for o in c.scalar_oracles; init = 0)
+            sum(getproperty(o, :nnzh) for o in c.scalar_oracles; init = 0)
         jacbuffer = similar(c.x0, total_nnzj)
         hessbuffer = similar(c.x0, total_nnzh)
         jacsparsityi = similar(c.x0, Tuple{Tuple{Int, Int}, Int}, simd_nnzj)
@@ -528,7 +528,7 @@ function ExaModels.hess_coord!(
         x::AbstractVector,
         y::AbstractVector,
         hess::AbstractVector;
-    obj_weight = one(T),
+        obj_weight = one(T),
     ) where {T, VT, E <: KAExtension}
     fill!(hess, zero(eltype(hess)))
     _obj_hess_coord!(m.ext.backend, hess, m.objs, x, m.θ, T(obj_weight))
@@ -1049,8 +1049,8 @@ function ExaModels.jprod_nln!(
                 oracle.jac!(b, xin)
             end
             jac_cpu = ExaModels._to_cpu!(backend, cache.buf_nnzj, cache.cpu_nnzj)
-            v_cpu   = ExaModels._vec_to_cpu(oracle, backend, vin, cache.cpu_nvar)
-            delta   = m.work_ncon_cpu
+            v_cpu = ExaModels._vec_to_cpu(oracle, backend, vin, cache.cpu_nvar)
+            delta = m.work_ncon_cpu
             fill!(delta, zero(eltype(delta)))
             for k in 1:oracle.nnzj
                 delta[oracle.jac_rows[k] + off_c] += jac_cpu[k] * v_cpu[oracle.jac_cols[k]]
@@ -1074,8 +1074,8 @@ function ExaModels.jprod_nln!(
                 ev.jac!(b, xin)
             end
             jac_cpu = ExaModels._to_cpu!(backend, cache.buf_nnzj, cache.cpu_nnzj)
-            v_cpu   = ExaModels._vec_to_cpu(ev, backend, vin_local, cache.cpu_nvar)
-            delta   = cache.cpu_ncon
+            v_cpu = ExaModels._vec_to_cpu(ev, backend, vin_local, cache.cpu_nvar)
+            delta = cache.cpu_ncon
             fill!(delta, zero(eltype(delta)))
             for k in 1:ev.nnzj
                 delta[ev.jac_rows[k]] += jac_cpu[k] * v_cpu[ev.jac_cols[k]]
@@ -1133,8 +1133,8 @@ function ExaModels.jtprod_nln!(
                 oracle.jac!(b, xin)
             end
             jac_cpu = ExaModels._to_cpu!(backend, cache.buf_nnzj, cache.cpu_nnzj)
-            v_cpu   = ExaModels._vec_to_cpu(oracle, backend, vin, m.work_ncon_cpu)
-            delta   = m.work_nvar_cpu
+            v_cpu = ExaModels._vec_to_cpu(oracle, backend, vin, m.work_ncon_cpu)
+            delta = m.work_nvar_cpu
             fill!(delta, zero(eltype(delta)))
             for k in 1:oracle.nnzj
                 delta[oracle.jac_cols[k]] += jac_cpu[k] * v_cpu[oracle.jac_rows[k] + off_c]
@@ -1146,7 +1146,7 @@ function ExaModels.jtprod_nln!(
     for (i, ev) in enumerate(m.evals)
         cache = m.eval_caches[i]
         ev.nnzj == 0 && continue
-        xin     = ExaModels._eval_input(ev, x[cache.var_global_idx])
+        xin = ExaModels._eval_input(ev, x[cache.var_global_idx])
         w_local = ExaModels._eval_input(ev, v[cache.con_global_idx])
         if ev.vjp! !== nothing
             ExaModels._run_with_buf!(ev, backend, cache.buf_nvar, cache.cpu_nvar) do b
@@ -1158,8 +1158,8 @@ function ExaModels.jtprod_nln!(
                 ev.jac!(b, xin)
             end
             jac_cpu = ExaModels._to_cpu!(backend, cache.buf_nnzj, cache.cpu_nnzj)
-            w_cpu   = ExaModels._vec_to_cpu(ev, backend, w_local, cache.cpu_ncon)
-            delta   = cache.cpu_nvar
+            w_cpu = ExaModels._vec_to_cpu(ev, backend, w_local, cache.cpu_ncon)
+            delta = cache.cpu_nvar
             fill!(delta, zero(eltype(delta)))
             for k in 1:ev.nnzj
                 delta[ev.jac_cols[k]] += jac_cpu[k] * w_cpu[ev.jac_rows[k]]
@@ -1238,8 +1238,8 @@ function ExaModels.hprod!(
                 oracle.hess!(b, xin, win)
             end
             hess_cpu = ExaModels._to_cpu!(backend, cache.buf_nnzh, cache.cpu_nnzh)
-            v_cpu    = ExaModels._vec_to_cpu(oracle, backend, vin, cache.cpu_nvar)
-            delta    = m.work_nvar_cpu
+            v_cpu = ExaModels._vec_to_cpu(oracle, backend, vin, cache.cpu_nvar)
+            delta = m.work_nvar_cpu
             fill!(delta, zero(eltype(delta)))
             for k in 1:oracle.nnzh
                 r, c_ = oracle.hess_rows[k], oracle.hess_cols[k]
@@ -1268,10 +1268,10 @@ function ExaModels.hprod!(
                 ev.hess!(b, xin, win)
             end
             hess_cpu = ExaModels._to_cpu!(backend, cache.buf_nnzh, cache.cpu_nnzh)
-            v_cpu    = ExaModels._vec_to_cpu(ev, backend, vin, cache.cpu_nvar)
+            v_cpu = ExaModels._vec_to_cpu(ev, backend, vin, cache.cpu_nvar)
             # `cpu_nvar2` is a separate buffer from `cpu_nvar` (which `v_cpu`
             # may alias) so we can both read v_cpu and write the delta.
-            delta    = cache.cpu_nvar2
+            delta = cache.cpu_nvar2
             fill!(delta, zero(eltype(delta)))
             for k in 1:ev.nnzh
                 r, c_ = ev.hess_rows[k], ev.hess_cols[k]

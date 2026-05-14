@@ -267,7 +267,7 @@ end
 # Val(false) (default): pass arrays through unchanged (GPU-capable callbacks).
 # Val(true): copy to CPU Array before calling the callback.
 _do_adapt(::Val{false}, x) = x
-_do_adapt(::Val{true},  x) = adapt(Array, x)
+_do_adapt(::Val{true}, x) = adapt(Array, x)
 
 _oracle_input(oracle::VectorNonlinearOracle, x) = _do_adapt(oracle.adapt, x)
 
@@ -280,8 +280,8 @@ _oracle_input(oracle::VectorNonlinearOracle, x) = _do_adapt(oracle.adapt, x)
 # Returns the device-side buffer with the result.  All call sites can do their
 # downstream `g[idx] .= dev_buf` / `Jv[idx] .+= dev_buf` against the returned
 # buffer regardless of routing mode.
-@inline _run_with_buf!(callback!, ::Val{false}, _,         dev_buf, _)       = (callback!(dev_buf); dev_buf)
-@inline _run_with_buf!(callback!, ::Val{true},  ::Nothing, dev_buf, _)       = (callback!(dev_buf); dev_buf)
+@inline _run_with_buf!(callback!, ::Val{false}, _, dev_buf, _) = (callback!(dev_buf); dev_buf)
+@inline _run_with_buf!(callback!, ::Val{true}, ::Nothing, dev_buf, _) = (callback!(dev_buf); dev_buf)
 @inline function _run_with_buf!(callback!, ::Val{true}, _, dev_buf, cpu_buf)
     callback!(cpu_buf)
     copyto!(dev_buf, cpu_buf)
@@ -318,7 +318,7 @@ end
 # concrete type known at construction time (juliac `--trim=safe` friendly).
 # `adapt = Val(true)` means the inner callback always receives CPU arrays;
 # `Val(false)` follows whatever array type the model's backend uses.
-@inline _embed_scratch(::Val{true},  _,  n::Int) = zeros(n)
+@inline _embed_scratch(::Val{true}, _, n::Int) = zeros(n)
 @inline _embed_scratch(::Val{false}, x0, n::Int) = similar(x0, n)
 
 
@@ -523,10 +523,10 @@ struct EvalIndexCache{VI <: AbstractVector{Int}, VF <: AbstractVector}
 end
 
 function _build_eval_index_cache(ev::OracleEvaluator, jac_off::Int, hess_off::Int)
-    jac_idx  = isempty(ev.jac_rows)  ? Int[] : collect((jac_off  + 1):(jac_off  + ev.nnzj))
+    jac_idx = isempty(ev.jac_rows) ? Int[] : collect((jac_off + 1):(jac_off + ev.nnzj))
     hess_idx = isempty(ev.hess_rows) ? Int[] : collect((hess_off + 1):(hess_off + ev.nnzh))
-    jac_rows_global  = isempty(ev.jac_rows)  ? Int[] : ev.con_global_idx[ev.jac_rows]
-    jac_cols_global  = isempty(ev.jac_cols)  ? Int[] : ev.var_global_idx[ev.jac_cols]
+    jac_rows_global = isempty(ev.jac_rows) ? Int[] : ev.con_global_idx[ev.jac_rows]
+    jac_cols_global = isempty(ev.jac_cols) ? Int[] : ev.var_global_idx[ev.jac_cols]
     hess_rows_global = isempty(ev.hess_rows) ? Int[] : ev.var_global_idx[ev.hess_rows]
     hess_cols_global = isempty(ev.hess_cols) ? Int[] : ev.var_global_idx[ev.hess_cols]
     return EvalIndexCache(
@@ -656,7 +656,7 @@ function _build_with_oracle(c::ExaCore; kwargs...)
     total_oracle_ncon = isempty(oracles) ? 0 : sum(o.ncon for o in oracles)
     total_oracle_nnzj = isempty(oracles) ? 0 : sum(o.nnzj for o in oracles)
     total_oracle_nnzh = (isempty(oracles) ? 0 : sum(o.nnzh for o in oracles)) +
-                        (isempty(s_oracles) ? 0 : sum(o.nnzh for o in s_oracles))
+        (isempty(s_oracles) ? 0 : sum(o.nnzh for o in s_oracles))
     total_eval_nnzj = isempty(evaluators) ? 0 : sum(e.nnzj for e in evaluators)
     total_eval_nnzh = isempty(evaluators) ? 0 : sum(e.nnzh for e in evaluators)
 
@@ -665,11 +665,11 @@ function _build_with_oracle(c::ExaCore; kwargs...)
     total_nnzh = n_simd_nnzh + total_oracle_nnzh + total_eval_nnzh
 
     # Build extended constraint bound arrays without mutating c
-    y0   = c.y0
+    y0 = c.y0
     lcon = c.lcon
     ucon = c.ucon
     for o in oracles
-        y0   = append!(c.backend, y0,   zero(eltype(c.θ)), o.ncon)
+        y0 = append!(c.backend, y0, zero(eltype(c.θ)), o.ncon)
         lcon = append!(c.backend, lcon, o.lcon, o.ncon)
         ucon = append!(c.backend, ucon, o.ucon, o.ncon)
     end
@@ -692,7 +692,7 @@ function _build_with_oracle(c::ExaCore; kwargs...)
     end
 
     # Evaluator NNZ offsets (after oracle NNZ)
-    eval_jac_off  = n_simd_nnzj + total_oracle_nnzj
+    eval_jac_off = n_simd_nnzj + total_oracle_nnzj
     eval_hess_off = n_simd_nnzh + total_oracle_nnzh
 
     meta = NLPModels.NLPModelMeta(
@@ -712,35 +712,35 @@ function _build_with_oracle(c::ExaCore; kwargs...)
     # Precompute index caches for zero-allocation NLPModels evaluations.
     oracle_caches = [
         _adapt_cache(
-            _build_oracle_index_cache(
-                oracles[i], oracle_con_offsets[i],
-                oracle_jac_offsets[i], oracle_hess_offsets[i],
-            ),
-            c.backend,
-        )
-        for i in eachindex(oracles)
+                _build_oracle_index_cache(
+                    oracles[i], oracle_con_offsets[i],
+                    oracle_jac_offsets[i], oracle_hess_offsets[i],
+                ),
+                c.backend,
+            )
+            for i in eachindex(oracles)
     ]
 
     # Precompute eval caches
-    eval_jac_cursor  = eval_jac_off
+    eval_jac_cursor = eval_jac_off
     eval_hess_cursor = eval_hess_off
     eval_caches = [
         begin
-            cache = _adapt_eval_cache(
-                _build_eval_index_cache(evaluators[i], eval_jac_cursor, eval_hess_cursor),
-                c.backend,
-            )
-            eval_jac_cursor  += evaluators[i].nnzj
-            eval_hess_cursor += evaluators[i].nnzh
-            cache
-        end
-        for i in eachindex(evaluators)
+                cache = _adapt_eval_cache(
+                    _build_eval_index_cache(evaluators[i], eval_jac_cursor, eval_hess_cursor),
+                    c.backend,
+                )
+                eval_jac_cursor += evaluators[i].nnzj
+                eval_hess_cursor += evaluators[i].nnzh
+                cache
+            end
+            for i in eachindex(evaluators)
     ]
 
     # Precompute scalar oracle caches (one nvar-length buffer per oracle).
     scalar_oracle_caches = [
         _adapt_scalar_cache(_build_scalar_oracle_cache(o), c.backend)
-        for o in s_oracles
+            for o in s_oracles
     ]
 
     # Shared full-problem work buffers for explicit-jac fallback paths in
@@ -748,7 +748,7 @@ function _build_with_oracle(c::ExaCore; kwargs...)
     # is exercised (one ncon-vector and one nvar-vector each, on device + CPU
     # shadow); cheap relative to the rest of the solve.
     work_ncon = convert_array(zeros(total_ncon), c.backend)
-    work_nvar = convert_array(zeros(c.nvar),     c.backend)
+    work_nvar = convert_array(zeros(c.nvar), c.backend)
 
     return ExaModelWithOracle(
         c.obj,
@@ -888,12 +888,12 @@ Reconstruct the Jacobian coordinate values using `nvar` calls to `oracle.jvp!`.
 All buffers are preallocated in `cache`. For `gpu=false` on a GPU backend,
 CPU scratch arrays are used for the callback and results are copied to device.
 """
-function _jac_reconstruct_via_jvp!(oracle, x, jac, cache::OracleIndexCache, backend=nothing)
+function _jac_reconstruct_via_jvp!(oracle, x, jac, cache::OracleIndexCache, backend = nothing)
     T = eltype(x)
     xin = _oracle_input(oracle, x)
     # Pick buffers: device buffers if adapt=Val(false) or CPU backend, else CPU scratch.
     use_cpu = oracle.adapt === Val(true) && backend !== nothing
-    v  = use_cpu ? cache.cpu_nvar : cache.buf_nvar
+    v = use_cpu ? cache.cpu_nvar : cache.buf_nvar
     Jv = use_cpu ? cache.cpu_ncon : cache.buf_ncon
     for (ci, col) in enumerate(cache.jac_recon_cols)
         fill!(v, zero(T))
@@ -936,8 +936,8 @@ function jprod_nln!(
                 oracle.jac!(b, xin)
             end
             jac_cpu = _to_cpu!(backend, cache.buf_nnzj, cache.cpu_nnzj)
-            v_cpu   = _vec_to_cpu(oracle, backend, vin, cache.cpu_nvar)
-            delta   = m.work_ncon_cpu
+            v_cpu = _vec_to_cpu(oracle, backend, vin, cache.cpu_nvar)
+            delta = m.work_ncon_cpu
             fill!(delta, zero(eltype(delta)))
             for k in 1:oracle.nnzj
                 delta[oracle.jac_rows[k] + off_c] += jac_cpu[k] * v_cpu[oracle.jac_cols[k]]
@@ -960,8 +960,8 @@ function jprod_nln!(
                 ev.jac!(b, xin)
             end
             jac_cpu = _to_cpu!(backend, cache.buf_nnzj, cache.cpu_nnzj)
-            v_cpu   = _vec_to_cpu(ev, backend, vin_local, cache.cpu_nvar)
-            delta   = cache.cpu_ncon
+            v_cpu = _vec_to_cpu(ev, backend, vin_local, cache.cpu_nvar)
+            delta = cache.cpu_ncon
             fill!(delta, zero(eltype(delta)))
             for k in 1:ev.nnzj
                 delta[ev.jac_rows[k]] += jac_cpu[k] * v_cpu[ev.jac_cols[k]]
@@ -999,8 +999,8 @@ function jtprod_nln!(
                 oracle.jac!(b, xin)
             end
             jac_cpu = _to_cpu!(backend, cache.buf_nnzj, cache.cpu_nnzj)
-            v_cpu   = _vec_to_cpu(oracle, backend, vin, m.work_ncon_cpu)
-            delta   = m.work_nvar_cpu
+            v_cpu = _vec_to_cpu(oracle, backend, vin, m.work_ncon_cpu)
+            delta = m.work_nvar_cpu
             fill!(delta, zero(eltype(delta)))
             for k in 1:oracle.nnzj
                 delta[oracle.jac_cols[k]] += jac_cpu[k] * v_cpu[oracle.jac_rows[k] + off_c]
@@ -1011,7 +1011,7 @@ function jtprod_nln!(
     end
     for (i, ev) in enumerate(m.evals)
         cache = m.eval_caches[i]
-        xin   = _eval_input(ev, x[cache.var_global_idx])
+        xin = _eval_input(ev, x[cache.var_global_idx])
         w_local = _eval_input(ev, v[cache.con_global_idx])
         if ev.vjp! !== nothing
             _run_with_buf!(ev, backend, cache.buf_nvar, cache.cpu_nvar) do b
@@ -1023,8 +1023,8 @@ function jtprod_nln!(
                 ev.jac!(b, xin)
             end
             jac_cpu = _to_cpu!(backend, cache.buf_nnzj, cache.cpu_nnzj)
-            w_cpu   = _vec_to_cpu(ev, backend, w_local, cache.cpu_ncon)
-            delta   = cache.cpu_nvar
+            w_cpu = _vec_to_cpu(ev, backend, w_local, cache.cpu_ncon)
+            delta = cache.cpu_nvar
             fill!(delta, zero(eltype(delta)))
             for k in 1:ev.nnzj
                 delta[ev.jac_cols[k]] += jac_cpu[k] * w_cpu[ev.jac_rows[k]]
@@ -1107,12 +1107,12 @@ end
 Reconstruct the lower-triangular Hessian coordinate values using `nvar` calls
 to `oracle.hvp!`. All buffers are preallocated in `cache`.
 """
-function _hess_reconstruct_via_hvp!(oracle, x, y, hess, cache::OracleIndexCache, backend=nothing)
+function _hess_reconstruct_via_hvp!(oracle, x, y, hess, cache::OracleIndexCache, backend = nothing)
     T = eltype(x)
     xin = _oracle_input(oracle, x)
     win = _oracle_input(oracle, y[cache.con_idx])
     use_cpu = oracle.adapt === Val(true) && backend !== nothing
-    v  = use_cpu ? cache.cpu_nvar  : cache.buf_nvar
+    v = use_cpu ? cache.cpu_nvar : cache.buf_nvar
     Hv = use_cpu ? cache.cpu_nvar2 : cache.buf_nvar2
     for (ci, col) in enumerate(cache.hess_recon_cols)
         fill!(v, zero(T))
@@ -1131,11 +1131,11 @@ end
 function _eval_jac_reconstruct_via_jvp!(ev::OracleEvaluator, xin, jac, cache::EvalIndexCache, backend = nothing)
     T = eltype(xin)
     use_cpu = ev.adapt === Val(true) && backend !== nothing
-    v  = use_cpu ? cache.cpu_nvar : cache.buf_nvar
+    v = use_cpu ? cache.cpu_nvar : cache.buf_nvar
     Jv = use_cpu ? cache.cpu_ncon : cache.buf_ncon
     jac_rows_cpu = ev.jac_rows
     jac_cols_cpu = ev.jac_cols
-    jac_idx_cpu  = cache.cpu_jac_idx
+    jac_idx_cpu = cache.cpu_jac_idx
     for col in unique(jac_cols_cpu)
         fill!(v, zero(T))
         v[col:col] .= one(T)
@@ -1163,11 +1163,11 @@ function _eval_hess_reconstruct_via_hvp!(ev::OracleEvaluator, xin, win, hess, ca
     use_cpu = ev.adapt === Val(true) && backend !== nothing
     # `v` and `Hv` must be distinct buffers — reusing one would clobber the
     # result on the next column iteration's `fill!(v, 0)`.
-    v  = use_cpu ? cache.cpu_nvar  : cache.buf_nvar
+    v = use_cpu ? cache.cpu_nvar : cache.buf_nvar
     Hv = use_cpu ? cache.cpu_nvar2 : cache.buf_nvar2
     hess_rows_cpu = ev.hess_rows
     hess_cols_cpu = ev.hess_cols
-    hess_idx_cpu  = cache.cpu_hess_idx
+    hess_idx_cpu = cache.cpu_hess_idx
     for col in unique(hess_cols_cpu)
         fill!(v, zero(T))
         v[col:col] .= one(T)
@@ -1221,8 +1221,8 @@ function hprod!(
                 oracle.hess!(b, xin, win)
             end
             hess_cpu = _to_cpu!(backend, cache.buf_nnzh, cache.cpu_nnzh)
-            v_cpu    = _vec_to_cpu(oracle, backend, vin, cache.cpu_nvar)
-            delta    = m.work_nvar_cpu
+            v_cpu = _vec_to_cpu(oracle, backend, vin, cache.cpu_nvar)
+            delta = m.work_nvar_cpu
             fill!(delta, zero(eltype(delta)))
             for k in 1:oracle.nnzh
                 r, c_ = oracle.hess_rows[k], oracle.hess_cols[k]
@@ -1238,9 +1238,9 @@ function hprod!(
     for (i, ev) in enumerate(m.evals)
         cache = m.eval_caches[i]
         ev.nnzh == 0 && continue
-        xin   = _eval_input(ev, x[cache.var_global_idx])
-        win   = _eval_input(ev, y[cache.con_global_idx])
-        vin   = _eval_input(ev, v[cache.var_global_idx])
+        xin = _eval_input(ev, x[cache.var_global_idx])
+        win = _eval_input(ev, y[cache.con_global_idx])
+        vin = _eval_input(ev, v[cache.var_global_idx])
         if ev.hvp! !== nothing
             _run_with_buf!(ev, backend, cache.buf_nvar, cache.cpu_nvar) do b
                 ev.hvp!(b, xin, win, vin)
@@ -1251,8 +1251,8 @@ function hprod!(
                 ev.hess!(b, xin, win)
             end
             hess_cpu = _to_cpu!(backend, cache.buf_nnzh, cache.cpu_nnzh)
-            v_cpu    = _vec_to_cpu(ev, backend, vin, cache.cpu_nvar)
-            delta    = cache.cpu_nvar2     # use second nvar shadow to avoid clobbering v_cpu when it aliases cpu_nvar
+            v_cpu = _vec_to_cpu(ev, backend, vin, cache.cpu_nvar)
+            delta = cache.cpu_nvar2     # use second nvar shadow to avoid clobbering v_cpu when it aliases cpu_nvar
             fill!(delta, zero(eltype(delta)))
             for k in 1:ev.nnzh
                 r, c_ = ev.hess_rows[k], ev.hess_cols[k]
@@ -1458,7 +1458,7 @@ function embed_oracle(
     #   - Val(false): callbacks receive whatever the model's backend uses;
     #     `similar(core.x0, input_dim)` carries that type forward.
     jtv_x_buf = _embed_scratch(adapt, core.x0, input_dim)
-    hv_x_buf  = _embed_scratch(adapt, core.x0, input_dim)
+    hv_x_buf = _embed_scratch(adapt, core.x0, input_dim)
 
     _f! = let x_idx = x_idx, z_idx = z_idx
         (c, xv) -> begin

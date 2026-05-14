@@ -315,11 +315,11 @@ function test_val_false_jprod_jtprod_hprod(backend)
             jac_rows = [1, 1], jac_cols = [3, 4],
             lcon = [0.0], ucon = [0.0],
             adapt = Val(false),
-            f!   = (cv, xv) -> (cv .= xv[3:3] .- xv[4:4]; nothing),
+            f! = (cv, xv) -> (cv .= xv[3:3] .- xv[4:4]; nothing),
             # Constants written one element at a time via 1-element broadcast —
             # `vv .= [1.0, -1.0]` would pass a CPU `Vector` into a CUDA kernel.
             jac! = (vv, xv) -> begin
-                vv[1:1] .=  one(eltype(xv))
+                vv[1:1] .= one(eltype(xv))
                 vv[2:2] .= -one(eltype(xv))
                 nothing
             end,
@@ -331,30 +331,30 @@ function test_val_false_jprod_jtprod_hprod(backend)
             hess_rows = [3, 4], hess_cols = [3, 4],
             lcon = [-Inf], ucon = [Inf],
             adapt = Val(false),
-            f!    = (cv, xv) -> (cv .= xv[3:3] .^ 2 .+ xv[4:4] .^ 2; nothing),
-            jac!  = (vv, xv) -> (vv .= 2 .* xv[3:4]; nothing),
+            f! = (cv, xv) -> (cv .= xv[3:3] .^ 2 .+ xv[4:4] .^ 2; nothing),
+            jac! = (vv, xv) -> (vv .= 2 .* xv[3:4]; nothing),
             hess! = (hv, xv, yv) -> (hv .= 2 .* yv[1:1]; nothing),
         )
         constraint(c, oracle_B)
         m = ExaModel(c; prod = true)
 
         x0 = ExaModels.convert_array(X0, backend)
-        v  = ExaModels.convert_array([1.0, -1.0, 2.0, -0.5], backend)
-        w  = ExaModels.convert_array([1.0, 2.0, -1.0], backend)
+        v = ExaModels.convert_array([1.0, -1.0, 2.0, -0.5], backend)
+        w = ExaModels.convert_array([1.0, 2.0, -1.0], backend)
         y0 = ExaModels.convert_array([0.0, 0.0, 1.0], backend)
-        J  = analytic_jac_dense(X0)
-        H  = analytic_hess_dense(X0, [0.0, 0.0, 1.0])
+        J = analytic_jac_dense(X0)
+        H = analytic_hess_dense(X0, [0.0, 0.0, 1.0])
 
-        Jv  = similar(x0, m.meta.ncon)
+        Jv = similar(x0, m.meta.ncon)
         Jtw = similar(x0, m.meta.nvar)
-        Hv  = similar(x0, m.meta.nvar)
+        Hv = similar(x0, m.meta.nvar)
         ExaModels.jprod_nln!(m, x0, v, Jv)
         ExaModels.jtprod_nln!(m, x0, w, Jtw)
         ExaModels.hprod!(m, x0, y0, v, Hv)
 
-        @test Array(Jv)  ≈ J  * [1.0, -1.0, 2.0, -0.5] atol = _atol(backend, 1.0e-10)
+        @test Array(Jv) ≈ J * [1.0, -1.0, 2.0, -0.5] atol = _atol(backend, 1.0e-10)
         @test Array(Jtw) ≈ J' * [1.0, 2.0, -1.0]       atol = _atol(backend, 1.0e-10)
-        @test Array(Hv)  ≈ H  * [1.0, -1.0, 2.0, -0.5] atol = _atol(backend, 1.0e-10)
+        @test Array(Hv) ≈ H * [1.0, -1.0, 2.0, -0.5] atol = _atol(backend, 1.0e-10)
     end
 end
 
@@ -719,8 +719,8 @@ function test_scalar_oracle()
         c = ExaCore(Float64; concrete = Val(true))
         c, x = add_var(c, 2; start = [1.0, 2.0])
         oracle = ScalarNonlinearOracle(
-            nvar  = 2,
-            f     = xv -> xv[1]^2 + xv[2]^2,
+            nvar = 2,
+            f = xv -> xv[1]^2 + xv[2]^2,
             grad! = (g, xv) -> (g[1] = 2 * xv[1]; g[2] = 2 * xv[2]; nothing),
             adapt = Val(true),
         )
@@ -734,7 +734,9 @@ function test_scalar_oracle()
         # Was ~oracle.nvar * sizeof(Float64) bytes per call before preallocation.
         xv = [3.0, 4.0]
         g = zeros(2)
-        for _ in 1:3 NLPModels.grad!(m, xv, g) end   # warm up JIT
+        for _ in 1:3
+            NLPModels.grad!(m, xv, g)
+        end   # warm up JIT
         @test (@allocated NLPModels.grad!(m, xv, g)) == 0
     end
 end
@@ -764,7 +766,8 @@ function test_add_con_macro_oracle()
         c = ExaCore(Float64; concrete = Val(true))
         @add_var(c, x, 2)
         con = @add_con(c, 0.0 * x[i] for i in 1:2; lcon = 0.0, ucon = 0.0)
-        @add_con!(c, (con,), (x,),
+        @add_con!(
+            c, (con,), (x,),
             (res, xv) -> (res .= xv .^ 2; nothing);
             jac! = (vals, xv) -> (vals .= 2 .* xv; nothing),
             nnzj = 2,
@@ -784,7 +787,7 @@ function test_embed_oracle()
         c, x = add_var(c, 2)
         c, z, _ = embed_oracle(
             c, x, 2;
-            f!   = (y, xv) -> (y .= xv .^ 2; nothing),
+            f! = (y, xv) -> (y .= xv .^ 2; nothing),
             jvp! = (Jv, xv, v) -> (Jv .= 2 .* xv .* v; nothing),
             vjp! = (Jtv, xv, w) -> (Jtv .= 2 .* xv .* w; nothing),
             adapt = Val(true),
@@ -823,7 +826,7 @@ function test_legacy_oracle_forwarding()
         x2 = variable(c2, 2; start = [1.0, 2.0])
         ret = embed_oracle(
             c2, x2, 2;
-            f!   = (y, xv) -> (y .= xv .^ 2; nothing),
+            f! = (y, xv) -> (y .= xv .^ 2; nothing),
             jvp! = (Jv, xv, v) -> (Jv .= 2 .* xv .* v; nothing),
             vjp! = (Jtv, xv, w) -> (Jtv .= 2 .* xv .* w; nothing),
             adapt = Val(true),
