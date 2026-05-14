@@ -13,14 +13,44 @@ const _HAS_JULIAC_API = isdefined(JuliaC, :ImageRecipe)
 # Skip AOT tests when EXAMODELS_SKIP_AOT is set (e.g. on Julia LTS or less critical CI legs)
 const _SKIP_AOT = get(ENV, "EXAMODELS_SKIP_AOT", "") != ""
 
+# JuliaC.compile_products copies the app dir into a fresh mktempdir() before
+# Pkg.instantiate(), which breaks any relative `path = "../..."` entries in
+# Project.toml / Manifest.toml because the copy is made into a sibling temp
+# dir, not the original location. Stage the app into a temp dir with those
+# relative paths rewritten to absolute paths so they survive JuliaC's copy.
+function _stage_app(app_dir::String)
+    stage = mktempdir()
+    staged_app = joinpath(stage, basename(app_dir))
+    cp(app_dir, staged_app)
+    chmod(staged_app, 0o755; recursive = true)
+    for fname in ("Project.toml", "Manifest.toml", "JuliaProject.toml", "JuliaManifest.toml")
+        fpath = joinpath(staged_app, fname)
+        isfile(fpath) || continue
+        text = read(fpath, String)
+        # Match path = "..." entries with relative paths and absolutize them
+        # relative to the *original* app_dir.
+        text = replace(text, r"path\s*=\s*\"([^\"]+)\""m =>
+            s -> begin
+                m = match(r"path\s*=\s*\"([^\"]+)\"", s)
+                rel = m.captures[1]
+                isabspath(rel) ? s : "path = \"$(abspath(joinpath(app_dir, rel)))\""
+            end,
+        )
+        write(fpath, text)
+    end
+    return staged_app
+end
+
 function _compile_exe(app_dir::String, exe_path::String)
     if !_HAS_JULIAC_API
         @warn "JuliaC.ImageRecipe not available, skipping AOT compilation test"
         return false
     end
 
+    staged_app = _stage_app(app_dir)
+
     img = JuliaC.ImageRecipe(
-        file        = app_dir,
+        file        = staged_app,
         output_type = "--output-exe",
         trim_mode   = "safe",
         julia_args  = ["--experimental"],
