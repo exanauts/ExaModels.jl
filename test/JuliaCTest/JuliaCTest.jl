@@ -33,7 +33,11 @@ function _stage_app(app_dir::String)
             s -> begin
                 m = match(r"path\s*=\s*\"([^\"]+)\"", s)
                 rel = m.captures[1]
-                isabspath(rel) ? s : "path = \"$(abspath(joinpath(app_dir, rel)))\""
+                isabspath(rel) && return s
+                # Normalize to forward slashes so the path is a valid TOML
+                # basic-string on Windows (backslashes are escape characters).
+                abs_path = replace(abspath(joinpath(app_dir, rel)), '\\' => '/')
+                "path = \"$abs_path\""
             end,
         )
         write(fpath, text)
