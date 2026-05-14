@@ -42,7 +42,7 @@ jobs:
         if: matrix.julia-version == '1' && matrix.os == 'ubuntu-latest'
         with:
           files: lcov.info
-          
+
   cpu:
     strategy:
       matrix:
@@ -83,7 +83,7 @@ jobs:
         julia-version: ['1', 'lts']
         julia-arch: [x64]
         os: [ubuntu-latest]
-        backend: ['cuda', 'amdgpu', 'oneapi']
+        backend: ['cuda13', 'amdgpu', 'oneapi']
         exclude:
           - julia-version: 'lts'
             backend: 'oneapi'
@@ -111,7 +111,7 @@ jobs:
       run: |
         julia --startup-file=no --project=test -e 'using Pkg; Pkg.add("AMDGPU")'
     - name: Add CUDA.jl to test environment
-      if: matrix.backend == 'cuda'
+      if: matrix.backend == 'cuda13'
       run: |
         julia --startup-file=no --project=test -e 'using Pkg; Pkg.add("CUDA")'
     - name: Add oneAPI.jl to test environment
@@ -192,7 +192,7 @@ jobs:
   bench-cuda:
     if: github.event_name == 'pull_request'
     needs: [github, cpu, gpu, metal]
-    runs-on: ['self-hosted', 'gpu', 'cuda']
+    runs-on: ['self-hosted', 'gpu', 'cuda13']
     steps:
       - uses: actions/checkout@v4
       - uses: julia-actions/setup-julia@latest
