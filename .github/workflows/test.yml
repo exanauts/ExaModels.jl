@@ -201,8 +201,8 @@ jobs:
       - name: Instantiate
         working-directory: benchmark
         run: |
-          julia --startup-file=no --project=main    -e 'using Pkg; Pkg.Registry.update(); Pkg.instantiate()'
-          julia --startup-file=no --project=current -e 'using Pkg; Pkg.Registry.update(); Pkg.instantiate()'
+          julia --startup-file=no --project=main    -e 'using Pkg; Pkg.Registry.update(); Pkg.instantiate(); Pkg.add("CUDA")'
+          julia --startup-file=no --project=current -e 'using Pkg; Pkg.Registry.update(); Pkg.instantiate(); Pkg.add("CUDA")'
       - name: Run benchmark (main)
         working-directory: benchmark
         run: julia --startup-file=no runbenchmark.jl main cuda
@@ -226,8 +226,8 @@ jobs:
       - name: Instantiate
         working-directory: benchmark
         run: |
-          julia --startup-file=no --project=main    -e 'using Pkg; Pkg.Registry.update(); Pkg.instantiate()'
-          julia --startup-file=no --project=current -e 'using Pkg; Pkg.Registry.update(); Pkg.instantiate()'
+          julia --startup-file=no --project=main    -e 'using Pkg; Pkg.Registry.update(); Pkg.instantiate(); Pkg.add("AMDGPU")'
+          julia --startup-file=no --project=current -e 'using Pkg; Pkg.Registry.update(); Pkg.instantiate(); Pkg.add("AMDGPU")'
       - name: Run benchmark (main)
         working-directory: benchmark
         run: julia --startup-file=no runbenchmark.jl main amdgpu
@@ -254,8 +254,8 @@ jobs:
       - name: Instantiate
         working-directory: benchmark
         run: |
-          julia --startup-file=no --project=main    -e 'using Pkg; Pkg.Registry.update(); Pkg.instantiate()'
-          julia --startup-file=no --project=current -e 'using Pkg; Pkg.Registry.update(); Pkg.instantiate()'
+          julia --startup-file=no --project=main    -e 'using Pkg; Pkg.Registry.update(); Pkg.instantiate(); Pkg.add("oneAPI")'
+          julia --startup-file=no --project=current -e 'using Pkg; Pkg.Registry.update(); Pkg.instantiate(); Pkg.add("oneAPI")'
       - name: Run benchmark (main)
         working-directory: benchmark
         run: julia --startup-file=no runbenchmark.jl main oneapi
