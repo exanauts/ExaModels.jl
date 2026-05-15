@@ -56,6 +56,7 @@ include("gradient.jl")
 include("jacobian.jl")
 include("hessian.jl")
 include("nlp.jl")
+include("oracle.jl")
 include("deprecated.jl")
 include("utils.jl")
 include("tags.jl")
@@ -89,6 +90,14 @@ export ExaModel,
     exa_prod,
     @register_univariate,
     @register_bivariate,
+    VectorNonlinearOracle,
+    OracleEvaluator,
+    ExaModelWithOracle,
+    has_matfree_jac,
+    has_matfree_hess,
+    embed_oracle,
+    add_eval,
+    ScalarNonlinearOracle,
     EachScenario,
     TwoStageExaModel,
     get_nscen,
