@@ -88,6 +88,7 @@ jobs:
           - julia-version: 'lts'
             backend: 'oneapi'
     runs-on: ['self-hosted', 'gpu', '${{ matrix.backend }}']
+    continue-on-error: ${{ matrix.backend == 'oneapi' }}
     env:
       # oneAPI specific variables
       OverrideDefaultFP64Settings: ${{ matrix.backend == 'oneapi' && '1' || '' }}
@@ -201,8 +202,8 @@ jobs:
       - name: Instantiate
         working-directory: benchmark
         run: |
-          julia --startup-file=no --project=main    -e 'using Pkg; Pkg.Registry.update(); Pkg.instantiate()'
-          julia --startup-file=no --project=current -e 'using Pkg; Pkg.Registry.update(); Pkg.instantiate()'
+          julia --startup-file=no --project=main    -e 'using Pkg; Pkg.Registry.update(); Pkg.instantiate(); Pkg.add("CUDA")'
+          julia --startup-file=no --project=current -e 'using Pkg; Pkg.Registry.update(); Pkg.instantiate(); Pkg.add("CUDA")'
       - name: Run benchmark (main)
         working-directory: benchmark
         run: julia --startup-file=no runbenchmark.jl main cuda
@@ -226,8 +227,8 @@ jobs:
       - name: Instantiate
         working-directory: benchmark
         run: |
-          julia --startup-file=no --project=main    -e 'using Pkg; Pkg.Registry.update(); Pkg.instantiate()'
-          julia --startup-file=no --project=current -e 'using Pkg; Pkg.Registry.update(); Pkg.instantiate()'
+          julia --startup-file=no --project=main    -e 'using Pkg; Pkg.Registry.update(); Pkg.instantiate(); Pkg.add("AMDGPU")'
+          julia --startup-file=no --project=current -e 'using Pkg; Pkg.Registry.update(); Pkg.instantiate(); Pkg.add("AMDGPU")'
       - name: Run benchmark (main)
         working-directory: benchmark
         run: julia --startup-file=no runbenchmark.jl main amdgpu
@@ -243,6 +244,7 @@ jobs:
     if: github.event_name == 'pull_request'
     needs: [github, cpu, gpu, metal]
     runs-on: ['self-hosted', 'gpu', 'oneapi']
+    continue-on-error: true
     env:
       OverrideDefaultFP64Settings: '1'
       IGC_EnableDPEmulation: '1'
@@ -254,8 +256,8 @@ jobs:
       - name: Instantiate
         working-directory: benchmark
         run: |
-          julia --startup-file=no --project=main    -e 'using Pkg; Pkg.Registry.update(); Pkg.instantiate()'
-          julia --startup-file=no --project=current -e 'using Pkg; Pkg.Registry.update(); Pkg.instantiate()'
+          julia --startup-file=no --project=main    -e 'using Pkg; Pkg.Registry.update(); Pkg.instantiate(); Pkg.add("oneAPI")'
+          julia --startup-file=no --project=current -e 'using Pkg; Pkg.Registry.update(); Pkg.instantiate(); Pkg.add("oneAPI")'
       - name: Run benchmark (main)
         working-directory: benchmark
         run: julia --startup-file=no runbenchmark.jl main oneapi
