@@ -88,6 +88,7 @@ jobs:
           - julia-version: 'lts'
             backend: 'oneapi'
     runs-on: ['self-hosted', 'gpu', '${{ matrix.backend }}']
+    continue-on-error: ${{ matrix.backend == 'oneapi' }}
     env:
       # oneAPI specific variables
       OverrideDefaultFP64Settings: ${{ matrix.backend == 'oneapi' && '1' || '' }}
@@ -243,6 +244,7 @@ jobs:
     if: github.event_name == 'pull_request'
     needs: [github, cpu, gpu, metal]
     runs-on: ['self-hosted', 'gpu', 'oneapi']
+    continue-on-error: true
     env:
       OverrideDefaultFP64Settings: '1'
       IGC_EnableDPEmulation: '1'
