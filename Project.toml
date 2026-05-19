@@ -4,6 +4,7 @@ version = "0.10.0"
 
 [deps]
 Adapt = "79e6a3ab-5dfb-504d-930d-738a2a938a0e"
+ConstructionBase = "187b0558-2788-49d3-abe0-74a17ed4e7c9"
 NLPModels = "a4795742-8479-5a88-8948-cc11e1c8c1a6"
 Printf = "de0858da-6303-5e67-8744-51eddeeeb8d7"
 SolverCore = "ff4d7338-4cf1-434d-91df-b86cb86fb843"
