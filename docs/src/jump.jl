@@ -31,9 +31,9 @@ result = madnlp(em)
 # Alternatively, one can use the `Optimizer` interface provided by `ExaModels`. This feature can be used as follows.
 
 using ExaModels, JuMP, CUDA
-using MadNLPGPU
+using MadNLP, MadNLPGPU
 
-set_optimizer(jm, () -> ExaModels.MadNLPOptimizer(CUDABackend()))
+set_optimizer(jm, () -> ExaModels.Optimizer(MadNLP.madnlp, CUDABackend()))
 optimize!(jm)
 
 # Again, only scalar objective/constraints created via `@constraint` and `@objective` API are supported. Older syntax like `@NLconstraint` and `@NLobjective` are not supported.
