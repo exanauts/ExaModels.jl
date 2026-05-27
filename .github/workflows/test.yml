@@ -93,6 +93,8 @@ jobs:
       # oneAPI specific variables
       OverrideDefaultFP64Settings: ${{ matrix.backend == 'oneapi' && '1' || '' }}
       IGC_EnableDPEmulation: ${{ matrix.backend == 'oneapi' && '1' || '' }}
+      # opt out of MPS on the self-hosted runner
+      CUDA_MPS_PIPE_DIRECTORY: /tmp/no-mps-${{ github.run_id }}
     steps:
     - name: Checkout code
       uses: actions/checkout@v2
@@ -194,6 +196,9 @@ jobs:
     if: github.event_name == 'pull_request'
     needs: [github, cpu, gpu, metal]
     runs-on: ['self-hosted', 'gpu', 'cuda13']
+    env:
+      # opt out of MPS on the self-hosted runner
+      CUDA_MPS_PIPE_DIRECTORY: /tmp/no-mps-${{ github.run_id }}
     steps:
       - uses: actions/checkout@v4
       - uses: julia-actions/setup-julia@latest
