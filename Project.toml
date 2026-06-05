@@ -1,6 +1,6 @@
 name = "ExaModels"
 uuid = "1037b233-b668-4ce9-9b63-f9f681f55dd2"
-version = "0.11.0"
+version = "0.11.1"
 
 [deps]
 Adapt = "79e6a3ab-5dfb-504d-930d-738a2a938a0e"
@@ -30,13 +30,6 @@ ExaModelsSpecialFunctions = "SpecialFunctions"
 
 [compat]
 Adapt = "4"
-# GPUCompiler 1.12+ runs VectorCombinePass unconditionally, producing
-# invalid SPIR-V on OpenCLBackend / oneAPIBackend (spirv-val: "forward
-# referenced IDs have not been defined"). v1.13.3 still reproduces.
-# Pinned to 1.11 until JuliaGPU/GPUCompiler.jl#XXX (gate the pass on
-# can_vectorize) is released. CUDA/AMDGPU/Metal users are also held to
-# 1.11 by this constraint; widen once upstream ships the fix.
-GPUCompiler = "~1.11"
 JuMP = "1"
 KernelAbstractions = "0.9"
 MathOptInterface = "1.19"
