@@ -31,7 +31,7 @@ An ExaCore
 Adding parameters is very similar to adding variables -- just pass a vector of values denoting the initial values.
 
 ````julia
-@add_parameter(c_param, θ, [100.0, 1.0])  # [penalty_coeff, offset]
+@add_par(c_param, θ, [100.0, 1.0])  # [penalty_coeff, offset]
 ````
 
 ````
@@ -45,35 +45,37 @@ Define the variables as before:
 
 ````julia
 N = 10
-@add_variable(c_param, x_p, N; start = (mod(i, 2) == 1 ? -1.2 : 1.0 for i = 1:N))
+@add_var(c_param, x_p, N; start = (mod(i, 2) == 1 ? -1.2 : 1.0 for i = 1:N))
 ````
 
 ````
 Variable
 
-  x ∈ R^{10}
+  x_p ∈ R^{10}
 
 ````
 
 Now we can use the parameters in our objective function just like variables:
 
 ````julia
-@add_objective(c_param, θ[1] * (x_p[i-1]^2 - x_p[i])^2 + (x_p[i-1] - θ[2])^2 for i = 2:N)
+@add_obj(c_param, θ[1] * (x_p[i-1]^2 - x_p[i])^2 + (x_p[i-1] - θ[2])^2 for i = 2:N)
 ````
 
 ````
 Objective
 
-  min (...) + ∑_{p ∈ P} f(x,θ,p)
+  ∑_{i ∈ I} f(x,i)
 
-  where |P| = 9
+  f(x,i) = θ[1] * x[i - 1]^2 - x[i]^2 + x[i - 1] - θ[2]^2
+
+  where |I| = 9
 
 ````
 
 Add the same constraints as before:
 
 ````julia
-@add_constraint(
+@add_con(
     c_param,
     3x_p[i+1]^3 + 2 * x_p[i+2] - 5 +
     sin(x_p[i+1] - x_p[i+2])sin(x_p[i+1] + x_p[i+2]) +
@@ -84,10 +86,11 @@ Add the same constraints as before:
 ````
 Constraint
 
-  s.t. (...)
-       g♭ ≤ [g(x,θ,p)]_{p ∈ P} ≤ g♯
+  g♭ ≤ [g(x,i)]_{i ∈ I} ≤ g♯
 
-  where |P| = 8
+  g(x,i) = 3 * x[i + 1]^3 + 2 * x[i + 2] - 5 + sin(x[i + 1] - x[i + 2]) * sin(x[i + 1] + x[i + 2]) + 4 * x[i + 1] - x[i] * exp(x[i] - x[i + 1]) - 3
+
+  where |I| = 8
 
 ````
 
@@ -154,11 +157,11 @@ Number of Iterations....: 6
 
                                    (scaled)                 (unscaled)
 Objective...............:   7.8692659500473017e-01    6.2324586324374636e+00
-Dual infeasibility......:   7.9746955363607132e-10    6.3159588647976857e-09
-Constraint violation....:   8.3546503049092280e-12    8.3546503049092280e-12
+Dual infeasibility......:   7.9746301767912855e-10    6.3159071000186987e-09
+Constraint violation....:   8.3542062156993779e-12    8.3542062156993779e-12
 Variable bound violation:   0.0000000000000000e+00    0.0000000000000000e+00
 Complementarity.........:   0.0000000000000000e+00    0.0000000000000000e+00
-Overall NLP error.......:   7.9746955363607132e-10    6.3159588647976857e-09
+Overall NLP error.......:   7.9746301767912855e-10    6.3159071000186987e-09
 
 
 Number of objective function evaluations             = 7
@@ -168,7 +171,7 @@ Number of inequality constraint evaluations          = 0
 Number of equality constraint Jacobian evaluations   = 7
 Number of inequality constraint Jacobian evaluations = 0
 Number of Lagrangian Hessian evaluations             = 6
-Total seconds in IPOPT                               = 0.342
+Total seconds in IPOPT                               = 0.344
 
 EXIT: Optimal Solution Found.
 Original objective: 6.232458632437464
@@ -212,12 +215,12 @@ iter    objective    inf_pr   inf_du lg(mu)  ||d||  lg(rg) alpha_du alpha_pr  ls
 Number of Iterations....: 6
 
                                    (scaled)                 (unscaled)
-Objective...............:   5.4592422674820063e-01    8.6474397516914987e+00
-Dual infeasibility......:   7.9051456536755353e-10    1.2521750715422049e-08
+Objective...............:   5.4592422674819974e-01    8.6474397516914845e+00
+Dual infeasibility......:   7.9051456515071309e-10    1.2521750711987297e-08
 Constraint violation....:   8.4190432403374871e-12    8.4190432403374871e-12
 Variable bound violation:   0.0000000000000000e+00    0.0000000000000000e+00
 Complementarity.........:   0.0000000000000000e+00    0.0000000000000000e+00
-Overall NLP error.......:   7.9051456536755353e-10    1.2521750715422049e-08
+Overall NLP error.......:   7.9051456515071309e-10    1.2521750711987297e-08
 
 
 Number of objective function evaluations             = 7
@@ -227,10 +230,10 @@ Number of inequality constraint evaluations          = 0
 Number of equality constraint Jacobian evaluations   = 7
 Number of inequality constraint Jacobian evaluations = 0
 Number of Lagrangian Hessian evaluations             = 6
-Total seconds in IPOPT                               = 0.002
+Total seconds in IPOPT                               = 0.001
 
 EXIT: Optimal Solution Found.
-Modified penalty objective: 8.647439751691499
+Modified penalty objective: 8.647439751691484
 
 ````
 

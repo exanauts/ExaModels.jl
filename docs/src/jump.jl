@@ -20,9 +20,11 @@ jm = Model()
 em = ExaModel(jm; backend = CUDABackend())
 
 # Here, note that only scalar objective/constraints created via `@constraint` and `@objective` API are supported. Older syntax like `@NLconstraint` and `@NLobjective` are not supported.
-# We can solve the model using any of the solvers supported by ExaModels. For example, we can use MadNLP:
+# We can solve the model using any of the solvers supported by ExaModels. For example, we can use MadNLP.
+# Note that `CUDSS` must be loaded alongside `MadNLPGPU`: it is the default linear solver for GPU sparse
+# models and it triggers MadNLPGPU's CUDA extension, which provides the GPU KKT machinery.
 
-using MadNLPGPU
+using MadNLPGPU, CUDSS
 
 result = madnlp(em)
 
@@ -31,7 +33,7 @@ result = madnlp(em)
 # Alternatively, one can use the `Optimizer` interface provided by `ExaModels`. This feature can be used as follows.
 
 using ExaModels, JuMP, CUDA
-using MadNLP, MadNLPGPU
+using MadNLP, MadNLPGPU, CUDSS
 
 set_optimizer(jm, () -> ExaModels.Optimizer(MadNLP.madnlp, CUDABackend()))
 optimize!(jm)
