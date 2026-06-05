@@ -20,8 +20,8 @@ core, z, _ = embed_oracle(
 )</code></pre><pre><code class="nohighlight hljs">(An ExaCore
 
   Float type: ...................... Float64
-  Array type: ...................... CUDA.CuArray{Float64, 1, CUDA.DeviceMemory}
-  Backend: ......................... CUDA.CUDAKernels.CUDABackend
+  Array type: ...................... CUDACore.CuArray{Float64, 1, CUDACore.DeviceMemory}
+  Backend: ......................... CUDACore.CUDAKernels.CUDABackend
 
   number of objective patterns: .... 0
   number of constraint patterns: ... 0
@@ -41,7 +41,7 @@ result = madnlp(model; print_level = MadNLP.INFO, linear_solver = LapackCUDASolv
 println(&quot;\nStatus:    &quot;, result.status)
 println(&quot;Objective: &quot;, result.objective)
 println(&quot;x[1:5]:    &quot;, round.(result.solution[1:5]; digits = 6))
-println(&quot;z[1:5]:    &quot;, round.(result.solution[(N + 1):(N + 5)]; digits = 6))</code></pre><pre><code class="nohighlight hljs">This is [34mMad[31mN[32mL[35mP[0m version v0.9.2, running with cuSOLVER v12.0.4 -- (BUNCHKAUFMAN)
+println(&quot;z[1:5]:    &quot;, round.(result.solution[(N + 1):(N + 5)]; digits = 6))</code></pre><pre><code class="nohighlight hljs">This is [34mMad[31mN[32mL[35mP[0m version v0.10.0, running with cuSOLVER v12.2.0 -- (BUNCHKAUFMAN)
 
 Number of nonzeros in constraint Jacobian............:    20100
 Number of nonzeros in Lagrangian Hessian.............:    20200
@@ -50,10 +50,10 @@ Total number of variables............................:      200
                      variables with only lower bounds:        0
                 variables with lower and upper bounds:        0
                      variables with only upper bounds:        0
-Total number of equality constraints.................:      100
-Total number of inequality constraints...............:      100
+Total number of equality constraints.................:        0
+Total number of inequality constraints...............:      200
         inequality constraints with only lower bounds:      100
-   inequality constraints with lower and upper bounds:        0
+   inequality constraints with lower and upper bounds:      100
         inequality constraints with only upper bounds:        0
 
 iter    objective    inf_pr   inf_du inf_compl lg(mu) lg(rg) alpha_pr ir ls
@@ -80,11 +80,11 @@ Number of Lagrangian Hessian evaluations              = 4
 Number of KKT factorizations                          = 4
 Number of KKT backsolves                              = 8
 
-Total wall secs in initialization                     =  2.738 s
-Total wall secs in linear solver                      =  1.048 s
-Total wall secs in NLP function evaluations           =  0.745 s
-Total wall secs in solver (w/o init./fun./lin. alg.)  =  5.229 s
-Total wall secs                                       =  9.759 s
+Total wall secs in initialization                     =  2.757 s
+Total wall secs in linear solver                      =  2.719 s
+Total wall secs in NLP function evaluations           =  4.599 s
+Total wall secs in solver (w/o init./fun./lin. alg.)  =  6.341 s
+Total wall secs                                       = 16.416 s
 
 [32mEXIT: Optimal Solution Found (tol = 1.0e-04).[0m
 
@@ -92,4 +92,4 @@ Status:    SOLVE_SUCCEEDED
 Objective: 184.0843517085005
 x[1:5]:    [0.999804, 0.999804, 0.999804, 0.999804, 0.999804]
 z[1:5]:    [0.999479, 0.999479, 0.999479, 0.999479, 0.999479]
-</code></pre><p>The optimal solution is xᵢ = 1, zᵢ = 1 for all i, with objective N × (1 + sin(1)) ≈ 184.15.</p><hr/><p><em>This page was generated using <a href="https://github.com/fredrikekre/Literate.jl">Literate.jl</a>.</em></p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../upgrade/">« Upgrading from v0.9 to v0.10</a><a class="docs-footer-nextpage" href="../jump/">JuMP Interface (experimental) »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.17.0 on <span class="colophon-date" title="Thursday 28 May 2026 14:01">Thursday 28 May 2026</span>. Using Julia version 1.12.6.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
+</code></pre><p>The optimal solution is xᵢ = 1, zᵢ = 1 for all i, with objective N × (1 + sin(1)) ≈ 184.15.</p><hr/><p><em>This page was generated using <a href="https://github.com/fredrikekre/Literate.jl">Literate.jl</a>.</em></p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../upgrade/">« Upgrading from v0.9 to v0.10</a><a class="docs-footer-nextpage" href="../jump/">JuMP Interface (experimental) »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.17.0 on <span class="colophon-date" title="Friday 5 June 2026 11:16">Friday 5 June 2026</span>. Using Julia version 1.12.6.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
