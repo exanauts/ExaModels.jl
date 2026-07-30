@@ -168,6 +168,49 @@ function test_nonunit_expr(backend)
     end
 end
 
+function test_colon_index(backend)
+    @testset "Colon expands to the entries along a dimension" begin
+        # a colon splat must build the same model as spelling the entries out
+        V, N, K = 5, 4, 3
+        itr = [(i, k, exp10(i / N)) for i = 1:N, k = 1:K]
+        f(x...) = -x[1] * 2 + x[2] * x[3] - x[4] + x[5]
+
+        c = ExaCore(; backend, concrete = Val(true))
+        @add_var(c, z, 1:V, 1:N, 0:K; start = 1.0)
+        @add_con(c, -hi * f(z[:, i, k]...) for (i, k, hi) in itr)
+        m = ExaModel(c)
+
+        cref = ExaCore(; backend, concrete = Val(true))
+        @add_var(cref, z, 1:V, 1:N, 0:K; start = 1.0)
+        @add_con(
+            cref,
+            -hi * f(z[1, i, k], z[2, i, k], z[3, i, k], z[4, i, k], z[5, i, k]) for
+            (i, k, hi) in itr
+        )
+        mref = ExaModel(cref)
+
+        x0 = ExaModels.convert_array([sin(i) for i = 1:m.meta.nvar], backend)
+        y0 = ExaModels.convert_array([cos(i) for i = 1:m.meta.ncon], backend)
+        @test Array(NLPModels.cons(m, x0)) ≈ Array(NLPModels.cons(mref, x0))
+        @test Array(NLPModels.hess(m, x0, y0)) ≈ Array(NLPModels.hess(mref, x0, y0))
+
+        # column-major order, offsets under non-unit ranges, and `x[:]` as in Base
+        c = ExaCore(; backend, concrete = Val(true))
+        c, x = add_var(c, 2, 3)
+        c, y = add_var(c, 2:4, 0:1)
+        c, θ = add_par(c, [1.0, 2.0, 3.0])
+        c, s = add_expr(c, x[i, j]^2 for (i, j) in Iterators.product(1:2, 1:3))
+        @test [n.i for n in x[:, 2]] == [3, 4]
+        @test [n.i for n in y[:, 1]] == [10, 11, 12]
+        @test [n.i for n in x[:]] == [n.i for n in x[:, :]] == collect(1:6)
+        @test [n.i for n in θ[:]] == [1, 2, 3]
+        @test length(s[:]) == 6
+        @test [n.i for n in x[1:2, 2]] == [3, 4]
+        @test [n.i for n in y[[2, 4], 1]] == [10, 12]
+        @test_throws Exception x[:, 1, 1]
+    end
+end
+
 function test_generator_free_constr(backend)
     @testset "add_con(core, expr, itr)" begin
         c = ExaCore(; backend, concrete = Val(true))
@@ -194,6 +237,9 @@ function test_features(backend)
     end
     @testset "Non-unit expression indexing" begin
         test_nonunit_expr(backend)
+    end
+    @testset "Colon indexing" begin
+        test_colon_index(backend)
     end
     @testset "Generator-free constraint" begin
         test_generator_free_constr(backend)

@@ -541,7 +541,9 @@ end
 # which is type-unstable and breaks juliac --trim=safe.
 @inline _indexed_var(i::I, o::Int) where {I<:AbstractNode} = Var(Node2(+, i, o))
 @inline _indexed_var(i, o) = Var(i + o)
-@inline function Base.getindex(v::V, is...) where {V<:AbstractVariable}
+@inline Base.getindex(v::V, ::Colon) where {V<:AbstractVariable} = _colon_index(v, (:,))
+@inline Base.getindex(v::V, r::AbstractVector) where {V<:AbstractVariable} = _colon_index(v, (r,))
+@inline function _index(v::V, is, ::Val{false}) where {V<:AbstractVariable}
     @assert(length(is) == length(v.size), "Variable index dimension error")
     _bound_check(v.size, is)
     Var(v.offset + idxx(is .- (_start.(v.size) .- 1), _length.(v.size)))
@@ -566,7 +568,9 @@ end
     idx = idxx(is .- (_start.(s.size) .- 1), _length.(s.size))
     return s.f(s.iter[idx])
 end
-@inline function Base.getindex(s::Expression, is...)
+@inline Base.getindex(s::Expression, ::Colon) = _colon_index(s, (:,))
+@inline Base.getindex(s::Expression, r::AbstractVector) = _colon_index(s, (r,))
+@inline function _index(s::Expression, is, ::Val{false})
     # Symbolic indices case - the symbolic indices ARE the iterator elements
     # No adjustment needed; the indices are used directly in expression building
     @assert(length(is) == length(s.size), "Expression index dimension error")
@@ -577,12 +581,48 @@ end
     _bound_check(p.size, i)
     ParameterNode(i + (p.offset - _start(p.size[1]) + 1))
 end
-@inline function Base.getindex(p::P, is...) where {P<:Parameter}
+@inline Base.getindex(p::P, ::Colon) where {P<:Parameter} = _colon_index(p, (:,))
+@inline Base.getindex(p::P, r::AbstractVector) where {P<:Parameter} = _colon_index(p, (r,))
+@inline function _index(p::P, is, ::Val{false}) where {P<:Parameter}
     @assert(length(is) == length(p.size), "Parameter index dimension error")
     _bound_check(p.size, is)
     ParameterNode(p.offset + idxx(is .- (_start.(p.size) .- 1), _length.(p.size)))
 end
 
+# Slice indexing. `_hasslice` returns a `Val` so the slice/scalar split is
+# resolved by dispatch rather than a branch, keeping the scalar path unchanged.
+const _Slice = Union{Colon,AbstractVector}
+@inline _hasslice(::Tuple{}) = Val(false)
+@inline _hasslice(::Tuple{_Slice,Vararg{Any}}) = Val(true)
+@inline _hasslice(is::Tuple) = _hasslice(Base.tail(is))
+
+# The indexable handles share no supertype (`Expression <: Any`), hence the Union.
+const _Indexable = Union{AbstractVariable,Expression,Parameter}
+@inline Base.getindex(x::_Indexable, is...) = _index(x, is, _hasslice(is))
+@inline _index(x, is, ::Val{true}) = _colon_index(x, is)
+
+# `x[:]` is a colon per dimension; a tuple's length is part of its type, so the
+# colon count stays a compile-time constant.
+@inline _colon_index(x, ::Tuple{Colon}) = _colon_index_all(x, _allcolons(x))
+@inline _colon_index(x, is) = _colon_index_all(x, is)
+@inline _ndims(::NTuple{N,Any}) where {N} = N
+@inline _allcolons(x) = ntuple(_ -> :, Val(_ndims(x.size)))
+
+@inline function _colon_index_all(x, is)
+    @assert(length(is) == length(x.size), "Colon index dimension error")
+    return _colon_expand(idx -> x[idx...], map(_colon_axis, x.size, is), ())
+end
+
+@inline _colon_axis(n, ::Colon) = ntuple(k -> _start(n) + k - 1, _length(n))
+@inline _colon_axis(n, r::AbstractVector) = Tuple(r)
+@inline _colon_axis(n, i) = (i,)
+
+@inline _colon_expand(f, ::Tuple{}, idx) = (f(idx),)
+@inline _colon_expand(f, axes::Tuple, idx) =
+    _tupcat(map(a -> _colon_expand(f, Base.front(axes), (a, idx...)), axes[end])...)
+
+@inline _tupcat() = ()
+@inline _tupcat(t, ts...) = (t..., _tupcat(ts...)...)
 
 function _bound_check(sizes, i::I) where {I<:Integer}
     __bound_check(sizes[1], i)
