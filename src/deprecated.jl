@@ -27,7 +27,7 @@ end
 
 # Override the Val{false} dispatch defined in nlp.jl so ExaCore() returns a LegacyExaCore.
 @inline function _make_exacore(::Val{false}, ::Type{T}, backend; kwargs...) where {T}
-    @warn "`ExaCore()` is deprecated, and will be removed in v0.11. Use `ExaCore(concrete = Val(true))` for the immutable ExaCore. The default behavior for `ExaCore()` will change to return the immutable ExaCore in v0.11."
+    @warn "`ExaCore()` is deprecated, and will be removed. Use `ExaCore(concrete = Val(true))` for the immutable ExaCore. The default behavior for `ExaCore()` will change to return the immutable ExaCore."
     inner = _exa_core(; x0 = convert_array(zeros(T, 0), backend), backend, kwargs...)
     # Use the element type of x0 rather than T, since some backends promote the
     # float type (e.g. Metal converts Float64 → Float32).

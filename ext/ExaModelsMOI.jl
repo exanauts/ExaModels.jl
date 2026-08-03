@@ -765,10 +765,31 @@ function MOI.optimize!(optimizer::Optimizer)
     return optimizer
 end
 
+# SolverCore returns a `Symbol` in `result.status` for any solver implementing
+# the NLPModels callable interface (e.g. `madnlp(::AbstractNLPModel)`,
+# `ipopt(::AbstractNLPModel)`). The vocabulary is defined by SolverCore.jl
+# (see SolverCore/src/stats.jl). Solvers that emit something else can be
+# supported by extending these dicts or overriding the two `MOI.get` methods.
+const _TERMINATION_STATUS_CODES = Dict{Symbol, MOI.TerminationStatusCode}(
+    :first_order => MOI.LOCALLY_SOLVED,
+    :acceptable => MOI.ALMOST_LOCALLY_SOLVED,
+    :small_step => MOI.SLOW_PROGRESS,
+    :infeasible => MOI.INFEASIBLE_OR_UNBOUNDED,
+    :max_iter => MOI.ITERATION_LIMIT,
+    :max_time => MOI.TIME_LIMIT,
+    :user => MOI.INTERRUPTED,
+    :exception => MOI.OTHER_ERROR,
+)
+const _RESULT_STATUS_CODES = Dict{Symbol, MOI.ResultStatusCode}(
+    :first_order => MOI.FEASIBLE_POINT,
+    :acceptable => MOI.NEARLY_FEASIBLE_POINT,
+    :infeasible => MOI.INFEASIBLE_POINT,
+)
+
 MOI.get(optimizer::Optimizer, ::MOI.TerminationStatus) =
-    ExaModels.termination_status_translator(optimizer.solver, optimizer.result.status)
+    Base.get(_TERMINATION_STATUS_CODES, optimizer.result.status, MOI.OTHER_ERROR)
 MOI.get(model::Optimizer, attr::Union{MOI.PrimalStatus,MOI.DualStatus}) =
-    ExaModels.result_status_translator(model.solver, model.result.status)
+    Base.get(_RESULT_STATUS_CODES, model.result.status, MOI.UNKNOWN_RESULT_STATUS)
 
 function MOI.get(model::Optimizer, attr::MOI.VariablePrimal, vi::MOI.VariableIndex)
     MOI.check_result_index_bounds(model, attr)

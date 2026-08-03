@@ -168,6 +168,17 @@ function test_nonunit_expr(backend)
     end
 end
 
+function test_generator_free_constr(backend)
+    @testset "add_con(core, expr, itr)" begin
+        c = ExaCore(; backend, concrete = Val(true))
+        @add_var(c, x, 2)
+        gen = (sin(x[i]) for i in 1:2)
+        expr = gen.f(ExaModels.DataSource())
+        @add_con(c, g, expr, 1:2)
+        @test c.g isa ExaModels.Constraint
+    end
+end
+
 function test_features(backend)
     @testset "Const" begin
         test_const(backend)
@@ -183,5 +194,8 @@ function test_features(backend)
     end
     @testset "Non-unit expression indexing" begin
         test_nonunit_expr(backend)
+    end
+    @testset "Generator-free constraint" begin
+        test_generator_free_constr(backend)
     end
 end

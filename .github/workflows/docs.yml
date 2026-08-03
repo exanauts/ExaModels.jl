@@ -22,4 +22,5 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # If authenticating with GitHub Actions token
           DOCUMENTER_KEY: ${{ secrets.DOCUMENTER_KEY }} # If authenticating with SSH deploy key
+          CUDA_MPS_PIPE_DIRECTORY: ${{ runner.temp }}/no-mps-${{ github.run_id }} # opt out of MPS on the self-hosted runner
         run: julia --project=docs/ docs/make.jl
