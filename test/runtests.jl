@@ -43,13 +43,8 @@ include("OracleTest/OracleTest.jl")
     @info "Running Utils Test"
     UtilsTest.runtests()
 
-    # AOT compilation targets the CPU, so run it only in CPU-testing jobs:
-    # a juliac --trim build is far too heavy to repeat in every GPU job
-    # (it starves small runners such as an 8 GB M1).
-    if !("EXAMODELS_NO_TEST_CPU" in ARGS)
-        @info "Running JuliaC AOT Test"
-        JuliaCTest.runtests()
-    end
+    @info "Running JuliaC AOT Test"
+    JuliaCTest.runtests()
 
     @info "Running TwoStage Test"
     TwoStageTest.runtests()
