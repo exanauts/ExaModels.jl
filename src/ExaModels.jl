@@ -27,7 +27,6 @@ For more information, please visit https://github.com/exanauts/ExaModels.jl
 module ExaModels
 
 import Adapt: adapt
-import ConstructionBase
 import NLPModels:
     NLPModels,
     obj,

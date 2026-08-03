@@ -15,9 +15,22 @@ replace_float_64(x::AbstractArray) = replace_float_64.(x)
 @inline replace_float_64(x::T) where {T} = _rebuild_float_32(x, Val(fieldcount(T)))
 @inline _rebuild_float_32(x, ::Val{0}) = x
 @inline function _rebuild_float_32(x::T, ::Val{N}) where {T, N}
-    ConstructionBase.constructorof(T)(
-        ntuple(i -> replace_float_64(getfield(x, i)), Val(N))...
-    )
+    # Rebuild via the type's unparameterized constructor (T.name.wrapper), so a
+    # parametric struct with Float64 fields reconstructs with Float32 ones.
+    # Try the explicit Float32 parameterization first, then constructor
+    # inference; structs whose constructors accept neither (e.g. concretely
+    # Float64-typed fields) are returned unchanged.
+    W = T.name.wrapper
+    vals = ntuple(i -> replace_float_64(getfield(x, i)), Val(N))
+    try
+        return W{Float32}(vals...)
+    catch
+        try
+            return W(vals...)
+        catch
+            return x
+        end
+    end
 end
 
 # to avoid type privacy
