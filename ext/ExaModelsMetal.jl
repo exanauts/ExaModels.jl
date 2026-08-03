@@ -7,7 +7,7 @@ ExaModels.sort!(array::A; lt = isless) where {A<:Metal.MtlArray} =
 
 ExaModels.convert_array(v::Metal.MtlArray, ::Metal.MetalBackend) = v
 ExaModels.convert_array(v, ::Metal.MetalBackend) =
-    Metal.MtlArray(ExaModels.replace_float_64.(v))
+    Metal.MtlArray(ExaModels.replace_float_64_by_32.(v))
 
 ExaModels.default_T(::Metal.MetalBackend) = Float32
 

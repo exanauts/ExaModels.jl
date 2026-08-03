@@ -4,7 +4,7 @@ import ExaModels, oneAPI
 
 ExaModels.convert_array(v::oneAPI.oneArray, ::oneAPI.oneAPIBackend) = v
 ExaModels.convert_array(v, ::oneAPI.oneAPIBackend) =
-    oneAPI.oneArray(ExaModels.replace_float_64.(v))
+    oneAPI.oneArray(ExaModels.replace_float_64_by_32.(v))
 
 ExaModels.default_T(::oneAPI.oneAPIBackend) = Float32
 
