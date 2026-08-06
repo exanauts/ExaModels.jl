@@ -224,6 +224,7 @@ function copy_constraints!(c, moim, var_to_idx, T)
     return c, con_to_idx
 end
 
+# Keep affine and quadratic terms batched; compression remains opt-in.
 function _exafy_con(
     i,
     c::C,
@@ -244,6 +245,7 @@ function _exafy_con(
     bin = update_bin!(bin, ExaModels.Null(c.constant), (1,))
     return bin
 end
+
 function _exafy_con(
     i,
     c::C,
@@ -273,31 +275,96 @@ function _exafy_con(
     bin = update_bin!(bin, ExaModels.Null(c.constant), (1,))
     return bin
 end
+
+struct ExafyContext
+    data::Vector{Any}
+    variable_slots::Dict{MOI.VariableIndex,Int}
+end
+
+ExafyContext() = ExafyContext(Any[], Dict{MOI.VariableIndex,Int}())
+
+function _push_data!(ctx::ExafyContext, value)
+    push!(ctx.data, value)
+    return ExaModels.DataIndexed(ExaModels.DataSource(), length(ctx.data))
+end
+
+function _exafy!(ctx::ExafyContext, v::MOI.VariableIndex, var_to_idx)
+    vartype, idx = var_to_idx[v]
+    slot = get!(ctx.variable_slots, v) do
+        push!(ctx.data, idx)
+        return length(ctx.data)
+    end
+    data_index = ExaModels.DataIndexed(ExaModels.DataSource(), slot)
+    if vartype === :variable
+        return ExaModels.Var(data_index)
+    elseif vartype === :parameter
+        return ExaModels.ParameterNode(data_index)
+    else
+        error("Unknown variable type: $vartype")
+    end
+end
+
+_exafy!(ctx::ExafyContext, value::Real, var_to_idx) = _push_data!(ctx, value)
+
+function _exafy!(ctx::ExafyContext, e::MOI.ScalarNonlinearFunction, var_to_idx)
+    children = map(e.args) do child
+        _exafy!(ctx, child, var_to_idx)
+    end
+    return op(e.head)(children...)
+end
+
+function _exafy!(ctx::ExafyContext, e::MOI.ScalarAffineFunction, var_to_idx)
+    result = _push_data!(ctx, e.constant)
+    for term in e.terms
+        result += _exafy!(ctx, term, var_to_idx)
+    end
+    return result
+end
+
+function _exafy!(ctx::ExafyContext, e::MOI.ScalarAffineTerm, var_to_idx)
+    variable = _exafy!(ctx, e.variable, var_to_idx)
+    return variable * _push_data!(ctx, e.coefficient)
+end
+
+function _exafy!(ctx::ExafyContext, e::MOI.ScalarQuadraticFunction, var_to_idx)
+    result = _push_data!(ctx, e.constant)
+    for term in e.affine_terms
+        result += _exafy!(ctx, term, var_to_idx)
+    end
+    for term in e.quadratic_terms
+        result += _exafy!(ctx, term, var_to_idx)
+    end
+    return result
+end
+
+function _exafy!(ctx::ExafyContext, e::MOI.ScalarQuadraticTerm, var_to_idx)
+    self_product = e.variable_1 == e.variable_2
+    coefficient = self_product ? e.coefficient / 2 : e.coefficient
+    v1 = _exafy!(ctx, e.variable_1, var_to_idx)
+    monomial = if self_product
+        abs2(v1)
+    else
+        v2 = _exafy!(ctx, e.variable_2, var_to_idx)
+        v1 * v2
+    end
+    return _push_data!(ctx, coefficient) * monomial
+end
+
+function _exafy!(ctx::ExafyContext, e, var_to_idx)
+    error("Unsupported nonlinear expression argument: $(typeof(e)).")
+end
+
 function _exafy_con(
     i,
-    c::C,
+    c::MOI.ScalarNonlinearFunction,
     bin,
     var_to_idx,
-    con_to_idx;
-    pos = true,
-) where {C<:MOI.ScalarNonlinearFunction}
-    if c.head == :+
-        for mm in c.args
-            bin = _exafy_con(i, mm, bin, var_to_idx, con_to_idx)
-        end
-        # elseif c.head == :-
-        #     bin, offset = _exafy_con(i, c.args[1], bin, offset)
-        #     bin, offset = _exafy_con(i, c.args[2], bin, offset; pos = false)
-    else
-        e, p = _exafy(c, var_to_idx)
-        e = pos ? e : -e
-        bin = update_bin!(
-            bin,
-            ExaModels.DataIndexed(ExaModels.DataSource(), length(p) + 1) => e,
-            (p..., con_to_idx[i]),
-        ) # augment data with constraint index
-    end
-    return bin
+    con_to_idx,
+)
+    ctx = ExafyContext()
+    expression = _exafy!(ctx, c, var_to_idx)
+    row = _push_data!(ctx, con_to_idx[i])
+    return update_bin!(bin, row => expression, Tuple(ctx.data))
 end
 function _exafy_con(i, c::C, bin, var_to_idx, con_to_idx; pos = true) where {C<:Real}
     e =
@@ -410,6 +477,7 @@ function exafy_obj(o::MOI.VariableIndex, bin, var_to_idx)
     return update_bin!(bin, e, p)
 end
 
+# Keep affine and quadratic objective terms batched; compression remains opt-in.
 function exafy_obj(o::MOI.ScalarQuadraticFunction{T}, bin, var_to_idx) where {T}
     for m in o.affine_terms
         e, p = _exafy(m, var_to_idx)
@@ -432,38 +500,122 @@ function exafy_obj(o::MOI.ScalarAffineFunction{T}, bin, var_to_idx) where {T}
     return update_bin!(bin, ExaModels.Null(o.constant), (1,))
 end
 
-function exafy_obj(o::MOI.ScalarNonlinearFunction, bin, var_to_idx)
-    constant = 0.0
-    if o.head == :+
-        for m in o.args
-            if m isa MOI.ScalarAffineFunction
-                for mm in m.terms
-                    e, p = _exafy(mm, var_to_idx)
-                    bin = update_bin!(bin, e, p)
-                end
-            elseif m isa MOI.ScalarQuadraticFunction
-                for mm in m.affine_terms
-                    e, p = _exafy(mm, var_to_idx)
-                    bin = update_bin!(bin, e, p)
-                end
-                for mm in m.quadratic_terms
-                    e, p = _exafy(mm, var_to_idx)
-                    bin = update_bin!(bin, e, p)
-                end
-                constant += m.constant
-            else
-                e, p = _exafy(m, var_to_idx)
-                bin = update_bin!(bin, e, p)
-            end
-        end
-    else
-        e, p = _exafy(o, var_to_idx)
-        bin = update_bin!(bin, e, p)
-    end
-
-    return update_bin!(bin, ExaModels.Null(constant), (1,)) # TODO see if this can be empty tuple
+function _visit_variable_indices!(visit, v::MOI.VariableIndex)
+    visit(v)
+    return nothing
 end
 
+_visit_variable_indices!(visit, value::Real) = nothing
+
+function _visit_variable_indices!(visit, e::MOI.ScalarNonlinearFunction)
+    for child in e.args
+        _visit_variable_indices!(visit, child)
+    end
+    return nothing
+end
+
+function _visit_variable_indices!(visit, e::MOI.ScalarAffineFunction)
+    for term in e.terms
+        _visit_variable_indices!(visit, term)
+    end
+    return nothing
+end
+
+function _visit_variable_indices!(visit, e::MOI.ScalarAffineTerm)
+    return _visit_variable_indices!(visit, e.variable)
+end
+
+function _visit_variable_indices!(visit, e::MOI.ScalarQuadraticFunction)
+    for term in e.affine_terms
+        _visit_variable_indices!(visit, term)
+    end
+    for term in e.quadratic_terms
+        _visit_variable_indices!(visit, term)
+    end
+    return nothing
+end
+
+function _visit_variable_indices!(visit, e::MOI.ScalarQuadraticTerm)
+    _visit_variable_indices!(visit, e.variable_1)
+    _visit_variable_indices!(visit, e.variable_2)
+    return nothing
+end
+
+function _visit_variable_indices!(visit, e)
+    error("Unsupported nonlinear objective argument: $(typeof(e)).")
+end
+
+function _find_component!(parents, i)
+    while parents[i] != i
+        parents[i] = parents[parents[i]]
+        i = parents[i]
+    end
+    return i
+end
+
+function _union_components!(parents, sizes, i, j, limit)
+    i = _find_component!(parents, i)
+    j = _find_component!(parents, j)
+    i == j && return true
+    sizes[i] + sizes[j] > limit && return false
+    parents[j] = i
+    sizes[i] += sizes[j]
+    return true
+end
+
+const _MAX_OBJECTIVE_GROUP_SIZE = 4
+
+# Group overlapping terms in small batches to limit expression size.
+function _objective_groups(
+    args,
+    var_to_idx;
+    limit = _MAX_OBJECTIVE_GROUP_SIZE,
+)
+    parents = collect(eachindex(args))
+    sizes = ones(Int, length(args))
+    owner = Dict{MOI.VariableIndex,Int}()
+    for (i, arg) in enumerate(args)
+        _visit_variable_indices!(arg) do variable
+            var_to_idx[variable].type === :variable || return
+            if haskey(owner, variable)
+                _union_components!(parents, sizes, i, owner[variable], limit)
+            end
+            owner[variable] = i
+        end
+    end
+
+    groups = Vector{Vector{Any}}()
+    root_to_group = Dict{Int,Int}()
+    for (i, arg) in enumerate(args)
+        root = _find_component!(parents, i)
+        group = get!(root_to_group, root) do
+            push!(groups, Any[])
+            return length(groups)
+        end
+        push!(groups[group], arg)
+    end
+    return groups
+end
+
+function exafy_obj(o::MOI.ScalarNonlinearFunction, bin, var_to_idx)
+    o.head === :+ && isempty(o.args) &&
+        error("Cannot translate an empty nonlinear objective sum.")
+    groups =
+        o.head === :+ ? _objective_groups(o.args, var_to_idx) : (Any[o],)
+    for group in groups
+        grouped_expression = if length(group) == 1
+            only(group)
+        else
+            MOI.ScalarNonlinearFunction(:+, group)
+        end
+        ctx = ExafyContext()
+        expression = _exafy!(ctx, grouped_expression, var_to_idx)
+        bin = update_bin!(bin, expression, Tuple(ctx.data))
+    end
+    return bin
+end
+
+# Whole nonlinear expressions use `_exafy!`; term-binned paths use `_exafy`.
 function _exafy(v::MOI.VariableIndex, var_to_idx, p = ())
     i = ExaModels.DataIndexed(ExaModels.DataSource(), length(p) + 1)
     vartype, idx = var_to_idx[v]

@@ -1,6 +1,6 @@
 module JuMPTest
 
-using Test, JuMP, ExaModels, PowerModels, NLPModelsIpopt, ..NLPTest
+using Test, JuMP, ExaModels, PowerModels, NLPModels, NLPModelsIpopt, NLPModelsJuMP, ..NLPTest
 
 import ..BACKENDS
 import ..ad_tolerance, ..sol_tolerance, ..solver_tolerance
@@ -119,9 +119,12 @@ function no_constraints_e2etest()
     @test length(em.cons) == 1
     @test em.cons[1] isa ExaModels.Constraint
 
-    @test em.objs[1].f.f isa ExaModels.Null
-    @test typeof(em.objs[2].f.f) <:
-          ExaModels.Node1{typeof(sin),ExaModels.Var{T1}} where {T1<:ExaModels.DataIndexed}
+    @test length(em.objs) == 1
+    @test em.meta.nnzo == N
+    @test em.meta.nnzh == N
+    point = collect(range(-0.4, 0.4; length = N))
+    @test NLPModels.obj(em, point) ≈ sum(sin, point)
+    @test NLPModels.grad(em, point) ≈ cos.(point)
 
     N=5
     jm = JuMP.Model()
@@ -133,10 +136,12 @@ function no_constraints_e2etest()
     @test length(em.cons) == 1
     @test em.cons[1] isa ExaModels.Constraint
 
-    @test em.objs[1].f.f isa ExaModels.Null
-    # broken since ExaMOI fails to detect SIMD in this case
-    @test_broken typeof(em.objs[2].f.f) <:
-                 ExaModels.Node1{typeof(sin),ExaModels.Var{T1}} where {T1}
+    @test length(em.objs) == 1
+    @test em.meta.nnzo == N
+    @test em.meta.nnzh == N * (N + 1) ÷ 2
+    point = collect(range(-0.4, 0.4; length = N))
+    @test NLPModels.obj(em, point) ≈ sin(sum(point))
+    @test NLPModels.grad(em, point) ≈ fill(cos(sum(point)), N)
 end
 function generic_e2etest()
     N=5
@@ -288,8 +293,386 @@ function jump_ac_power_model(filename = "pglib_opf_case3_lmbd.m")
     return model
 end
 
+function _jacobian_matrix(model, x)
+    rows = zeros(Int, model.meta.nnzj)
+    cols = zeros(Int, model.meta.nnzj)
+    values = zeros(eltype(x), model.meta.nnzj)
+    NLPModels.jac_structure!(model, rows, cols)
+    NLPModels.jac_coord!(model, x, values)
+
+    jacobian = zeros(eltype(x), model.meta.ncon, model.meta.nvar)
+    for k in eachindex(values)
+        jacobian[rows[k], cols[k]] += values[k]
+    end
+    return jacobian
+end
+
+function _hessian_matrix(model, x, y; obj_weight)
+    rows = zeros(Int, model.meta.nnzh)
+    cols = zeros(Int, model.meta.nnzh)
+    values = zeros(eltype(x), model.meta.nnzh)
+    NLPModels.hess_structure!(model, rows, cols)
+    NLPModels.hess_coord!(model, x, y, values; obj_weight = obj_weight)
+
+    hessian = zeros(eltype(x), model.meta.nvar, model.meta.nvar)
+    for k in eachindex(values)
+        hessian[rows[k], cols[k]] += values[k]
+        if rows[k] != cols[k]
+            hessian[cols[k], rows[k]] += values[k]
+        end
+    end
+    return hessian
+end
+
+function _test_callback_equivalence(jump_model, points)
+    translated = ExaModel(jump_model)
+    reference = MathOptNLPModel(jump_model)
+    # Constraint rows may be ordered differently by the two adapters. Restrict
+    # this helper to models with at most one constraint, where direct callback
+    # comparison is unambiguous.
+    @assert translated.meta.ncon <= 1
+    T = eltype(translated.meta.x0)
+    y = T(0.37) .* collect(T, 1:translated.meta.ncon)
+    obj_weight = T(0.61)
+
+    for x in points
+        @test NLPModels.obj(translated, x) ≈ NLPModels.obj(reference, x)
+        @test NLPModels.cons(translated, x) ≈ NLPModels.cons(reference, x)
+        @test NLPModels.grad(translated, x) ≈ NLPModels.grad(reference, x)
+        @test _jacobian_matrix(translated, x) ≈ _jacobian_matrix(reference, x)
+        @test _hessian_matrix(translated, x, y; obj_weight) ≈
+              _hessian_matrix(reference, x, y; obj_weight)
+    end
+end
+
+function derivative_sparsity_tests()
+    @testset "nonlinear constraint derivative sparsity" begin
+        branch = JuMP.Model()
+        @variable(branch, p)
+        @variable(branch, vmf)
+        @variable(branch, vmt)
+        @variable(branch, vaf)
+        @variable(branch, vat)
+        @constraint(
+            branch,
+            p -
+            1.2vmf^2 -
+            0.7vmf * vmt * cos(vaf - vat) -
+            0.3vmf * vmt * sin(vaf - vat) == 0.0,
+        )
+        @objective(branch, Min, p)
+
+        translated_branch = ExaModel(branch)
+        @test translated_branch.meta.nnzj == 5
+        @test translated_branch.meta.nnzh == 10
+
+        jacobian_rows = zeros(Int, translated_branch.meta.nnzj)
+        jacobian_cols = zeros(Int, translated_branch.meta.nnzj)
+        NLPModels.jac_structure!(
+            translated_branch,
+            jacobian_rows,
+            jacobian_cols,
+        )
+        @test length(unique(zip(jacobian_rows, jacobian_cols))) ==
+              translated_branch.meta.nnzj
+
+        # Hessian coordinates are unique here because this model has one
+        # constraint row. Different rows may legitimately repeat coordinates.
+        hessian_rows = zeros(Int, translated_branch.meta.nnzh)
+        hessian_cols = zeros(Int, translated_branch.meta.nnzh)
+        NLPModels.hess_structure!(
+            translated_branch,
+            hessian_rows,
+            hessian_cols,
+        )
+        @test length(unique(zip(hessian_rows, hessian_cols))) ==
+              translated_branch.meta.nnzh
+
+        _test_callback_equivalence(
+            branch,
+            [
+                [0.2, 1.0, 0.9, 0.1, -0.2],
+                [-0.4, 1.1, 1.05, -0.3, 0.25],
+            ],
+        )
+
+        repeated = JuMP.Model()
+        @variable(repeated, x)
+        @variable(repeated, y)
+        @constraint(repeated, sin(x) + x^2 + cos(x - y) == 0.0)
+        @objective(repeated, Min, x + y)
+
+        translated_repeated = ExaModel(repeated)
+        @test translated_repeated.meta.nnzj == 2
+        @test translated_repeated.meta.nnzh == 3
+        _test_callback_equivalence(
+            repeated,
+            [[0.3, -0.7], [1.2, 0.4]],
+        )
+    end
+
+    @testset "nonlinear objective derivative sparsity" begin
+        objective = JuMP.Model()
+        @variable(objective, x)
+        @variable(objective, y)
+        @objective(objective, Min, sin(x) + x^2 + cos(x - y) + 2.5)
+
+        translated_objective = ExaModel(objective)
+        @test translated_objective.meta.nnzo == 2
+        @test translated_objective.meta.nnzh == 3
+        _test_callback_equivalence(
+            objective,
+            [[0.3, -0.7], [1.2, 0.4]],
+        )
+
+        nested_objective = JuMP.Model()
+        @variable(nested_objective, x)
+        @variable(nested_objective, y)
+        @objective(
+            nested_objective,
+            Min,
+            exp(sin(x) + x^2 + cos(x - y)),
+        )
+
+        translated_nested = ExaModel(nested_objective)
+        @test translated_nested.meta.nnzo == 2
+        @test translated_nested.meta.nnzh == 3
+        _test_callback_equivalence(
+            nested_objective,
+            [[0.3, -0.7], [1.2, 0.4]],
+        )
+
+        parameter_objective = JuMP.Model()
+        @variable(parameter_objective, x[1:8])
+        @variable(parameter_objective, p in JuMP.Parameter(0.4))
+        @objective(
+            parameter_objective,
+            Min,
+            sum(sin(p * x[i]) for i = 1:8),
+        )
+
+        translated_parameter_objective = ExaModel(parameter_objective)
+        @test length(translated_parameter_objective.objs) == 1
+        @test translated_parameter_objective.meta.nnzo == 8
+        @test translated_parameter_objective.meta.nnzh == 8
+        parameter_point = collect(range(-0.7, 0.7; length = 8))
+        @test NLPModels.obj(
+            translated_parameter_objective,
+            parameter_point,
+        ) ≈ sum(sin.(0.4 .* parameter_point))
+        @test NLPModels.grad(
+            translated_parameter_objective,
+            parameter_point,
+        ) ≈ 0.4 .* cos.(0.4 .* parameter_point)
+
+        N = 20
+        coupled_objective = JuMP.Model()
+        @variable(coupled_objective, x[1:N])
+        @objective(
+            coupled_objective,
+            Min,
+            sum(
+                100(x[i-1]^2 - x[i])^2 + (x[i-1] - 1)^2 for
+                i = 2:N
+            ),
+        )
+        translated_coupled = ExaModel(coupled_objective)
+        @test 2N - 1 < translated_coupled.meta.nnzh < 4(N - 1)
+        @test length(translated_coupled.objs) == 2
+        _test_callback_equivalence(
+            coupled_objective,
+            [collect(range(-0.5, 0.5; length = N))],
+        )
+    end
+
+    @testset "nonlinear aliasing and batching" begin
+        mixed = JuMP.Model()
+        @variable(mixed, z[1:4])
+        @constraint(mixed, sin(z[1] * z[2]) == 0.0)
+        @constraint(mixed, sin(z[3] * z[3]) == 0.0)
+        @constraint(mixed, sin(z[3] * z[4]) == 0.0)
+        @objective(mixed, Min, sum(z))
+
+        translated_mixed = ExaModel(mixed)
+        @test translated_mixed.meta.nnzj == 5
+        @test translated_mixed.meta.nnzh == 7
+        mixed_point = [0.2, -0.4, 0.7, 1.1]
+        @test NLPModels.cons(translated_mixed, mixed_point) ≈
+              [
+            sin(mixed_point[1] * mixed_point[2]),
+            sin(mixed_point[3]^2),
+            sin(mixed_point[3] * mixed_point[4]),
+        ]
+
+        K = 4
+        batched = JuMP.Model()
+        @variable(batched, p[1:K])
+        @variable(batched, vmf[1:K])
+        @variable(batched, vmt[1:K])
+        @variable(batched, vaf[1:K])
+        @variable(batched, vat[1:K])
+        @constraint(
+            batched,
+            [i = 1:K],
+            p[i] -
+            1.2vmf[i]^2 -
+            0.7vmf[i] * vmt[i] * cos(vaf[i] - vat[i]) -
+            0.3vmf[i] * vmt[i] * sin(vaf[i] - vat[i]) == 0.0,
+        )
+        @objective(batched, Min, sum(p))
+
+        translated_batched = ExaModel(batched)
+        @test length(translated_batched.cons) == 2
+        @test translated_batched.meta.nnzj == 5K
+        @test translated_batched.meta.nnzh == 10K
+        batched_point = vcat(
+            collect(0.1:0.1:0.4),
+            fill(1.0, K),
+            fill(0.9, K),
+            collect(0.05:0.05:0.2),
+            collect(-0.2:0.05:-0.05),
+        )
+        @test NLPModels.cons(translated_batched, batched_point) ≈
+              [
+            batched_point[i] -
+            1.2batched_point[K+i]^2 -
+            0.7batched_point[K+i] *
+            batched_point[2K+i] *
+            cos(batched_point[3K+i] - batched_point[4K+i]) -
+            0.3batched_point[K+i] *
+            batched_point[2K+i] *
+            sin(batched_point[3K+i] - batched_point[4K+i]) for i = 1:K
+        ]
+    end
+
+    @testset "nonlinear parameters and nested expressions" begin
+        repeated_parameter = JuMP.Model()
+        @variable(repeated_parameter, x)
+        @variable(repeated_parameter, p in JuMP.Parameter(0.4))
+        @constraint(
+            repeated_parameter,
+            sin(p * x) + cos(p * x) + p == 0.0,
+        )
+        @objective(repeated_parameter, Min, x)
+
+        translated_parameter = ExaModel(repeated_parameter)
+        @test translated_parameter.meta.nnzj == 1
+        @test NLPModels.cons(translated_parameter, [0.7]) ≈
+              [sin(0.4 * 0.7) + cos(0.4 * 0.7) + 0.4]
+
+        parameter_only = JuMP.Model()
+        @variable(parameter_only, x)
+        @variable(parameter_only, p in JuMP.Parameter(0.4))
+        @constraint(parameter_only, sin(p) + p^2 == 0.0)
+        @objective(parameter_only, Min, x)
+
+        translated_parameter_only = ExaModel(parameter_only)
+        @test translated_parameter_only.meta.nnzj == 0
+        @test NLPModels.cons(translated_parameter_only, [0.7]) ≈
+              [sin(0.4) + 0.4^2]
+
+        nested_affine = JuMP.Model()
+        @variable(nested_affine, x)
+        @variable(nested_affine, y)
+        @constraint(nested_affine, sin(2x + 3y) + x == 0.0)
+        @objective(nested_affine, Min, x + y)
+
+        translated_affine = ExaModel(nested_affine)
+        @test translated_affine.meta.nnzj == 2
+        @test translated_affine.meta.nnzh == 3
+        _test_callback_equivalence(
+            nested_affine,
+            [[0.3, -0.7], [1.2, 0.4]],
+        )
+
+        nested_quadratic = JuMP.Model()
+        @variable(nested_quadratic, x)
+        @variable(nested_quadratic, y)
+        @constraint(nested_quadratic, sin(x^2 + x * y) + x == 0.0)
+        @objective(nested_quadratic, Min, x + y)
+
+        translated_quadratic = ExaModel(nested_quadratic)
+        @test translated_quadratic.meta.nnzj == 2
+        @test translated_quadratic.meta.nnzh == 3
+        _test_callback_equivalence(
+            nested_quadratic,
+            [[0.3, -0.7], [1.2, 0.4]],
+        )
+    end
+
+    @testset "multiple nonlinear shapes and Float32" begin
+        shapes = JuMP.Model()
+        @variable(shapes, x)
+        @variable(shapes, y)
+        @variable(shapes, z)
+        @constraint(shapes, sin(x) == 0.0)
+        @constraint(shapes, exp(y + z) - 1.0 == 0.0)
+        @constraint(shapes, cos(x * y) + z == 0.0)
+        @objective(shapes, Min, x + y + z)
+
+        translated_shapes = ExaModel(shapes)
+        @test length(translated_shapes.cons) == 4
+        @test translated_shapes.meta.nnzj == 6
+        shapes_point = [0.2, -0.4, 0.7]
+        @test NLPModels.cons(translated_shapes, shapes_point) ≈
+              [
+            sin(shapes_point[1]),
+            exp(shapes_point[2] + shapes_point[3]) - 1.0,
+            cos(shapes_point[1] * shapes_point[2]) + shapes_point[3],
+        ]
+
+        float_model = JuMP.GenericModel{Float32}()
+        @variable(float_model, x)
+        @variable(float_model, y)
+        @constraint(
+            float_model,
+            sin(x) + x^2 + cos(x - y) == 0.0f0,
+        )
+        @objective(float_model, Min, x + y)
+
+        translated_float = ExaModel(float_model)
+        @test typeof(translated_float) <: ExaModel{Float32}
+        @test translated_float.meta.nnzj == 2
+        @test translated_float.meta.nnzh == 3
+        float_point = Float32[0.3, -0.7]
+        @test eltype(NLPModels.cons(translated_float, float_point)) ==
+              Float32
+        difference = float_point[1] - float_point[2]
+        @test NLPModels.cons(translated_float, float_point) ≈
+              Float32[
+            sin(float_point[1]) +
+            float_point[1]^2 +
+            cos(difference)
+        ]
+        @test NLPModels.grad(translated_float, float_point) ≈
+              ones(Float32, 2)
+        @test _jacobian_matrix(translated_float, float_point) ≈
+              reshape(
+            Float32[
+                cos(float_point[1]) +
+                2float_point[1] -
+                sin(difference),
+                sin(difference),
+            ],
+            1,
+            2,
+        )
+        expected_hessian = Float32[
+            -sin(float_point[1])+2-cos(difference) cos(difference)
+            cos(difference) -cos(difference)
+        ]
+        @test _hessian_matrix(
+            translated_float,
+            float_point,
+            Float32[0.37];
+            obj_weight = 0.61f0,
+        ) ≈ 0.37f0 .* expected_hessian
+    end
+end
+
 function runtests()
     @testset "JuMP Interface test" begin
+        derivative_sparsity_tests()
         for (model, cases) in JUMP_INTERFACE_INSTANCES
             for case in cases
                 @testset "$model $case" begin
