@@ -15,7 +15,7 @@ function _gen_module_source(prefix::AbstractString, template_n::Integer)
 include("user_model.jl")
 
 # Recorded once, at precompile time; nothing below this line enters the
-# compiled call graph except `replay` and the evaluation kernels.
+# compiled call graph except `instantiate` and the evaluation kernels.
 const TAPE = build(ExaModels.ExaTape(), ExaModels.DataTracer(make_data($template_n)))
 """,
         "make_data($template_n)",
@@ -30,7 +30,7 @@ end
 # The template's schema is fixed at compile time, so the C interface exposes
 # fill-in-the-blanks: named slots for scalars, plain arrays, and table columns
 # (tables cross the boundary columnar and are zipped back into the
-# vector-of-namedtuples the tape's replay expects). All generated code is
+# vector-of-namedtuples the tape's instantiate expects). All generated code is
 # static — literal field names, concrete types — for --trim=safe.
 
 _jlname(x) = replace(string(x), "\"" => "")
@@ -186,7 +186,7 @@ Base.@ccallable function $(p("new_from_data"))(bid::Cint)::Cint
     b = BUILDERS[Int(bid)]
     data = (; $(join(asm, ",\n       ")))
     try
-        push!(MODELS, ExaModels.ExaModel(ExaModels.replay(TAPE, data)))
+        push!(MODELS, ExaModels.ExaModel(ExaModels.instantiate(TAPE, data)))
         return Cint(length(MODELS))
     catch
         return Cint(0)
@@ -204,7 +204,7 @@ make_data(n) = (; $fname = Int(n))
 
 Base.@ccallable function $(prefix)_new(n::Cint)::Cint
     try
-        push!(MODELS, ExaModels.ExaModel(ExaModels.replay(TAPE, make_data(Int(n)))))
+        push!(MODELS, ExaModels.ExaModel(ExaModels.instantiate(TAPE, make_data(Int(n)))))
         return Cint(length(MODELS))
     catch
         return Cint(0)
@@ -238,7 +238,7 @@ function _gen_module(
 # lifetime; ids are never reused.
 Base.@ccallable function $(p("new"))(n::Cint)::Cint
     try
-        push!(MODELS, ExaModels.ExaModel(ExaModels.replay(TAPE, make_data(Int(n)))))
+        push!(MODELS, ExaModels.ExaModel(ExaModels.instantiate(TAPE, make_data(Int(n)))))
         return Cint(length(MODELS))
     catch
         return Cint(0)
@@ -252,7 +252,7 @@ using ExaModels
 using ExaModels.NLPModels
 
 $setup
-const ModelT = typeof(ExaModels.ExaModel(ExaModels.replay(TAPE, $template_call)))
+const ModelT = typeof(ExaModels.ExaModel(ExaModels.instantiate(TAPE, $template_call)))
 const MODELS = ModelT[]
 
 $new_fn

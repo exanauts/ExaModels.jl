@@ -9,11 +9,8 @@
 #
 # The **recorder** removes user code from the compiled call graph entirely.
 # Model construction is *recorded* once, at precompile time, in ordinary
-# dynamic Julia — and the resulting **tape** is *replayed* against actual data
+# dynamic Julia — and the resulting **tape** is *instantiated* against actual data
 # inside the binary by ExaModels' own (type-stable, trim-safe) machinery.
-#
-# This is the tracing model familiar from JAX: the data stand-in is a tracer,
-# the tape is the jaxpr, and `replay` is the compiled artifact.
 #
 # ## Recording a model
 #
@@ -47,16 +44,16 @@ tape = ExaTape()
 # instead of building anything. The construction code above runs exactly once,
 # here, in dynamic Julia — it is never part of an AOT-compiled call graph.
 #
-# ## Replaying it
+# ## Instantiating it
 #
-# `ExaModel(tape, data)` replays the tape — folding over it and making the
+# `ExaModel(tape, data)` instantiates the tape — folding over it and making the
 # real `add_var` / `add_con` / `add_obj` calls with every symbolic value
 # resolved against the data you pass, which can have *different sizes* than
 # the template — and builds the model in one call:
 
 model = ExaModel(tape, (; N = 1000))
 
-# Element type and backend are replay-time choices, so a single tape serves
+# Element type and backend are instantiate-time choices, so a single tape serves
 # CPU and GPU at any precision:
 #
 # ```julia
@@ -64,14 +61,14 @@ model = ExaModel(tape, (; N = 1000))
 # model = ExaModel(tape, (; N = 1000); T = Float32, backend = CUDABackend())
 # ```
 #
-# The replayed model contains no recorder machinery at all — its evaluation
+# The instantiated model contains no recorder machinery at all — its evaluation
 # path is byte-identical to one built directly against `ExaCore`.
 #
 # ## What a tape can and cannot capture
 #
 # A tape freezes the model's *structure*; values and sizes flow through.
 # Sizes (`data.N`), ranges (`1:data.N-2`), data arrays used as iterables,
-# bounds, and start values are all resolved at replay time. But **control flow
+# bounds, and start values are all resolved at instantiate time. But **control flow
 # is not recordable**: an `if data.has_storage` would silently bake the
 # recording-time branch into the tape, so comparisons and iteration on traced
 # values throw a `RecorderStructureError` at record time instead.
@@ -117,6 +114,6 @@ model = ExaModel(tape, (; N = 1000))
 #
 # This is the underlying pattern in every case: the tape is recorded at a
 # package's *precompile* time (`const TAPE = build(ExaTape(), DataTracer(template))`)
-# and replayed at runtime — so `juliac --trim=safe` only ever needs to
-# compile `replay` and the evaluation kernels, never `build`. See
+# and instantiated at runtime — so `juliac --trim=safe` only ever needs to
+# compile `instantiate` and the evaluation kernels, never `build`. See
 # `docs/design/recorder.md` in the repository for the design rationale.

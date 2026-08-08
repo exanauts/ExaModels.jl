@@ -13,7 +13,7 @@ const _HAS_JULIAC_API = isdefined(JuliaC, :ImageRecipe)
 # Script tail shared by every case. Expects `r` (compile_library result) and
 # `m_ref` (in-process reference model at n = 40) to be in scope. The whole
 # callback surface is exercised through the ABI and compared against the
-# reference at 1e-14: the library's model is the same tape replayed, so
+# reference at 1e-14: the library's model is the same tape instantiated, so
 # structure and values must agree to rounding.
 function _lib_consume(; solve::Bool)
     s = """

@@ -75,27 +75,27 @@ function runtests()
     @testset "Recorder" begin
         tape = lv_tape()
 
-        @testset "replay matches direct build (N = $N)" for N in (10, 500)
+        @testset "instantiate matches direct build (N = $N)" for N in (10, 500)
             m_rec = ExaModel(tape, (; N = N))
             m_ref = direct_model(N)
             compare_models(m_rec, m_ref)
         end
 
-        @testset "replay is type-stable" begin
-            core = @inferred ExaModels.replay(tape, (; N = 10))
+        @testset "instantiate is type-stable" begin
+            core = @inferred ExaModels.instantiate(tape, (; N = 10))
             @test core isa ExaCore{Float64}
         end
 
-        @testset "element type is a replay-time choice" begin
+        @testset "element type is a instantiate-time choice" begin
             m = ExaModel(tape, (; N = 10); T = Float32)
             @test obj(m, ones(Float32, 10)) isa Float32
         end
 
-        @testset "built models are independent of later replays" begin
+        @testset "built models are independent of later instantiates" begin
             m10 = ExaModel(tape, (; N = 10))
             x = ones(10)
             o1 = obj(m10, x)
-            ExaModels.replay(tape, (; N = 100))  # rebinds the tape's variable refs
+            ExaModels.instantiate(tape, (; N = 100))  # rebinds the tape's variable refs
             @test obj(m10, x) == o1
         end
 
@@ -134,7 +134,7 @@ function runtests()
                 @test hess_structure(mt) == hess_structure(mc)
                 @test hess_coord(mt, xr, yr) == hess_coord(mc, xr, yr)
             end
-            core = @inferred ExaModels.replay(ct, (; N = 10))
+            core = @inferred ExaModels.instantiate(ct, (; N = 10))
             @test core isa ExaCore{Float64}
         end
 
@@ -160,7 +160,7 @@ function runtests()
                 m_ref = lv_direct(case.name, N)
                 compare_models(m_rec, m_ref; dense = dense)
             end
-            core = @inferred ExaModels.replay(t, (; N = case.sizes[1]))
+            core = @inferred ExaModels.instantiate(t, (; N = case.sizes[1]))
             @test core isa ExaCore{Float64}
         end
 
@@ -171,7 +171,7 @@ function runtests()
                 m_ref, _, _ = _exa_luksan_vlcek_model(nothing, N; M = M)
                 compare_models(m_rec, m_ref)
             end
-            core = @inferred ExaModels.replay(t, (; N = 6, M = 2))
+            core = @inferred ExaModels.instantiate(t, (; N = 6, M = 2))
             @test core isa ExaCore{Float64}
         end
 
@@ -186,7 +186,7 @@ function runtests()
                     COPSBenchmark.ExaModelsBackend(), n)
                 compare_models(m_rec, m_ref; dense = true)
             end
-            core = @inferred ExaModels.replay(t, (; n = sizes[1]))
+            core = @inferred ExaModels.instantiate(t, (; n = sizes[1]))
             @test core isa ExaCore{Float64}
         end
 
@@ -199,7 +199,7 @@ function runtests()
                 m_ref, _, _ = __exa_ac_power_model(nothing, data)
                 compare_models(m_rec, m_ref)
             end
-            core = @inferred ExaModels.replay(t, data3)
+            core = @inferred ExaModels.instantiate(t, data3)
             @test core isa ExaCore{Float64}
         end
 

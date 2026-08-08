@@ -1,4 +1,4 @@
-# ExaTape: record/replay model construction for AOT compilation
+# ExaTape: record/instantiate model construction for AOT compilation
 
 ## Problem
 
@@ -10,12 +10,12 @@ become ExaModels' code, not the user's.
 
 ## Idea
 
-JAX-style tracing, adapted to ExaModels' generator-based syntax:
+Trace-based construction, in ExaModels' generator-based syntax:
 
 - **`DataTracer`** — a record-time stand-in for the data `NamedTuple`.
   `data.N` returns a *typed symbolic node* (`DataField{Int, :N}`), and a small
   closed set of operations on tracer values (`data.N - 2`, `1:data.N`,
-  `length(data.bus)`) return further typed nodes (`TracerExpr`). At replay
+  `length(data.bus)`) return further typed nodes (`TracerExpr`). At instantiate
   time the same accesses hit a real `NamedTuple`.
 - **`ExaTape`** — a record-time stand-in for `ExaCore`. `add_var` / `add_con`
   / `add_obj` dispatch on it and *record* their arguments instead of building
@@ -26,14 +26,14 @@ JAX-style tracing, adapted to ExaModels' generator-based syntax:
 - **`ExaModel(tape, data; T, backend)`** — the public one-call form: a
   type-stable fold over the tape entries makes the *real*
   `add_var`/`add_con`/`add_obj` calls against a real `ExaCore`, and the model
-  is built from it. Backend and precision are chosen at replay, not record —
-  record once, replay on CPU or GPU. Construction is explicit — the user
+  is built from it. Backend and precision are chosen at instantiate, not record —
+  record once, instantiate on CPU or GPU. Construction is explicit — the user
   builds against `ExaTape()` and `DataTracer(template)` directly, in ordinary
   dynamic Julia; construction code may be arbitrarily type-unstable, since
-  nothing there is ever AOT-compiled. (`ExaModels.replay(tape, data) ->
+  nothing there is ever AOT-compiled. (`ExaModels.instantiate(tape, data) ->
   ExaCore` remains as the unexported two-step form.)
 
-## Key mechanism: replay-time re-tracing via `Ref` binding
+## Key mechanism: instantiate-time re-tracing via `Ref` binding
 
 ExaModels traces a constraint/objective generator by calling `gen.f(DataSource())`
 — the closure runs once on a sentinel, and variable references become `Var`
@@ -43,12 +43,12 @@ computed from the `Variable` handle the closure captured.
 The tape therefore stores the user's closures **uncalled**, and the recorded
 `add_var` returns a `TapeVar` — a thin handle holding an *empty*
 `Ref{Variable{S,O,T}}` whose concrete type is computable at record time from
-the recorded dims (`S = Tuple{replay_type.(dims)...}`, `O = Int`). Indexing a
+the recorded dims (`S = Tuple{instantiate_type.(dims)...}`, `O = Int`). Indexing a
 tape handle **always** yields a sentinel node (`TapeVarIndexed`) — never a
 branch on binding state, which would make traced tree types a `Union` and
-destroy replay inferability. At replay:
+destroy instantiate inferability. At instantiate:
 
-1. `VarEntry` replays through the real `add_var`, which computes correct
+1. `VarEntry` instantiates through the real `add_var`, which computes correct
    offsets for the *actual* sizes, and binds `tapevar.ref[] = v`.
 2. `ConEntry`/`ObjEntry` trace their stored closure themselves
    (`f(DataSource())`), rewrite the sentinels into offset-correct references
@@ -61,18 +61,18 @@ destroy replay inferability. At replay:
 Consequences:
 
 - Offsets are correct by construction — never recorded, never rewritten.
-- The replayed `ExaCore`/`ExaModel` contains **zero recorder types**; the hot
+- The instantiated `ExaCore`/`ExaModel` contains **zero recorder types**; the hot
   evaluation path is byte-identical to a directly-built model.
-- A tape is replayable many times with different data/sizes/backends, but the
-  `Ref` binding makes concurrent replays of the *same tape object* racy —
-  replay a tape from one thread at a time (documented; enforcement later).
+- A tape is instantiable many times with different data/sizes/backends, but the
+  `Ref` binding makes concurrent instantiates of the *same tape object* racy —
+  instantiate a tape from one thread at a time (documented; enforcement later).
 
 ## Semantics: what a tape can and cannot capture
 
 A tape freezes *structure*; values and sizes flow through.
 
 - Fine: `add_var(c, data.N)`, `1:data.N - 2` as a generator iterable, a
-  `start =` generator over a traced range, replaying at sizes different from
+  `start =` generator over a traced range, instantiating at sizes different from
   the template.
 - Frozen (must error at record time, not silently specialize): branching on
   data (`if data.has_storage`, `data.N > 5`). Comparisons and iteration on
@@ -87,9 +87,9 @@ A tape freezes *structure*; values and sizes flow through.
 
 - Record phase: no stability requirement at all (runs once, dynamically).
 - The tape: concrete nested tuples; every entry field concretely typed.
-- Replay: recursive vararg fold (`_replay(c, data, e, rest...)`), the same
+- Instantiate: recursive vararg fold (`_instantiate(c, data, e, rest...)`), the same
   compile-time-unrolled pattern ExaModels uses everywhere; `resolve` is typed
-  by the `TracerValue{T}` parameter. Gate: `@inferred replay(tape, data)` in
+  by the `TracerValue{T}` parameter. Gate: `@inferred instantiate(tape, data)` in
   the test suite.
 
 ## Why this fixes AOT
@@ -102,7 +102,7 @@ main(data) = solve(ExaModel(TAPE, data))
 ```
 
 `record` executes during precompilation, where dynamic Julia is fine. The
-runtime call graph that `juliac --trim=safe` must compile is `replay` + the
+runtime call graph that `juliac --trim=safe` must compile is `instantiate` + the
 standard ExaModels kernels — all ours. The user's `build` is never called at
 runtime.
 
@@ -111,7 +111,7 @@ runtime.
 - Recording: `add_var` / `add_par` / `add_con` / `add_con!` / `add_obj`
   (generator forms + macros, names, tags, bounds/start kwargs).
 - Constraint handles for `add_con!` bind *positionally*: `add_con` on the tape
-  returns `TapeCon{K}` (K = entry index) and replay threads a tuple of
+  returns `TapeCon{K}` (K = entry index) and instantiate threads a tuple of
   realized handles, because a `Ref`'s concrete type would need the traced
   `SIMDFunction` type, unknowable at record time. Variables and parameters
   bind through concretely-typed `Ref`s as described above.
@@ -125,19 +125,19 @@ runtime.
   against independently-implemented builders — the docs LuksanVlcek, the full
   18-model LuksanVlcekBenchmark set (tape builders in that repo's ExaModels
   extension), COPS chain/camshape (likewise), the repo's 2-D Luksan (product
-  generators + `add_con!`), and the AC power flow model (one tape replayed
-  across different pglib grids) — plus `@inferred replay` on every tape and
+  generators + `add_con!`), and the AC power flow model (one tape instantiated
+  across different pglib grids) — plus `@inferred instantiate` on every tape and
   the AOT leg: `compile_library` per model, consumed through CNLPModels.jl
   and solved host-side against in-process references.
 
 ### GPU compatibility
 
-Backend and precision are replay-time choices, so one tape serves CPU and
+Backend and precision are instantiate-time choices, so one tape serves CPU and
 GPU: `ExaModel(tape, data; T = Float32, backend = CUDABackend())` (verified:
-CUDA replay of a recorded tape matches the CPU model's obj/grad/cons; a
-Float32 device replay builds). Nothing in the tape, its serialization, or
+CUDA instantiate of a recorded tape matches the CPU model's obj/grad/cons; a
+Float32 device instantiate builds). Nothing in the tape, its serialization, or
 the C ABI encodes an array type. For AOT, the generated library currently
-replays on the default (CPU) backend; the seam for device libraries is
+instantiates on the default (CPU) backend; the seam for device libraries is
 confined to two places — the backend argument of the generated
 `ExaModel(TAPE, data)` call, and the C boundary (host pointers, with a
 device library copying at the boundary until device-pointer entry points
@@ -186,10 +186,10 @@ hosting a bundled runtime inside a Julia process) is CNLPModels.jl.
   fundamental limit above); tape → generated-source dump; a richer data ABI
   for `compile_library` (pointer-based array marshalling instead of
   `new(n::Cint)`; the tape-input form is currently limited to
-  single-integer-field templates); thread-safety of replay.
+  single-integer-field templates); thread-safety of instantiate.
 
 ## Naming
 
-`DataTracer`, `ExaTape`, `record`, `replay`, `TapeVar`,
+`DataTracer`, `ExaTape`, `record`, `instantiate`, `TapeVar`,
 `RecorderStructureError`. File: `src/recorder.jl`, tests:
 `test/RecorderTest/RecorderTest.jl`.

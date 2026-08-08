@@ -3,7 +3,7 @@
 # The LuksanVlcek tape builders live in LuksanVlcekBenchmark's ExaModels
 # extension (`LVB.<name>_tape()`) and the COPS ones in COPSBenchmark's
 # (`COPSBenchmark.<name>_tape()`); each records the model once against a
-# symbolic schema and is replayed here against the corresponding direct
+# symbolic schema and is instantiated here against the corresponding direct
 # constructor. The builders local to this file mirror models that live in
 # this repo's own test suite (test/NLPTest). Transcription idioms are
 # documented in docs/design/recorder.md.

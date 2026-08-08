@@ -1,10 +1,10 @@
-# ── ExaTape: record/replay of model construction ──────────────────────────────
+# ── ExaTape: record/instantiate of model construction ──────────────────────────────
 #
 # Records the sequence of `add_*` calls made against a stand-in core (ExaTape)
 # with a stand-in data object (DataTracer), so that model construction can be
-# replayed later against real data through the real ExaCore API. The user's
+# instantiated later against real data through the real ExaCore API. The user's
 # model-building code runs only at record time (ordinary dynamic Julia);
-# replay is a type-stable fold over a concretely-typed tape, suitable for
+# instantiate is a type-stable fold over a concretely-typed tape, suitable for
 # `juliac --trim=safe`. Design notes: docs/design/recorder.md.
 
 # ── Tracer IR ─────────────────────────────────────────────────────────────────
@@ -13,20 +13,20 @@
     TracerValue{T}
 
 Abstract supertype for record-time stand-ins for values that only become
-available at replay time (fields of the data named tuple and computations on
-them). `T` is the concrete type the value will have at replay time.
+available at instantiate time (fields of the data named tuple and computations on
+them). `T` is the concrete type the value will have at instantiate time.
 """
 abstract type TracerValue{T} end
 
-@inline replay_type(::Type{<:TracerValue{T}}) where {T} = T
-@inline replay_type(::TracerValue{T}) where {T} = T
-@inline replay_type(::Type{T}) where {T} = T   # plain types stand for themselves
-@inline replay_type(x) = typeof(x)             # plain values stand for themselves
+@inline instantiate_type(::Type{<:TracerValue{T}}) where {T} = T
+@inline instantiate_type(::TracerValue{T}) where {T} = T
+@inline instantiate_type(::Type{T}) where {T} = T   # plain types stand for themselves
+@inline instantiate_type(x) = typeof(x)             # plain values stand for themselves
 
 """
     DataField{T, name} <: TracerValue{T}
 
-Tracer referencing field `name` of the data named tuple, of replay-time type
+Tracer referencing field `name` of the data named tuple, of instantiate-time type
 `T`. Created by `getproperty` on a [`DataTracer`](@ref).
 """
 struct DataField{T, name} <: TracerValue{T} end
@@ -35,7 +35,7 @@ struct DataField{T, name} <: TracerValue{T} end
     TracerExpr{T, F, A} <: TracerValue{T}
 
 Tracer for a deferred computation `f(args...)` over tracer values and plain
-constants, with replay-time result type `T`.
+constants, with instantiate-time result type `T`.
 """
 struct TracerExpr{T, F, A} <: TracerValue{T}
     f::F
@@ -73,7 +73,7 @@ values resolve to themselves.
     Iterators.product(map(r -> resolve(r, data), p.iterators)...)
 
 @inline function _record_op(f::F, args...) where {F}
-    T = Base.promote_op(f, map(replay_type, args)...)
+    T = Base.promote_op(f, map(instantiate_type, args)...)
     TracerExpr{T}(f, args)
 end
 
@@ -108,13 +108,13 @@ end
 
 # A comprehension over a traced range (`[f(i) for i in 1:2:data.n]`) reaches
 # `collect` with a generator whose iterable is a tracer. Defer the whole
-# collect to replay time; the body may itself capture tracers (`k / data.nh`),
+# collect to instantiate time; the body may itself capture tracers (`k / data.nh`),
 # in which case each element is a tracer expression that gets resolved.
 """
     DeferredCollect{ET, F, I} <: TracerValue{Vector{ET}}
 
 Tracer for a comprehension whose range (and possibly body) is traced. At
-replay time the range is resolved, the body runs per element, and any tracer
+instantiate time the range is resolved, the body runs per element, and any tracer
 elements are resolved against the data.
 """
 struct DeferredCollect{ET, F, I} <: TracerValue{Vector{ET}}
@@ -129,9 +129,9 @@ end
     # call is both allowed and exact. Falls back to inference if the body
     # cannot run at the sample.
     ET = try
-        replay_type(typeof(g.f(one(eltype(replay_type(I))))))
+        instantiate_type(typeof(g.f(one(eltype(instantiate_type(I))))))
     catch
-        replay_type(Base.promote_op(g.f, eltype(replay_type(I))))
+        instantiate_type(Base.promote_op(g.f, eltype(instantiate_type(I))))
     end
     DeferredCollect{ET, typeof(g.f), I}(g.f, g.iter)
 end
@@ -169,7 +169,7 @@ Base.iterate(::TracerValue, state...) = throw(
     RecorderStructureError(
         "cannot iterate a traced value at record time. Pass generators over " *
         "traced ranges directly to add_var/add_con/add_obj — they are iterated " *
-        "at replay time.",
+        "at instantiate time.",
     ),
 )
 
@@ -179,7 +179,7 @@ Base.iterate(::TracerValue, state...) = throw(
     TapeVar{V}
 
 Record-time stand-in for a [`Variable`](@ref), returned by `add_var` on an
-[`ExaTape`](@ref). Holds an initially-empty `Ref` that [`replay`](@ref) binds
+[`ExaTape`](@ref). Holds an initially-empty `Ref` that [`instantiate`](@ref) binds
 to the real `Variable`; indexing delegates to the bound variable, so closures
 that captured a `TapeVar` trace correctly inside the real `add_con`/`add_obj`.
 """
@@ -191,9 +191,9 @@ end
     TapeVarIndexed / TapeParIndexed
 
 Symbolic reference to an entry of a not-yet-bound [`TapeVar`](@ref) /
-[`TapePar`](@ref), produced when a tape handle is indexed *outside* a replay
+[`TapePar`](@ref), produced when a tape handle is indexed *outside* a instantiate
 (i.e. while building an expression tree programmatically, e.g. from Python).
-Replay rewrites these into real `Var` / `ParameterNode` nodes via
+Instantiate rewrites these into real `Var` / `ParameterNode` nodes via
 [`_rebind`](@ref) once the handles are bound.
 """
 struct TapeVarIndexed{V, I} <: AbstractNode
@@ -203,7 +203,7 @@ end
 
 # Indexing a tape handle ALWAYS produces a symbolic reference — never a
 # branch on binding state, which would make traced tree types a Union and
-# destroy replay inferability. Replay resolves sentinels via _rebind.
+# destroy instantiate inferability. Instantiate resolves sentinels via _rebind.
 @inline Base.getindex(v::TapeVar, i...) = TapeVarIndexed(v, i)
 
 """
@@ -228,7 +228,7 @@ end
 
 Rewrite an expression tree built at record time (with
 [`TapeVarIndexed`](@ref)/[`TapeParIndexed`](@ref) sentinels) into a real
-ExaModels tree by indexing the now-bound handles. Called during replay of
+ExaModels tree by indexing the now-bound handles. Called during instantiate of
 tree entries; structure and all other leaves are preserved.
 """
 @inline _rebind(x) = x
@@ -264,7 +264,7 @@ Record-time stand-in for a [`Constraint`](@ref) created by the `K`-th tape
 entry. Constraint handles are only ever used as explicit arguments to
 `add_con!` (never inside traced closures), so instead of a `Ref` — whose
 concrete type would need the traced `SIMDFunction` type, unknowable at record
-time — replay threads a positional tuple of realized handles and `add_con!`
+time — instantiate threads a positional tuple of realized handles and `add_con!`
 entries look theirs up by `K`.
 """
 struct TapeCon{K} end
@@ -380,7 +380,7 @@ end
     lvar = nothing,
     uvar = nothing,
 )
-    V = Variable{Tuple{map(replay_type, ns)...}, Int, typeof(tag)}
+    V = Variable{Tuple{map(instantiate_type, ns)...}, Int, typeof(tag)}
     var = TapeVar(Ref{V}())
     entry = VarEntry(ns, start, lvar, uvar, name, tag, var)
     (_append(tape, entry), var)
@@ -393,7 +393,7 @@ end
     name = nothing,
     value = nothing,
 )
-    P = Parameter{Tuple{map(replay_type, ns)...}, Int, typeof(tag)}
+    P = Parameter{Tuple{map(instantiate_type, ns)...}, Int, typeof(tag)}
     par = TapePar(Ref{P}())
     entry = ParEntry(ns, value, name, tag, par)
     (_append(tape, entry), par)
@@ -458,12 +458,12 @@ end
     (_append(tape, entry), TapeConAug())
 end
 
-# ── replay ────────────────────────────────────────────────────────────────────
+# ── instantiate ────────────────────────────────────────────────────────────────────
 
 """
     ExaModel(tape::ExaTape, data::NamedTuple; T = Float64, backend = nothing, kwargs...)
 
-Replay `tape` against `data` and build the model in one call — the standard
+Instantiate `tape` against `data` and build the model in one call — the standard
 way to turn a recorded tape into a solvable `ExaModel`:
 
     m = ExaModel(tape, (; N = 1000))
@@ -471,7 +471,7 @@ way to turn a recorded tape into a solvable `ExaModel`:
 
 Element type and backend are chosen here; remaining keyword arguments are
 passed to the `ExaModel` constructor. (The underlying two-step form,
-`ExaModels.replay(tape, data) -> ExaCore`, remains available — unexported —
+`ExaModels.instantiate(tape, data) -> ExaCore`, remains available — unexported —
 for workflows that need the intermediate core.)
 """
 @inline function ExaModel(
@@ -481,11 +481,11 @@ for workflows that need the intermediate core.)
     backend = nothing,
     kwargs...,
 )
-    return ExaModel(_replay_impl(tape, data, T, backend); kwargs...)
+    return ExaModel(_instantiate_impl(tape, data, T, backend); kwargs...)
 end
 
 """
-    replay(tape::ExaTape, data::NamedTuple; T = Float64, backend = nothing) -> ExaCore
+    instantiate(tape::ExaTape, data::NamedTuple; T = Float64, backend = nothing) -> ExaCore
 
 Rebuild a real [`ExaCore`](@ref) by folding over the recorded entries and
 making the real `add_var`/`add_con`/`add_obj` calls with all tracer values
@@ -493,33 +493,33 @@ resolved against `data`. Element type and backend are chosen here, not at
 record time. The fold is fully type-inferrable (gated by `@inferred` in
 `test/RecorderTest`).
 
-A tape may be replayed any number of times, but not concurrently from multiple
-threads: replay binds each recorded variable handle by mutating its `Ref`.
+A tape may be instantiated any number of times, but not concurrently from multiple
+threads: instantiate binds each recorded variable handle by mutating its `Ref`.
 """
-function replay(
+function instantiate(
     tape::ExaTape,
     data::NamedTuple;
     T::Type{<:AbstractFloat} = Float64,
     backend = nothing,
 )
-    return _replay_impl(tape, data, T, backend)
+    return _instantiate_impl(tape, data, T, backend)
 end
 
 # Positional core: Type{T} dispatch keeps inference exact through the
 # keyword seam (a Type-valued keyword argument loses its constant-ness in
 # kwcall, which surfaces as an abstract ExaCore under juliac's verifier).
-@inline function _replay_impl(tape::ExaTape, data::NamedTuple, ::Type{T}, backend) where {T <: AbstractFloat}
+@inline function _instantiate_impl(tape::ExaTape, data::NamedTuple, ::Type{T}, backend) where {T <: AbstractFloat}
     c = ExaCore(T; backend = backend, minimize = tape.config.minimize, concrete = Val(true))
-    return _replay(c, (), data, tape.entries...)
+    return _instantiate(c, (), data, tape.entries...)
 end
 
 # The fold threads a positional tuple of realized handles (one slot per entry;
 # `nothing` for entries whose handles bind through Refs) so that ConAugEntry{K}
 # can look up its target Constraint type-stably.
-@inline _replay(c::ExaCore, handles, data) = c
-@inline function _replay(c::ExaCore, handles, data, entry, rest...)
-    c, h = _replay_entry(c, handles, entry, data)
-    return _replay(c, (handles..., h), data, rest...)
+@inline _instantiate(c::ExaCore, handles, data) = c
+@inline function _instantiate(c::ExaCore, handles, data, entry, rest...)
+    c, h = _instantiate_entry(c, handles, entry, data)
+    return _instantiate(c, (handles..., h), data, rest...)
 end
 
 # The low-level (tree, pars) forms do not run the generator path's
@@ -535,7 +535,7 @@ end
 @inline _resolve_arg(g::Base.Generator, data) = Base.Generator(g.f, resolve(g.iter, data))
 @inline _resolve_arg(x, data) = resolve(x, data)
 
-@inline function _replay_entry(c::ExaCore{T}, handles, e::VarEntry, data) where {T}
+@inline function _instantiate_entry(c::ExaCore{T}, handles, e::VarEntry, data) where {T}
     dims = map(d -> resolve(d, data), e.dims)
     c, v = add_var(
         c,
@@ -550,7 +550,7 @@ end
     return (c, nothing)
 end
 
-@inline function _replay_entry(c::ExaCore{T}, handles, e::ParEntry, data) where {T}
+@inline function _instantiate_entry(c::ExaCore{T}, handles, e::ParEntry, data) where {T}
     dims = map(d -> resolve(d, data), e.dims)
     c, p = add_par(
         c,
@@ -563,7 +563,7 @@ end
     return (c, nothing)
 end
 
-@inline function _replay_entry(c::ExaCore{T}, handles, e::ConEntry, data) where {T}
+@inline function _instantiate_entry(c::ExaCore{T}, handles, e::ConEntry, data) where {T}
     c, con = add_con(
         c,
         _rebind(e.f(DataSource())),
@@ -577,19 +577,19 @@ end
     return (c, con)
 end
 
-@inline function _replay_entry(c::ExaCore{T}, handles, e::ConAugEntry{K}, data) where {T, K}
+@inline function _instantiate_entry(c::ExaCore{T}, handles, e::ConAugEntry{K}, data) where {T, K}
     pair = _rebind(e.f(DataSource()))
     gen = Base.Generator(FixedExpr(pair), resolve(e.itr, data))
     c, _ = add_con!(c, handles[K], gen; tag = e.tag)
     return (c, nothing)
 end
 
-@inline function _replay_entry(c::ExaCore{T}, handles, e::ObjEntry, data) where {T}
+@inline function _instantiate_entry(c::ExaCore{T}, handles, e::ObjEntry, data) where {T}
     c, _ = add_obj(c, _rebind(e.f(DataSource())), _collect_pars(resolve(e.itr, data)); name = e.name)
     return (c, nothing)
 end
 
-@inline function _replay_entry(c::ExaCore{T}, handles, e::ConTreeEntry, data) where {T}
+@inline function _instantiate_entry(c::ExaCore{T}, handles, e::ConTreeEntry, data) where {T}
     c, con = add_con(
         c,
         _rebind(e.expr),
@@ -603,13 +603,13 @@ end
     return (c, con)
 end
 
-@inline function _replay_entry(c::ExaCore{T}, handles, e::ConAugTreeEntry{K}, data) where {T, K}
+@inline function _instantiate_entry(c::ExaCore{T}, handles, e::ConAugTreeEntry{K}, data) where {T, K}
     gen = Base.Generator(FixedExpr(_rebind(e.expr)), resolve(e.itr, data))
     c, _ = add_con!(c, handles[K], gen; tag = e.tag)
     return (c, nothing)
 end
 
-@inline function _replay_entry(c::ExaCore{T}, handles, e::ObjTreeEntry, data) where {T}
+@inline function _instantiate_entry(c::ExaCore{T}, handles, e::ObjTreeEntry, data) where {T}
     c, _ = add_obj(c, _rebind(e.expr), _collect_pars(resolve(e.itr, data)); name = e.name)
     return (c, nothing)
 end
@@ -643,8 +643,8 @@ call graph contains no user model code.
 """
 function compile_library end
 
-# Post-solve access through tape handles: after a replay, the handle's Ref
-# points at the replayed model's variable, so solution retrieval forwards to
-# it (semantics: the LAST replay of this tape).
+# Post-solve access through tape handles: after a instantiate, the handle's Ref
+# points at the instantiated model's variable, so solution retrieval forwards to
+# it (semantics: the LAST instantiate of this tape).
 solution(result::SolverCore.AbstractExecutionStats, tv::TapeVar) =
     solution(result, tv.ref[])
