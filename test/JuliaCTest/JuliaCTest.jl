@@ -251,10 +251,15 @@ function runtests()
                 mod = Module(:RecorderLibRef)
                 Core.eval(mod, :(using ExaModels))
                 Base.include(mod, joinpath(@__DIR__, "recorder_lib_model.jl"))
-                tape = ExaModels.record(mod.build, mod.make_data(4))
-                m_ref = ExaModels.ExaModel(ExaModels.replay(tape, mod.make_data(10)))
+                # The file's methods are newer than this frame's world age, and
+                # so are the traced closures inside the reference model:
+                # construct and evaluate in the latest world.
+                m_ref = Base.invokelatest() do
+                    tape = ExaModels.record(mod.build, mod.make_data(4))
+                    ExaModels.ExaModel(ExaModels.replay(tape, mod.make_data(10)))
+                end
                 @test x0 == m_ref.meta.x0
-                @test out[] ≈ NLPModels.obj(m_ref, x0) rtol = 1e-14
+                @test out[] ≈ Base.invokelatest(NLPModels.obj, m_ref, x0) rtol = 1e-14
             else
                 @warn "JuliaC.ImageRecipe not available, skipping compile_library test"
             end
