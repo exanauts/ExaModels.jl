@@ -620,3 +620,8 @@ is recorded at the generated package's precompile time, so the compiled
 call graph contains no user model code.
 """
 function compile_library end
+
+# Post-solve access through tape handles: after a replay, the handle's Ref
+# points at the replayed model's variable, so solution retrieval forwards to
+# it (semantics: the LAST replay of this tape).
+solution(result, tv::TapeVar) = solution(result, tv.ref[])
