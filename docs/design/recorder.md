@@ -2,9 +2,8 @@
 
 ## Problem
 
-The current AOT path (`test/JuliaCTest` compiling `LuksanVlcekApp.jl` /
-`COPSApp.jl`) puts the *user's* model-building function inside the
-`juliac --trim=safe` call graph. If the user writes type-unstable or
+The pre-tape AOT path (compiling per-model app packages) put the *user's*
+model-building function inside the `juliac --trim=safe` call graph. If the user writes type-unstable or
 trim-hostile code, compilation fails (or miscompiles) with errors that point
 deep into the compiler, not at the user's model. The compilable surface must
 become ExaModels' code, not the user's.
@@ -24,14 +23,14 @@ JAX-style tracing, adapted to ExaModels' generator-based syntax:
   the real API (so `@add_var` etc. work unchanged). Entries accumulate in a
   concretely-typed nested tuple — the same pattern `ExaCore` itself uses for
   `var`/`cons`/`obj`.
-- **`record(build, template)`** — runs the user's `build(tape, tracer)` once,
-  in ordinary dynamic Julia. User code may be arbitrarily type-unstable;
-  nothing here is ever AOT-compiled.
 - **`ExaModel(tape, data; T, backend)`** — the public one-call form: a
   type-stable fold over the tape entries makes the *real*
   `add_var`/`add_con`/`add_obj` calls against a real `ExaCore`, and the model
   is built from it. Backend and precision are chosen at replay, not record —
-  record once, replay on CPU or GPU. (`ExaModels.replay(tape, data) ->
+  record once, replay on CPU or GPU. Construction is explicit — the user
+  builds against `ExaTape()` and `DataTracer(template)` directly, in ordinary
+  dynamic Julia; construction code may be arbitrarily type-unstable, since
+  nothing there is ever AOT-compiled. (`ExaModels.replay(tape, data) ->
   ExaCore` remains as the unexported two-step form.)
 
 ## Key mechanism: replay-time re-tracing via `Ref` binding
@@ -98,7 +97,7 @@ A tape freezes *structure*; values and sizes flow through.
 A generated app does
 
 ```julia
-const TAPE = record(build, template)          # runs at precompile time
+const TAPE = build(ExaTape(), DataTracer(template))   # runs at precompile time
 main(data) = solve(ExaModel(TAPE, data))
 ```
 
@@ -124,10 +123,12 @@ runtime.
 - Guardrails: comparisons/iteration on tracers throw `RecorderStructureError`.
 - Tests: recorded-vs-direct comparisons (values, derivatives, sparsity)
   against independently-implemented builders — the docs LuksanVlcek, the full
-  18-model LuksanVlcekBenchmark set, the repo's 2-D Luksan (product
+  18-model LuksanVlcekBenchmark set (tape builders in that repo's ExaModels
+  extension), COPS chain/camshape (likewise), the repo's 2-D Luksan (product
   generators + `add_con!`), and the AC power flow model (one tape replayed
   across different pglib grids) — plus `@inferred replay` on every tape and
-  the RecorderApp juliac `--trim=safe` compile-and-run test.
+  the AOT leg: `compile_library` per model, consumed through CNLPModels.jl
+  and solved host-side against in-process references.
 
 ### Transcription idioms (writing a model against the recorder)
 

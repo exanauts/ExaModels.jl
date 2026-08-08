@@ -121,7 +121,6 @@ export ExaModel,
     set_ucon!,
     DataTracer,
     ExaTape,
-    record,
     RecorderStructureError,
     compile_library
 

@@ -48,7 +48,8 @@ end
 
 Record-time stand-in for the data named tuple. Field access (`data.N`) returns
 a [`DataField`](@ref) tracer typed by the corresponding field of `template`,
-instead of a value. Passed to the user's build function by [`record`](@ref).
+instead of a value. Construct one from a template `NamedTuple` whose
+field *types* define the schema.
 """
 struct DataTracer{NT} end
 DataTracer(::NT) where {NT <: NamedTuple} = DataTracer{NT}()
@@ -154,7 +155,7 @@ Base.showerror(io::IO, e::RecorderStructureError) =
 
 const _STRUCTURE_MSG = "the structure of a recorded model cannot depend on data \
 values: this operation would freeze the recording-time result into the tape. \
-Compute structural constants outside `record`, or extend the tracer op set if \
+Compute structural constants before recording, or extend the tracer op set if \
 this operation should be recordable."
 
 for op in (:(==), :(<), :(<=), :(>), :(>=), :isless)
@@ -342,13 +343,18 @@ end
     ConAugTreeEntry{K, E, I, Tg}(expr, itr, tag)
 
 """
-    ExaTape()
+    ExaTape(; minimize = true)
 
 Record-time stand-in for an [`ExaCore`](@ref). `add_var`, `add_con`, and
 `add_obj` (and their macro forms) dispatch on it and record their arguments
 into a concretely-typed entry tuple instead of building a model, threading the
-tape through `(c, x) = add_var(c, ...)` exactly like the real API. Produce one
-with [`record`](@ref) and turn it into a real core with [`replay`](@ref).
+tape through `(c, x) = add_var(c, ...)` exactly like the real API:
+
+    data = DataTracer((; N = 4))     # schema template — values are never read
+    tape = ExaTape()
+    tape, x = add_var(tape, data.N)
+    ...
+    m = ExaModel(tape, (; N = 1000))
 """
 struct ExaTape{E, C}
     entries::E
@@ -450,42 +456,6 @@ end
 @inline function add_con!(tape::ExaTape, ::TapeCon{K}, expr::Pair, itr; tag = nothing) where {K}
     entry = ConAugTreeEntry{K}(expr, itr, tag)
     (_append(tape, entry), TapeConAug())
-end
-
-# ── record ────────────────────────────────────────────────────────────────────
-
-"""
-    record(build, template::NamedTuple; minimize = true) -> ExaTape
-
-Run `build(tape::ExaTape, data::DataTracer)` once and return the resulting
-tape. `template` supplies only the *schema* (field names and types) of the
-data; its values are never read. `build` must thread the tape exactly as it
-would thread an `ExaCore` and return it. Core configuration that the direct
-API takes on the `ExaCore` constructor (`minimize`) is recorded on the tape;
-element type and backend, by contrast, are chosen at [`replay`](@ref) time.
-
-## Example
-
-```julia
-tape = record((; N = 4)) do c, data
-    @add_var(c, x, data.N; start = ((i % 2 == 1 ? -1.2 : 1.0) for i = 1:data.N))
-    @add_con(c, 3x[i+1]^3 + 2x[i+2] - 5 for i = 1:data.N-2)
-    @add_obj(c, 100(x[i-1]^2 - x[i])^2 + (x[i-1] - 1)^2 for i = 2:data.N)
-    c
-end
-core = replay(tape, (; N = 1000))
-model = ExaModel(core)
-```
-"""
-function record(build, template::NamedTuple; minimize = true)
-    tape = build(ExaTape(; minimize = minimize), DataTracer(template))
-    tape isa ExaTape || throw(
-        ArgumentError(
-            "the build function passed to `record` must return the tape it was " *
-            "given (got $(typeof(tape)))",
-        ),
-    )
-    return tape
 end
 
 # ── replay ────────────────────────────────────────────────────────────────────

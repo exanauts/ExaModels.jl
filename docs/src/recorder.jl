@@ -35,19 +35,17 @@ function luksan_vlcek_obj(x, i)
     return 100 * (x[i-1]^2 - x[i])^2 + (x[i-1] - 1)^2
 end
 
-tape = record((; N = 4)) do c, data
-    @add_var(c, x, data.N; start = (luksan_vlcek_x0(i) for i = 1:data.N))
-    @add_con(c, luksan_vlcek_con(x, i) for i = 1:data.N-2)
-    @add_obj(c, luksan_vlcek_obj(x, i) for i = 2:data.N)
-    c
-end
+data = DataTracer((; N = 4))
+tape = ExaTape()
+@add_var(tape, x, data.N; start = (luksan_vlcek_x0(i) for i = 1:data.N))
+@add_con(tape, luksan_vlcek_con(x, i) for i = 1:data.N-2)
+@add_obj(tape, luksan_vlcek_obj(x, i) for i = 2:data.N)
 
-# The first argument to [`record`](@ref) is a *template*: only its field names
-# and types are used, never its values. Inside the build function, `c` is an
-# [`ExaTape`](@ref) and `data` is a [`DataTracer`](@ref); `data.N` returns a
-# typed symbolic value, and the `add_*` calls record their arguments instead of
-# building anything. The user code above runs exactly once, here, in dynamic
-# Julia — it is never part of an AOT-compiled call graph.
+# [`DataTracer`](@ref) wraps a *template*: only its field names and types are
+# used, never its values. Against an [`ExaTape`](@ref), `data.N`
+# returns a typed symbolic value, and the `add_*` calls record their arguments
+# instead of building anything. The construction code above runs exactly once,
+# here, in dynamic Julia — it is never part of an AOT-compiled call graph.
 #
 # ## Replaying it
 #
@@ -117,27 +115,8 @@ model = ExaModel(tape, (; N = 1000))
 # `lv_new(n) → id` / `lv_obj` / `lv_grad` / `lv_cons` / `lv_jac` / `lv_hess`
 # and solve it with any NLPModels-compatible solver.
 #
-# ### The underlying app pattern
-#
-# For an executable (or a custom library layout), record the tape at
-# precompile time and replay in `main`:
-#
-# ```julia
-# module MyModelApp
-# using ExaModels, NLPModelsIpoptLite
-#
-# const TAPE = record(build, (; N = 4))   # runs at precompile time
-#
-# function (@main)(ARGS)
-#     N = parse(Int, ARGS[1])
-#     m = ExaModel(TAPE, (; N = N))
-#     result = ipopt(m; print_level = 3)
-#     return result.status == 0 ? 0 : 1
-# end
-# end
-# ```
-#
-# `juliac --trim=safe` then only needs to compile `replay`, the evaluation
-# kernels, and the solver — never `build`. See `test/RecorderApp.jl` for a
-# complete working example (compiled and run as part of the test suite), and
+# This is the underlying pattern in every case: the tape is recorded at a
+# package's *precompile* time (`const TAPE = build(ExaTape(), DataTracer(template))`)
+# and replayed at runtime — so `juliac --trim=safe` only ever needs to
+# compile `replay` and the evaluation kernels, never `build`. See
 # `docs/design/recorder.md` in the repository for the design rationale.
