@@ -61,6 +61,7 @@ include("deprecated.jl")
 include("utils.jl")
 include("tags.jl")
 include("two_stage.jl")
+include("recorder.jl")
 
 export ExaModel,
     ExaCore,
@@ -116,6 +117,11 @@ export ExaModel,
     get_lcon,
     set_lcon!,
     get_ucon,
-    set_ucon!
+    set_ucon!,
+    DataTracer,
+    ExaTape,
+    record,
+    replay,
+    RecorderStructureError
 
 end # module ExaModels
