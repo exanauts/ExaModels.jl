@@ -490,9 +490,10 @@ NLP through a C interface, in one command. Requires `using JuliaC`
 
 The generated library exports, for the chosen `prefix` (C ABI: 1-based
 indices, lower-triangle Lagrangian Hessian with `obj_weight`, `Cint` status
-returns): `<prefix>_init(n)`, `<prefix>_nvar/_ncon/_nnzj/_nnzh`,
-`<prefix>_meta`, `<prefix>_obj/_grad/_cons/_jac/_hess` and the two
-`_structure` functions — the convention consumed by CNLPModels.jl. The tape
+returns): `<prefix>_new(n) -> id` (any number of instances may coexist),
+and id-first `<prefix>_nvar/_ncon/_nnzj/_nnzh`, `<prefix>_meta`,
+`<prefix>_obj/_grad/_cons/_jac/_hess` and the two `_structure` functions —
+the convention consumed by CNLPModels.jl. The tape
 is recorded at the generated package's precompile time, so the compiled
 call graph contains no user model code.
 """

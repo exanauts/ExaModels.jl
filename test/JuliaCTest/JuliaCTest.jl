@@ -222,22 +222,30 @@ function runtests()
                 blas_libs = [l.libname for l in BLAS.get_config().loaded_libs]
                 h = Libdl.dlopen(r.libpath, Libdl.RTLD_LOCAL | Libdl.RTLD_DEEPBIND)
                 f(s) = Libdl.dlsym(h, s)
-                @test ccall(f(:lv_init), Cint, (Cint,), Cint(10)) == 0
+                id = ccall(f(:lv_new), Cint, (Cint,), Cint(10))
+                @test id > 0
                 for (i, l) in enumerate(blas_libs)
                     BLAS.lbt_forward(l; clear = (i == 1))
                 end
 
-                @test Int(ccall(f(:lv_nvar), Cint, ())) == 10
-                @test Int(ccall(f(:lv_ncon), Cint, ())) == 8
+                @test Int(ccall(f(:lv_nvar), Cint, (Cint,), id)) == 10
+                @test Int(ccall(f(:lv_ncon), Cint, (Cint,), id)) == 8
 
                 x0 = zeros(10); lv = zeros(10); uv = zeros(10)
                 lc = zeros(8); uc = zeros(8)
                 @test ccall(f(:lv_meta), Cint,
-                    (Ptr{Cdouble}, Ptr{Cdouble}, Ptr{Cdouble}, Ptr{Cdouble}, Ptr{Cdouble}),
-                    x0, lv, uv, lc, uc) == 0
+                    (Cint, Ptr{Cdouble}, Ptr{Cdouble}, Ptr{Cdouble}, Ptr{Cdouble}, Ptr{Cdouble}),
+                    id, x0, lv, uv, lc, uc) == 0
 
                 out = Ref{Cdouble}(0.0)
-                @test ccall(f(:lv_obj), Cint, (Ptr{Cdouble}, Ptr{Cdouble}), x0, out) == 0
+                @test ccall(f(:lv_obj), Cint, (Cint, Ptr{Cdouble}, Ptr{Cdouble}), id, x0, out) == 0
+
+                # A second instance must not disturb the first.
+                id2 = ccall(f(:lv_new), Cint, (Cint,), Cint(20))
+                @test id2 > 0 && id2 != id
+                out2 = Ref{Cdouble}(0.0)
+                @test ccall(f(:lv_obj), Cint, (Cint, Ptr{Cdouble}, Ptr{Cdouble}), id, x0, out2) == 0
+                @test out2[] == out[]
 
                 # In-process reference from the same model file.
                 mod = Module(:RecorderLibRef)

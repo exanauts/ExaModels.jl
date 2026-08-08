@@ -109,7 +109,7 @@ model = ExaModel(core)
 # Any consumer — Julia (via CNLPModels.jl, which also handles the
 # libblastrampoline restore needed when hosting a bundled runtime), C, or
 # Python — can then instantiate and evaluate the model through
-# `lv_init(n)` / `lv_obj` / `lv_grad` / `lv_cons` / `lv_jac` / `lv_hess`
+# `lv_new(n) → id` / `lv_obj` / `lv_grad` / `lv_cons` / `lv_jac` / `lv_hess`
 # and solve it with any NLPModels-compatible solver.
 #
 # ### The underlying app pattern

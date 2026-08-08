@@ -21,37 +21,41 @@ include("user_model.jl")
 # Recorded once, at precompile time; nothing below this line enters the
 # compiled call graph except `replay` and the evaluation kernels.
 const TAPE = ExaModels.record(build, make_data($template_n))
-const MODEL =
-    Base.RefValue{typeof(ExaModels.ExaModel(ExaModels.replay(TAPE, make_data($template_n))))}()
+const ModelT = typeof(ExaModels.ExaModel(ExaModels.replay(TAPE, make_data($template_n))))
+const MODELS = ModelT[]
 
-Base.@ccallable function $(p("init"))(n::Cint)::Cint
+# Returns a positive model id, or 0 on failure. Models live for the process
+# lifetime; ids are never reused.
+Base.@ccallable function $(p("new"))(n::Cint)::Cint
     try
-        MODEL[] = ExaModels.ExaModel(ExaModels.replay(TAPE, make_data(Int(n))))
-        return Cint(0)
+        push!(MODELS, ExaModels.ExaModel(ExaModels.replay(TAPE, make_data(Int(n)))))
+        return Cint(length(MODELS))
     catch
-        return Cint(1)
+        return Cint(0)
     end
 end
 
-Base.@ccallable function $(p("nvar"))()::Cint
-    return Cint(MODEL[].meta.nvar)
+@inline _model(id::Cint) = MODELS[Int(id)]
+
+Base.@ccallable function $(p("nvar"))(id::Cint)::Cint
+    return Cint(_model(id).meta.nvar)
 end
-Base.@ccallable function $(p("ncon"))()::Cint
-    return Cint(MODEL[].meta.ncon)
+Base.@ccallable function $(p("ncon"))(id::Cint)::Cint
+    return Cint(_model(id).meta.ncon)
 end
-Base.@ccallable function $(p("nnzj"))()::Cint
-    return Cint(MODEL[].meta.nnzj)
+Base.@ccallable function $(p("nnzj"))(id::Cint)::Cint
+    return Cint(_model(id).meta.nnzj)
 end
-Base.@ccallable function $(p("nnzh"))()::Cint
-    return Cint(MODEL[].meta.nnzh)
+Base.@ccallable function $(p("nnzh"))(id::Cint)::Cint
+    return Cint(_model(id).meta.nnzh)
 end
 
 Base.@ccallable function $(p("meta"))(
-    x0::Ptr{Cdouble}, lvar::Ptr{Cdouble}, uvar::Ptr{Cdouble},
+    id::Cint, x0::Ptr{Cdouble}, lvar::Ptr{Cdouble}, uvar::Ptr{Cdouble},
     lcon::Ptr{Cdouble}, ucon::Ptr{Cdouble},
 )::Cint
     try
-        m = MODEL[]
+        m = _model(id)
         nvar, ncon = m.meta.nvar, m.meta.ncon
         copyto!(unsafe_wrap(Array, x0, nvar), m.meta.x0)
         copyto!(unsafe_wrap(Array, lvar, nvar), m.meta.lvar)
@@ -64,9 +68,9 @@ Base.@ccallable function $(p("meta"))(
     end
 end
 
-Base.@ccallable function $(p("obj"))(x::Ptr{Cdouble}, out::Ptr{Cdouble})::Cint
+Base.@ccallable function $(p("obj"))(id::Cint, x::Ptr{Cdouble}, out::Ptr{Cdouble})::Cint
     try
-        m = MODEL[]
+        m = _model(id)
         unsafe_store!(out, NLPModels.obj(m, unsafe_wrap(Array, x, m.meta.nvar)))
         return Cint(0)
     catch
@@ -74,9 +78,9 @@ Base.@ccallable function $(p("obj"))(x::Ptr{Cdouble}, out::Ptr{Cdouble})::Cint
     end
 end
 
-Base.@ccallable function $(p("grad"))(x::Ptr{Cdouble}, g::Ptr{Cdouble})::Cint
+Base.@ccallable function $(p("grad"))(id::Cint, x::Ptr{Cdouble}, g::Ptr{Cdouble})::Cint
     try
-        m = MODEL[]
+        m = _model(id)
         NLPModels.grad!(m, unsafe_wrap(Array, x, m.meta.nvar), unsafe_wrap(Array, g, m.meta.nvar))
         return Cint(0)
     catch
@@ -84,9 +88,9 @@ Base.@ccallable function $(p("grad"))(x::Ptr{Cdouble}, g::Ptr{Cdouble})::Cint
     end
 end
 
-Base.@ccallable function $(p("cons"))(x::Ptr{Cdouble}, c::Ptr{Cdouble})::Cint
+Base.@ccallable function $(p("cons"))(id::Cint, x::Ptr{Cdouble}, c::Ptr{Cdouble})::Cint
     try
-        m = MODEL[]
+        m = _model(id)
         NLPModels.cons!(m, unsafe_wrap(Array, x, m.meta.nvar), unsafe_wrap(Array, c, m.meta.ncon))
         return Cint(0)
     catch
@@ -94,9 +98,9 @@ Base.@ccallable function $(p("cons"))(x::Ptr{Cdouble}, c::Ptr{Cdouble})::Cint
     end
 end
 
-Base.@ccallable function $(p("jac_structure"))(rows::Ptr{Cint}, cols::Ptr{Cint})::Cint
+Base.@ccallable function $(p("jac_structure"))(id::Cint, rows::Ptr{Cint}, cols::Ptr{Cint})::Cint
     try
-        m = MODEL[]
+        m = _model(id)
         r = Vector{Int}(undef, m.meta.nnzj)
         c = Vector{Int}(undef, m.meta.nnzj)
         NLPModels.jac_structure!(m, r, c)
@@ -108,9 +112,9 @@ Base.@ccallable function $(p("jac_structure"))(rows::Ptr{Cint}, cols::Ptr{Cint})
     end
 end
 
-Base.@ccallable function $(p("jac"))(x::Ptr{Cdouble}, vals::Ptr{Cdouble})::Cint
+Base.@ccallable function $(p("jac"))(id::Cint, x::Ptr{Cdouble}, vals::Ptr{Cdouble})::Cint
     try
-        m = MODEL[]
+        m = _model(id)
         NLPModels.jac_coord!(m, unsafe_wrap(Array, x, m.meta.nvar), unsafe_wrap(Array, vals, m.meta.nnzj))
         return Cint(0)
     catch
@@ -118,9 +122,9 @@ Base.@ccallable function $(p("jac"))(x::Ptr{Cdouble}, vals::Ptr{Cdouble})::Cint
     end
 end
 
-Base.@ccallable function $(p("hess_structure"))(rows::Ptr{Cint}, cols::Ptr{Cint})::Cint
+Base.@ccallable function $(p("hess_structure"))(id::Cint, rows::Ptr{Cint}, cols::Ptr{Cint})::Cint
     try
-        m = MODEL[]
+        m = _model(id)
         r = Vector{Int}(undef, m.meta.nnzh)
         c = Vector{Int}(undef, m.meta.nnzh)
         NLPModels.hess_structure!(m, r, c)
@@ -133,10 +137,10 @@ Base.@ccallable function $(p("hess_structure"))(rows::Ptr{Cint}, cols::Ptr{Cint}
 end
 
 Base.@ccallable function $(p("hess"))(
-    x::Ptr{Cdouble}, y::Ptr{Cdouble}, obj_weight::Cdouble, vals::Ptr{Cdouble},
+    id::Cint, x::Ptr{Cdouble}, y::Ptr{Cdouble}, obj_weight::Cdouble, vals::Ptr{Cdouble},
 )::Cint
     try
-        m = MODEL[]
+        m = _model(id)
         NLPModels.hess_coord!(
             m,
             unsafe_wrap(Array, x, m.meta.nvar),
