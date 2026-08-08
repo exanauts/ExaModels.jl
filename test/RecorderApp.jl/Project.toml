@@ -1,0 +1,12 @@
+name = "RecorderApp"
+uuid = "66eaf62c-22b2-4ca1-9b62-aa0d28cc5f38"
+version = "0.1.0"
+authors = ["Sungho Shin <sushin@mit.edu>"]
+
+[deps]
+ExaModels = "1037b233-b668-4ce9-9b63-f9f681f55dd2"
+NLPModelsIpoptLite = "48c312a9-6620-4177-b859-0e15058d61ee"
+
+[sources]
+ExaModels = {path = "../.."}
+NLPModelsIpoptLite = {path = "../NLPModelsIpoptLite.jl"}

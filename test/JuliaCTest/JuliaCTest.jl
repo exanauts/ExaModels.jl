@@ -5,6 +5,7 @@ using Test, JuliaC
 const LUKSANVLCEK_APP_DIR = abspath(joinpath(@__DIR__, "..", "LuksanVlcekApp.jl"))
 const COPS_APP_DIR        = abspath(joinpath(@__DIR__, "..", "COPSApp.jl"))
 const ORACLE_APP_DIR = abspath(joinpath(@__DIR__, "..", "OracleApp.jl"))
+const RECORDER_APP_DIR = abspath(joinpath(@__DIR__, "..", "RecorderApp.jl"))
 
 # Compile app_dir into an executable at exe_path using the JuliaC programmatic API.
 # Returns true on success, false if JuliaC API is not available.
@@ -165,6 +166,37 @@ function runtests()
                     @test contains(String(take!(out)), "Ipopt status : 0")
                 end
                 rm(exe_path; force = true)
+            end
+        end
+
+        # ── RecorderApp ───────────────────────────────────────────────────────────
+        # Verifies that a tape recorded at precompile time replays, builds, and
+        # solves inside a trimmed binary — the recorder's core AOT property.
+        # The replay sizes deliberately differ from the recording template (N = 4).
+        @testset "RecorderApp" begin
+            exe_path = joinpath(tempdir(), "recorder_aot_test" * (Sys.iswindows() ? ".exe" : ""))
+
+            compiled = false
+            @testset "juliac compiles RecorderApp" begin
+                compiled = _compile_exe(RECORDER_APP_DIR, exe_path)
+                @test compiled skip = !_HAS_JULIAC_API
+                compiled && @test isfile(exe_path)
+            end
+
+            if compiled
+                try
+                    @testset "AOT exe: replay at N=$n" for n in (10, 1000)
+                        out = IOBuffer()
+                        result = run(pipeline(
+                            ignorestatus(`$exe_path $n`);
+                            stdout = out, stderr = out,
+                        ))
+                        @test success(result)
+                        @test contains(String(take!(out)), "Ipopt status : 0")
+                    end
+                finally
+                    rm(exe_path; force = true)
+                end
             end
         end
 
