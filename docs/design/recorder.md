@@ -27,10 +27,12 @@ JAX-style tracing, adapted to ExaModels' generator-based syntax:
 - **`record(build, template)`** — runs the user's `build(tape, tracer)` once,
   in ordinary dynamic Julia. User code may be arbitrarily type-unstable;
   nothing here is ever AOT-compiled.
-- **`replay(tape, data; T, backend)`** — a type-stable fold over the tape
-  entries that makes the *real* `add_var`/`add_con`/`add_obj` calls against a
-  real `ExaCore`. Backend and precision are chosen at replay, not record —
-  record once, replay on CPU or GPU.
+- **`ExaModel(tape, data; T, backend)`** — the public one-call form: a
+  type-stable fold over the tape entries makes the *real*
+  `add_var`/`add_con`/`add_obj` calls against a real `ExaCore`, and the model
+  is built from it. Backend and precision are chosen at replay, not record —
+  record once, replay on CPU or GPU. (`ExaModels.replay(tape, data) ->
+  ExaCore` remains as the unexported two-step form.)
 
 ## Key mechanism: replay-time re-tracing via `Ref` binding
 
@@ -97,7 +99,7 @@ A generated app does
 
 ```julia
 const TAPE = record(build, template)          # runs at precompile time
-main(data) = solve(ExaModel(replay(TAPE, data)))
+main(data) = solve(ExaModel(TAPE, data))
 ```
 
 `record` executes during precompilation, where dynamic Julia is fine. The

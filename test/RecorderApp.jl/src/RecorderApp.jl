@@ -29,7 +29,7 @@ end
 function (@main)(ARGS)
     N = length(ARGS) >= 1 ? parse(Int, ARGS[1]) : 100
     println(Core.stdout, "Replaying tape at N=", N, " and solving with Ipopt...")
-    m = ExaModel(replay(TAPE, (; N = N)))
+    m = ExaModel(TAPE, (; N = N))
     result = ipopt(m; print_level = 3)
     println(Core.stdout, "Ipopt status : ", result.status)
     println(Core.stdout, "objective    : ", result.obj)

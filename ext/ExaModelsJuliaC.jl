@@ -414,6 +414,7 @@ function ExaModels.compile_library(
     trim::AbstractString = "safe",
     privatize::Bool = true,
     verbose::Bool = false,
+    force::Bool = false,
 )
     _schema_entries(template)   # validates field/column types, throws otherwise
     _assert_serializable(tape)
@@ -424,12 +425,25 @@ function ExaModels.compile_library(
     mkpath(joinpath(appdir, "src"))
     ExaModels.Serialization.serialize(joinpath(appdir, "src", "tape.jls"), tape)
     ExaModels.Serialization.serialize(joinpath(appdir, "src", "template.jls"), template)
+
+    fp = _fingerprint(
+        read(joinpath(appdir, "src", "tape.jls")),
+        read(joinpath(appdir, "src", "template.jls")),
+        prefix, trim, privatize,
+    )
+    if !force
+        hit = _cache_hit(abspath(out), prefix, fp)
+        hit === nothing || return hit
+    end
+
     _write_app_project(appdir; serialization = true)
     write(
         joinpath(appdir, "src", "ExaModelsLib.jl"),
         _gen_module_source_tape(prefix, template),
     )
-    return _drive_juliac(appdir, prefix, out, trim, privatize, verbose)
+    r = _drive_juliac(appdir, prefix, out, trim, privatize, verbose)
+    _write_fingerprint(r.outdir, prefix, fp)
+    return r
 end
 
 function ExaModels.compile_library(
@@ -440,8 +454,14 @@ function ExaModels.compile_library(
     trim::AbstractString = "safe",
     privatize::Bool = true,
     verbose::Bool = false,
+    force::Bool = false,
 )
     isfile(model_file) || throw(ArgumentError("model file not found: $model_file"))
+    fp = _fingerprint(read(model_file), Int(template_n), prefix, trim, privatize)
+    if !force
+        hit = _cache_hit(abspath(out), prefix, fp)
+        hit === nothing || return hit
+    end
     Base.isidentifier(Symbol(prefix)) ||
         throw(ArgumentError("prefix must be a valid C identifier, got \"$prefix\""))
 
@@ -450,7 +470,9 @@ function ExaModels.compile_library(
     cp(model_file, joinpath(appdir, "src", "user_model.jl"))
     _write_app_project(appdir)
     write(joinpath(appdir, "src", "ExaModelsLib.jl"), _gen_module_source(prefix, template_n))
-    return _drive_juliac(appdir, prefix, out, trim, privatize, verbose)
+    r = _drive_juliac(appdir, prefix, out, trim, privatize, verbose)
+    _write_fingerprint(r.outdir, prefix, fp)
+    return r
 end
 
 function _write_app_project(appdir; serialization::Bool = false)
@@ -473,7 +495,63 @@ function _write_app_project(appdir; serialization::Bool = false)
     )
 end
 
+# ── compile cache ─────────────────────────────────────────────────────────────
+# A build is identified by everything that determines the artifact: the exact
+# tape+template bytes (or model-file content), prefix, trim mode, privatize,
+# the Julia version, and the ExaModels source state (version + git HEAD +
+# dirty flag when the checkout is a git tree). Base.hash is used — cache
+# validity, not security — and any key change simply rebuilds.
+function _exa_state()
+    root = dirname(dirname(pathof(ExaModels)))
+    ver = string(pkgversion(ExaModels))
+    git = try
+        head = strip(read(`git -C $root rev-parse HEAD`, String))
+        dirty = isempty(strip(read(`git -C $root status --porcelain`, String))) ? "clean" : "dirty"
+        head * ":" * dirty
+    catch
+        "nogit"
+    end
+    return ver * ":" * git
+end
+
+function _fingerprint(parts...)
+    h = hash(string(VERSION))
+    for p in parts
+        h = hash(p, h)
+    end
+    h = hash(_exa_state(), h)
+    return string(h; base = 16)
+end
+
+function _cache_hit(outdir, prefix, fp)
+    libroot = Sys.iswindows() ? "bin" : "lib"
+    libpath = joinpath(outdir, libroot, "lib" * prefix * "." * Base.BinaryPlatforms.platform_dlext())
+    fppath = joinpath(outdir, "lib" * prefix * ".fingerprint")
+    if isfile(libpath) && isfile(fppath) && read(fppath, String) == fp
+        return (; libpath, outdir, cached = true)
+    end
+    return nothing
+end
+
+_write_fingerprint(outdir, prefix, fp) =
+    write(joinpath(outdir, "lib" * prefix * ".fingerprint"), fp)
+
 function _drive_juliac(appdir, prefix, out, trim, privatize, verbose)
+    # The out directory belongs to this library (one prefix per directory):
+    # JuliaC's bundler cannot overwrite an existing bundle, and privatized
+    # runtime files carry randomized names that would otherwise accumulate.
+    # Clearing is per-entry and tolerant: on NFS, files held open by dying
+    # processes leave .nfs* ghosts that refuse removal but collide with
+    # nothing the bundler writes.
+    outdir0 = abspath(out)
+    if isdir(outdir0)
+        for entry in readdir(outdir0; join = true)
+            try
+                rm(entry; recursive = true, force = true)
+            catch
+            end
+        end
+    end
     img = JuliaC.ImageRecipe(
         file = appdir,
         output_type = "--output-lib",
@@ -498,7 +576,7 @@ function _drive_juliac(appdir, prefix, out, trim, privatize, verbose)
     libroot = Sys.iswindows() ? "bin" : "lib"
     libpath = joinpath(outdir, libroot, "lib" * prefix * "." * Base.BinaryPlatforms.platform_dlext())
     isfile(libpath) || error("library build did not produce $libpath")
-    return (; libpath, outdir)
+    return (; libpath, outdir, cached = false)
 end
 
 end # module ExaModelsJuliaC

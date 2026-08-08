@@ -491,6 +491,30 @@ end
 # ── replay ────────────────────────────────────────────────────────────────────
 
 """
+    ExaModel(tape::ExaTape, data::NamedTuple; T = Float64, backend = nothing, kwargs...)
+
+Replay `tape` against `data` and build the model in one call — the standard
+way to turn a recorded tape into a solvable `ExaModel`:
+
+    m = ExaModel(tape, (; N = 1000))
+    m = ExaModel(tape, data; T = Float32, backend = CUDABackend())
+
+Element type and backend are chosen here; remaining keyword arguments are
+passed to the `ExaModel` constructor. (The underlying two-step form,
+`ExaModels.replay(tape, data) -> ExaCore`, remains available — unexported —
+for workflows that need the intermediate core.)
+"""
+function ExaModel(
+    tape::ExaTape,
+    data::NamedTuple;
+    T::Type{<:AbstractFloat} = Float64,
+    backend = nothing,
+    kwargs...,
+)
+    return ExaModel(replay(tape, data; T = T, backend = backend); kwargs...)
+end
+
+"""
     replay(tape::ExaTape, data::NamedTuple; T = Float64, backend = nothing) -> ExaCore
 
 Rebuild a real [`ExaCore`](@ref) by folding over the recorded entries and

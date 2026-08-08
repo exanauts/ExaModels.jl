@@ -51,19 +51,19 @@ end
 #
 # ## Replaying it
 #
-# [`replay`](@ref) folds over the tape and makes the real `add_var` /
-# `add_con` / `add_obj` calls with every symbolic value resolved against the
-# data you pass — which can have *different sizes* than the template:
+# `ExaModel(tape, data)` replays the tape — folding over it and making the
+# real `add_var` / `add_con` / `add_obj` calls with every symbolic value
+# resolved against the data you pass, which can have *different sizes* than
+# the template — and builds the model in one call:
 
-core = replay(tape, (; N = 1000))
-model = ExaModel(core)
+model = ExaModel(tape, (; N = 1000))
 
 # Element type and backend are replay-time choices, so a single tape serves
 # CPU and GPU at any precision:
 #
 # ```julia
 # using CUDA
-# core = replay(tape, (; N = 1000); T = Float32, backend = CUDABackend())
+# model = ExaModel(tape, (; N = 1000); T = Float32, backend = CUDABackend())
 # ```
 #
 # The replayed model contains no recorder machinery at all — its evaluation
@@ -130,7 +130,7 @@ model = ExaModel(core)
 #
 # function (@main)(ARGS)
 #     N = parse(Int, ARGS[1])
-#     m = ExaModel(replay(TAPE, (; N = N)))
+#     m = ExaModel(TAPE, (; N = N))
 #     result = ipopt(m; print_level = 3)
 #     return result.status == 0 ? 0 : 1
 # end

@@ -74,26 +74,26 @@ function runtests()
         tape = lv_tape()
 
         @testset "replay matches direct build (N = $N)" for N in (10, 500)
-            m_rec = ExaModel(replay(tape, (; N = N)))
+            m_rec = ExaModel(tape, (; N = N))
             m_ref = direct_model(N)
             compare_models(m_rec, m_ref)
         end
 
         @testset "replay is type-stable" begin
-            core = @inferred replay(tape, (; N = 10))
+            core = @inferred ExaModels.replay(tape, (; N = 10))
             @test core isa ExaCore{Float64}
         end
 
         @testset "element type is a replay-time choice" begin
-            m = ExaModel(replay(tape, (; N = 10); T = Float32))
+            m = ExaModel(tape, (; N = 10); T = Float32)
             @test obj(m, ones(Float32, 10)) isa Float32
         end
 
         @testset "built models are independent of later replays" begin
-            m10 = ExaModel(replay(tape, (; N = 10)))
+            m10 = ExaModel(tape, (; N = 10))
             x = ones(10)
             o1 = obj(m10, x)
-            replay(tape, (; N = 100))  # rebinds the tape's variable refs
+            ExaModels.replay(tape, (; N = 100))  # rebinds the tape's variable refs
             @test obj(m10, x) == o1
         end
 
@@ -119,8 +119,8 @@ function runtests()
             end
 
             for N in (10, 200)
-                mt = ExaModel(replay(ct, (; N = N)))
-                mc = ExaModel(replay(cc, (; N = N)))
+                mt = ExaModel(ct, (; N = N))
+                mc = ExaModel(cc, (; N = N))
                 rng = Random.MersenneTwister(3)
                 xr = randn(rng, N)
                 yr = randn(rng, N - 2)
@@ -132,7 +132,7 @@ function runtests()
                 @test hess_structure(mt) == hess_structure(mc)
                 @test hess_coord(mt, xr, yr) == hess_coord(mc, xr, yr)
             end
-            core = @inferred replay(ct, (; N = 10))
+            core = @inferred ExaModels.replay(ct, (; N = 10))
             @test core isa ExaCore{Float64}
         end
 
@@ -154,22 +154,22 @@ function runtests()
             t = case.tape()
             dense = haskey(case, :dense) && case.dense
             for N in case.sizes
-                m_rec = ExaModel(replay(t, (; N = N)))
+                m_rec = ExaModel(t, (; N = N))
                 m_ref = lv_direct(case.name, N)
                 compare_models(m_rec, m_ref; dense = dense)
             end
-            core = @inferred replay(t, (; N = case.sizes[1]))
+            core = @inferred ExaModels.replay(t, (; N = case.sizes[1]))
             @test core isa ExaCore{Float64}
         end
 
         @testset "2-D Luksan with product generators" begin
             t = luksan2d_tape()
             for (N, M) in ((10, 3), (30, 1))
-                m_rec = ExaModel(replay(t, (; N = N, M = M)); prod = true)
+                m_rec = ExaModel(t, (; N = N, M = M); prod = true)
                 m_ref, _, _ = _exa_luksan_vlcek_model(nothing, N; M = M)
                 compare_models(m_rec, m_ref)
             end
-            core = @inferred replay(t, (; N = 6, M = 2))
+            core = @inferred ExaModels.replay(t, (; N = 6, M = 2))
             @test core isa ExaCore{Float64}
         end
 
@@ -179,12 +179,12 @@ function runtests()
         )
             t = mk()
             for n in sizes
-                m_rec = ExaModel(replay(t, (; n = n)))
+                m_rec = ExaModel(t, (; n = n))
                 m_ref = getfield(COPSBenchmark, Symbol(name, :_model))(
                     COPSBenchmark.ExaModelsBackend(), n)
                 compare_models(m_rec, m_ref; dense = true)
             end
-            core = @inferred replay(t, (; n = sizes[1]))
+            core = @inferred ExaModels.replay(t, (; n = sizes[1]))
             @test core isa ExaCore{Float64}
         end
 
@@ -193,11 +193,11 @@ function runtests()
             data14 = parse_ac_power_data(get_power_case("pglib_opf_case14_ieee.m"))
             t = record(opf_build, data3)
             for data in (data3, data14)
-                m_rec = ExaModel(replay(t, data); prod = true)
+                m_rec = ExaModel(t, data; prod = true)
                 m_ref, _, _ = __exa_ac_power_model(nothing, data)
                 compare_models(m_rec, m_ref)
             end
-            core = @inferred replay(t, data3)
+            core = @inferred ExaModels.replay(t, data3)
             @test core isa ExaCore{Float64}
         end
     end

@@ -122,7 +122,6 @@ export ExaModel,
     DataTracer,
     ExaTape,
     record,
-    replay,
     RecorderStructureError,
     compile_library
 
