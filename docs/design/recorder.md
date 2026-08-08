@@ -130,6 +130,20 @@ runtime.
   the AOT leg: `compile_library` per model, consumed through CNLPModels.jl
   and solved host-side against in-process references.
 
+### GPU compatibility
+
+Backend and precision are replay-time choices, so one tape serves CPU and
+GPU: `ExaModel(tape, data; T = Float32, backend = CUDABackend())` (verified:
+CUDA replay of a recorded tape matches the CPU model's obj/grad/cons; a
+Float32 device replay builds). Nothing in the tape, its serialization, or
+the C ABI encodes an array type. For AOT, the generated library currently
+replays on the default (CPU) backend; the seam for device libraries is
+confined to two places — the backend argument of the generated
+`ExaModel(TAPE, data)` call, and the C boundary (host pointers, with a
+device library copying at the boundary until device-pointer entry points
+are added). When juliac can trim device code, `compile_library` gains a
+backend option and the rest of the pipeline lifts unchanged.
+
 ### Transcription idioms (writing a model against the recorder)
 
 - A single-expression constraint/objective (`add_con(c, expr)`) evaluates the
