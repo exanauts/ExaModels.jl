@@ -134,14 +134,28 @@ runtime.
   (The direct model bakes `h` as a `Constant`, so trees — and possibly
   sparsity orderings — differ while assembled operators match.)
 
+## Shared-library output (`compile_library`, ExaModelsJuliaC extension)
+
+`compile_library(model_file; prefix, out)` generates a throwaway app package
+(the user's model file + `const TAPE = record(build, make_data(template_n))`
++ the C-ABI `@ccallable` surface, prefix-interpolated), pins it to the
+running ExaModels checkout, and drives JuliaC's
+compile/link/bundle(`privatize = true`) pipeline to a self-contained `.so`.
+ABI: `<prefix>_init(n)`, meta/structure queries, and
+obj/grad/cons/jac/hess evaluations — 1-based indices, lower-triangle
+Lagrangian Hessian with `obj_weight`, `Cint` statuses. The Julia-side
+consumer (including the libblastrampoline snapshot/restore required when
+hosting a bundled runtime inside a Julia process) is CNLPModels.jl.
+
 ## Later
 
 - `add_expr` entries; binding `Constraint` handles for post-solve
   `multipliers`; closures capturing tracer scalars (eager unwrap through a
   bound `Ref` at trace time); `static()` escape hatch (needed for e.g. COPS
   models whose *inner* `sum` ranges are data-dependent — the SumNode
-  fundamental limit above); tape → generated-source dump; the app-package
-  generator around `replay`; thread-safety of replay.
+  fundamental limit above); tape → generated-source dump; a richer data ABI
+  for `compile_library` (pointer-based array marshalling instead of
+  `init(n::Cint)`); thread-safety of replay.
 
 ## Naming
 

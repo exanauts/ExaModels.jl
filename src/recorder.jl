@@ -469,3 +469,31 @@ end
     c, _ = add_obj(c, gen; name = e.name)
     return (c, nothing)
 end
+
+# ── One-command shared-library compilation (ExaModelsJuliaC extension) ────────
+
+"""
+    compile_library(model_file; prefix = "rec", out = "lib_out",
+                    template_n = 4, trim = "safe", privatize = true,
+                    verbose = false) -> (; libpath, outdir)
+
+Compile a recorded model into a self-contained shared library exposing the
+NLP through a C interface, in one command. Requires `using JuliaC`
+(implemented in the `ExaModelsJuliaC` package extension).
+
+`model_file` is a Julia source file defining
+
+- `build(c, data)` — the model, written against the tape exactly as against
+  an `ExaCore` (it is passed to [`record`](@ref)), and
+- `make_data(n::Integer)::NamedTuple` — the data for size `n` (also used at
+  `template_n` as the recording schema).
+
+The generated library exports, for the chosen `prefix` (C ABI: 1-based
+indices, lower-triangle Lagrangian Hessian with `obj_weight`, `Cint` status
+returns): `<prefix>_init(n)`, `<prefix>_nvar/_ncon/_nnzj/_nnzh`,
+`<prefix>_meta`, `<prefix>_obj/_grad/_cons/_jac/_hess` and the two
+`_structure` functions — the convention consumed by CNLPModels.jl. The tape
+is recorded at the generated package's precompile time, so the compiled
+call graph contains no user model code.
+"""
+function compile_library end

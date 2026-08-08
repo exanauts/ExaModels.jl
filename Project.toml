@@ -9,6 +9,7 @@ Printf = "de0858da-6303-5e67-8744-51eddeeeb8d7"
 SolverCore = "ff4d7338-4cf1-434d-91df-b86cb86fb843"
 
 [weakdeps]
+JuliaC = "acedd4c2-ced6-4a15-accc-2607eb759ba2"
 JuMP = "4076af6c-e467-56ae-b986-b466b2749572"
 KernelAbstractions = "63c18a36-062a-441e-b654-da1e3ab1ce7c"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
@@ -20,6 +21,7 @@ oneAPI = "8f75cd03-7ff8-4ecb-9b8f-daf728133b1b"
 
 [extensions]
 ExaModelsJuMP = "JuMP"
+ExaModelsJuliaC = "JuliaC"
 ExaModelsKernelAbstractions = "KernelAbstractions"
 ExaModelsMOI = "MathOptInterface"
 ExaModelsMetal = "Metal"
@@ -30,6 +32,7 @@ ExaModelsSpecialFunctions = "SpecialFunctions"
 [compat]
 Adapt = "4"
 JuMP = "1"
+JuliaC = "0.3"
 KernelAbstractions = "0.9"
 MathOptInterface = "1.19"
 Metal = "1.9"

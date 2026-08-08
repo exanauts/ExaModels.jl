@@ -1,6 +1,9 @@
 module JuliaCTest
 
 using Test, JuliaC
+using Libdl, LinearAlgebra
+import ExaModels
+import NLPModels
 
 const LUKSANVLCEK_APP_DIR = abspath(joinpath(@__DIR__, "..", "LuksanVlcekApp.jl"))
 const COPS_APP_DIR        = abspath(joinpath(@__DIR__, "..", "COPSApp.jl"))
@@ -197,6 +200,55 @@ function runtests()
                 finally
                     rm(exe_path; force = true)
                 end
+            end
+        end
+
+        # ── compile_library ───────────────────────────────────────────────────
+        # One-command model-file → shared-library path (ExaModelsJuliaC ext).
+        # The library is consumed here through plain Libdl, and its obj value
+        # is checked against the same tape replayed in-process.
+        @testset "compile_library" begin
+            if _HAS_JULIAC_API
+                r = ExaModels.compile_library(
+                    joinpath(@__DIR__, "recorder_lib_model.jl");
+                    prefix = "lv", out = mktempdir(),
+                )
+                @test isfile(r.libpath)
+
+                # The library's lazy runtime init re-forwards the process-global
+                # libblastrampoline; snapshot and restore so later testsets keep
+                # a working BLAS. (The library itself stays loaded; a Julia
+                # runtime cannot be safely unloaded.)
+                blas_libs = [l.libname for l in BLAS.get_config().loaded_libs]
+                h = Libdl.dlopen(r.libpath, Libdl.RTLD_LOCAL | Libdl.RTLD_DEEPBIND)
+                f(s) = Libdl.dlsym(h, s)
+                @test ccall(f(:lv_init), Cint, (Cint,), Cint(10)) == 0
+                for (i, l) in enumerate(blas_libs)
+                    BLAS.lbt_forward(l; clear = (i == 1))
+                end
+
+                @test Int(ccall(f(:lv_nvar), Cint, ())) == 10
+                @test Int(ccall(f(:lv_ncon), Cint, ())) == 8
+
+                x0 = zeros(10); lv = zeros(10); uv = zeros(10)
+                lc = zeros(8); uc = zeros(8)
+                @test ccall(f(:lv_meta), Cint,
+                    (Ptr{Cdouble}, Ptr{Cdouble}, Ptr{Cdouble}, Ptr{Cdouble}, Ptr{Cdouble}),
+                    x0, lv, uv, lc, uc) == 0
+
+                out = Ref{Cdouble}(0.0)
+                @test ccall(f(:lv_obj), Cint, (Ptr{Cdouble}, Ptr{Cdouble}), x0, out) == 0
+
+                # In-process reference from the same model file.
+                mod = Module(:RecorderLibRef)
+                Core.eval(mod, :(using ExaModels))
+                Base.include(mod, joinpath(@__DIR__, "recorder_lib_model.jl"))
+                tape = ExaModels.record(mod.build, mod.make_data(4))
+                m_ref = ExaModels.ExaModel(ExaModels.replay(tape, mod.make_data(10)))
+                @test x0 == m_ref.meta.x0
+                @test out[] ≈ NLPModels.obj(m_ref, x0) rtol = 1e-14
+            else
+                @warn "JuliaC.ImageRecipe not available, skipping compile_library test"
             end
         end
 

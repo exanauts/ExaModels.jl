@@ -122,6 +122,7 @@ export ExaModel,
     ExaTape,
     record,
     replay,
-    RecorderStructureError
+    RecorderStructureError,
+    compile_library
 
 end # module ExaModels

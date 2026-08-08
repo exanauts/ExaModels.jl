@@ -93,7 +93,29 @@ model = ExaModel(core)
 #
 # ## AOT compilation
 #
-# In an app package, record the tape at precompile time and replay in `main`:
+# ### One command: a model file to a shared library
+#
+# With `using JuliaC`, [`compile_library`](@ref) turns a model file — one that
+# defines `build(c, data)` and `make_data(n)::NamedTuple` — into a
+# self-contained shared library exposing the NLP through a C interface:
+#
+# ```julia
+# using ExaModels, JuliaC
+# r = compile_library("lv_model.jl"; prefix = "lv", out = "lv_out")
+# # → lv_out/lib/liblv.so — the tape is recorded at the generated package's
+# #   precompile time; the trimmed call graph contains no user model code.
+# ```
+#
+# Any consumer — Julia (via CNLPModels.jl, which also handles the
+# libblastrampoline restore needed when hosting a bundled runtime), C, or
+# Python — can then instantiate and evaluate the model through
+# `lv_init(n)` / `lv_obj` / `lv_grad` / `lv_cons` / `lv_jac` / `lv_hess`
+# and solve it with any NLPModels-compatible solver.
+#
+# ### The underlying app pattern
+#
+# For an executable (or a custom library layout), record the tape at
+# precompile time and replay in `main`:
 #
 # ```julia
 # module MyModelApp
