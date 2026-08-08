@@ -58,19 +58,30 @@ DataTracer(::NT) where {NT <: NamedTuple} = DataTracer{NT}()
     DataField{fieldtype(NT, s), s}()
 
 """
-    resolve(x, data)
+    resolve(x, args)
 
-Evaluate a tracer value against the actual data named tuple. Plain (non-tracer)
+Evaluate a tracer value against the instantiation `args`. Plain (non-tracer)
 values resolve to themselves.
 """
-@inline resolve(x, data) = x
-@inline resolve(::DataField{T, name}, data) where {T, name} = getfield(data, name)::T
-@inline resolve(t::TracerExpr{T}, data) where {T} =
-    (t.f(map(a -> resolve(a, data), t.args)...))::T
+@inline resolve(x, args) = x
+@inline resolve(::DataField{T, name}, args::NamedTuple) where {T, name} =
+    getfield(args, name)::T
+# A bare value binds every data-field access — the ergonomic form for
+# single-field schemas: `ExaModel(tape, 3)` ≡ `ExaModel(tape, (; N = 3))`.
+@inline resolve(::DataField{T, name}, args) where {T, name} = convert(T, args)::T
+@noinline _args_error(name) = throw(ArgumentError(
+    "this tape references data field `$name`: instantiate with `args` — a " *
+    "NamedTuple binding fields by name, or a bare value for a single-field schema"))
+@inline resolve(::DataField{T, name}, ::Nothing) where {T, name} = _args_error(name)
+# Positional tuples are refused: the tape records field names, not an order.
+@inline resolve(::DataField{T, name}, ::Tuple) where {T, name} = throw(ArgumentError(
+    "tuple args are positional, but a tape's schema binds by name: use (; $name = ...)"))
+@inline resolve(t::TracerExpr{T}, args) where {T} =
+    (t.f(map(a -> resolve(a, args), t.args)...))::T
 # Multi-dimensional generators iterate a ProductIterator whose component
 # ranges may be traced; rebuild it with the components resolved.
-@inline resolve(p::Iterators.ProductIterator, data) =
-    Iterators.product(map(r -> resolve(r, data), p.iterators)...)
+@inline resolve(p::Iterators.ProductIterator, args) =
+    Iterators.product(map(r -> resolve(r, args), p.iterators)...)
 
 @inline function _record_op(f::F, args...) where {F}
     T = Base.promote_op(f, map(instantiate_type, args)...)
@@ -136,8 +147,8 @@ end
     DeferredCollect{ET, typeof(g.f), I}(g.f, g.iter)
 end
 
-@inline resolve(d::DeferredCollect{ET}, data) where {ET} =
-    ET[resolve(d.f(x), data) for x in resolve(d.iter, data)]
+@inline resolve(d::DeferredCollect{ET}, args) where {ET} =
+    ET[resolve(d.f(x), args) for x in resolve(d.iter, args)]
 
 """
     RecorderStructureError
@@ -461,35 +472,42 @@ end
 # ── instantiate ────────────────────────────────────────────────────────────────────
 
 """
-    ExaModel(tape::ExaTape, data::NamedTuple; T = Float64, backend = nothing, kwargs...)
+    ExaModel(tape::ExaTape, args = nothing; T = Float64, backend = nothing, kwargs...)
 
-Instantiate `tape` against `data` and build the model in one call — the standard
-way to turn a recorded tape into a solvable `ExaModel`:
+Instantiate `tape` at `args` and build the model in one call — the standard
+way to turn a recorded tape into a solvable `ExaModel`. `args` has no
+privileged shape: a `NamedTuple` binds data fields by name, a bare value
+binds a single-field schema, and `nothing` (the default) instantiates a tape
+that never touched the data tracer — in which case `ExaModel(tape)` builds
+exactly the model the same calls against an `ExaCore` would:
 
     m = ExaModel(tape, (; N = 1000))
-    m = ExaModel(tape, data; T = Float32, backend = CUDABackend())
+    m = ExaModel(tape, 1000)                 # single-field schema
+    m = ExaModel(tape)                       # tape with no data references
+    m = ExaModel(tape, args; T = Float32, backend = CUDABackend())
 
 Element type and backend are chosen here; remaining keyword arguments are
 passed to the `ExaModel` constructor. (The underlying two-step form,
-`ExaModels.instantiate(tape, data) -> ExaCore`, remains available — unexported —
+`ExaModels.instantiate(tape, args) -> ExaCore`, remains available — unexported —
 for workflows that need the intermediate core.)
 """
 @inline function ExaModel(
     tape::ExaTape,
-    data::NamedTuple;
+    args = nothing;
     T::Type{<:AbstractFloat} = Float64,
     backend = nothing,
     kwargs...,
 )
-    return ExaModel(_instantiate_impl(tape, data, T, backend); kwargs...)
+    return ExaModel(_instantiate_impl(tape, args, T, backend); kwargs...)
 end
 
 """
-    instantiate(tape::ExaTape, data::NamedTuple; T = Float64, backend = nothing) -> ExaCore
+    instantiate(tape::ExaTape, args = nothing; T = Float64, backend = nothing) -> ExaCore
 
 Rebuild a real [`ExaCore`](@ref) by folding over the recorded entries and
 making the real `add_var`/`add_con`/`add_obj` calls with all tracer values
-resolved against `data`. Element type and backend are chosen here, not at
+resolved against `args` (see [`ExaModel`](@ref) for the accepted shapes).
+Element type and backend are chosen here, not at
 record time. The fold is fully type-inferrable (gated by `@inferred` in
 `test/RecorderTest`).
 
@@ -498,28 +516,28 @@ threads: instantiate binds each recorded variable handle by mutating its `Ref`.
 """
 function instantiate(
     tape::ExaTape,
-    data::NamedTuple;
+    args = nothing;
     T::Type{<:AbstractFloat} = Float64,
     backend = nothing,
 )
-    return _instantiate_impl(tape, data, T, backend)
+    return _instantiate_impl(tape, args, T, backend)
 end
 
 # Positional core: Type{T} dispatch keeps inference exact through the
 # keyword seam (a Type-valued keyword argument loses its constant-ness in
 # kwcall, which surfaces as an abstract ExaCore under juliac's verifier).
-@inline function _instantiate_impl(tape::ExaTape, data::NamedTuple, ::Type{T}, backend) where {T <: AbstractFloat}
+@inline function _instantiate_impl(tape::ExaTape, args, ::Type{T}, backend) where {T <: AbstractFloat}
     c = ExaCore(T; backend = backend, minimize = tape.config.minimize, concrete = Val(true))
-    return _instantiate(c, (), data, tape.entries...)
+    return _instantiate(c, (), args, tape.entries...)
 end
 
 # The fold threads a positional tuple of realized handles (one slot per entry;
 # `nothing` for entries whose handles bind through Refs) so that ConAugEntry{K}
 # can look up its target Constraint type-stably.
-@inline _instantiate(c::ExaCore, handles, data) = c
-@inline function _instantiate(c::ExaCore, handles, data, entry, rest...)
-    c, h = _instantiate_entry(c, handles, entry, data)
-    return _instantiate(c, (handles..., h), data, rest...)
+@inline _instantiate(c::ExaCore, handles, args) = c
+@inline function _instantiate(c::ExaCore, handles, args, entry, rest...)
+    c, h = _instantiate_entry(c, handles, entry, args)
+    return _instantiate(c, (handles..., h), args, rest...)
 end
 
 # The low-level (tree, pars) forms do not run the generator path's
@@ -530,87 +548,87 @@ end
 # Optional-kwarg resolution: `nothing` means "not given at record time" and
 # falls back to the real API's default; generators get their (possibly traced)
 # iterable resolved.
-@inline _kw(::Nothing, data, default) = default
-@inline _kw(x, data, default) = _resolve_arg(x, data)
-@inline _resolve_arg(g::Base.Generator, data) = Base.Generator(g.f, resolve(g.iter, data))
-@inline _resolve_arg(x, data) = resolve(x, data)
+@inline _kw(::Nothing, args, default) = default
+@inline _kw(x, args, default) = _resolve_arg(x, args)
+@inline _resolve_arg(g::Base.Generator, args) = Base.Generator(g.f, resolve(g.iter, args))
+@inline _resolve_arg(x, args) = resolve(x, args)
 
-@inline function _instantiate_entry(c::ExaCore{T}, handles, e::VarEntry, data) where {T}
-    dims = map(d -> resolve(d, data), e.dims)
+@inline function _instantiate_entry(c::ExaCore{T}, handles, e::VarEntry, args) where {T}
+    dims = map(d -> resolve(d, args), e.dims)
     c, v = add_var(
         c,
         dims...;
         tag = e.tag,
         name = e.name,
-        start = _kw(e.start, data, zero(T)),
-        lvar = _kw(e.lvar, data, T(-Inf)),
-        uvar = _kw(e.uvar, data, T(Inf)),
+        start = _kw(e.start, args, zero(T)),
+        lvar = _kw(e.lvar, args, T(-Inf)),
+        uvar = _kw(e.uvar, args, T(Inf)),
     )
     e.var.ref[] = v
     return (c, nothing)
 end
 
-@inline function _instantiate_entry(c::ExaCore{T}, handles, e::ParEntry, data) where {T}
-    dims = map(d -> resolve(d, data), e.dims)
+@inline function _instantiate_entry(c::ExaCore{T}, handles, e::ParEntry, args) where {T}
+    dims = map(d -> resolve(d, args), e.dims)
     c, p = add_par(
         c,
         dims...;
         tag = e.tag,
         name = e.name,
-        value = _kw(e.value, data, zero(T)),
+        value = _kw(e.value, args, zero(T)),
     )
     e.par.ref[] = p
     return (c, nothing)
 end
 
-@inline function _instantiate_entry(c::ExaCore{T}, handles, e::ConEntry, data) where {T}
+@inline function _instantiate_entry(c::ExaCore{T}, handles, e::ConEntry, args) where {T}
     c, con = add_con(
         c,
         _rebind(e.f(DataSource())),
-        _collect_pars(resolve(e.itr, data));
+        _collect_pars(resolve(e.itr, args));
         tag = e.tag,
         name = e.name,
-        start = _kw(e.start, data, zero(T)),
-        lcon = _kw(e.lcon, data, zero(T)),
-        ucon = _kw(e.ucon, data, zero(T)),
+        start = _kw(e.start, args, zero(T)),
+        lcon = _kw(e.lcon, args, zero(T)),
+        ucon = _kw(e.ucon, args, zero(T)),
     )
     return (c, con)
 end
 
-@inline function _instantiate_entry(c::ExaCore{T}, handles, e::ConAugEntry{K}, data) where {T, K}
+@inline function _instantiate_entry(c::ExaCore{T}, handles, e::ConAugEntry{K}, args) where {T, K}
     pair = _rebind(e.f(DataSource()))
-    gen = Base.Generator(FixedExpr(pair), resolve(e.itr, data))
+    gen = Base.Generator(FixedExpr(pair), resolve(e.itr, args))
     c, _ = add_con!(c, handles[K], gen; tag = e.tag)
     return (c, nothing)
 end
 
-@inline function _instantiate_entry(c::ExaCore{T}, handles, e::ObjEntry, data) where {T}
-    c, _ = add_obj(c, _rebind(e.f(DataSource())), _collect_pars(resolve(e.itr, data)); name = e.name)
+@inline function _instantiate_entry(c::ExaCore{T}, handles, e::ObjEntry, args) where {T}
+    c, _ = add_obj(c, _rebind(e.f(DataSource())), _collect_pars(resolve(e.itr, args)); name = e.name)
     return (c, nothing)
 end
 
-@inline function _instantiate_entry(c::ExaCore{T}, handles, e::ConTreeEntry, data) where {T}
+@inline function _instantiate_entry(c::ExaCore{T}, handles, e::ConTreeEntry, args) where {T}
     c, con = add_con(
         c,
         _rebind(e.expr),
-        _collect_pars(resolve(e.itr, data));
+        _collect_pars(resolve(e.itr, args));
         tag = e.tag,
         name = e.name,
-        start = _kw(e.start, data, zero(T)),
-        lcon = _kw(e.lcon, data, zero(T)),
-        ucon = _kw(e.ucon, data, zero(T)),
+        start = _kw(e.start, args, zero(T)),
+        lcon = _kw(e.lcon, args, zero(T)),
+        ucon = _kw(e.ucon, args, zero(T)),
     )
     return (c, con)
 end
 
-@inline function _instantiate_entry(c::ExaCore{T}, handles, e::ConAugTreeEntry{K}, data) where {T, K}
-    gen = Base.Generator(FixedExpr(_rebind(e.expr)), resolve(e.itr, data))
+@inline function _instantiate_entry(c::ExaCore{T}, handles, e::ConAugTreeEntry{K}, args) where {T, K}
+    gen = Base.Generator(FixedExpr(_rebind(e.expr)), resolve(e.itr, args))
     c, _ = add_con!(c, handles[K], gen; tag = e.tag)
     return (c, nothing)
 end
 
-@inline function _instantiate_entry(c::ExaCore{T}, handles, e::ObjTreeEntry, data) where {T}
-    c, _ = add_obj(c, _rebind(e.expr), _collect_pars(resolve(e.itr, data)); name = e.name)
+@inline function _instantiate_entry(c::ExaCore{T}, handles, e::ObjTreeEntry, args) where {T}
+    c, _ = add_obj(c, _rebind(e.expr), _collect_pars(resolve(e.itr, args)); name = e.name)
     return (c, nothing)
 end
 
@@ -627,9 +645,9 @@ NLP through a C interface, in one command. Requires `using JuliaC`
 
 `model_file` is a Julia source file defining
 
-- `build(c, data)` — the model, written against the tape exactly as against
+- `build(c, args)` — the model, written against the tape exactly as against
   an `ExaCore` (it is passed to [`record`](@ref)), and
-- `make_data(n::Integer)::NamedTuple` — the data for size `n` (also used at
+- `make_data(n::Integer)::NamedTuple` — the args for size `n` (also used at
   `template_n` as the recording schema).
 
 The generated library exports, for the chosen `prefix` (C ABI: 1-based

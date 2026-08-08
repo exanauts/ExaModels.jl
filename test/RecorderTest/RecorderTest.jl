@@ -138,6 +138,33 @@ function runtests()
             @test core isa ExaCore{Float64}
         end
 
+        @testset "args shapes (bare value, nothing, tuple refusal)" begin
+            t = lv_tape()
+            m_nt = ExaModel(t, (; N = 50))
+            m_bare = ExaModel(t, 50)               # single-field schema sugar
+            compare_models(m_bare, m_nt)
+            core = @inferred ExaModels.instantiate(t, 50)
+            @test core isa ExaCore{Float64}
+            @test_throws ArgumentError ExaModel(t)          # schema needs N
+            @test_throws ArgumentError ExaModel(t, (50,))   # tuples are positional; tapes bind by name
+
+            # A tape that never touches the data tracer instantiates with no
+            # args, and ExaModel(tape) is exactly ExaModel(core) of the same
+            # calls.
+            build_static(c) = begin
+                @add_var(c, x, 4; start = (LVB.rosenrock_start(i) for i = 1:4))
+                @add_con(c, LVB.rosenrock_constraint(x, i) for i = 1:2)
+                @add_obj(c, LVB.rosenrock_objective(x, i) for i = 1:3)
+                c
+            end
+            ts = build_static(ExaTape())
+            m_tape = ExaModel(ts)
+            m_core = ExaModel(build_static(ExaCore()))
+            compare_models(m_tape, m_core)
+            core2 = @inferred ExaModels.instantiate(ts)
+            @test core2 isa ExaCore{Float64}
+        end
+
         @testset "structure guardrails" begin
             @test_throws RecorderStructureError let data = DataTracer((; N = 4)), c = ExaTape()
                 data.N > 5 && error("unreachable")

@@ -46,12 +46,16 @@ tape = ExaTape()
 #
 # ## Instantiating it
 #
-# `ExaModel(tape, data)` instantiates the tape — folding over it and making the
+# `ExaModel(tape, args)` instantiates the tape — folding over it and making the
 # real `add_var` / `add_con` / `add_obj` calls with every symbolic value
-# resolved against the data you pass, which can have *different sizes* than
-# the template — and builds the model in one call:
+# resolved against the `args` you pass, which can have *different sizes* than
+# the template — and builds the model in one call. `args` binds by name as a
+# `NamedTuple`; for a single-field schema a bare value works too, and a tape
+# that never touched the data tracer needs no args at all (`ExaModel(tape)`
+# builds exactly what the same calls against an `ExaCore` would):
 
 model = ExaModel(tape, (; N = 1000))
+model = ExaModel(tape, 1000)            # same schema, bare value
 
 # Element type and backend are instantiate-time choices, so a single tape serves
 # CPU and GPU at any precision:

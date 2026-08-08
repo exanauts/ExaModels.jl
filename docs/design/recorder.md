@@ -23,15 +23,19 @@ Trace-based construction, in ExaModels' generator-based syntax:
   the real API (so `@add_var` etc. work unchanged). Entries accumulate in a
   concretely-typed nested tuple — the same pattern `ExaCore` itself uses for
   `var`/`cons`/`obj`.
-- **`ExaModel(tape, data; T, backend)`** — the public one-call form: a
+- **`ExaModel(tape, args = nothing; T, backend)`** — the public one-call form: a
   type-stable fold over the tape entries makes the *real*
   `add_var`/`add_con`/`add_obj` calls against a real `ExaCore`, and the model
   is built from it. Backend and precision are chosen at instantiate, not record —
   record once, instantiate on CPU or GPU. Construction is explicit — the user
   builds against `ExaTape()` and `DataTracer(template)` directly, in ordinary
   dynamic Julia; construction code may be arbitrarily type-unstable, since
-  nothing there is ever AOT-compiled. (`ExaModels.instantiate(tape, data) ->
-  ExaCore` remains as the unexported two-step form.)
+  nothing there is ever AOT-compiled. (`ExaModels.instantiate(tape, args) ->
+  ExaCore` remains as the unexported two-step form.) `args` has no
+  privileged shape: a `NamedTuple` binds fields by name, a bare value binds
+  a single-field schema, and `nothing` (the default) instantiates a tape
+  that never touched the data tracer — `ExaModel(tape)` then builds exactly
+  the model the same calls against an `ExaCore` would.
 
 ## Key mechanism: instantiate-time re-tracing via `Ref` binding
 
