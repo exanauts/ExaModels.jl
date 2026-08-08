@@ -16,7 +16,7 @@ include("user_model.jl")
 
 # Recorded once, at precompile time; nothing below this line enters the
 # compiled call graph except `replay` and the evaluation kernels.
-const TAPE = ExaModels.record(build, make_data($template_n))
+const TAPE = build(ExaModels.ExaTape(), ExaModels.DataTracer(make_data($template_n)))
 """,
         "make_data($template_n)",
     )

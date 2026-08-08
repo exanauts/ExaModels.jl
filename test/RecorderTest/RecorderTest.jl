@@ -7,6 +7,7 @@ using SparseArrays
 import JuMP, PowerModels, Downloads
 import LuksanVlcekBenchmark as LVB
 import COPSBenchmark
+import JuliaC, MadNLP, CNLPModels
 
 const TMPDIR = mktempdir()
 
@@ -15,6 +16,7 @@ include("../NLPTest/luksan.jl")   # luksan_vlcek_* helpers + _exa_luksan_vlcek_m
 include("../NLPTest/power.jl")    # parse_ac_power_data + __exa_ac_power_model
 
 include("recorded_models.jl")
+include("aot_libraries.jl")
 
 # The canonical 1-D LuksanVlcek example (docs/src/gpu.jl), kept from the PoC:
 # helpers shared, paths independent.
@@ -27,7 +29,7 @@ function direct_model(N; T = Float64)
     return ExaModel(c)
 end
 
-lv_tape() = record((; N = 4)) do c, data
+lv_tape() = let data = DataTracer((; N = 4)), c = ExaTape()
     @add_var(c, x, data.N; start = (LVB.rosenrock_start(i) for i = 1:data.N))
     @add_con(c, LVB.rosenrock_constraint(x, i) for i = 1:data.N-2)
     @add_obj(c, LVB.rosenrock_objective(x, i) for i = 1:data.N-1)
@@ -110,7 +112,7 @@ function runtests()
                 1:data.N-2)
             ct, _ = add_obj(ct, 100 * (xt[i-1]^2 - xt[i])^2 + (xt[i-1] - 1)^2, 2:data.N)
 
-            cc = record((; N = 4)) do c, data
+            cc = let data = DataTracer((; N = 4)), c = ExaTape()
                 @add_var(c, x, data.N; start = -0.5)
                 @add_con(c, 3x[i+1]^3 + 2x[i+2] - 5 + sin(x[i+1] - x[i+2])sin(x[i+1] + x[i+2]) +
                             4x[i+1] - x[i]exp(x[i] - x[i+1]) - 3 for i = 1:data.N-2)
@@ -137,11 +139,11 @@ function runtests()
         end
 
         @testset "structure guardrails" begin
-            @test_throws RecorderStructureError record((; N = 4)) do c, data
+            @test_throws RecorderStructureError let data = DataTracer((; N = 4)), c = ExaTape()
                 data.N > 5 && error("unreachable")
                 c
             end
-            @test_throws RecorderStructureError record((; N = 4)) do c, data
+            @test_throws RecorderStructureError let data = DataTracer((; N = 4)), c = ExaTape()
                 total = 0
                 for i in 1:data.N
                     total += i
@@ -173,11 +175,11 @@ function runtests()
             @test core isa ExaCore{Float64}
         end
 
-        @testset "COPS: $name" for (name, mk, sizes) in (
-            ("chain", cops_chain_tape, (64, 200)),
-            ("camshape", cops_camshape_tape, (50, 200)),
+        @testset "COPS: $name" for (name, sizes) in (
+            ("chain", (64, 200)),
+            ("camshape", (50, 200)),
         )
-            t = mk()
+            t = getfield(COPSBenchmark, Symbol(name, :_tape))()
             for n in sizes
                 m_rec = ExaModel(t, (; n = n))
                 m_ref = getfield(COPSBenchmark, Symbol(name, :_model))(
@@ -191,7 +193,7 @@ function runtests()
         @testset "AC power flow: one tape, several grids" begin
             data3 = parse_ac_power_data(get_power_case("pglib_opf_case3_lmbd.m"))
             data14 = parse_ac_power_data(get_power_case("pglib_opf_case14_ieee.m"))
-            t = record(opf_build, data3)
+            t = opf_build(ExaTape(), DataTracer(data3))
             for data in (data3, data14)
                 m_rec = ExaModel(t, data; prod = true)
                 m_ref, _, _ = __exa_ac_power_model(nothing, data)
@@ -200,6 +202,8 @@ function runtests()
             core = @inferred ExaModels.replay(t, data3)
             @test core isa ExaCore{Float64}
         end
+
+        aot_library_tests()
     end
 end
 
