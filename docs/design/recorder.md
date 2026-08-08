@@ -98,21 +98,50 @@ runtime call graph that `juliac --trim=safe` must compile is `replay` + the
 standard ExaModels kernels — all ours. The user's `build` is never called at
 runtime.
 
-## PoC scope (this branch, LuksanVlcek example)
+## Current scope (this branch)
 
-- In: `add_var` (dims, `start`/`lvar`/`uvar`, names via `@add_var`),
-  `add_con`, `add_obj` (generator forms + macros), tracer ops
-  (`getproperty`, `+`, `-`, `*`, unary `-`, `:`, `length`), structure-error
-  guardrails, `record`/`replay`, `@inferred` gate, correctness tests against
-  a directly-built model.
-- Later (mechanical): `add_par`, `add_expr`, `add_con!` augmentation entries,
-  richer tracer vocabulary (`eachindex`, `zip`, `enumerate`, nested
-  fields/arrays-of-namedtuples), binding `Constraint` handles for
-  `multipliers`. 
-- Later (designed, not mechanical): closures capturing tracer *scalars*
-  (eager unwrap through a bound `Ref` at trace time), `static()`,
-  tape → generated-source dump for debuggability, the app-package generator
-  around `replay`, thread-safety of replay.
+- Recording: `add_var` / `add_par` / `add_con` / `add_con!` / `add_obj`
+  (generator forms + macros, names, tags, bounds/start kwargs).
+- Constraint handles for `add_con!` bind *positionally*: `add_con` on the tape
+  returns `TapeCon{K}` (K = entry index) and replay threads a tuple of
+  realized handles, because a `Ref`'s concrete type would need the traced
+  `SIMDFunction` type, unknowable at record time. Variables and parameters
+  bind through concretely-typed `Ref`s as described above.
+- Tracer vocabulary: `getproperty`, `+`, `-`, `*`, `/`, `div`, `rem`, `mod`,
+  unary `-`, `floor`/`ceil(T, ·)`, 2- and 3-arg `:`, `length`, `fill`,
+  comprehensions over traced ranges (`collect` of a generator whose iterable
+  is traced; the body must not capture tracers), `Iterators.product` with
+  traced components (multi-dimensional generators).
+- Guardrails: comparisons/iteration on tracers throw `RecorderStructureError`.
+- Tests: recorded-vs-direct comparisons (values, derivatives, sparsity)
+  against independently-implemented builders — the docs LuksanVlcek, the full
+  18-model LuksanVlcekBenchmark set, the repo's 2-D Luksan (product
+  generators + `add_con!`), and the AC power flow model (one tape replayed
+  across different pglib grids) — plus `@inferred replay` on every tape and
+  the RecorderApp juliac `--trim=safe` compile-and-run test.
+
+### Transcription idioms (writing a model against the recorder)
+
+- A single-expression constraint/objective (`add_con(c, expr)`) evaluates the
+  expression eagerly, which an unbound `TapeVar` cannot do; write it as a
+  1-element generator (`expr for _ in 1:1`) — semantically identical to the
+  real API's own `pars = 1:1` handling.
+- A structural scalar used *inside* an expression (`constraint(x, N)` at a
+  boundary) is injected through the iterable: `for n in data.N:data.N`. The
+  value then flows through the iteration element at evaluation time.
+- An instance scalar computed from data (`h = 1/(N+1)`) becomes a parameter:
+  `c, h = add_par(c, 1; value = 1/(data.N + 1))`, then `h[1]` in expressions.
+  (The direct model bakes `h` as a `Constant`, so trees — and possibly
+  sparsity orderings — differ while assembled operators match.)
+
+## Later
+
+- `add_expr` entries; binding `Constraint` handles for post-solve
+  `multipliers`; closures capturing tracer scalars (eager unwrap through a
+  bound `Ref` at trace time); `static()` escape hatch (needed for e.g. COPS
+  models whose *inner* `sum` ranges are data-dependent — the SumNode
+  fundamental limit above); tape → generated-source dump; the app-package
+  generator around `replay`; thread-safety of replay.
 
 ## Naming
 

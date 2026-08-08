@@ -15,6 +15,7 @@ if !(@isdefined _PAGES)
             "performance.md",
             "gpu.md",
             "parameters.md",
+            "recorder.md",
 
             "develop.md",
             "quad.md",
@@ -37,6 +38,7 @@ if !(@isdefined _JL_FILENAMES)
         "distillation.jl",
         "opf.jl",
         "gpu.jl",
+        "recorder.jl",
         "performance.jl",
         "parameters.jl",
         "two_stage.jl",
