@@ -9,6 +9,36 @@ import JuliaC
 const _GEN_UUID = "8f6b1d64-5c2e-4c9d-9c66-0d6ad14bf1a1"
 
 function _gen_module_source(prefix::AbstractString, template_n::Integer)
+    return _gen_module(
+        prefix,
+        """
+include("user_model.jl")
+
+# Recorded once, at precompile time; nothing below this line enters the
+# compiled call graph except `replay` and the evaluation kernels.
+const TAPE = ExaModels.record(build, make_data($template_n))
+""",
+        "make_data($template_n)",
+    )
+end
+
+# Tape-input variant: the tape was built elsewhere (e.g. from Python through
+# examodels-py) and arrives serialized; `make_data` is generated from the
+# template's single integer field.
+function _gen_module_source_tape(prefix::AbstractString, fname::Symbol, template_n::Integer)
+    return _gen_module(
+        prefix,
+        """
+import Serialization
+
+const TAPE = Serialization.deserialize(joinpath(@__DIR__, "tape.jls"))
+make_data(n) = (; $fname = Int(n))
+""",
+        "make_data($template_n)",
+    )
+end
+
+function _gen_module(prefix::AbstractString, setup::AbstractString, template_call::AbstractString)
     p(s) = string(prefix, "_", s)
     return """
 module ExaModelsLib
@@ -16,12 +46,8 @@ module ExaModelsLib
 using ExaModels
 using ExaModels.NLPModels
 
-include("user_model.jl")
-
-# Recorded once, at precompile time; nothing below this line enters the
-# compiled call graph except `replay` and the evaluation kernels.
-const TAPE = ExaModels.record(build, make_data($template_n))
-const ModelT = typeof(ExaModels.ExaModel(ExaModels.replay(TAPE, make_data($template_n))))
+$setup
+const ModelT = typeof(ExaModels.ExaModel(ExaModels.replay(TAPE, $template_call)))
 const MODELS = ModelT[]
 
 # Returns a positive model id, or 0 on failure. Models live for the process
@@ -159,6 +185,37 @@ end # module ExaModelsLib
 end
 
 function ExaModels.compile_library(
+    tape::ExaModels.ExaTape;
+    template::NamedTuple,
+    prefix::AbstractString = "rec",
+    out::AbstractString = "lib_out",
+    template_n::Integer = 4,
+    trim::AbstractString = "safe",
+    privatize::Bool = true,
+    verbose::Bool = false,
+)
+    length(template) == 1 && fieldtype(typeof(template), 1) <: Integer || throw(
+        ArgumentError(
+            "compile_library(tape) currently supports a single integer-field " *
+            "template (got $(typeof(template))); use the model-file form for " *
+            "richer schemas",
+        ),
+    )
+    Base.isidentifier(Symbol(prefix)) ||
+        throw(ArgumentError("prefix must be a valid C identifier, got \"$prefix\""))
+
+    appdir = mktempdir()
+    mkpath(joinpath(appdir, "src"))
+    ExaModels.Serialization.serialize(joinpath(appdir, "src", "tape.jls"), tape)
+    _write_app_project(appdir; serialization = true)
+    write(
+        joinpath(appdir, "src", "ExaModelsLib.jl"),
+        _gen_module_source_tape(prefix, fieldnames(typeof(template))[1], template_n),
+    )
+    return _drive_juliac(appdir, prefix, out, trim, privatize, verbose)
+end
+
+function ExaModels.compile_library(
     model_file::AbstractString;
     prefix::AbstractString = "rec",
     out::AbstractString = "lib_out",
@@ -171,11 +228,18 @@ function ExaModels.compile_library(
     Base.isidentifier(Symbol(prefix)) ||
         throw(ArgumentError("prefix must be a valid C identifier, got \"$prefix\""))
 
-    exa_root = dirname(dirname(pathof(ExaModels)))
-
     appdir = mktempdir()
     mkpath(joinpath(appdir, "src"))
     cp(model_file, joinpath(appdir, "src", "user_model.jl"))
+    _write_app_project(appdir)
+    write(joinpath(appdir, "src", "ExaModelsLib.jl"), _gen_module_source(prefix, template_n))
+    return _drive_juliac(appdir, prefix, out, trim, privatize, verbose)
+end
+
+function _write_app_project(appdir; serialization::Bool = false)
+    exa_root = dirname(dirname(pathof(ExaModels)))
+    extra = serialization ?
+        "Serialization = \"9e88b42a-f829-5b0c-bbe9-9e923198166b\"\n" : ""
     write(
         joinpath(appdir, "Project.toml"),
         """
@@ -185,13 +249,14 @@ function ExaModels.compile_library(
 
         [deps]
         ExaModels = "1037b233-b668-4ce9-9b63-f9f681f55dd2"
-
+        $extra
         [sources]
         ExaModels = {path = "$exa_root"}
         """,
     )
-    write(joinpath(appdir, "src", "ExaModelsLib.jl"), _gen_module_source(prefix, template_n))
+end
 
+function _drive_juliac(appdir, prefix, out, trim, privatize, verbose)
     img = JuliaC.ImageRecipe(
         file = appdir,
         output_type = "--output-lib",

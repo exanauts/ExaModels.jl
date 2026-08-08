@@ -27,6 +27,7 @@ For more information, please visit https://github.com/exanauts/ExaModels.jl
 module ExaModels
 
 import Adapt: adapt
+import Serialization
 import NLPModels:
     NLPModels,
     obj,

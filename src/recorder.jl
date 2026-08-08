@@ -200,11 +200,10 @@ struct TapeVarIndexed{V, I} <: AbstractNode
     i::I
 end
 
-# Dual mode: during replay tracing the ref is bound and indexing delegates to
-# the real Variable (offset-correct nodes); at record time it produces a
-# symbolic reference for tree-based building.
-@inline Base.getindex(v::TapeVar, i...) =
-    isassigned(v.ref) ? getindex(v.ref[], i...) : TapeVarIndexed(v, i)
+# Indexing a tape handle ALWAYS produces a symbolic reference — never a
+# branch on binding state, which would make traced tree types a Union and
+# destroy replay inferability. Replay resolves sentinels via _rebind.
+@inline Base.getindex(v::TapeVar, i...) = TapeVarIndexed(v, i)
 
 """
     TapePar{P}
@@ -221,8 +220,7 @@ struct TapeParIndexed{P, I} <: AbstractNode
     i::I
 end
 
-@inline Base.getindex(p::TapePar, i...) =
-    isassigned(p.ref) ? getindex(p.ref[], i...) : TapeParIndexed(p, i)
+@inline Base.getindex(p::TapePar, i...) = TapeParIndexed(p, i)
 
 """
     _rebind(node)
@@ -242,6 +240,21 @@ tree entries; structure and all other leaves are preserved.
 @inline _rebind(n::DataIndexed{I, J}) where {I, J} = DataIndexed(_rebind(getfield(n, :inner)), J)
 @inline _rebind(n::SumNode) = SumNode(map(_rebind, n.inners))
 @inline _rebind(n::ProdNode) = ProdNode(map(_rebind, n.inners))
+@inline _rebind(p::Pair) = _rebind(p.first) => _rebind(p.second)
+
+"""
+    FixedExpr{N}
+
+A named single-argument functor returning a fixed, pre-built expression tree —
+the sanctioned constant-generator vehicle (`Base.Generator(FixedExpr(node),
+itr)`): the tree already references the iteration element through
+`DataSource`, so the argument is ignored. Named (rather than an anonymous
+closure) so tapes built from trees remain serializable.
+"""
+struct FixedExpr{N}
+    node::N
+end
+@inline (f::FixedExpr)(_) = f.node
 
 """
     TapeCon{K}
@@ -493,6 +506,11 @@ end
     return _replay(c, (handles..., h), data, rest...)
 end
 
+# The low-level (tree, pars) forms do not run the generator path's
+# _adapt_gen, so multi-dimensional index sets must be collected here.
+@inline _collect_pars(p::Iterators.ProductIterator) = collect(p)
+@inline _collect_pars(x) = x
+
 # Optional-kwarg resolution: `nothing` means "not given at record time" and
 # falls back to the real API's default; generators get their (possibly traced)
 # iterable resolved.
@@ -530,10 +548,10 @@ end
 end
 
 @inline function _replay_entry(c::ExaCore{T}, handles, e::ConEntry, data) where {T}
-    gen = Base.Generator(e.f, resolve(e.itr, data))
     c, con = add_con(
         c,
-        gen;
+        _rebind(e.f(DataSource())),
+        _collect_pars(resolve(e.itr, data));
         tag = e.tag,
         name = e.name,
         start = _kw(e.start, data, zero(T)),
@@ -544,14 +562,14 @@ end
 end
 
 @inline function _replay_entry(c::ExaCore{T}, handles, e::ConAugEntry{K}, data) where {T, K}
-    gen = Base.Generator(e.f, resolve(e.itr, data))
+    pair = _rebind(e.f(DataSource()))
+    gen = Base.Generator(FixedExpr(pair), resolve(e.itr, data))
     c, _ = add_con!(c, handles[K], gen; tag = e.tag)
     return (c, nothing)
 end
 
 @inline function _replay_entry(c::ExaCore{T}, handles, e::ObjEntry, data) where {T}
-    gen = Base.Generator(e.f, resolve(e.itr, data))
-    c, _ = add_obj(c, gen; name = e.name)
+    c, _ = add_obj(c, _rebind(e.f(DataSource())), _collect_pars(resolve(e.itr, data)); name = e.name)
     return (c, nothing)
 end
 
@@ -559,7 +577,7 @@ end
     c, con = add_con(
         c,
         _rebind(e.expr),
-        resolve(e.itr, data);
+        _collect_pars(resolve(e.itr, data));
         tag = e.tag,
         name = e.name,
         start = _kw(e.start, data, zero(T)),
@@ -570,7 +588,7 @@ end
 end
 
 @inline function _replay_entry(c::ExaCore{T}, handles, e::ObjTreeEntry, data) where {T}
-    c, _ = add_obj(c, _rebind(e.expr), resolve(e.itr, data); name = e.name)
+    c, _ = add_obj(c, _rebind(e.expr), _collect_pars(resolve(e.itr, data)); name = e.name)
     return (c, nothing)
 end
 
