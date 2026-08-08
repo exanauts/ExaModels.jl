@@ -42,13 +42,20 @@ computed from the `Variable` handle the closure captured.
 The tape therefore stores the user's closures **uncalled**, and the recorded
 `add_var` returns a `TapeVar` — a thin handle holding an *empty*
 `Ref{Variable{S,O,T}}` whose concrete type is computable at record time from
-the recorded dims (`S = Tuple{replay_type.(dims)...}`, `O = Int`). At replay:
+the recorded dims (`S = Tuple{replay_type.(dims)...}`, `O = Int`). Indexing a
+tape handle **always** yields a sentinel node (`TapeVarIndexed`) — never a
+branch on binding state, which would make traced tree types a `Union` and
+destroy replay inferability. At replay:
 
 1. `VarEntry` replays through the real `add_var`, which computes correct
    offsets for the *actual* sizes, and binds `tapevar.ref[] = v`.
-2. `ConEntry`/`ObjEntry` rebuild `Base.Generator(f, resolve(iter, data))` and
-   pass it to the real `add_con`/`add_obj`. Tracing happens inside the real
-   API; `getindex(::TapeVar, i...)` delegates to the bound real `Variable`.
+2. `ConEntry`/`ObjEntry` trace their stored closure themselves
+   (`f(DataSource())`), rewrite the sentinels into offset-correct references
+   with the `_rebind` tree walk, and feed the result to the *low-level*
+   `(expr, pars)` forms. Augmentation pairs rebind the same way and travel
+   through the named `FixedExpr` functor. Expression trees recorded directly
+   (`add_con(tape, expr::AbstractNode, itr)` — the Python path) skip the
+   trace and go straight to `_rebind`.
 
 Consequences:
 
