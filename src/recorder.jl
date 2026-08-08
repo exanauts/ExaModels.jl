@@ -333,6 +333,14 @@ struct ObjTreeEntry{E, I, Nm}
     name::Nm
 end
 
+struct ConAugTreeEntry{K, E, I, Tg}
+    expr::E   # a Pair: row_index_expr => expression
+    itr::I
+    tag::Tg
+end
+@inline ConAugTreeEntry{K}(expr::E, itr::I, tag::Tg) where {K, E, I, Tg} =
+    ConAugTreeEntry{K, E, I, Tg}(expr, itr, tag)
+
 """
     ExaTape()
 
@@ -435,6 +443,13 @@ end
 @inline function add_obj(tape::ExaTape, expr::AbstractNode, itr = 1:1; name = nothing)
     entry = ObjTreeEntry(expr, itr, name)
     (_append(tape, entry), TapeObj())
+end
+
+# Tree form of constraint augmentation: `expr` is `row_index_expr => body`,
+# both referencing the iteration element through DataSource.
+@inline function add_con!(tape::ExaTape, ::TapeCon{K}, expr::Pair, itr; tag = nothing) where {K}
+    entry = ConAugTreeEntry{K}(expr, itr, tag)
+    (_append(tape, entry), TapeConAug())
 end
 
 # ── record ────────────────────────────────────────────────────────────────────
@@ -585,6 +600,12 @@ end
         ucon = _kw(e.ucon, data, zero(T)),
     )
     return (c, con)
+end
+
+@inline function _replay_entry(c::ExaCore{T}, handles, e::ConAugTreeEntry{K}, data) where {T, K}
+    gen = Base.Generator(FixedExpr(_rebind(e.expr)), resolve(e.itr, data))
+    c, _ = add_con!(c, handles[K], gen; tag = e.tag)
+    return (c, nothing)
 end
 
 @inline function _replay_entry(c::ExaCore{T}, handles, e::ObjTreeEntry, data) where {T}

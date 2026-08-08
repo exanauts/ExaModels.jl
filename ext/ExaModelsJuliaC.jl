@@ -25,31 +25,215 @@ end
 # Tape-input variant: the tape was built elsewhere (e.g. from Python through
 # examodels-py) and arrives serialized; `make_data` is generated from the
 # template's single integer field.
-function _gen_module_source_tape(prefix::AbstractString, fname::Symbol, template_n::Integer)
+
+# ── ABI v2: structured data (builder + schema) ────────────────────────────────
+# The template's schema is fixed at compile time, so the C interface exposes
+# fill-in-the-blanks: named slots for scalars, plain arrays, and table columns
+# (tables cross the boundary columnar and are zipped back into the
+# vector-of-namedtuples the tape's replay expects). All generated code is
+# static — literal field names, concrete types — for --trim=safe.
+
+_jlname(x) = replace(string(x), "\"" => "")
+
+_ctype(::Type{Float64}) = ("f64", "Cdouble", "Float64")
+_ctype(::Type{<:Integer}) = ("i64", "Clonglong", "Int64")
+
+function _schema_entries(template::NamedTuple)
+    entries = []
+    for (name, val) in pairs(template)
+        if val isa Number
+            val isa Union{Float64, Integer} ||
+                error("unsupported scalar type $(typeof(val)) for field $name")
+            push!(entries, (name = name, kind = :scalar, T = typeof(val)))
+        elseif val isa AbstractVector && eltype(val) <: Number
+            eltype(val) <: Union{Float64, Integer} ||
+                error("unsupported array eltype $(eltype(val)) for field $name")
+            push!(entries, (name = name, kind = :array, T = eltype(val)))
+        elseif val isa AbstractVector && eltype(val) <: NamedTuple
+            ET = eltype(val)
+            for (cn, ct) in zip(fieldnames(ET), fieldtypes(ET))
+                ct <: Union{Float64, Integer} ||
+                    error("unsupported column type $ct for $name.$cn")
+            end
+            push!(entries, (name = name, kind = :table,
+                            cols = collect(zip(fieldnames(ET), fieldtypes(ET)))))
+        else
+            error("unsupported template field $name::$(typeof(val)); " *
+                  "fields must be numbers, numeric vectors, or vectors of " *
+                  "named tuples of numbers")
+        end
+    end
+    return entries
+end
+
+function _schema_json(entries)
+    parts = String[]
+    for e in entries
+        if e.kind === :scalar
+            push!(parts, "{\"name\":\"$(e.name)\",\"kind\":\"scalar\",\"type\":\"$(_ctype(e.T)[1])\"}")
+        elseif e.kind === :array
+            push!(parts, "{\"name\":\"$(e.name)\",\"kind\":\"array\",\"type\":\"$(_ctype(e.T)[1])\"}")
+        else
+            cols = join(["{\"name\":\"$cn\",\"type\":\"$(_ctype(ct)[1])\"}" for (cn, ct) in e.cols], ",")
+            push!(parts, "{\"name\":\"$(e.name)\",\"kind\":\"table\",\"columns\":[$cols]}")
+        end
+    end
+    return "{\"abi\":2,\"fields\":[" * join(parts, ",") * "]}"
+end
+
+function _gen_data_api(prefix::AbstractString, template::NamedTuple)
+    p(s) = string(prefix, "_", s)
+    entries = _schema_entries(template)
+
+    slots = String[]; inits = String[]; checks = String[]; asm = String[]
+    set_scalar = Dict("f64" => String[], "i64" => String[])
+    set_array = Dict("f64" => String[], "i64" => String[])
+    set_col = Dict("f64" => String[], "i64" => String[])
+
+    for e in entries
+        n = e.name
+        if e.kind === :scalar
+            ck, cty, jty = _ctype(e.T)
+            push!(slots, "    f_$(n)::$jty\n    has_$(n)::Bool")
+            push!(inits, "zero($jty), false")
+            push!(checks, "    b.has_$(n) || return Cint(0)")
+            push!(asm, "$n = b.f_$(n)")
+            push!(set_scalar[ck], "    if fname == \"$n\"\n        b.f_$(n) = $jty(v); b.has_$(n) = true\n        return Cint(0)\n    end")
+        elseif e.kind === :array
+            ck, cty, jty = _ctype(e.T)
+            push!(slots, "    f_$(n)::Vector{$jty}\n    has_$(n)::Bool")
+            push!(inits, "$jty[], false")
+            push!(checks, "    b.has_$(n) || return Cint(0)")
+            push!(asm, "$n = b.f_$(n)")
+            push!(set_array[ck], "    if fname == \"$n\"\n        b.f_$(n) = copyto!(Vector{$jty}(undef, Int(len)), unsafe_wrap(Array, ptr, Int(len)))\n        b.has_$(n) = true\n        return Cint(0)\n    end")
+        else
+            lens = String[]
+            for (cn, ct) in e.cols
+                ck, cty, jty = _ctype(ct)
+                push!(slots, "    f_$(n)_$(cn)::Vector{$jty}\n    has_$(n)_$(cn)::Bool")
+                push!(inits, "$jty[], false")
+                push!(checks, "    b.has_$(n)_$(cn) || return Cint(0)")
+                push!(lens, "length(b.f_$(n)_$(cn))")
+                push!(set_col[ck], "    if fname == \"$n\" && cname == \"$cn\"\n        b.f_$(n)_$(cn) = copyto!(Vector{$jty}(undef, Int(len)), unsafe_wrap(Array, ptr, Int(len)))\n        b.has_$(n)_$(cn) = true\n        return Cint(0)\n    end")
+            end
+            push!(checks, "    allequal(($(join(lens, ", ")),)) || return Cint(0)")
+            row = join(["$cn = b.f_$(n)_$(cn)[k]" for (cn, _) in e.cols], ", ")
+            push!(asm, "$n = [($row,) for k in 1:length(b.f_$(n)_$(first(e.cols)[1]))]")
+        end
+    end
+
+    setter(fnname, sig, body) = """
+Base.@ccallable function $(p(fnname))($sig)::Cint
+    (1 <= Int(bid) <= length(BUILDERS)) || return Cint(1)
+    b = BUILDERS[Int(bid)]
+    fname = unsafe_string(f)
+$(isempty(body) ? "" : join(body, "\n"))
+    return Cint(1)
+end
+"""
+
+    return """
+const SCHEMA = $(repr(_schema_json(entries)))
+
+mutable struct DataBuilder
+$(join(slots, "\n"))
+end
+_new_builder() = DataBuilder($(join(inits, ", ")))
+const BUILDERS = DataBuilder[]
+
+Base.@ccallable function $(p("schema"))(buf::Ptr{UInt8}, len::Cint)::Cint
+    bytes = codeunits(SCHEMA)
+    n = min(Int(len), length(bytes))
+    n > 0 && unsafe_copyto!(buf, pointer(bytes), n)
+    return Cint(length(bytes))
+end
+
+Base.@ccallable function $(p("data_begin"))()::Cint
+    push!(BUILDERS, _new_builder())
+    return Cint(length(BUILDERS))
+end
+
+$(setter("set_scalar_f64", "bid::Cint, f::Cstring, v::Cdouble", set_scalar["f64"]))
+$(setter("set_scalar_i64", "bid::Cint, f::Cstring, v::Clonglong", set_scalar["i64"]))
+$(setter("set_array_f64", "bid::Cint, f::Cstring, ptr::Ptr{Cdouble}, len::Cint", set_array["f64"]))
+$(setter("set_array_i64", "bid::Cint, f::Cstring, ptr::Ptr{Clonglong}, len::Cint", set_array["i64"]))
+Base.@ccallable function $(p("set_col_f64"))(bid::Cint, f::Cstring, c::Cstring, ptr::Ptr{Cdouble}, len::Cint)::Cint
+    (1 <= Int(bid) <= length(BUILDERS)) || return Cint(1)
+    b = BUILDERS[Int(bid)]
+    fname = unsafe_string(f); cname = unsafe_string(c)
+$(join(set_col["f64"], "\n"))
+    return Cint(1)
+end
+Base.@ccallable function $(p("set_col_i64"))(bid::Cint, f::Cstring, c::Cstring, ptr::Ptr{Clonglong}, len::Cint)::Cint
+    (1 <= Int(bid) <= length(BUILDERS)) || return Cint(1)
+    b = BUILDERS[Int(bid)]
+    fname = unsafe_string(f); cname = unsafe_string(c)
+$(join(set_col["i64"], "\n"))
+    return Cint(1)
+end
+
+# Returns 0 if any slot is unfilled or table columns disagree in length —
+# probed by <prefix>_data_ready; new_from_data returns a model id or 0.
+Base.@ccallable function $(p("data_ready"))(bid::Cint)::Cint
+    (1 <= Int(bid) <= length(BUILDERS)) || return Cint(0)
+    b = BUILDERS[Int(bid)]
+$(join(checks, "\n"))
+    return Cint(1)
+end
+
+Base.@ccallable function $(p("new_from_data"))(bid::Cint)::Cint
+    $(p("data_ready"))(bid) == 1 || return Cint(0)
+    b = BUILDERS[Int(bid)]
+    data = (; $(join(asm, ",\n       ")))
+    try
+        push!(MODELS, ExaModels.ExaModel(ExaModels.replay(TAPE, data)))
+        return Cint(length(MODELS))
+    catch
+        return Cint(0)
+    end
+end
+"""
+end
+
+function _gen_module_source_tape(prefix::AbstractString, template::NamedTuple)
+    single_int = length(template) == 1 && first(template) isa Integer
+    sugar = if single_int
+        fname = fieldnames(typeof(template))[1]
+        """
+make_data(n) = (; $fname = Int(n))
+
+Base.@ccallable function $(prefix)_new(n::Cint)::Cint
+    try
+        push!(MODELS, ExaModels.ExaModel(ExaModels.replay(TAPE, make_data(Int(n)))))
+        return Cint(length(MODELS))
+    catch
+        return Cint(0)
+    end
+end
+"""
+    else
+        ""
+    end
     return _gen_module(
         prefix,
         """
 import Serialization
 
 const TAPE = Serialization.deserialize(joinpath(@__DIR__, "tape.jls"))
-make_data(n) = (; $fname = Int(n))
+const TEMPLATE = Serialization.deserialize(joinpath(@__DIR__, "template.jls"))
 """,
-        "make_data($template_n)",
+        "TEMPLATE";
+        extra = _gen_data_api(prefix, template) * sugar,
+        emit_new = false,
     )
 end
 
-function _gen_module(prefix::AbstractString, setup::AbstractString, template_call::AbstractString)
+function _gen_module(
+    prefix::AbstractString, setup::AbstractString, template_call::AbstractString;
+    extra::AbstractString = "", emit_new::Bool = true,
+)
     p(s) = string(prefix, "_", s)
-    return """
-module ExaModelsLib
-
-using ExaModels
-using ExaModels.NLPModels
-
-$setup
-const ModelT = typeof(ExaModels.ExaModel(ExaModels.replay(TAPE, $template_call)))
-const MODELS = ModelT[]
-
+    new_fn = emit_new ? """
 # Returns a positive model id, or 0 on failure. Models live for the process
 # lifetime; ids are never reused.
 Base.@ccallable function $(p("new"))(n::Cint)::Cint
@@ -60,6 +244,19 @@ Base.@ccallable function $(p("new"))(n::Cint)::Cint
         return Cint(0)
     end
 end
+""" : ""
+    return """
+module ExaModelsLib
+
+using ExaModels
+using ExaModels.NLPModels
+
+$setup
+const ModelT = typeof(ExaModels.ExaModel(ExaModels.replay(TAPE, $template_call)))
+const MODELS = ModelT[]
+
+$new_fn
+$extra
 
 @inline _model(id::Cint) = MODELS[Int(id)]
 
@@ -184,6 +381,30 @@ end # module ExaModelsLib
 """
 end
 
+# A tape is compilable only if every entry's types are named in packages the
+# generated app can load (practically: tree-built tapes). Anonymous closures
+# recorded from generators live in the recording session's modules and cannot
+# be deserialized elsewhere — reject them with a pointer to the tree forms.
+function _assert_serializable(tape::ExaModels.ExaTape)
+    for e in tape.entries
+        for field in (:f, :expr)
+            if hasproperty(e, field)
+                m = parentmodule(typeof(getproperty(e, field)))
+                root = Base.moduleroot(m)
+                root in (ExaModels, Base, Core) || throw(
+                    ArgumentError(
+                        "the tape contains a closure defined in $root " *
+                        "($(typeof(e))); tapes for compile_library must be " *
+                        "built from expression trees (add_con(tape, expr, " *
+                        "itr) forms — the examodels-py path), or use the " *
+                        "model-file form of compile_library",
+                    ),
+                )
+            end
+        end
+    end
+end
+
 function ExaModels.compile_library(
     tape::ExaModels.ExaTape;
     template::NamedTuple,
@@ -194,23 +415,19 @@ function ExaModels.compile_library(
     privatize::Bool = true,
     verbose::Bool = false,
 )
-    length(template) == 1 && fieldtype(typeof(template), 1) <: Integer || throw(
-        ArgumentError(
-            "compile_library(tape) currently supports a single integer-field " *
-            "template (got $(typeof(template))); use the model-file form for " *
-            "richer schemas",
-        ),
-    )
+    _schema_entries(template)   # validates field/column types, throws otherwise
+    _assert_serializable(tape)
     Base.isidentifier(Symbol(prefix)) ||
         throw(ArgumentError("prefix must be a valid C identifier, got \"$prefix\""))
 
     appdir = mktempdir()
     mkpath(joinpath(appdir, "src"))
     ExaModels.Serialization.serialize(joinpath(appdir, "src", "tape.jls"), tape)
+    ExaModels.Serialization.serialize(joinpath(appdir, "src", "template.jls"), template)
     _write_app_project(appdir; serialization = true)
     write(
         joinpath(appdir, "src", "ExaModelsLib.jl"),
-        _gen_module_source_tape(prefix, fieldnames(typeof(template))[1], template_n),
+        _gen_module_source_tape(prefix, template),
     )
     return _drive_juliac(appdir, prefix, out, trim, privatize, verbose)
 end
