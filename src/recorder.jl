@@ -185,7 +185,26 @@ that captured a `TapeVar` trace correctly inside the real `add_con`/`add_obj`.
 struct TapeVar{V}
     ref::Base.RefValue{V}
 end
-@inline Base.getindex(v::TapeVar, i...) = getindex(v.ref[], i...)
+
+"""
+    TapeVarIndexed / TapeParIndexed
+
+Symbolic reference to an entry of a not-yet-bound [`TapeVar`](@ref) /
+[`TapePar`](@ref), produced when a tape handle is indexed *outside* a replay
+(i.e. while building an expression tree programmatically, e.g. from Python).
+Replay rewrites these into real `Var` / `ParameterNode` nodes via
+[`_rebind`](@ref) once the handles are bound.
+"""
+struct TapeVarIndexed{V, I} <: AbstractNode
+    var::TapeVar{V}
+    i::I
+end
+
+# Dual mode: during replay tracing the ref is bound and indexing delegates to
+# the real Variable (offset-correct nodes); at record time it produces a
+# symbolic reference for tree-based building.
+@inline Base.getindex(v::TapeVar, i...) =
+    isassigned(v.ref) ? getindex(v.ref[], i...) : TapeVarIndexed(v, i)
 
 """
     TapePar{P}
@@ -196,7 +215,33 @@ Record-time stand-in for a [`Parameter`](@ref), returned by `add_par` on an
 struct TapePar{P}
     ref::Base.RefValue{P}
 end
-@inline Base.getindex(p::TapePar, i...) = getindex(p.ref[], i...)
+
+struct TapeParIndexed{P, I} <: AbstractNode
+    par::TapePar{P}
+    i::I
+end
+
+@inline Base.getindex(p::TapePar, i...) =
+    isassigned(p.ref) ? getindex(p.ref[], i...) : TapeParIndexed(p, i)
+
+"""
+    _rebind(node)
+
+Rewrite an expression tree built at record time (with
+[`TapeVarIndexed`](@ref)/[`TapeParIndexed`](@ref) sentinels) into a real
+ExaModels tree by indexing the now-bound handles. Called during replay of
+tree entries; structure and all other leaves are preserved.
+"""
+@inline _rebind(x) = x
+@inline _rebind(n::TapeVarIndexed) = getindex(n.var.ref[], map(_rebind, n.i)...)
+@inline _rebind(n::TapeParIndexed) = getindex(n.par.ref[], map(_rebind, n.i)...)
+@inline _rebind(n::Node1{F, I}) where {F, I} = Node1(F.instance, _rebind(n.inner))
+@inline _rebind(n::Node2{F, I1, I2}) where {F, I1, I2} =
+    Node2(F.instance, _rebind(n.inner1), _rebind(n.inner2))
+@inline _rebind(n::ParameterNode) = ParameterNode(_rebind(n.i))
+@inline _rebind(n::DataIndexed{I, J}) where {I, J} = DataIndexed(_rebind(getfield(n, :inner)), J)
+@inline _rebind(n::SumNode) = SumNode(map(_rebind, n.inners))
+@inline _rebind(n::ProdNode) = ProdNode(map(_rebind, n.inners))
 
 """
     TapeCon{K}
@@ -252,6 +297,25 @@ end
 
 struct ObjEntry{F, I, Nm}
     f::F
+    itr::I
+    name::Nm
+end
+
+# Tree-based entries: the expression is a pre-built Node tree (with
+# TapeVarIndexed/TapeParIndexed sentinels) instead of an uncalled closure —
+# the Python-friendly path, since no Julia function needs to be written.
+struct ConTreeEntry{E, I, St, Lc, Uc, Nm, Tg}
+    expr::E
+    itr::I
+    start::St
+    lcon::Lc
+    ucon::Uc
+    name::Nm
+    tag::Tg
+end
+
+struct ObjTreeEntry{E, I, Nm}
+    expr::E
     itr::I
     name::Nm
 end
@@ -336,6 +400,27 @@ end
 
 @inline function add_obj(tape::ExaTape, gen::Base.Generator; name = nothing)
     entry = ObjEntry(gen.f, gen.iter, name)
+    (_append(tape, entry), TapeObj())
+end
+
+# Tree forms, mirroring the real API's `add_con(c, expr::AbstractNode, pars)`
+# and `add_obj(c, expr::AbstractNode, pars)`.
+@inline function add_con(
+    tape::ExaTape,
+    expr::AbstractNode,
+    itr = 1:1;
+    tag = nothing,
+    name = nothing,
+    start = nothing,
+    lcon = nothing,
+    ucon = nothing,
+)
+    entry = ConTreeEntry(expr, itr, start, lcon, ucon, name, tag)
+    (_append(tape, entry), TapeCon{length(tape.entries) + 1}())
+end
+
+@inline function add_obj(tape::ExaTape, expr::AbstractNode, itr = 1:1; name = nothing)
+    entry = ObjTreeEntry(expr, itr, name)
     (_append(tape, entry), TapeObj())
 end
 
@@ -467,6 +552,25 @@ end
 @inline function _replay_entry(c::ExaCore{T}, handles, e::ObjEntry, data) where {T}
     gen = Base.Generator(e.f, resolve(e.itr, data))
     c, _ = add_obj(c, gen; name = e.name)
+    return (c, nothing)
+end
+
+@inline function _replay_entry(c::ExaCore{T}, handles, e::ConTreeEntry, data) where {T}
+    c, con = add_con(
+        c,
+        _rebind(e.expr),
+        resolve(e.itr, data);
+        tag = e.tag,
+        name = e.name,
+        start = _kw(e.start, data, zero(T)),
+        lcon = _kw(e.lcon, data, zero(T)),
+        ucon = _kw(e.ucon, data, zero(T)),
+    )
+    return (c, con)
+end
+
+@inline function _replay_entry(c::ExaCore{T}, handles, e::ObjTreeEntry, data) where {T}
+    c, _ = add_obj(c, _rebind(e.expr), resolve(e.itr, data); name = e.name)
     return (c, nothing)
 end
 

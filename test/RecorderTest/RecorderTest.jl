@@ -97,6 +97,45 @@ function runtests()
             @test obj(m10, x) == o1
         end
 
+        @testset "tree-built tape matches closure-built tape" begin
+            # The Python-facing path: expressions arrive as pre-built Node
+            # trees with unbound-handle sentinels, no Julia closures anywhere.
+            data = DataTracer((; N = 4))
+            ct = ExaTape()
+            ct, xt = add_var(ct, data.N; start = -0.5)
+            i = ExaModels.DataSource()
+            ct, _ = add_con(ct,
+                3xt[i+1]^3 + 2xt[i+2] - 5 + sin(xt[i+1] - xt[i+2]) * sin(xt[i+1] + xt[i+2]) +
+                4xt[i+1] - xt[i] * exp(xt[i] - xt[i+1]) - 3,
+                1:data.N-2)
+            ct, _ = add_obj(ct, 100 * (xt[i-1]^2 - xt[i])^2 + (xt[i-1] - 1)^2, 2:data.N)
+
+            cc = record((; N = 4)) do c, data
+                @add_var(c, x, data.N; start = -0.5)
+                @add_con(c, 3x[i+1]^3 + 2x[i+2] - 5 + sin(x[i+1] - x[i+2])sin(x[i+1] + x[i+2]) +
+                            4x[i+1] - x[i]exp(x[i] - x[i+1]) - 3 for i = 1:data.N-2)
+                @add_obj(c, 100 * (x[i-1]^2 - x[i])^2 + (x[i-1] - 1)^2 for i = 2:data.N)
+                c
+            end
+
+            for N in (10, 200)
+                mt = ExaModel(replay(ct, (; N = N)))
+                mc = ExaModel(replay(cc, (; N = N)))
+                rng = Random.MersenneTwister(3)
+                xr = randn(rng, N)
+                yr = randn(rng, N - 2)
+                @test obj(mt, xr) == obj(mc, xr)
+                @test grad(mt, xr) == grad(mc, xr)
+                @test cons(mt, xr) == cons(mc, xr)
+                @test jac_structure(mt) == jac_structure(mc)
+                @test jac_coord(mt, xr) == jac_coord(mc, xr)
+                @test hess_structure(mt) == hess_structure(mc)
+                @test hess_coord(mt, xr, yr) == hess_coord(mc, xr, yr)
+            end
+            core = @inferred replay(ct, (; N = 10))
+            @test core isa ExaCore{Float64}
+        end
+
         @testset "structure guardrails" begin
             @test_throws RecorderStructureError record((; N = 4)) do c, data
                 data.N > 5 && error("unreachable")
