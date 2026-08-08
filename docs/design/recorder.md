@@ -136,11 +136,17 @@ runtime.
 
 ## Shared-library output (`compile_library`, ExaModelsJuliaC extension)
 
-`compile_library(model_file; prefix, out)` generates a throwaway app package
-(the user's model file + `const TAPE = record(build, make_data(template_n))`
-+ the C-ABI `@ccallable` surface, prefix-interpolated), pins it to the
-running ExaModels checkout, and drives JuliaC's
+`compile_library` generates a throwaway app package with the C-ABI
+`@ccallable` surface (prefix-interpolated, handle-based: `<prefix>_new(n) →
+id`, id-first entry points, any number of coexisting instances), pins it to
+the running ExaModels checkout, and drives JuliaC's
 compile/link/bundle(`privatize = true`) pipeline to a self-contained `.so`.
+Two input forms: a *model file* defining `build(c, data)`/`make_data(n)`
+(recorded at the generated package's precompile time), or a *tape object*
+(`compile_library(tape::ExaTape; template)`) — tree-built tapes contain only
+named types, so the tape is serialized into the app and deserialized at its
+precompile time; this is how models recorded from Python compile without any
+Julia source being written.
 ABI: `<prefix>_init(n)`, meta/structure queries, and
 obj/grad/cons/jac/hess evaluations — 1-based indices, lower-triangle
 Lagrangian Hessian with `obj_weight`, `Cint` statuses. The Julia-side
@@ -155,7 +161,8 @@ hosting a bundled runtime inside a Julia process) is CNLPModels.jl.
   models whose *inner* `sum` ranges are data-dependent — the SumNode
   fundamental limit above); tape → generated-source dump; a richer data ABI
   for `compile_library` (pointer-based array marshalling instead of
-  `init(n::Cint)`); thread-safety of replay.
+  `new(n::Cint)`; the tape-input form is currently limited to
+  single-integer-field templates); thread-safety of replay.
 
 ## Naming
 

@@ -106,6 +106,11 @@ model = ExaModel(core)
 # #   precompile time; the trimmed call graph contains no user model code.
 # ```
 #
+# `compile_library` also accepts a tape *object* directly
+# (`compile_library(tape; template = (; N = 4))`) — tree-built tapes are
+# serializable, which is how models recorded from Python (examodels-py's
+# `exa.Tape`) compile to shared libraries without a Julia source file.
+#
 # Any consumer — Julia (via CNLPModels.jl, which also handles the
 # libblastrampoline restore needed when hosting a bundled runtime), C, or
 # Python — can then instantiate and evaluate the model through

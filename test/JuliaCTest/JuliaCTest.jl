@@ -260,6 +260,39 @@ function runtests()
                 end
                 @test x0 == m_ref.meta.x0
                 @test out[] ≈ Base.invokelatest(NLPModels.obj, m_ref, x0) rtol = 1e-14
+
+                # ── tape-input form: a tree-built tape, no model file ─────────
+                data = ExaModels.DataTracer((; N = 4))
+                t = ExaModels.ExaTape()
+                t, xv = ExaModels.add_var(t, data.N; start = -0.5)
+                i = ExaModels.DataSource()
+                t, _ = ExaModels.add_con(t, 3xv[i+1]^3 + 2xv[i+2] - 5, 1:data.N-2)
+                t, _ = ExaModels.add_obj(t, (xv[i-1] - 1)^2, 2:data.N)
+                r2 = ExaModels.compile_library(
+                    t; template = (; N = 4), prefix = "tt", out = mktempdir(),
+                )
+                @test isfile(r2.libpath)
+                blas_libs2 = [l.libname for l in BLAS.get_config().loaded_libs]
+                h2 = Libdl.dlopen(r2.libpath, Libdl.RTLD_LOCAL | Libdl.RTLD_DEEPBIND)
+                f2(s) = Libdl.dlsym(h2, s)
+                id2t = ccall(f2(:tt_new), Cint, (Cint,), Cint(12))
+                @test id2t > 0
+                for (k, l) in enumerate(blas_libs2)
+                    BLAS.lbt_forward(l; clear = (k == 1))
+                end
+                @test Int(ccall(f2(:tt_nvar), Cint, (Cint,), id2t)) == 12
+                x0t = zeros(12); lvt = zeros(12); uvt = zeros(12)
+                lct = zeros(10); uct = zeros(10)
+                @test ccall(f2(:tt_meta), Cint,
+                    (Cint, Ptr{Cdouble}, Ptr{Cdouble}, Ptr{Cdouble}, Ptr{Cdouble}, Ptr{Cdouble}),
+                    id2t, x0t, lvt, uvt, lct, uct) == 0
+                outt = Ref{Cdouble}(0.0)
+                @test ccall(f2(:tt_obj), Cint, (Cint, Ptr{Cdouble}, Ptr{Cdouble}), id2t, x0t, outt) == 0
+                # The same tape replayed in-process is the reference (tree
+                # tapes contain no runtime-included methods: no world-age gap).
+                m_t = ExaModels.ExaModel(ExaModels.replay(t, (; N = 12)))
+                @test x0t == m_t.meta.x0
+                @test outt[] ≈ NLPModels.obj(m_t, x0t) rtol = 1e-14
             else
                 @warn "JuliaC.ImageRecipe not available, skipping compile_library test"
             end
