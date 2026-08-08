@@ -504,14 +504,14 @@ passed to the `ExaModel` constructor. (The underlying two-step form,
 `ExaModels.replay(tape, data) -> ExaCore`, remains available — unexported —
 for workflows that need the intermediate core.)
 """
-function ExaModel(
+@inline function ExaModel(
     tape::ExaTape,
     data::NamedTuple;
     T::Type{<:AbstractFloat} = Float64,
     backend = nothing,
     kwargs...,
 )
-    return ExaModel(replay(tape, data; T = T, backend = backend); kwargs...)
+    return ExaModel(_replay_impl(tape, data, T, backend); kwargs...)
 end
 
 """
@@ -532,6 +532,13 @@ function replay(
     T::Type{<:AbstractFloat} = Float64,
     backend = nothing,
 )
+    return _replay_impl(tape, data, T, backend)
+end
+
+# Positional core: Type{T} dispatch keeps inference exact through the
+# keyword seam (a Type-valued keyword argument loses its constant-ness in
+# kwcall, which surfaces as an abstract ExaCore under juliac's verifier).
+@inline function _replay_impl(tape::ExaTape, data::NamedTuple, ::Type{T}, backend) where {T <: AbstractFloat}
     c = ExaCore(T; backend = backend, minimize = tape.config.minimize, concrete = Val(true))
     return _replay(c, (), data, tape.entries...)
 end

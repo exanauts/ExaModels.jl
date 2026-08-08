@@ -4,6 +4,7 @@ using Test, JuliaC
 using Libdl, LinearAlgebra
 import ExaModels
 import NLPModels
+import MadNLP
 
 const LUKSANVLCEK_APP_DIR = abspath(joinpath(@__DIR__, "..", "LuksanVlcekApp.jl"))
 const COPS_APP_DIR        = abspath(joinpath(@__DIR__, "..", "COPSApp.jl"))
@@ -48,6 +49,81 @@ function _stage_app(app_dir::String)
         write(fpath, text)
     end
     return staged_app
+end
+
+# Minimal host-side NLPModels wrapper over the generated C ABI (the full
+# consumer lives in CNLPModels.jl; this test-local copy keeps the suite free
+# of that dependency). Handle-based: <prefix>_new(n) -> id, id-first calls.
+struct _CLibModel <: NLPModels.AbstractNLPModel{Float64, Vector{Float64}}
+    meta::NLPModels.NLPModelMeta{Float64, Vector{Float64}}
+    counters::NLPModels.Counters
+    h::Ptr{Cvoid}
+    p::String
+    id::Cint
+end
+
+function _CLibModel(h::Ptr{Cvoid}, prefix::AbstractString, n::Integer)
+    f(s) = Libdl.dlsym(h, Symbol(prefix, "_", s))
+    id = ccall(f(:new), Cint, (Cint,), Cint(n))
+    id > 0 || error("$(prefix)_new($n) failed")
+    nvar = Int(ccall(f(:nvar), Cint, (Cint,), id))
+    ncon = Int(ccall(f(:ncon), Cint, (Cint,), id))
+    nnzj = Int(ccall(f(:nnzj), Cint, (Cint,), id))
+    nnzh = Int(ccall(f(:nnzh), Cint, (Cint,), id))
+    x0 = zeros(nvar); lvar = zeros(nvar); uvar = zeros(nvar)
+    lcon = zeros(ncon); ucon = zeros(ncon)
+    ccall(f(:meta), Cint,
+        (Cint, Ptr{Cdouble}, Ptr{Cdouble}, Ptr{Cdouble}, Ptr{Cdouble}, Ptr{Cdouble}),
+        id, x0, lvar, uvar, lcon, ucon) == 0 || error("meta failed")
+    meta = NLPModels.NLPModelMeta(
+        nvar; ncon, nnzj, nnzh, x0, lvar, uvar, lcon, ucon, minimize = true)
+    return _CLibModel(meta, NLPModels.Counters(), h, String(prefix), id)
+end
+
+_f(m::_CLibModel, s) = Libdl.dlsym(m.h, Symbol(m.p, "_", s))
+
+function NLPModels.obj(m::_CLibModel, x::AbstractVector{Float64})
+    out = Ref{Cdouble}(0.0)
+    ccall(_f(m, :obj), Cint, (Cint, Ptr{Cdouble}, Ptr{Cdouble}), m.id, x, out) == 0 ||
+        error("obj failed")
+    return out[]
+end
+function NLPModels.grad!(m::_CLibModel, x::AbstractVector{Float64}, g::AbstractVector{Float64})
+    ccall(_f(m, :grad), Cint, (Cint, Ptr{Cdouble}, Ptr{Cdouble}), m.id, x, g) == 0 ||
+        error("grad failed")
+    return g
+end
+function NLPModels.cons!(m::_CLibModel, x::AbstractVector{Float64}, c::AbstractVector{Float64})
+    ccall(_f(m, :cons), Cint, (Cint, Ptr{Cdouble}, Ptr{Cdouble}), m.id, x, c) == 0 ||
+        error("cons failed")
+    return c
+end
+function NLPModels.jac_structure!(m::_CLibModel, rows::AbstractVector, cols::AbstractVector)
+    r = Vector{Cint}(undef, m.meta.nnzj); c = Vector{Cint}(undef, m.meta.nnzj)
+    ccall(_f(m, :jac_structure), Cint, (Cint, Ptr{Cint}, Ptr{Cint}), m.id, r, c) == 0 ||
+        error("jac_structure failed")
+    copyto!(rows, r); copyto!(cols, c)
+    return rows, cols
+end
+function NLPModels.jac_coord!(m::_CLibModel, x::AbstractVector{Float64}, v::AbstractVector{Float64})
+    ccall(_f(m, :jac), Cint, (Cint, Ptr{Cdouble}, Ptr{Cdouble}), m.id, x, v) == 0 ||
+        error("jac failed")
+    return v
+end
+function NLPModels.hess_structure!(m::_CLibModel, rows::AbstractVector, cols::AbstractVector)
+    r = Vector{Cint}(undef, m.meta.nnzh); c = Vector{Cint}(undef, m.meta.nnzh)
+    ccall(_f(m, :hess_structure), Cint, (Cint, Ptr{Cint}, Ptr{Cint}), m.id, r, c) == 0 ||
+        error("hess_structure failed")
+    copyto!(rows, r); copyto!(cols, c)
+    return rows, cols
+end
+function NLPModels.hess_coord!(
+    m::_CLibModel, x::AbstractVector{Float64}, y::AbstractVector{Float64},
+    v::AbstractVector{Float64}; obj_weight::Real = 1.0,
+)
+    ccall(_f(m, :hess), Cint, (Cint, Ptr{Cdouble}, Ptr{Cdouble}, Cdouble, Ptr{Cdouble}),
+        m.id, x, y, Cdouble(obj_weight), v) == 0 || error("hess failed")
+    return v
 end
 
 function _compile_exe(app_dir::String, exe_path::String)
@@ -201,6 +277,51 @@ function runtests()
                     rm(exe_path; force = true)
                 end
             end
+        end
+
+        # ── individually compiled models, host-side solving ───────────────────
+        # One evaluation-only library per model (compile_library: tape at the
+        # generated package's precompile, no solver compiled in), consumed
+        # through the C ABI and solved by a HOST solver (MadNLP here — any
+        # NLPModels solver works, since the host is not trimmed). Each model
+        # runs in its own subprocess: loading several privatized runtimes into
+        # one long-lived driver is exactly the interaction this avoids.
+        @testset "individual model libraries: $mname" for mname in
+                ("rosenrock", "wood", "two_blocks")
+            script = """
+                using ExaModels, JuliaC, MadNLP, Libdl, LinearAlgebra
+                include($(repr(joinpath(@__DIR__, "JuliaCTest.jl"))))
+                r = ExaModels.compile_library(
+                    $(repr(joinpath(@__DIR__, "models", mname * ".jl")));
+                    prefix = "m", out = mktempdir(), template_n = 8)
+                blas = [l.libname for l in BLAS.get_config().loaded_libs]
+                h = Libdl.dlopen(r.libpath, Libdl.RTLD_LOCAL | Libdl.RTLD_DEEPBIND)
+                m = JuliaCTest._CLibModel(h, "m", 40)
+                for (i, l) in enumerate(blas)
+                    BLAS.lbt_forward(l; clear = (i == 1))
+                end
+                res = MadNLP.madnlp(m; print_level = MadNLP.ERROR)
+                mod = Module(:MRef)
+                Core.eval(mod, :(using ExaModels))
+                Base.include(mod, $(repr(joinpath(@__DIR__, "models", mname * ".jl"))))
+                m_ref = Base.invokelatest() do
+                    tape = ExaModels.record(mod.build, mod.make_data(8))
+                    ExaModels.ExaModel(tape, mod.make_data(40))
+                end
+                res_ref = MadNLP.madnlp(m_ref; print_level = MadNLP.ERROR)
+                ok = res.status == MadNLP.SOLVE_SUCCEEDED &&
+                     res_ref.status == MadNLP.SOLVE_SUCCEEDED &&
+                     isapprox(res.objective, res_ref.objective; rtol = 1e-8)
+                println("MODEL_LIB_RESULT : ", ok ? 0 : 1)
+                """
+            out = IOBuffer()
+            result = run(pipeline(
+                ignorestatus(`$(Base.julia_cmd()) --project=$(Base.active_project()) -e $script`);
+                stdout = out, stderr = out,
+            ))
+            txt = String(take!(out))
+            @test success(result)
+            @test contains(txt, "MODEL_LIB_RESULT : 0")
         end
 
         # ── compile_library ───────────────────────────────────────────────────
