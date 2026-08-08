@@ -624,4 +624,5 @@ function compile_library end
 # Post-solve access through tape handles: after a replay, the handle's Ref
 # points at the replayed model's variable, so solution retrieval forwards to
 # it (semantics: the LAST replay of this tape).
-solution(result, tv::TapeVar) = solution(result, tv.ref[])
+solution(result::SolverCore.AbstractExecutionStats, tv::TapeVar) =
+    solution(result, tv.ref[])
