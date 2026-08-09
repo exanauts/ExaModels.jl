@@ -1,156 +1,107 @@
-# Exploration: make `ExaCore` lazy (breaking release)
+# Make `ExaCore` lazy — design (v3: the concrete lazy core)
 
-The framing is not "remove ExaCore" — it is **`ExaCore` becomes lazy**.
-Construction *records*; `ExaModel(core, args)` *materializes*. Concretely,
-the release renames today's `ExaTape` to `ExaCore` and internalizes the
-eager accumulator (today's `ExaCore`) as the materialization fold's
-internal state. Explored on branch `ss/tape-only`.
+The release makes `ExaCore` lazy without the user seeing a difference:
+construction stays today's eager, concretely-typed construction — expression
+trees are traced at each `add_*` call exactly as now — and *only values*
+are deferred. An **args sentinel** (the `DataTracer` mechanism) may flow
+into any value position: dimensions, iterator ranges, bounds, starts,
+parameter values. Whatever depends on a sentinel — offsets above all — is
+computed when `ExaModel(core, args)` materializes the model. The core is
+concretely typed at construction; its values need not be.
 
-## Why the migration is nearly free
+This supersedes the tape-shaped design explored first (recording closures,
+materializing later). The measurements below justify the inversion: the
+tape's costs came from storing *untraced closures* (wide types); tracing
+eagerly stores the compiled, compressed, narrow entry types, and every
+pathology disappears by construction.
 
-`ExaModel(tape) ≡ ExaModel(core)` is a tested identity (RecorderTest,
-args-shapes testset). So the code every user already has —
+## What it wins (each point measured or verified; populations below)
 
-```julia
-c = ExaCore()
-@add_var(c, x, N)
-...
-m = ExaModel(c)
-```
+1. **No width pathology, ever.** The toy isolates it: accumulating 200
+   narrow entries costs 0.04 s; 200 closure-carrying entries cost 188.7 s
+   (matching the tape's recorded 189.3 s). Eagerly-traced entries are the
+   narrow kind — the eager core's own accumulation, measured linear
+   (43.2 / 113.1 s at S = 100/200).
+2. **Re-instantiation is a value pass.** All types exist after
+   construction, so `ExaModel(core, args₂)` computes offsets, resolves
+   sentinel expressions, and builds arrays — no type compilation. Under
+   the tape, every instantiation re-ran typed construction (117.9 s at
+   S = 200). One core, many cheap instantiations: a capability neither
+   today's eager core nor the tape has.
+3. **Construction-time error locality is restored.** Tracing runs at the
+   `add_con` line, so a broken user expression fails there — one of the
+   tape design's documented regressions disappears.
+4. **Universal serialization.** Post-trace entries are closure-free:
+   `SIMDFunction(T, gen, ...)` calls `gen.f(DataSource())` once and stores
+   only the traced tree (`src/simdfunction.jl:41-43`; confirmed by the
+   author). So *every* lazy core serializes — closure-built models
+   included — where the tape could only serialize tree-built ones.
+   `compile_library` extends to any model.
+5. **Smaller AOT surface.** The trimmed runtime is the value pass, simpler
+   than tape replay.
+6. **User-invisible.** Today's API verbatim; sentinels are additive. A
+   core built with no sentinels materializes to exactly today's model
+   (the identity property, already a gated test on `ss/recorder`).
 
-— keeps working **verbatim** under the lazy core, by that identity: values
-are inline, nothing references the data tracer, and materialization builds
-exactly the model eager construction did. What users *gain*, on the same
-object, is everything recording enables: symbolic data fields
-(`DataTracer`), instantiation at any `args`/precision/backend, tape
-serialization, and the AOT route.
+## Mechanisms required (each already exists in some form)
 
-- The MOI and JuMP conversions build the eager accumulator *internally*
-  and hand it to `ExaModel`; the rename does not touch them. Same for the
-  backend extensions.
-- The repo has done this before: `LegacyExaCore` in `src/deprecated.jl` is
-  the worked precedent for changing what `ExaCore` means across a release.
+- **Deferred offsets as field values.** Offsets are `Int` *fields* inside
+  node types (`Node2{+, I, Int64}`), not type parameters — trace with
+  placeholder offsets, fill at materialization with a type-preserving,
+  value-only tree walk (the `_rebind` machinery from `ss/recorder`,
+  relocated). `@inferred` materialization holds because no types change.
+- **Sentinel-typed tracing.** Tracing needs element *types*, not values;
+  `DataTracer{NT}` carries the template's field types, including record
+  eltypes for `for b in data.branch`-style iteration. Ranges, `fill`s,
+  and deferred comprehensions stay value-level exactly as on
+  `ss/recorder`.
+- **Deferred-value slots inside concrete containers.** A slot holds either
+  a plain value or a sentinel expression; its type is fixed per model at
+  construction (concrete, possibly sentinel-typed), so entry types stay
+  concrete without a `Union`.
 
-## What needs real work
+## Semantics to document
 
-| Surface | Today | Under the lazy core | Size |
-|---|---|---|---|
-| `add_*` + macros | dispatch on both objects | done | — |
-| `T`/`backend` in `ExaCore(T; backend)` | construction-time | become `ExaModel`/`instantiate` keywords (already are); the lazy `ExaCore(; minimize)` keeps only what recording needs | small |
-| Oracle registration | `objective(c, o)`, `constraint(c, o)` on the eager core | record an `OracleEntry`; materialization calls through. Oracle cores join the closure class (callbacks are opaque — not serializable), consistent with closure generators | ~50 lines + tests |
-| Two-stage | `TwoStageExaCore(ns)` — an eager-core variant | needs a scenario-aware recording design (backlogged); keep `TwoStageExaCore` on the eager path for one cycle | separate PR |
-| Benchmark repos' `_model` | eager-core constructors | become `ExaModel(<name>_tape(), n)`; the companion-PR tape builders are the survivors | mechanical |
+- Structure still cannot depend on sentinel *values* (comparisons and
+  iteration on sentinels throw at construction — unchanged guardrail).
+- A sentinel-free core has today's semantics exactly. With sentinels,
+  value resolution happens at `ExaModel(core, args)`; args follow the
+  shapes already shipped on `ss/recorder` (NamedTuple by name, bare value
+  for single-field schemas, `nothing` default).
 
-## Semantic changes to document (the honest "breaking" part)
+## Roadmap: pattern merging (type shortening)
 
-1. **Laziness is observable**: generators are iterated at materialization,
-   not construction — mutating a captured array between building and
-   `ExaModel(c)` diverges from eager semantics.
-2. Mid-construction introspection of concrete offsets (reading counts off a
-   half-built core) no longer exists; structure exists after
-   materialization.
-3. Errors in user expressions surface at `ExaModel(c)`, not at the `add_*`
-   line that recorded them (stack traces still point into the stored
-   closure).
+Creation cost grows with the number of *distinct* con/obj types, not data
+size. Since constants are field values, structurally-identical trees
+already share types; merging same-typed entries into one entry with
+concatenated iterators/parameter tables collapses repeated-pattern models
+(the S = 200 benchmark is one pattern — effective S = 1). Under v3 the
+merge point is construction itself (entries arrive traced), even more
+natural than the tape's freeze step.
 
-## Compile-time scaling (statement count S; the risk item)
+## Measurement appendix (evidence base; S = distinct add_con statements, cold, n = 100 fixed)
 
-Distinct `add_con` statements grow the entry tuple types — the compile-time
-axis. Measured cold (fresh process per cell), n = 100 fixed; `construct` =
-build + `ExaModel` + evaluation-structure compile.
+| S | eager `ExaCore()` (= LegacyExaCore wrapper) | eager typed `Val(true)` | tape record | tape materialize |
+|---|---|---|---|---|
+| 10 | 14.5 | — | 7.0 total | (with materialize) |
+| 50 | 28.8 | — | 26.3 total | (with materialize) |
+| 100 | 49.8 | 43.2 | 67.8 total | (with materialize) |
+| 200 | 106.5 | 113.1 | 189.3 → **3.5** (erased spine) | 118.0 |
 
-| S | eager core | lazy (vararg fold) | lazy (@generated unroll) |
-|---|---|---|---|
-| 10 | 14.5 s | 7.0 s | — |
-| 50 | 28.8 s | 26.3 s | — |
-| 100 | 49.8 s | 67.8 s | 61.3 s |
-| 200 | 106.5 s | 322.8 s | 305.9 s |
-
-Eager grows linearly (~0.5 s/statement). The lazy path is at parity or
-faster through S ≈ 50 — the realistic hand-written range (LuksanVlcek
-models are 4–10 statements, OPF is 16) — and turns quadratic past
-S ≈ 70–100, the machine-generated-model regime.
-
-Flag asymmetry to keep in mind: default eager `ExaCore()` is
-`concrete = Val(false)` while materialization always builds
-`concrete = Val(true)`; part of the small-S advantage is that difference.
-
-## The quadratic tail: first fix disproven, next candidates
-
-Replacing the vararg recursion with a `@generated` flat unroll (so
-inference sees one flat body, like user-written code) was the obvious fix
-and it is **not** the answer: 322.8 s → 305.9 s at S = 200, noise-level.
-Two further probes localized the cost precisely:
-
-- **Handle threading eliminated**: materializing with handle threading
-  removed entirely (valid for the synthetic model — it has no
-  augmentations) measured 300.0 s, i.e. no change.
-- **Record/materialize split at S = 200**: recording 189.3 s,
-  materializing 118.0 s.
-
-Two control measurements completed the picture:
-
-- **Eager with `concrete = Val(true)`** (the typed-tuple core; the default
-  `ExaCore()` turns out to return the type-erased `LegacyExaCore` wrapper,
-  so the original eager column was measuring that): S = 100 → 43.2 s,
-  S = 200 → 113.1 s. **Linear.** The growing-typed-tuple pattern is *not*
-  quadratic in the core's `add_*`.
-- **Materialization ≈ eager, exactly**: 118.0 s vs 113.1 s at S = 200.
-  Materialization *is* eager construction, and measures like it.
-
-So the entire excess is recording's 189 s — for a phase that stores
-closures and computes nothing. The quadratic is specific to the tape's
-`_append` path (entry types carry the raw generator + kwargs types, and
-each append splats the growing entries tuple in the recorded body's one
-inference unit); the core's own accumulation demonstrably avoids this
-cost. Exact micro-cause not yet isolated — it does not need to be, because
-recording has no static obligations at all:
-
-**Fix implemented and measured — record dynamic, freeze once.**
-Recording at S = 200 drops **189.3 s → 3.5 s** with the erased spine
-(materialization unchanged at 117.9 s ≈ eager's 113.1 s), so lazy total ≈
-eager total at the far tail while keeping the small-S advantage. A toy
-isolated the mechanism first: accumulating 200 *narrow* marker types costs
-0.04 s, 200 closure-carrying entries cost 188.7 s — entry width, not kind
-mixing, drives the quadratic (which also answers "separate var/con/obj
-spines": separation alone cannot fix it, though it remains the right
-*structure* for materialization order in the release). One aliasing bug
-surfaced and is worth remembering: `TapeCon{length(entries) + 1}` was
-evaluated after the append in the same expression — correct under the old
-immutable append, off by one under the mutating push — caught by the
-augmented-model parity probe, fixed by reading the position before
-appending.
-
-**Original design sketch.** Recording is the by-design
-dynamic phase (user code may be arbitrarily type-unstable), so the tape
-records entries onto a type-erased spine (`Vector{Any}`; O(1) pushes, no
-type growth), and a `freeze` step builds the concretely-typed entries
-tuple *once* — one O(S) construction instead of S of them — at the
-record/materialize boundary (end of construction, or entry to
-`ExaModel`/`instantiate`). Everything downstream keeps today's guarantees:
-`@inferred` materialization, trim-safety, serialization — those attach to
-the frozen tape, which is exactly today's `ExaTape`. Expected cost:
-recording ~0, freeze ~one splat, materialization 118 s ≈ eager 113 s —
-i.e. lazy total ≈ eager total at every S, with the small-S advantage
-kept.
-
-None of this blocks the release for the realistic range (parity or better
-through S ≈ 50); it removes the machine-generated-model caveat once
-implemented.
-
-## Future: pattern merging at freeze (type shortening)
-
-The concrete tape stays first-class, and `freeze` grows into the compile
-step: beyond concretizing the spine, it can *shorten the number of distinct
-con/obj types*. Creation cost (eager and materialization alike) grows
-superlinearly in the number of distinct entry types, not data size — and
-constants in expression trees are field values, not type parameters, so
-structurally-identical trees already share types. What keeps entries
-distinct is closure identity (one type per source location). Freeze can
-trace closures to trees (sentinel tracing, as materialization already
-does), group same-typed trees, and merge each group into one entry with
-concatenated iterators/parameter tables: the one-type-per-pattern SIMD
-philosophy applied across statements. The S = 200 benchmark — 200
-statements of one shape differing by a literal — would collapse to an
-effective S of 1. Not part of the initial release; the seam (freeze) ships
-with it.
+- Materialize ≈ eager typed (118.0 vs 113.1): tape materialization *is*
+  eager construction.
+- Disproven along the way: recursion shape (`@generated` unroll, 322.8 →
+  305.9 s — noise) and handle threading (removed entirely, 300.0 s —
+  noise).
+- Toy discriminator: 200 narrow entries 0.04 s vs 200 closure-carrying
+  entries 188.7 s — entry *width*, not kind mixing, drives the cost; this
+  also answers "separate var/con/obj spines" (separation alone cannot
+  help; per-kind structure remains good for materialization order).
+- The erased spine + `freeze` (implemented on this branch) fixed the
+  tape's recording cost and remains a fallback pattern; v3 makes it
+  unnecessary by never storing closures at all.
+- Both eager columns are mildly superlinear (~×2.6 per ×2 at the tail) — a
+  pre-existing property of creation and the target of pattern merging.
+- Aliasing lesson kept from the spine work: positions must be read before
+  a mutating append (`TapeCon{length(entries)+1}` evaluated after the
+  push was off by one; caught by the augmented-model parity probes).
