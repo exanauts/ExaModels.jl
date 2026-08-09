@@ -55,6 +55,7 @@ include("prettyprint.jl")
 include("gradient.jl")
 include("jacobian.jl")
 include("hessian.jl")
+include("tracer.jl")
 include("nlp.jl")
 include("oracle.jl")
 include("deprecated.jl")
@@ -63,6 +64,8 @@ include("tags.jl")
 include("two_stage.jl")
 
 export ExaModel,
+    DataTracer,
+    RecorderStructureError,
     ExaCore,
     LegacyExaCore,
     Expression,
