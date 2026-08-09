@@ -28,7 +28,7 @@ end
 # Override the Val{false} dispatch defined in nlp.jl so ExaCore() returns a LegacyExaCore.
 @inline function _make_exacore(::Val{false}, ::Type{T}, backend; kwargs...) where {T}
     @warn "`ExaCore()` is deprecated, and will be removed. Use `ExaCore(concrete = Val(true))` for the immutable ExaCore. The default behavior for `ExaCore()` will change to return the immutable ExaCore."
-    inner = _exa_core(; x0 = convert_array(zeros(T, 0), backend), backend, kwargs...)
+    inner = _exa_core_from_x0(convert_array(zeros(T, 0), backend), backend; kwargs...)
     # Use the element type of x0 rather than T, since some backends promote the
     # float type (e.g. Metal converts Float64 → Float32).
     Ti = eltype(inner.x0)
@@ -51,6 +51,18 @@ end
 function ExaModel(c::LegacyExaCore; kwargs...)
     return ExaModel(c.inner; kwargs...)
 end
+
+# Building against `arg` is not offered on the deprecated core.  Spelled out
+# rather than left to a MethodError, and — more to the point — rather than left
+# to the generic `ExaModel(::LegacyExaCore; kwargs...)` above, which would
+# happily accept a core full of placeholders and build a model from it.
+ExaModel(::LegacyExaCore, a; kwargs...) = throw(
+    ArgumentError(
+        "`arg` placeholders are not supported on the deprecated `LegacyExaCore`. " *
+        "Build the core with `ExaCore(concrete = Val(true))`.",
+    ),
+)
+ExaModel(c::LegacyExaCore, ::Nothing; kwargs...) = ExaModel(c; kwargs...)
 
 function set_parameter!(c::LegacyExaCore, param::Parameter, values::AbstractArray)
     return set_parameter!(c.inner, param, values)

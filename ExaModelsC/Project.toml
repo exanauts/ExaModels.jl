@@ -1,0 +1,15 @@
+name = "ExaModelsC"
+uuid = "3d1e9a26-5b74-4f0c-9a2b-7c8f4e11d3a7"
+version = "0.1.0"
+authors = ["Sungho Shin <sushin@mit.edu>"]
+
+[deps]
+ExaModels = "1037b233-b668-4ce9-9b63-f9f681f55dd2"
+JuliaC = "acedd4c2-ced6-4a15-accc-2607eb759ba2"
+Serialization = "9e88b42a-f829-5b0c-bbe9-9e923198166b"
+
+[sources]
+ExaModels = {path = ".."}
+
+[compat]
+julia = "1.12"

@@ -484,3 +484,52 @@ end
     SecondAdjointNull(one(eltype(VT)))
 @inline (n::ProdNode)(i, x::SecondAdjointNodeSource, θ) =
     reduce(*, map(inner -> inner(i, x, θ), n.inners))
+
+# Indexing an argument node with a *graph* node — `arg.b[i]` inside a generator,
+# where `i` is the iteration index — cannot mean anything: `arg` is resolved
+# once, at instantiation, while `i` varies per row.  Per-iteration data is what
+# the generator's own iterator is for.  Caught here so it says so, rather than
+# surfacing later as a MethodError on an unrelated operator.
+@inline Base.getindex(::AbstractArgNode, ::AbstractNode) = throw(
+    ArgumentError(
+        "cannot index an `arg` expression with an iteration index: `arg` is " *
+        "resolved once when the model is instantiated, so it cannot vary per " *
+        "row. Pass per-iteration data through the generator instead — " *
+        "`add_con(core, x[d.i] - d.b for d in data)` — and keep `arg` for " *
+        "sizes, starting points and bounds.",
+    ),
+)
+
+# ── Instantiating a graph built against `arg` ────────────────────────────────
+#
+# Variable offsets are baked into `Var` indices at build time, so a graph built
+# after a symbolic block carries argument nodes inside it.  These mirror
+# `replace_T` in simdfunction.jl: rebuild the node with the child's new type,
+# keeping the operation in the type parameter.  Leaves with no children
+# (`Constant`, `Null`, `VarSource`, `DataSource`, …) fall through to the generic
+# identity in argument.jl.
+
+@inline function instantiate(n::Var{I}, a) where {I}
+    i = instantiate(n.i, a)
+    return Var{typeof(i)}(i)
+end
+@inline function instantiate(n::ParameterNode{I}, a) where {I}
+    i = instantiate(n.i, a)
+    return ParameterNode{typeof(i)}(i)
+end
+@inline function instantiate(n::Node1{F,I}, a) where {F,I}
+    i = instantiate(n.inner, a)
+    return Node1{F,typeof(i)}(i)
+end
+@inline function instantiate(n::Node2{F,I1,I2}, a) where {F,I1,I2}
+    i1 = instantiate(n.inner1, a)
+    i2 = instantiate(n.inner2, a)
+    return Node2{F,typeof(i1),typeof(i2)}(i1, i2)
+end
+@inline instantiate(n::SumNode, a) = SumNode(instantiate(n.inners, a))
+@inline instantiate(n::ProdNode, a) = ProdNode(instantiate(n.inners, a))
+# `DataIndexed` overrides `getproperty` to keep building access paths, so its
+# own field has to be read with `getfield`.
+@inline instantiate(n::DataIndexed{I,J}, a) where {I,J} =
+    DataIndexed(instantiate(getfield(n, :inner), a), J)
+@inline instantiate(p::Pair, a) = instantiate(p.first, a) => instantiate(p.second, a)

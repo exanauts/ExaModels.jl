@@ -1,0 +1,437 @@
+"""
+    ExaModelsC
+
+Compile an [`ExaModels.ExaCore`](@ref) into a self-contained shared library that
+exposes the model through the plain C interface consumed by
+[CNLPModels.jl](https://github.com/MadNLP/CNLPModels.jl) (and its Python twin
+`cnlpmodels`).
+
+The core is the compile-time artifact.  It is built once against
+[`ExaModels.arg`](@ref) placeholders — sizes, starting points and bounds left
+open — and the compiled library resolves them per instance:
+
+```julia
+using ExaModels, ExaModelsC
+
+c = ExaCore(concrete = Val(true))
+c, x = add_var(c, arg.N; start = 1.0)
+c, _ = add_obj(c, (x[i] - 1)^2 for i in 1:arg.N)
+
+compile_library(c, "/opt/models/rosen"; arg = (N = 10,))
+```
+
+`arg` here is an *example*: its values are never baked in, but its types are.
+`juliac --trim=safe` needs the whole call graph resolved statically, so the
+example fixes what `N` *is* (an `Int`) while leaving what it *equals* to
+`rec_new(n)` at runtime.
+
+Consume it from Julia with:
+
+```julia
+using CNLPModels, NLPModelsIpopt
+m = CNLPModel(CNLPModels.load("/opt/models/rosen/lib/librosen.so"); args = 1000)
+ipopt(m)
+```
+"""
+module ExaModelsC
+
+import ExaModels
+import JuliaC
+import Serialization
+
+export compile_library
+
+# The generated app package is a throwaway: a fresh temporary directory with
+# its own environment, never registered.  A constant UUID is therefore safe and
+# saves a UUIDs dependency.
+const _GEN_UUID = "b41c7e02-9f3d-4a58-8e6c-2d0f5a7c9b13"
+
+"""
+    compile_library(core, out; arg, prefix = basename(out), trim = "safe",
+                    privatize = true, verbose = false)
+        -> (; libpath, outdir, prefix)
+
+Compile `core` into a shared library under directory `out`, and return the path
+to it.
+
+`core` must be an `ExaCore` built against [`ExaModels.arg`](@ref); `arg` is an
+example argument of the shape the library will be instantiated with.  The
+example is used twice — to pin the types `juliac` needs in order to trim, and to
+check that the core actually instantiates before spending minutes compiling it.
+
+The library exports, for `prefix` `P`: `P_new(n) -> id` (a positive instance id;
+any number of instances may coexist), then id-first `P_nvar`, `P_ncon`,
+`P_nnzj`, `P_nnzh`, `P_meta`, `P_obj`, `P_grad`, `P_cons`, `P_jac_structure`,
+`P_jac`, `P_hess_structure`, `P_hess`.  Indices are 1-based; the Hessian is the
+lower triangle of `obj_weight * ∇²f + Σᵢ yᵢ ∇²cᵢ`; every function returns a
+`Cint` status, `0` on success, and none of them throws across the boundary.
+
+`P_new` takes a single integer, so this form applies when the example `arg` is
+an `Integer`, or a `NamedTuple` holding exactly one integer field — the
+"scalable model" case (`rosenbrock` at size `N`).  Structured instantiation
+(the schema + builder ABI, for data-defined models such as OPF) is not built
+yet; `compile_library` says so rather than emitting a library that would fail
+at load.
+"""
+function compile_library(
+    core::ExaModels.ExaCore,
+    out::AbstractString;
+    arg,
+    prefix::AbstractString = basename(abspath(out)),
+    trim::AbstractString = "safe",
+    privatize::Bool = true,
+    verbose::Bool = false,
+)
+    _check_prefix(prefix)
+    field = _scalar_field(arg)
+
+    # Instantiate here, in this process, before generating anything.  A core
+    # that cannot be instantiated produces a library that cannot be loaded, and
+    # the failure is far cheaper to read now than after a juliac run.
+    probe = ExaModels.ExaModel(core, arg)
+    verbose && @info "compile_library: core instantiates" nvar = probe.meta.nvar ncon =
+        probe.meta.ncon prefix
+
+    appdir = _generate_app(core, arg, field, prefix)
+    verbose && @info "compile_library: generated app" appdir
+
+    return _drive_juliac(appdir, prefix, out, trim, privatize, verbose)
+end
+
+# ── Reading the example argument ──────────────────────────────────────────────
+
+# `P_new` carries one integer, so the example has to say where that integer
+# goes.  Returns `nothing` when the argument *is* the integer, or the field name
+# to wrap it in.  Anything else is the structured case, which needs the schema
+# ABI rather than `P_new`.
+function _scalar_field(arg)
+    arg isa Integer && return nothing
+    if arg isa NamedTuple && length(arg) == 1
+        v = first(arg)
+        v isa Integer && return first(keys(arg))
+    end
+    throw(
+        ArgumentError(
+            "compile_library currently emits the scalar instantiation ABI " *
+            "(`<prefix>_new(n)`), so the example `arg` must be an Integer or a " *
+            "NamedTuple with exactly one integer field — got $(typeof(arg)). " *
+            "Structured data (the schema + builder ABI) is not implemented yet.",
+        ),
+    )
+end
+
+# The prefix becomes a C symbol and a Julia identifier in generated source, so
+# it has to be one. Checked here rather than discovered as a syntax error in a
+# generated file nobody is looking at.
+function _check_prefix(prefix::AbstractString)
+    isempty(prefix) && throw(ArgumentError("prefix must not be empty"))
+    ok = all(c -> isascii(c) && (isletter(c) || isdigit(c) || c == '_'), prefix)
+    (ok && !isdigit(first(prefix))) || throw(
+        ArgumentError(
+            "prefix must be a C identifier (ASCII letters, digits, underscore; " *
+            "not starting with a digit) — got $(repr(prefix))",
+        ),
+    )
+    return prefix
+end
+
+# ── Generating the app package ────────────────────────────────────────────────
+
+function _generate_app(core, arg, field, prefix::AbstractString)
+    appdir = mktempdir(; prefix = "examodelsc_")
+    modname = "ExaLib_" * prefix
+    srcdir = joinpath(appdir, "src")
+    mkpath(srcdir)
+
+    # The core and the example travel as data.  A core built against `arg` is
+    # plain data — trees of `Node1`/`Node2`/`Var` structs, arrays, tuples — with
+    # no closures in the evaluated path, which is what makes this possible at
+    # all.
+    Serialization.serialize(joinpath(srcdir, "core.jls"), core)
+    Serialization.serialize(joinpath(srcdir, "arg.jls"), arg)
+
+    # JuliaC copies the app into a fresh temporary directory before
+    # instantiating, which silently breaks relative `path =` entries: they would
+    # resolve against the copy's parent. Absolute from the start.
+    exadir = abspath(joinpath(dirname(dirname(pathof(ExaModels)))))
+    write(joinpath(appdir, "Project.toml"), _project_toml(modname, exadir))
+    write(joinpath(srcdir, modname * ".jl"), _module_source(modname, prefix, field))
+    return appdir
+end
+
+function _project_toml(modname::AbstractString, exadir::AbstractString)
+    return """
+    name = "$modname"
+    uuid = "$_GEN_UUID"
+    version = "0.1.0"
+
+    [deps]
+    ExaModels = "1037b233-b668-4ce9-9b63-f9f681f55dd2"
+    Serialization = "9e88b42a-f829-5b0c-bbe9-9e923198166b"
+
+    [sources]
+    ExaModels = {path = "$(replace(exadir, '\\' => '/'))"}
+    """
+end
+
+# How `rec_new(n)` turns its one integer into the argument the core expects.
+_arg_expr(::Nothing) = "Int(n)"
+_arg_expr(field::Symbol) = "(; $field = Int(n))"
+
+function _module_source(modname::AbstractString, p::AbstractString, field)
+    argexpr = _arg_expr(field)
+    return """
+    module $modname
+
+    import ExaModels
+    import Serialization
+
+    # Deserialized at precompile time, so the core is baked into the package
+    # image and no model-building code enters the compiled call graph.
+    const CORE = Serialization.deserialize(joinpath(@__DIR__, "core.jls"))
+    const ARG0 = Serialization.deserialize(joinpath(@__DIR__, "arg.jls"))
+
+    # Building one model at precompile time fixes the concrete instance type.
+    # Every runtime instantiation differs only in sizes, so they all land in
+    # this vector without widening it.  `check = Val(false)` drops the
+    # placeholder-leak guard, which walks types reflectively and is not
+    # trimmable — the check already ran, on this exact core, in the process
+    # that called `compile_library`.
+    const MODELS = typeof(ExaModels.ExaModel(CORE, ARG0; check = Val(false)))[]
+
+    @inline _valid(id::Cint) = 1 <= id <= length(MODELS)
+
+    Base.@ccallable function $(p)_new(n::Cint)::Cint
+        try
+            push!(MODELS, ExaModels.ExaModel(CORE, $argexpr; check = Val(false)))
+            return Cint(length(MODELS))
+        catch
+            return Cint(0)          # 0 is the failure value for _new
+        end
+    end
+
+    Base.@ccallable function $(p)_nvar(id::Cint)::Cint
+        _valid(id) || return Cint(-1)
+        return Cint(MODELS[Int(id)].meta.nvar)
+    end
+
+    Base.@ccallable function $(p)_ncon(id::Cint)::Cint
+        _valid(id) || return Cint(-1)
+        return Cint(MODELS[Int(id)].meta.ncon)
+    end
+
+    Base.@ccallable function $(p)_nnzj(id::Cint)::Cint
+        _valid(id) || return Cint(-1)
+        return Cint(MODELS[Int(id)].meta.nnzj)
+    end
+
+    Base.@ccallable function $(p)_nnzh(id::Cint)::Cint
+        _valid(id) || return Cint(-1)
+        return Cint(MODELS[Int(id)].meta.nnzh)
+    end
+
+    Base.@ccallable function $(p)_meta(
+        id::Cint,
+        x0::Ptr{Cdouble},
+        lvar::Ptr{Cdouble},
+        uvar::Ptr{Cdouble},
+        lcon::Ptr{Cdouble},
+        ucon::Ptr{Cdouble},
+    )::Cint
+        _valid(id) || return Cint(1)
+        try
+            m = MODELS[Int(id)]
+            n = m.meta.nvar
+            k = m.meta.ncon
+            copyto!(unsafe_wrap(Array, x0, n), m.meta.x0)
+            copyto!(unsafe_wrap(Array, lvar, n), m.meta.lvar)
+            copyto!(unsafe_wrap(Array, uvar, n), m.meta.uvar)
+            if k > 0
+                copyto!(unsafe_wrap(Array, lcon, k), m.meta.lcon)
+                copyto!(unsafe_wrap(Array, ucon, k), m.meta.ucon)
+            end
+            return Cint(0)
+        catch
+            return Cint(2)
+        end
+    end
+
+    Base.@ccallable function $(p)_obj(id::Cint, x::Ptr{Cdouble}, out::Ptr{Cdouble})::Cint
+        _valid(id) || return Cint(1)
+        try
+            m = MODELS[Int(id)]
+            unsafe_store!(out, ExaModels.obj(m, unsafe_wrap(Array, x, m.meta.nvar)))
+            return Cint(0)
+        catch
+            return Cint(2)
+        end
+    end
+
+    Base.@ccallable function $(p)_grad(id::Cint, x::Ptr{Cdouble}, g::Ptr{Cdouble})::Cint
+        _valid(id) || return Cint(1)
+        try
+            m = MODELS[Int(id)]
+            n = m.meta.nvar
+            ExaModels.grad!(m, unsafe_wrap(Array, x, n), unsafe_wrap(Array, g, n))
+            return Cint(0)
+        catch
+            return Cint(2)
+        end
+    end
+
+    Base.@ccallable function $(p)_cons(id::Cint, x::Ptr{Cdouble}, c::Ptr{Cdouble})::Cint
+        _valid(id) || return Cint(1)
+        try
+            m = MODELS[Int(id)]
+            k = m.meta.ncon
+            k == 0 && return Cint(0)
+            ExaModels.cons_nln!(
+                m,
+                unsafe_wrap(Array, x, m.meta.nvar),
+                unsafe_wrap(Array, c, k),
+            )
+            return Cint(0)
+        catch
+            return Cint(2)
+        end
+    end
+
+    Base.@ccallable function $(p)_jac_structure(
+        id::Cint,
+        rows::Ptr{Cint},
+        cols::Ptr{Cint},
+    )::Cint
+        _valid(id) || return Cint(1)
+        try
+            m = MODELS[Int(id)]
+            nz = m.meta.nnzj
+            nz == 0 && return Cint(0)
+            ExaModels.jac_structure!(
+                m,
+                unsafe_wrap(Array, rows, nz),
+                unsafe_wrap(Array, cols, nz),
+            )
+            return Cint(0)
+        catch
+            return Cint(2)
+        end
+    end
+
+    Base.@ccallable function $(p)_jac(id::Cint, x::Ptr{Cdouble}, vals::Ptr{Cdouble})::Cint
+        _valid(id) || return Cint(1)
+        try
+            m = MODELS[Int(id)]
+            nz = m.meta.nnzj
+            nz == 0 && return Cint(0)
+            ExaModels.jac_coord!(
+                m,
+                unsafe_wrap(Array, x, m.meta.nvar),
+                unsafe_wrap(Array, vals, nz),
+            )
+            return Cint(0)
+        catch
+            return Cint(2)
+        end
+    end
+
+    Base.@ccallable function $(p)_hess_structure(
+        id::Cint,
+        rows::Ptr{Cint},
+        cols::Ptr{Cint},
+    )::Cint
+        _valid(id) || return Cint(1)
+        try
+            m = MODELS[Int(id)]
+            nz = m.meta.nnzh
+            nz == 0 && return Cint(0)
+            ExaModels.hess_structure!(
+                m,
+                unsafe_wrap(Array, rows, nz),
+                unsafe_wrap(Array, cols, nz),
+            )
+            return Cint(0)
+        catch
+            return Cint(2)
+        end
+    end
+
+    Base.@ccallable function $(p)_hess(
+        id::Cint,
+        x::Ptr{Cdouble},
+        y::Ptr{Cdouble},
+        obj_weight::Cdouble,
+        vals::Ptr{Cdouble},
+    )::Cint
+        _valid(id) || return Cint(1)
+        try
+            m = MODELS[Int(id)]
+            nz = m.meta.nnzh
+            nz == 0 && return Cint(0)
+            ExaModels.hess_coord!(
+                m,
+                unsafe_wrap(Array, x, m.meta.nvar),
+                unsafe_wrap(Array, y, m.meta.ncon),
+                unsafe_wrap(Array, vals, nz);
+                obj_weight = obj_weight,
+            )
+            return Cint(0)
+        catch
+            return Cint(2)
+        end
+    end
+
+    end # module $modname
+    """
+end
+
+# ── Driving juliac ────────────────────────────────────────────────────────────
+
+function _drive_juliac(appdir, prefix, out, trim, privatize, verbose)
+    outdir = abspath(out)
+    # One library per directory: the bundler refuses to overwrite an existing
+    # bundle, and privatized runtime files carry randomized names that would
+    # otherwise pile up across rebuilds.  Removal is per-entry and tolerant —
+    # on NFS a dying process leaves .nfs* ghosts that refuse to go and collide
+    # with nothing the bundler writes.
+    if isdir(outdir)
+        for entry in readdir(outdir; join = true)
+            try
+                rm(entry; recursive = true, force = true)
+            catch
+            end
+        end
+    end
+
+    img = JuliaC.ImageRecipe(
+        file = appdir,
+        output_type = "--output-lib",
+        add_ccallables = true,
+        trim_mode = trim,
+        julia_args = ["--experimental"],
+        verbose = verbose,
+    )
+    JuliaC.compile_products(img)
+
+    mkpath(outdir)
+    link = JuliaC.LinkRecipe(
+        image_recipe = img,
+        outname = joinpath(outdir, "lib" * prefix),
+        rpath = JuliaC.RPATH_BUNDLE,
+    )
+    JuliaC.link_products(link)
+    JuliaC.bundle_products(
+        JuliaC.BundleRecipe(link_recipe = link, output_dir = outdir, privatize = privatize),
+    )
+
+    libroot = Sys.iswindows() ? "bin" : "lib"
+    libpath = joinpath(
+        outdir,
+        libroot,
+        "lib" * prefix * "." * Base.BinaryPlatforms.platform_dlext(),
+    )
+    isfile(libpath) ||
+        error("juliac reported success but produced no library at $libpath")
+    return (; libpath, outdir, prefix)
+end
+
+end # module ExaModelsC

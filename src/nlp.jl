@@ -17,9 +17,14 @@ individual entries in objective and constraint expressions. Retrieve solution
 values with [`solution`](@ref). An optional `tag` field carries user-defined
 metadata (e.g. scenario identifiers for two-stage models).
 """
-struct Variable{S,O,T} <: AbstractVariable
+# `length` and `offset` were both typed `O`.  They are both `Int` in an ordinary
+# core, but a block declared as `arg.N` has a deferred length sitting next to a
+# concrete offset (or vice versa), so they need separate parameters.  `L` is
+# appended rather than inserted, keeping `Variable{S,O,<:SomeTag}` aliases
+# (two_stage.jl) matching as before.
+struct Variable{S,O,T,L} <: AbstractVariable
     size::S
-    length::O
+    length::L
     offset::O
     name::Symbol
     tag::T
@@ -43,9 +48,9 @@ are introduced.  Use `Expression` to share common sub-expressions across multipl
 objectives or constraints without duplicating the expression tree. An optional
 `tag` field carries user-defined metadata.
 """
-struct Expression{S, F, I, T}
+struct Expression{S, F, I, T, L}
     size::S
-    length::Int
+    length::L
     f::F           # The generator function
     iter::I        # The collected iterator (for indexing)
     tag::T
@@ -77,9 +82,9 @@ time with [`set_parameter!`](@ref) without rebuilding the model. Use indexing
 (e.g. `θ[i]`) to embed parameter values in expressions. An optional `tag` field
 carries user-defined metadata.
 """
-struct Parameter{S,O,T} <: AbstractParameter
+struct Parameter{S,O,T,L} <: AbstractParameter
     size::S
-    length::O
+    length::L
     offset::O
     tag::T
 end
@@ -163,10 +168,10 @@ the same base constraint to aggregate contributions from several data sources
 (e.g. summing arc flows into nodal balance constraints). An optional `tag` field
 carries user-defined metadata.
 """
-struct ConstraintAugmentation{F,I,D,T} <: AbstractConstraint
+struct ConstraintAugmentation{F,I,D,T,OA} <: AbstractConstraint
     f::F
     itr::I
-    oa::Int
+    oa::OA
     dims::D  # dimensions of the original constraint (for Pair{Tuple} offset computation)
     tag::T
 end
@@ -302,29 +307,42 @@ An ExaCore
   number of constraint patterns: ... 0
 ```
 """
-struct ExaCore{T, VT <: AbstractVector{T}, B, S, V, P, O, C, R, OR, SOR, EV} <: AbstractExaCore{T, VT, B, S}
+# The counters and the six vectors after `x0` each carry their own type
+# parameter, and `VT` is no longer constrained to `AbstractVector{T}`.  Nothing
+# changes for an ordinary core — every one of them resolves to `Int` and to the
+# backend's vector type exactly as before.  The looseness exists so that a core
+# built against [`arg`](@ref) can hold deferred values (`nvar = arg.N`,
+# `x0 = <pending append>`) until `ExaModel(core, argvals)` instantiates them.
+#
+# The new parameters are appended, so existing partial parameterizations
+# (`ExaCore{T}`, `ExaCore{T,VT,B}`, the no-oracle signature below) still match.
+# `T` is now passed explicitly at construction: it used to be recovered from the
+# `VT <: AbstractVector{T}` bound, and no field carries it on its own.
+struct ExaCore{T, VT, B, S, V, P, O, C, R, OR, SOR, EV,
+               NV, NP, NC, NCA, NO, NZC, NZG, NZJ, NZH,
+               TH, LV, UV, Y0, LC, UC} <: AbstractExaCore{T, VT, B, S}
     name::Symbol
     backend::B
     var::V
     par::P
     obj::O
     cons::C
-    nvar::Int
-    npar::Int
-    ncon::Int
-    nconaug::Int
-    nobj::Int
-    nnzc::Int
-    nnzg::Int
-    nnzj::Int
-    nnzh::Int
+    nvar::NV
+    npar::NP
+    ncon::NC
+    nconaug::NCA
+    nobj::NO
+    nnzc::NZC
+    nnzg::NZG
+    nnzj::NZJ
+    nnzh::NZH
     x0::VT
-    θ::VT
-    lvar::VT
-    uvar::VT
-    y0::VT
-    lcon::VT
-    ucon::VT
+    θ::TH
+    lvar::LV
+    uvar::UV
+    y0::Y0
+    lcon::LC
+    ucon::UC
     minimize::Bool
     tag::S  # For storing variable/constraint tag (e.g., scenario tag for two-stage models)
     refs::R
@@ -333,7 +351,50 @@ struct ExaCore{T, VT <: AbstractVector{T}, B, S, V, P, O, C, R, OR, SOR, EV} <: 
     evals::EV                  # Tuple of OracleEvaluator (augment pre-existing constraint rows)
 end
 
+# Julia only auto-generates the fully-parameterized and the fully-inferred
+# constructors, so `ExaCore{T}(fields...)` needs writing out.  `T` is the one
+# parameter no field determines; every other is read off the arguments.
+@inline ExaCore{T}(
+    name::Symbol,
+    backend::B,
+    var::V,
+    par::P,
+    obj::O,
+    cons::C,
+    nvar::NV,
+    npar::NP,
+    ncon::NC,
+    nconaug::NCA,
+    nobj::NO,
+    nnzc::NZC,
+    nnzg::NZG,
+    nnzj::NZJ,
+    nnzh::NZH,
+    x0::VT,
+    θ::TH,
+    lvar::LV,
+    uvar::UV,
+    y0::Y0,
+    lcon::LC,
+    ucon::UC,
+    minimize::Bool,
+    tag::S,
+    refs::R,
+    oracles::OR,
+    scalar_oracles::SOR,
+    evals::EV,
+) where {T, VT, B, S, V, P, O, C, R, OR, SOR, EV,
+         NV, NP, NC, NCA, NO, NZC, NZG, NZJ, NZH, TH, LV, UV, Y0, LC, UC} =
+    ExaCore{T, VT, B, S, V, P, O, C, R, OR, SOR, EV,
+            NV, NP, NC, NCA, NO, NZC, NZG, NZJ, NZH, TH, LV, UV, Y0, LC, UC}(
+        name, backend, var, par, obj, cons,
+        nvar, npar, ncon, nconaug, nobj, nnzc, nnzg, nnzj, nnzh,
+        x0, θ, lvar, uvar, y0, lcon, ucon,
+        minimize, tag, refs, oracles, scalar_oracles, evals,
+    )
+
 @inline function _exa_core(
+    ::Type{T}
     ;
     name = :Generic,
     backend = nothing,
@@ -363,9 +424,9 @@ end
         oracles = (),
         scalar_oracles = (),
         evals = (),
-    )
+    ) where {T}
 
-    return ExaCore(
+    return ExaCore{T}(
         name,
         backend,
         var,
@@ -401,17 +462,129 @@ end
     _make_exacore(concrete, T, backend; kwargs...)
 @inline ExaCore(; backend = nothing, concrete = Val(false), kwargs...) = ExaCore(default_T(backend); backend, concrete, kwargs...)
 @inline _make_exacore(::Val{true}, ::Type{T}, backend; kwargs...) where {T} =
-    _exa_core(; x0 = convert_array(zeros(T, 0), backend), backend, kwargs...)
+    _exa_core_from_x0(convert_array(zeros(T, 0), backend), backend; kwargs...)
 # Val{false} is overridden in deprecated.jl once LegacyExaCore is defined;
 # this fallback handles any other Val value by returning a concrete ExaCore.
 @inline _make_exacore(::Val, ::Type{T}, backend; kwargs...) where {T} =
-    _exa_core(; x0 = convert_array(zeros(T, 0), backend), backend, kwargs...)
-@inline ExaCore(c::C; kwargs...) where C <: ExaCore = _exa_core(
-    ;
+    _exa_core_from_x0(convert_array(zeros(T, 0), backend), backend; kwargs...)
+
+# `T` used to be recovered from the `VT <: AbstractVector{T}` bound, i.e. it was
+# `eltype(x0)` — NOT the requested float type.  The two differ on backends that
+# promote (Metal turns Float64 into Float32), so the core's `T` is still taken
+# from the realised `x0` rather than from the caller's request.
+@inline _exa_core_from_x0(x0, backend; kwargs...) =
+    _exa_core(eltype(x0); x0, backend, kwargs...)
+@inline ExaCore(c::C; kwargs...) where {T, C <: ExaCore{T}} = _exa_core(
+    T;
     zip(fieldnames(C), ntuple(i -> getfield(c, i), Val(fieldcount(C))))...,
     kwargs...,
 )
 @inline default_T(backend) = Float64
+
+# ── Instantiating a core built against `arg` ─────────────────────────────────
+#
+# Every field is passed through `instantiate`, which is the identity on anything
+# with no argument dependency — so a core built without `arg` is rebuilt from
+# its own fields and is indistinguishable from itself.  `T` is carried across
+# rather than re-derived: it is the float type the core was created with, and
+# instantiating changes sizes, never the element type.
+
+function instantiate(c::ExaCore{T}, a) where {T}
+    return ExaCore{T}(
+        c.name,
+        c.backend,
+        instantiate(c.var, a),
+        instantiate(c.par, a),
+        instantiate(c.obj, a),
+        instantiate(c.cons, a),
+        instantiate(c.nvar, a),
+        instantiate(c.npar, a),
+        instantiate(c.ncon, a),
+        instantiate(c.nconaug, a),
+        instantiate(c.nobj, a),
+        instantiate(c.nnzc, a),
+        instantiate(c.nnzg, a),
+        instantiate(c.nnzj, a),
+        instantiate(c.nnzh, a),
+        instantiate(c.x0, a),
+        instantiate(c.θ, a),
+        instantiate(c.lvar, a),
+        instantiate(c.uvar, a),
+        instantiate(c.y0, a),
+        instantiate(c.lcon, a),
+        instantiate(c.ucon, a),
+        c.minimize,
+        instantiate(c.tag, a),
+        instantiate(c.refs, a),
+        instantiate(c.oracles, a),
+        instantiate(c.scalar_oracles, a),
+        instantiate(c.evals, a),
+    )
+end
+
+instantiate(v::Variable, a) =
+    Variable(instantiate(v.size, a), instantiate(v.length, a), instantiate(v.offset, a),
+             v.name, instantiate(v.tag, a))
+instantiate(p::Parameter, a) =
+    Parameter(instantiate(p.size, a), instantiate(p.length, a), instantiate(p.offset, a),
+              instantiate(p.tag, a))
+instantiate(e::Expression, a) =
+    Expression(instantiate(e.size, a), instantiate(e.length, a), instantiate(e.f, a),
+               instantiate(e.iter, a), instantiate(e.tag, a))
+instantiate(o::Objective, a) = Objective(instantiate(o.f, a), instantiate(o.itr, a))
+instantiate(c::Constraint, a) =
+    Constraint(instantiate(c.f, a), instantiate(c.itr, a), instantiate(c.offset, a),
+               instantiate(c.size, a), instantiate(c.tag, a))
+instantiate(c::ConstraintAugmentation, a) =
+    ConstraintAugmentation(instantiate(c.f, a), instantiate(c.itr, a),
+                           instantiate(c.oa, a), instantiate(c.dims, a),
+                           instantiate(c.tag, a))
+instantiate(f::SIMDFunction, a) =
+    SIMDFunction(instantiate(f.f, a), f.comp1, f.comp2,
+                 instantiate(f.o0, a), instantiate(f.o1, a), instantiate(f.o2, a),
+                 f.o1step, f.o2step)
+
+# `instantiate` is the identity on anything it has no method for, which is what
+# makes it safe to apply everywhere — and also means a type it does not know how
+# to walk would pass through with its argument nodes intact, producing a model
+# that looks built and is not.  This turns that silent case into a loud one: it
+# asks the *type* of the instantiated core whether `AbstractArgNode` still
+# appears anywhere inside it.
+#
+# The check itself walks types with `fieldtypes` / `IdSet`, which is fine at
+# model-build time and is not something `juliac --trim=safe` can compile.  It is
+# therefore selected by dispatch on a `Val`, so `check = Val(false)` makes it
+# provably unreachable and trimmable rather than merely skipped at runtime.
+@inline _assert_instantiated(::Val{false}, c) = c
+function _assert_instantiated(::Val{true}, c)
+    if _mentions_arg(typeof(c))
+        throw(
+            ArgumentError(
+                "instantiating this core left argument placeholders in it " *
+                "($(typeof(c))). Some field type has no `instantiate` method — " *
+                "add one rather than relying on the identity fallback.",
+            ),
+        )
+    end
+    return c
+end
+
+function _mentions_arg(@nospecialize(T), seen = Base.IdSet{Any}())
+    T isa Type || return false
+    T in seen && return false
+    push!(seen, T)
+    T <: AbstractArgNode && return true
+    U = Base.unwrap_unionall(T)
+    U isa DataType || return false
+    for p in U.parameters
+        _mentions_arg(p, seen) && return true
+    end
+    isconcretetype(U) || return false
+    for ft in fieldtypes(U)
+        _mentions_arg(ft, seen) && return true
+    end
+    return false
+end
 
 
 Base.show(io::IO, c::ExaCore{T,VT,B}) where {T,VT,B} = print(
@@ -529,6 +702,35 @@ function ExaModel(c::ExaCore; prod = false, kwargs...)
     return _build_with_oracle(c; prod, kwargs...)
 end
 
+"""
+    ExaModel(core, argvals; kwargs...)
+
+Instantiate a `core` that was built against [`arg`](@ref) placeholders, then
+build the model from it.  `argvals` is any object whose fields the core's
+`arg.…` expressions name — typically a `NamedTuple`.
+
+`argvals = nothing` (the default) is the ordinary path and does nothing at all:
+a core with no argument dependency is built exactly as before.
+
+## Example
+```jldoctest
+julia> using ExaModels
+
+julia> c = ExaCore(concrete = Val(true));
+
+julia> c, x = add_var(c, arg.N; start = arg.v);
+
+julia> m = ExaModel(c, (N = 3, v = [1.0, 2.0, 3.0]));
+
+julia> m.meta.nvar, m.meta.x0
+(3, [1.0, 2.0, 3.0])
+```
+"""
+function ExaModel(c::ExaCore, a; check = Val(true), kwargs...)
+    return ExaModel(_assert_instantiated(check, instantiate(c, a)); kwargs...)
+end
+ExaModel(c::ExaCore, ::Nothing; kwargs...) = ExaModel(c; kwargs...)
+
 build_extension(c::ExaCore; kwargs...) = nothing
 
 @inline function Base.getindex(v::V, i) where {V<:AbstractVariable}
@@ -539,7 +741,8 @@ end
 # is stored as a plain Int64 child — giving concrete type Node2{+, I, Int64}.
 # Going through _add_node_real would wrap the runtime offset in Val(d2::Int64),
 # which is type-unstable and breaks juliac --trim=safe.
-@inline _indexed_var(i::I, o::Int) where {I<:AbstractNode} = Var(Node2(+, i, o))
+@inline _indexed_var(i::I, o::Union{Int,AbstractArgNode}) where {I<:AbstractNode} =
+    Var(Node2(+, i, o))
 @inline _indexed_var(i, o) = Var(i + o)
 @inline function Base.getindex(v::V, is...) where {V<:AbstractVariable}
     @assert(length(is) == length(v.size), "Variable index dimension error")
@@ -594,6 +797,11 @@ end
 _bound_check(sizes, is) = nothing
 _bound_check(sizes, is::Tuple{}) = nothing
 
+# A symbolic extent cannot be checked until it is instantiated; the check that
+# matters then happens on the instantiated core.
+function __bound_check(a::AbstractArgNode, b)
+    return nothing
+end
 function __bound_check(a::I, b::I) where {I<:Integer}
     @assert(1 <= b <= a, "Variable index bound error")
 end
@@ -650,6 +858,26 @@ end
 @inline _start(n::Int) = 1
 @inline _start(n::UnitRange) = n.start
 
+# A symbolic dimension defers to itself: at instantiation the node resolves to
+# an `Int` or a `UnitRange` and the methods above then apply unchanged, so
+# `arg.N` and `1:arg.N` need no separate handling here.
+@inline _length(n::AbstractArgNode) = ArgCall(_length, (n,))
+@inline _start(n::AbstractArgNode) = ArgCall(_start, (n,))
+
+# A generator is arg-dependent when the thing it iterates is; look through it
+# rather than at it.
+@inline _anyarg(g::Base.Generator, xs...) = _anyarg(g.iter, xs...)
+
+# `append!` mutates its accumulator and returns it.  That is exactly right while
+# the core is being built eagerly, and wrong once the append has to wait for an
+# argument: instantiation must be repeatable and must not write into the
+# concrete prefix captured at build time.  So the deferred form copies first.
+@inline _append_slot(backend, a, b, lb) = _append_slot(_anyarg(a, b, lb), backend, a, b, lb)
+@inline _append_slot(::Val{false}, backend, a, b, lb) = append!(backend, a, b, lb)
+@inline _append_slot(::Val{true}, backend, a, b, lb) =
+    ArgCall(_append_copy, (backend, a, b, lb))
+@inline _append_copy(backend, a, b, lb) = append!(backend, copy(a), b, lb)
+
 """
     add_var(core, dims...; start = 0, lvar = -Inf, uvar = Inf, name = nothing, tag = nothing)
 
@@ -701,9 +929,9 @@ end
     len = total(ns)
     nvar = c.nvar + len
 
-    x0 = append!(c.backend, c.x0, start, len)
-    lvar = append!(c.backend, c.lvar, lvar, len)
-    uvar = append!(c.backend, c.uvar, uvar, len)
+    x0 = _append_slot(c.backend, c.x0, start, len)
+    lvar = _append_slot(c.backend, c.lvar, lvar, len)
+    uvar = _append_slot(c.backend, c.uvar, uvar, len)
 
     v = Variable(ns, len, o, _val_name(name), tag)
 
@@ -761,7 +989,7 @@ end
     o = c.npar
     len = total(ns)
     npar = c.npar + len
-    θ = append!(c.backend, c.θ, start, len)
+    θ = _append_slot(c.backend, c.θ, start, len)
     p = Parameter(ns, len, o, tag)
     (ExaCore(c; par = (p, c.par...), θ=θ, npar=npar, refs = add_refs(c.refs, name, p)), p)
 end
@@ -1141,9 +1369,9 @@ function _add_con(c, f, pars, dims, start, lcon, ucon, name, tag)
     nnzj = c.nnzj + nitr * f.o1step
     nnzh = c.nnzh + nitr * f.o2step
 
-    y0 = append!(c.backend, c.y0, start, nitr)
-    lcon = append!(c.backend, c.lcon, lcon, nitr)
-    ucon = append!(c.backend, c.ucon, ucon, nitr)
+    y0 = _append_slot(c.backend, c.y0, start, nitr)
+    lcon = _append_slot(c.backend, c.lcon, lcon, nitr)
+    ucon = _append_slot(c.backend, c.ucon, ucon, nitr)
 
     con = Constraint(f, convert_array(pars, c.backend), o, dims, tag)
 
