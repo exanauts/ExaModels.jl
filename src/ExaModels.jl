@@ -47,6 +47,7 @@ import Printf
 
 include("templates.jl")
 include("graph.jl")
+include("tracer.jl")
 include("register.jl")
 include("specialization.jl")
 include("functionlist.jl")
@@ -55,7 +56,6 @@ include("prettyprint.jl")
 include("gradient.jl")
 include("jacobian.jl")
 include("hessian.jl")
-include("tracer.jl")
 include("nlp.jl")
 include("oracle.jl")
 include("deprecated.jl")
@@ -64,7 +64,7 @@ include("tags.jl")
 include("two_stage.jl")
 
 export ExaModel,
-    DataTracer,
+    ArgTracer,
     RecorderStructureError,
     ExaCore,
     LegacyExaCore,

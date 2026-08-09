@@ -1,162 +1,137 @@
 # ── The args sentinel ─────────────────────────────────────────────────────────
 #
-# `DataTracer(template)` produces typed symbolic stand-ins for instance data:
-# `data.N` is a value the model's structure may not branch on, but which may
-# occupy any *value* slot of the core — dimensions, ranges, bounds, starts,
-# parameter values — with resolution deferred to `ExaModel(core, args)`.
-# Ported from the ss/recorder tape (the vocabulary survives; the tape's
-# entry/handle machinery does not — value slots live in the core itself).
-
-# ── Tracer IR ─────────────────────────────────────────────────────────────────
-
-"""
-    TracerValue{T}
-
-Abstract supertype for record-time stand-ins for values that only become
-available at instantiate time (fields of the data named tuple and computations on
-them). `T` is the concrete type the value will have at instantiate time.
-"""
-abstract type TracerValue{T} end
-
-@inline instantiate_type(::Type{<:TracerValue{T}}) where {T} = T
-@inline instantiate_type(::TracerValue{T}) where {T} = T
-@inline instantiate_type(::Type{T}) where {T} = T   # plain types stand for themselves
-@inline instantiate_type(x) = typeof(x)             # plain values stand for themselves
+# `ArgTracer` mirrors `DataSource`: a bare node standing for the whole
+# instantiation argument, usable directly or through `getproperty`/`getindex`
+# (which produce `ArgIndexed` nodes, the analogue of `DataIndexed`).
+# Arithmetic on arg nodes composes through the ordinary `Node1`/`Node2`
+# machinery, so an expression like `args.N - 2` is a concretely-typed node
+# tree. Where `DataSource` trees evaluate per element as `node(i, x, θ)`,
+# arg trees evaluate once per instantiation as `resolve(node, args)`.
+#
+# Model *structure* may not depend on arg values: comparisons and iteration
+# on arg nodes throw `RecorderStructureError` at construction.
 
 """
-    DataField{T, name} <: TracerValue{T}
+    ArgTracer <: AbstractNode
 
-Tracer referencing field `name` of the data named tuple, of instantiate-time type
-`T`. Created by `getproperty` on a [`DataTracer`](@ref).
+The instantiation-argument sentinel — the analogue of [`DataSource`](@ref)
+for values that arrive at `ExaModel(core, args)` rather than per element.
+Use it directly (the whole argument, e.g. a bare size) or index into it
+(`args.N`, `args.branch`); either form may occupy any *value* slot of the
+core — dimensions, ranges, bounds, starts, parameter values.
 """
-struct DataField{T, name} <: TracerValue{T} end
+struct ArgTracer <: AbstractNode end
 
 """
-    TracerExpr{T, F, A} <: TracerValue{T}
+    ArgIndexed{I, J} <: AbstractNode
 
-Tracer for a deferred computation `f(args...)` over tracer values and plain
-constants, with instantiate-time result type `T`.
+The lookup `inner.J` (or `inner[J]`) on an [`ArgTracer`](@ref) or another
+`ArgIndexed` — the analogue of [`DataIndexed`](@ref). `J` is a type
+parameter, so resolution is compile-time-addressed.
 """
-struct TracerExpr{T, F, A} <: TracerValue{T}
-    f::F
-    args::A
+struct ArgIndexed{I, J} <: AbstractNode
+    inner::I
 end
-@inline TracerExpr{T}(f::F, args::A) where {T, F, A} = TracerExpr{T, F, A}(f, args)
 
-"""
-    DataTracer(template::NamedTuple)
+@inline ArgIndexed(inner::I, n) where {I} = ArgIndexed{I, n}(inner)
+@inline ArgIndexed(inner::I, s::Constant{n}) where {I, n} = ArgIndexed{I, n}(inner)
 
-Record-time stand-in for the data named tuple. Field access (`data.N`) returns
-a [`DataField`](@ref) tracer typed by the corresponding field of `template`,
-instead of a value. Construct one from a template `NamedTuple` whose
-field *types* define the schema.
-"""
-struct DataTracer{NT} end
-DataTracer(::NT) where {NT <: NamedTuple} = DataTracer{NT}()
+@inline Base.getproperty(n::ArgTracer, s::Symbol) = ArgIndexed(n, s)
+@inline Base.getindex(n::ArgTracer, i) = ArgIndexed(n, i)
+@inline Base.indexed_iterate(n::ArgTracer, idx, start = 1) = (ArgIndexed(n, idx), idx + 1)
+@inline Base.getproperty(v::ArgIndexed{I, n}, s::Symbol) where {I, n} = ArgIndexed(v, s)
+@inline Base.getindex(v::ArgIndexed{I, n}, i) where {I, n} = ArgIndexed(v, i)
+@inline Base.indexed_iterate(v::ArgIndexed{I, n}, idx, start = 1) where {I, n} =
+    (ArgIndexed(v, idx), idx + 1)
 
-@inline Base.getproperty(::DataTracer{NT}, s::Symbol) where {NT} =
-    DataField{fieldtype(NT, s), s}()
+# ── Resolution: evaluate an arg tree against the instantiation args ──────────
+
+@inline _lookup(x, ::Val{J}) where {J} = J isa Symbol ? getproperty(x, J) : getindex(x, J)
+@inline _lookup(x::NamedTuple, ::Val{J}) where {J} = getfield(x, J)
 
 """
     resolve(x, args)
 
-Evaluate a tracer value against the instantiation `args`. Plain (non-tracer)
-values resolve to themselves.
+Evaluate an arg-node tree against the instantiation `args`. Plain values
+resolve to themselves; `ArgTracer` resolves to `args` (a NamedTuple binds
+fields by name; a bare value binds the tracer used directly).
 """
 @inline resolve(x, args) = x
-@inline resolve(::DataField{T, name}, args::NamedTuple) where {T, name} =
-    getfield(args, name)::T
-# A bare value binds every data-field access — the ergonomic form for
-# single-field schemas: `ExaModel(tape, 3)` ≡ `ExaModel(tape, (; N = 3))`.
-@inline resolve(::DataField{T, name}, args) where {T, name} = convert(T, args)::T
-@noinline _args_error(name) = throw(ArgumentError(
-    "this tape references data field `$name`: instantiate with `args` — a " *
-    "NamedTuple binding fields by name, or a bare value for a single-field schema"))
-@inline resolve(::DataField{T, name}, ::Nothing) where {T, name} = _args_error(name)
-# Positional tuples are refused: the tape records field names, not an order.
-@inline resolve(::DataField{T, name}, ::Tuple) where {T, name} = throw(ArgumentError(
-    "tuple args are positional, but a tape's schema binds by name: use (; $name = ...)"))
-@inline resolve(t::TracerExpr{T}, args) where {T} =
-    (t.f(map(a -> resolve(a, args), t.args)...))::T
-# Multi-dimensional generators iterate a ProductIterator whose component
-# ranges may be traced; rebuild it with the components resolved.
+@inline resolve(::ArgTracer, args) = args
+@noinline _args_error(J) = throw(ArgumentError(
+    "this core references instantiation argument `$J`: materialize with " *
+    "`args` — a NamedTuple binding fields by name, or the bare value for a " *
+    "tracer used directly"))
+@inline resolve(::ArgTracer, ::Nothing) = _args_error(:args)
+@inline resolve(v::ArgIndexed{I, J}, args) where {I, J} =
+    _lookup(resolve(getfield(v, :inner), args), Val(J))
+@inline resolve(v::ArgIndexed{I, J}, ::Nothing) where {I, J} = _args_error(J)
+@inline resolve(n::Node1{F, I}, args) where {F, I} = F.instance(resolve(n.inner, args))
+@inline resolve(n::Node2{F, I1, I2}, args) where {F, I1, I2} =
+    F.instance(resolve(n.inner1, args), resolve(n.inner2, args))
+@inline resolve(::Constant{T}, args) where {T} = T
+# Multi-dimensional index sets resolve componentwise.
 @inline resolve(p::Iterators.ProductIterator, args) =
     Iterators.product(map(r -> resolve(r, args), p.iterators)...)
 
-@inline function _record_op(f::F, args...) where {F}
-    T = Base.promote_op(f, map(instantiate_type, args)...)
-    TracerExpr{T}(f, args)
-end
+# ── Deferred value forms: ranges, fill, comprehensions ───────────────────────
+# These are value-level (not nodes): a range or an array is a *slot value*,
+# never part of an expression tree.
 
-for op in (:+, :-, :*, :div, :/, :rem, :mod, :max, :min)
-    @eval begin
-        @inline Base.$op(a::TracerValue, b::TracerValue) = _record_op($op, a, b)
-        @inline Base.$op(a::TracerValue, b::Number) = _record_op($op, a, b)
-        @inline Base.$op(a::Number, b::TracerValue) = _record_op($op, a, b)
-    end
-end
-@inline Base.:-(a::TracerValue) = _record_op(-, a)
-struct _RoundTo{T, F} end
-@inline (::_RoundTo{T, F})(x) where {T, F} = F(T, x)
-@inline Base.floor(::Type{T}, a::TracerValue) where {T} = _record_op(_RoundTo{T, floor}(), a)
-@inline Base.ceil(::Type{T}, a::TracerValue) where {T} = _record_op(_RoundTo{T, ceil}(), a)
+const ArgNode = Union{ArgTracer, ArgIndexed}
+const _ArgLike = Union{ArgTracer, ArgIndexed, Node1, Node2}
 
-@inline Base.:(:)(a::TracerValue{<:Integer}, b::TracerValue{<:Integer}) = _record_op(:, a, b)
-@inline Base.:(:)(a::Integer, b::TracerValue{<:Integer}) = _record_op(:, a, b)
-@inline Base.:(:)(a::TracerValue{<:Integer}, b::Integer) = _record_op(:, a, b)
-for (A, B, C) in (
-    (:TracerValue, :TracerValue, :TracerValue), (:TracerValue, :TracerValue, :Integer),
-    (:TracerValue, :Integer, :TracerValue), (:Integer, :TracerValue, :TracerValue),
-    (:TracerValue, :Integer, :Integer), (:Integer, :TracerValue, :Integer),
-    (:Integer, :Integer, :TracerValue),
+struct ArgRange{A, S, B}
+    lo::A
+    step::S
+    hi::B
+end
+@inline resolve(r::ArgRange{A, Nothing, B}, args) where {A, B} =
+    resolve(r.lo, args):resolve(r.hi, args)
+@inline resolve(r::ArgRange, args) =
+    resolve(r.lo, args):resolve(r.step, args):resolve(r.hi, args)
+
+@inline Base.:(:)(a::_ArgLike, b::_ArgLike) = ArgRange(a, nothing, b)
+@inline Base.:(:)(a::Integer, b::_ArgLike) = ArgRange(a, nothing, b)
+@inline Base.:(:)(a::_ArgLike, b::Integer) = ArgRange(a, nothing, b)
+for (A, S, B) in (
+    (:_ArgLike, :_ArgLike, :_ArgLike), (:_ArgLike, :_ArgLike, :Integer),
+    (:_ArgLike, :Integer, :_ArgLike), (:Integer, :_ArgLike, :_ArgLike),
+    (:_ArgLike, :Integer, :Integer), (:Integer, :_ArgLike, :Integer),
+    (:Integer, :Integer, :_ArgLike),
 )
-    @eval @inline Base.:(:)(a::$A, s::$B, b::$C) = _record_op(:, a, s, b)
+    @eval @inline Base.:(:)(a::$A, s::$S, b::$B) = ArgRange(a, s, b)
 end
 
-@inline Base.length(t::TracerValue{<:Union{AbstractArray, AbstractRange}}) =
-    _record_op(length, t)
-@inline Base.fill(v, t::TracerValue{<:Integer}) = _record_op(fill, v, t)
+@inline Base.length(t::ArgNode) = Node1(length, t)
 
-# A comprehension over a traced range (`[f(i) for i in 1:2:data.n]`) reaches
-# `collect` with a generator whose iterable is a tracer. Defer the whole
-# collect to instantiate time; the body may itself capture tracers (`k / data.nh`),
-# in which case each element is a tracer expression that gets resolved.
-"""
-    DeferredCollect{ET, F, I} <: TracerValue{Vector{ET}}
+struct DeferredFill{V, N}
+    value::V
+    n::N
+end
+@inline Base.fill(v, t::_ArgLike) = DeferredFill(v, t)
+@inline resolve(f::DeferredFill, args) = fill(resolve(f.value, args), resolve(f.n, args))
 
-Tracer for a comprehension whose range (and possibly body) is traced. At
-instantiate time the range is resolved, the body runs per element, and any tracer
-elements are resolved against the data.
-"""
-struct DeferredCollect{ET, F, I} <: TracerValue{Vector{ET}}
+# A comprehension over a deferred range reaches `collect` with a generator
+# whose iterable is an `ArgRange`; the whole collect defers, and the body may
+# itself produce arg trees, which resolve per element.
+struct DeferredCollect{F, I}
     f::F
     iter::I
 end
+@inline Base.collect(g::Base.Generator{<:ArgRange}) = DeferredCollect(g.f, g.iter)
+@inline resolve(d::DeferredCollect, args) =
+    [resolve(d.f(x), args) for x in resolve(d.iter, args)]
 
-@inline function Base.collect(g::Base.Generator{I}) where {I <: TracerValue}
-    # Inference through the body is unreliable (the tracer ops compute their
-    # result types dynamically), so determine the element type by probing the
-    # body with a sample index — recording is a dynamic phase, so an actual
-    # call is both allowed and exact. Falls back to inference if the body
-    # cannot run at the sample.
-    ET = try
-        instantiate_type(typeof(g.f(one(eltype(instantiate_type(I))))))
-    catch
-        instantiate_type(Base.promote_op(g.f, eltype(instantiate_type(I))))
-    end
-    DeferredCollect{ET, typeof(g.f), I}(g.f, g.iter)
-end
-
-@inline resolve(d::DeferredCollect{ET}, args) where {ET} =
-    ET[resolve(d.f(x), args) for x in resolve(d.iter, args)]
+# ── Structure guardrails ─────────────────────────────────────────────────────
 
 """
     RecorderStructureError
 
-Thrown at record time when the model-building code attempts an operation whose
-result would freeze recording-time information into the tape (e.g. branching
-on a data value, or iterating a traced value outside a generator passed to an
-`add_*` call).
+Thrown at construction when model code attempts an operation whose result
+would freeze a construction-time value into the model's structure (e.g.
+branching on an instantiation argument, or iterating one outside a
+generator handed to an `add_*` call).
 """
 struct RecorderStructureError <: Exception
     msg::String
@@ -164,23 +139,22 @@ end
 Base.showerror(io::IO, e::RecorderStructureError) =
     print(io, "RecorderStructureError: ", e.msg)
 
-const _STRUCTURE_MSG = "the structure of a recorded model cannot depend on data \
-values: this operation would freeze the recording-time result into the tape. \
-Compute structural constants before recording, or extend the tracer op set if \
-this operation should be recordable."
+const _STRUCTURE_MSG = "model structure cannot depend on instantiation \
+arguments: this operation would freeze the construction-time result into \
+the model. Compute structural constants outside the model, or extend the \
+arg-node vocabulary if this operation should be deferrable."
 
 for op in (:(==), :(<), :(<=), :(>), :(>=), :isless)
     @eval begin
-        Base.$op(::TracerValue, ::Number) = throw(RecorderStructureError(_STRUCTURE_MSG))
-        Base.$op(::Number, ::TracerValue) = throw(RecorderStructureError(_STRUCTURE_MSG))
-        Base.$op(::TracerValue, ::TracerValue) = throw(RecorderStructureError(_STRUCTURE_MSG))
+        Base.$op(::ArgNode, ::Number) = throw(RecorderStructureError(_STRUCTURE_MSG))
+        Base.$op(::Number, ::ArgNode) = throw(RecorderStructureError(_STRUCTURE_MSG))
+        Base.$op(::ArgNode, ::ArgNode) = throw(RecorderStructureError(_STRUCTURE_MSG))
     end
 end
-Base.iterate(::TracerValue, state...) = throw(
+Base.iterate(::ArgNode, state...) = throw(
     RecorderStructureError(
-        "cannot iterate a traced value at record time. Pass generators over " *
-        "traced ranges directly to add_var/add_con/add_obj — they are iterated " *
-        "at instantiate time.",
+        "cannot iterate an instantiation argument at construction time. " *
+        "Pass generators over deferred ranges directly to " *
+        "add_var/add_con/add_obj — they are iterated at materialization.",
     ),
 )
-
