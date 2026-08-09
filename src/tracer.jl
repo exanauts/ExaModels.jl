@@ -118,6 +118,15 @@ for (A, S, B) in (
 end
 
 @inline Base.length(t::ArgNode) = Node1(length, t)
+
+# Rounding a deferred value to an integer type: the target type and mode
+# ride as a singleton functor so the node stays a named type.
+struct _RoundTo{T, F} end
+@inline (::_RoundTo{T, F})(x) where {T, F} = F(T, x)
+@inline Base.div(a::_ArgLike, b::Union{Integer, _ArgLike}, ::RoundingMode{:ToZero}) = Node2(div, a, b)
+@inline Base.div(a::Integer, b::_ArgLike, ::RoundingMode{:ToZero}) = Node2(div, a, b)
+@inline Base.floor(::Type{T}, n::_ArgLike) where {T} = Node1(_RoundTo{T, floor}(), n)
+@inline Base.ceil(::Type{T}, n::_ArgLike) where {T} = Node1(_RoundTo{T, ceil}(), n)
 @inline Base.length(r::ArgRange) = Node1(length, r)
 
 struct DeferredFill{V, N}
@@ -135,6 +144,9 @@ struct DeferredCollect{F, I}
     iter::I
 end
 @inline Base.collect(g::Base.Generator{<:ArgRange}) = DeferredCollect(g.f, g.iter)
+@inline Base.length(d::DeferredCollect) = Node1(length, d)
+@inline Base.size(r::ArgRange) = (Node1(length, r),)
+@inline Base.size(d::DeferredCollect) = (Node1(length, d),)
 @inline resolve(d::DeferredCollect, args) =
     [resolve(d.f(x), args) for x in resolve(d.iter, args)]
 

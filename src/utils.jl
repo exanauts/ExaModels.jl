@@ -2,6 +2,8 @@
 # materialization resolves them first.
 convert_array(r::ArgRange, backend) = r
 convert_array(r::ArgRange, ::Nothing) = r
+convert_array(d::DeferredCollect, backend) = d
+convert_array(d::DeferredCollect, ::Nothing) = d
 
 # WrapperNLPModel serves as a wrapper for ExaNLPModel, or even any NLPModels.
 # This is useful when you want to use a solver that does not support non-stardard array data types.

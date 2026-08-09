@@ -163,10 +163,10 @@ the same base constraint to aggregate contributions from several data sources
 (e.g. summing arc flows into nodal balance constraints). An optional `tag` field
 carries user-defined metadata.
 """
-struct ConstraintAugmentation{F,I,D,T} <: AbstractConstraint
+struct ConstraintAugmentation{F,I,O,D,T} <: AbstractConstraint
     f::F
     itr::I
-    oa::Int
+    oa::O
     dims::D  # dimensions of the original constraint (for Pair{Tuple} offset computation)
     tag::T
 end
@@ -1333,6 +1333,7 @@ end
 
 # Helper to infer dimensions from iterator
 _infer_subexpr_dims(itr::ArgRange) = (itr,)
+_infer_subexpr_dims(itr::DeferredCollect) = (Node1(length, itr),)
 _infer_subexpr_dims(itr::AbstractRange) = (itr,)
 _infer_subexpr_dims(itr::AbstractArray) = Base.size(itr)
 _infer_subexpr_dims(itr::Base.Iterators.ProductIterator) = itr.iterators
@@ -1757,6 +1758,7 @@ end
 
 _adapt_gen(gen) = Base.Generator(gen.f, collect(gen.iter))
 _adapt_gen(gen::Base.Generator{<:ArgRange}) = gen
+_adapt_gen(gen::Base.Generator{<:DeferredCollect}) = gen
 _adapt_gen(gen::Base.Generator{P}) where {P<:Union{AbstractArray,AbstractRange}} = gen
 _adapt_gen(gen::Tuple{E, I}) where {E<:AbstractNode, I} = (gen[1], collect(gen[2]))
 _adapt_gen(gen::Tuple{E, I}) where {E<:AbstractNode, I<:Union{AbstractArray,AbstractRange}} = gen

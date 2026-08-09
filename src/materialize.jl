@@ -75,6 +75,13 @@ end
     map(d -> _resolve_dim(d, args), cn.size),
     cn.tag,
 )
+@inline _resolve_entry(a::ConstraintAugmentation, args) = ConstraintAugmentation(
+    _resolve_sf(a.f, args),
+    _resolve_itr(a.itr, args),
+    resolve(a.oa, args)::Int,
+    map(d -> _resolve_dim(d, args), a.dims),
+    a.tag,
+)
 @inline _resolve_entry(o::Objective, args) =
     Objective(_resolve_sf(o.f, args), _resolve_itr(o.itr, args))
 
