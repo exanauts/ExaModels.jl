@@ -68,6 +68,8 @@ pathology disappears by construction.
   value resolution happens at `ExaModel(core, args)`; args follow the
   shapes already shipped on `ss/recorder` (NamedTuple by name, bare value
   for single-field schemas, `nothing` default).
+- No deprecation shim: `LegacyExaCore` is deleted in the release rather
+  than imitated (author's call, 2026-08-08) — the breaking release breaks.
 
 ## Roadmap: pattern merging (type shortening)
 
