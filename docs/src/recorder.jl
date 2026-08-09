@@ -94,12 +94,13 @@ model = ExaModel(tape, 1000)            # same schema, bare value
 #
 # ### One command: a model file to a shared library
 #
-# With `using JuliaC`, [`compile_library`](@ref) turns a model file — one that
+# The **ExaModelC** package (this repository's `/ExaModelC` subpackage) owns
+# the compile surface: `compile_library` turns a model file — one that
 # defines `build(c, data)` and `make_data(n)::NamedTuple` — into a
 # self-contained shared library exposing the NLP through a C interface:
 #
 # ```julia
-# using ExaModels, JuliaC
+# using ExaModelC
 # r = compile_library("lv_model.jl"; prefix = "lv", out = "lv_out")
 # # → lv_out/lib/liblv.so — the tape is recorded at the generated package's
 # #   precompile time; the trimmed call graph contains no user model code.

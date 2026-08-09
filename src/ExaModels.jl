@@ -120,7 +120,6 @@ export ExaModel,
     set_ucon!,
     DataTracer,
     ExaTape,
-    RecorderStructureError,
-    compile_library
+    RecorderStructureError
 
 end # module ExaModels

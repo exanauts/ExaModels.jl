@@ -1,8 +1,37 @@
-module ExaModelsJuliaC
+module ExaModelC
 
 import ExaModels
 import Serialization
 import JuliaC
+
+export compile_library
+
+"""
+    compile_library(model_file; prefix = "rec", out = "lib_out",
+                    template_n = 4, trim = "safe", privatize = true,
+                    verbose = false) -> (; libpath, outdir)
+
+Compile a recorded model into a self-contained shared library exposing the
+NLP through a C interface, in one command. Requires `using JuliaC`
+(implemented in the `ExaModelsJuliaC` package extension).
+
+`model_file` is a Julia source file defining
+
+- `build(c, args)` — the model, written against the tape exactly as against
+  an `ExaCore` (it is passed to [`record`](@ref)), and
+- `make_data(n::Integer)::NamedTuple` — the args for size `n` (also used at
+  `template_n` as the recording schema).
+
+The generated library exports, for the chosen `prefix` (C ABI: 1-based
+indices, lower-triangle Lagrangian Hessian with `obj_weight`, `Cint` status
+returns): `<prefix>_new(n) -> id` (any number of instances may coexist),
+and id-first `<prefix>_nvar/_ncon/_nnzj/_nnzh`, `<prefix>_meta`,
+`<prefix>_obj/_grad/_cons/_jac/_hess` and the two `_structure` functions —
+the convention consumed by CNLPModels.jl. The tape
+is recorded at the generated package's precompile time, so the compiled
+call graph contains no user model code.
+"""
+function compile_library end
 
 # Fixed UUID for the generated throwaway app package: it lives in a fresh
 # temporary directory with its own environment and is never registered, so a
@@ -415,7 +444,7 @@ function _assert_serializable(tape::ExaModels.ExaTape)
     end
 end
 
-function ExaModels.compile_library(
+function compile_library(
     tape::ExaModels.ExaTape;
     template::NamedTuple,
     prefix::AbstractString = "rec",
@@ -457,7 +486,7 @@ function ExaModels.compile_library(
     return r
 end
 
-function ExaModels.compile_library(
+function compile_library(
     model_file::AbstractString;
     prefix::AbstractString = "rec",
     out::AbstractString = "lib_out",
@@ -590,4 +619,4 @@ function _drive_juliac(appdir, prefix, out, trim, privatize, verbose)
     return (; libpath, outdir, cached = false)
 end
 
-end # module ExaModelsJuliaC
+end # module ExaModelC

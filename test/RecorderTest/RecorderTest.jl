@@ -7,7 +7,6 @@ using SparseArrays
 import JuMP, PowerModels, Downloads
 import LuksanVlcekBenchmark as LVB
 import COPSBenchmark
-import JuliaC, MadNLP, CNLPModels
 
 const TMPDIR = mktempdir()
 
@@ -16,7 +15,6 @@ include("../NLPTest/luksan.jl")   # luksan_vlcek_* helpers + _exa_luksan_vlcek_m
 include("../NLPTest/power.jl")    # parse_ac_power_data + __exa_ac_power_model
 
 include("recorded_models.jl")
-include("aot_libraries.jl")
 
 # The canonical 1-D LuksanVlcek example (docs/src/gpu.jl), kept from the PoC:
 # helpers shared, paths independent.
@@ -230,7 +228,6 @@ function runtests()
             @test core isa ExaCore{Float64}
         end
 
-        aot_library_tests()
     end
 end
 
