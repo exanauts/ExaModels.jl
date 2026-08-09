@@ -80,28 +80,42 @@ Flag asymmetry to keep in mind: default eager `ExaCore()` is
 Replacing the vararg recursion with a `@generated` flat unroll (so
 inference sees one flat body, like user-written code) was the obvious fix
 and it is **not** the answer: 322.8 s → 305.9 s at S = 200, noise-level.
-The unroll is kept on this branch (marginally better, simpler to reason
-about), but the dominant cost is elsewhere: the *types* threaded through
-the one inferred materialization body — the core (whose constraint tuple
-grows per entry) and the handles tuple — give inference O(S)-sized types in
-an S-statement body, an O(S²) minimum that eager construction avoids
-because its `add_*` calls are dispatched one at a time from dynamic scope,
-never inferred as one unit.
+Two further probes localized the cost precisely:
 
-Next candidates, unexplored:
+- **Handle threading eliminated**: materializing with handle threading
+  removed entirely (valid for the synthetic model — it has no
+  augmentations) measured 300.0 s, i.e. no change.
+- **Record/materialize split at S = 200**: recording 189.3 s,
+  materializing 118.0 s.
 
-1. **Chunked materialization with function barriers** — split the entries
-   into fixed-size blocks, each its own inferred unit; caps the
-   per-unit statement count, though the core type still grows across
-   chunks.
-2. **Type-erased handle threading** — handles as `Vector{Any}` with a
-   type-assert at the (rare) `ConAugEntry` lookup; removes one of the two
-   growing types from every signature.
-3. **Dynamic materialization mode** — for very large tapes, run the fold in
-   deliberately `@nospecialize`d/dynamic style (what eager top-level
-   construction effectively is) and pay per-call dispatch instead of
-   whole-chain inference; a `materialize(tape; dynamic = true)` escape
-   hatch.
+That split is the finding. *Materialization is already near-eager cost*
+(118 s vs the eager path's 106 s total — consistent with "one function
+with S statements and a growing type is fine"). **The quadratic lives in
+recording**: `_append(tape, entry) = ExaTape((entries..., entry), config)`
+rebuilds the whole entries tuple per statement — S splats of a growing
+tuple inside one inferred build body — and recording alone costs 1.8× the
+*entire* eager construction.
 
-None of this blocks the release for the realistic range; it gates the
-claim that machine-generated many-statement models can migrate.
+So the fix target is the tape's accumulation representation, not the fold.
+Candidates, unexplored:
+
+1. **Cons-pair accumulation** — record entries as nested pairs
+   `(entry, rest)` (O(1) append, no splat); materialization already walks
+   entries one at a time and does not care about the shape. Type depth
+   still grows, but each append's signature stops carrying a flat O(S)
+   splat.
+2. **Push-based recording with a type-erased spine** — `Vector{Any}` of
+   entries at record time (recording is dynamic anyway — user code is
+   type-unstable by design), with the concretely-typed tuple built *once*
+   at the end or at materialization. Loses `@inferred` on the tape object
+   itself, keeps it on materialization, which is the property that
+   matters for trim.
+3. **Chunked accumulation** — flush every ~32 entries into a frozen block;
+   appends splat at most a chunk.
+
+None of this blocks the release for the realistic range (parity or better
+through S ≈ 50); it gates machine-generated many-statement models. Note
+candidate 2 is likely the right one on principle: recording is the
+*dynamic* phase by design, so paying dynamic-container costs there — and
+keeping every static guarantee on the materialization side — matches the
+system's own division of labor.
