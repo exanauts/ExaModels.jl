@@ -1,6 +1,7 @@
 module ExaModelsJuliaC
 
 import ExaModels
+import Serialization
 import JuliaC
 
 # Fixed UUID for the generated throwaway app package: it lives in a fresh
@@ -423,8 +424,8 @@ function ExaModels.compile_library(
 
     appdir = mktempdir()
     mkpath(joinpath(appdir, "src"))
-    ExaModels.Serialization.serialize(joinpath(appdir, "src", "tape.jls"), tape)
-    ExaModels.Serialization.serialize(joinpath(appdir, "src", "template.jls"), template)
+    Serialization.serialize(joinpath(appdir, "src", "tape.jls"), tape)
+    Serialization.serialize(joinpath(appdir, "src", "template.jls"), template)
 
     fp = _fingerprint(
         read(joinpath(appdir, "src", "tape.jls")),
