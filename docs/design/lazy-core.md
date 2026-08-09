@@ -88,34 +88,37 @@ Two further probes localized the cost precisely:
 - **Record/materialize split at S = 200**: recording 189.3 s,
   materializing 118.0 s.
 
-That split is the finding. *Materialization is already near-eager cost*
-(118 s vs the eager path's 106 s total — consistent with "one function
-with S statements and a growing type is fine"). **The quadratic lives in
-recording**: `_append(tape, entry) = ExaTape((entries..., entry), config)`
-rebuilds the whole entries tuple per statement — S splats of a growing
-tuple inside one inferred build body — and recording alone costs 1.8× the
-*entire* eager construction.
+Two control measurements completed the picture:
 
-So the fix target is the tape's accumulation representation, not the fold.
-Candidates, unexplored:
+- **Eager with `concrete = Val(true)`** (the typed-tuple core; the default
+  `ExaCore()` turns out to return the type-erased `LegacyExaCore` wrapper,
+  so the original eager column was measuring that): S = 100 → 43.2 s,
+  S = 200 → 113.1 s. **Linear.** The growing-typed-tuple pattern is *not*
+  quadratic in the core's `add_*`.
+- **Materialization ≈ eager, exactly**: 118.0 s vs 113.1 s at S = 200.
+  Materialization *is* eager construction, and measures like it.
 
-1. **Cons-pair accumulation** — record entries as nested pairs
-   `(entry, rest)` (O(1) append, no splat); materialization already walks
-   entries one at a time and does not care about the shape. Type depth
-   still grows, but each append's signature stops carrying a flat O(S)
-   splat.
-2. **Push-based recording with a type-erased spine** — `Vector{Any}` of
-   entries at record time (recording is dynamic anyway — user code is
-   type-unstable by design), with the concretely-typed tuple built *once*
-   at the end or at materialization. Loses `@inferred` on the tape object
-   itself, keeps it on materialization, which is the property that
-   matters for trim.
-3. **Chunked accumulation** — flush every ~32 entries into a frozen block;
-   appends splat at most a chunk.
+So the entire excess is recording's 189 s — for a phase that stores
+closures and computes nothing. The quadratic is specific to the tape's
+`_append` path (entry types carry the raw generator + kwargs types, and
+each append splats the growing entries tuple in the recorded body's one
+inference unit); the core's own accumulation demonstrably avoids this
+cost. Exact micro-cause not yet isolated — it does not need to be, because
+recording has no static obligations at all:
+
+**Fix design — record dynamic, freeze once.** Recording is the by-design
+dynamic phase (user code may be arbitrarily type-unstable), so the tape
+records entries onto a type-erased spine (`Vector{Any}`; O(1) pushes, no
+type growth), and a `freeze` step builds the concretely-typed entries
+tuple *once* — one O(S) construction instead of S of them — at the
+record/materialize boundary (end of construction, or entry to
+`ExaModel`/`instantiate`). Everything downstream keeps today's guarantees:
+`@inferred` materialization, trim-safety, serialization — those attach to
+the frozen tape, which is exactly today's `ExaTape`. Expected cost:
+recording ~0, freeze ~one splat, materialization 118 s ≈ eager 113 s —
+i.e. lazy total ≈ eager total at every S, with the small-S advantage
+kept.
 
 None of this blocks the release for the realistic range (parity or better
-through S ≈ 50); it gates machine-generated many-statement models. Note
-candidate 2 is likely the right one on principle: recording is the
-*dynamic* phase by design, so paying dynamic-container costs there — and
-keeping every static guarantee on the materialization side — matches the
-system's own division of labor.
+through S ≈ 50); it removes the machine-generated-model caveat once
+implemented.
