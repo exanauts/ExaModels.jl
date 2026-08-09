@@ -137,3 +137,20 @@ kept.
 None of this blocks the release for the realistic range (parity or better
 through S ≈ 50); it removes the machine-generated-model caveat once
 implemented.
+
+## Future: pattern merging at freeze (type shortening)
+
+The concrete tape stays first-class, and `freeze` grows into the compile
+step: beyond concretizing the spine, it can *shorten the number of distinct
+con/obj types*. Creation cost (eager and materialization alike) grows
+superlinearly in the number of distinct entry types, not data size — and
+constants in expression trees are field values, not type parameters, so
+structurally-identical trees already share types. What keeps entries
+distinct is closure identity (one type per source location). Freeze can
+trace closures to trees (sentinel tracing, as materialization already
+does), group same-typed trees, and merge each group into one entry with
+concatenated iterators/parameter tables: the one-type-per-pattern SIMD
+philosophy applied across statements. The S = 200 benchmark — 200
+statements of one shape differing by a literal — would collapse to an
+effective S of 1. Not part of the initial release; the seam (freeze) ships
+with it.
