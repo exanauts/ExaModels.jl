@@ -66,10 +66,15 @@ fields by name; a bare value binds the tracer used directly).
 @inline resolve(v::ArgIndexed{I, J}, args) where {I, J} =
     _lookup(resolve(getfield(v, :inner), args), Val(J))
 @inline resolve(v::ArgIndexed{I, J}, ::Nothing) where {I, J} = _args_error(J)
+# A bare (non-NamedTuple) arg binds field accesses too — the single-field
+# schema convenience (`ExaModel(core, 1000)` for a core that reads args.N).
+@inline resolve(v::ArgIndexed{ArgTracer, J}, args::Number) where {J} = args
 @inline resolve(n::Node1{F, I}, args) where {F, I} = F.instance(resolve(n.inner, args))
 @inline resolve(n::Node2{F, I1, I2}, args) where {F, I1, I2} =
     F.instance(resolve(n.inner1, args), resolve(n.inner2, args))
 @inline resolve(::Constant{T}, args) where {T} = T
+# Generators defer through their (possibly deferred) iterable.
+@inline resolve(g::Base.Generator, args) = Base.Generator(g.f, resolve(g.iter, args))
 # Multi-dimensional index sets resolve componentwise.
 @inline resolve(p::Iterators.ProductIterator, args) =
     Iterators.product(map(r -> resolve(r, args), p.iterators)...)

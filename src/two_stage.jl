@@ -33,8 +33,8 @@ abstract type AbstractTwoStageVariable{V} end
 @inline _scen_each_tag(nscen, n_per_scen) = repeat(1:nscen, inner = n_per_scen)
 @inline _scen_full_tag(nscen, nitr) = repeat(1:nscen, outer = div(nitr, nscen))
 
-const FirstStageVariable{S,O} = Variable{S,O,<: FirstStageTag}
-const SecondStageVariable{S,O} = Variable{S,O,<: SecondStageTag} 
+const FirstStageVariable{S,L,O} = Variable{S,L,O,<: FirstStageTag}
+const SecondStageVariable{S,L,O} = Variable{S,L,O,<: SecondStageTag} 
 const FirstStageParameter{S,O} = Parameter{S,O,<: FirstStageTag}
 const SecondStageParameter{S,O} = Parameter{S,O,<: SecondStageTag} 
 const FirstStageExpression{S,F,I} = Expression{S,F,I,<: FirstStageTag}

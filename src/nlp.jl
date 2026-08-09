@@ -17,9 +17,9 @@ individual entries in objective and constraint expressions. Retrieve solution
 values with [`solution`](@ref). An optional `tag` field carries user-defined
 metadata (e.g. scenario identifiers for two-stage models).
 """
-struct Variable{S,O,T} <: AbstractVariable
+struct Variable{S,L,O,T} <: AbstractVariable
     size::S
-    length::O
+    length::L
     offset::O
     name::Symbol
     tag::T
@@ -77,9 +77,9 @@ time with [`set_parameter!`](@ref) without rebuilding the model. Use indexing
 (e.g. `θ[i]`) to embed parameter values in expressions. An optional `tag` field
 carries user-defined metadata.
 """
-struct Parameter{S,O,T} <: AbstractParameter
+struct Parameter{S,L,O,T} <: AbstractParameter
     size::S
-    length::O
+    length::L
     offset::O
     tag::T
 end
@@ -302,35 +302,71 @@ An ExaCore
   number of constraint patterns: ... 0
 ```
 """
-struct ExaCore{T, VT <: AbstractVector{T}, B, S, V, P, O, C, R, OR, SOR, EV} <: AbstractExaCore{T, VT, B, S}
+# Counter and array slots carry their own type parameters: `Int` / `VT` on
+# the eager path (byte-identical to the fixed-typed core), or an arg-node
+# tree / pending-append chain once an instantiation-argument sentinel enters
+# a value position. `VT` remains the nominal (materialized) array type for
+# backend dispatch even while an individual slot is deferred.
+struct ExaCore{T, VT <: AbstractVector{T}, B, S, V, P, O, C, OR, SOR, EV,
+               NV, NP, NC, NA, NO, ZC, ZG, ZJ, ZH,
+               X0, TH, LV, UV, Y0, LC, UC, R} <: AbstractExaCore{T, VT, B, S}
     name::Symbol
     backend::B
     var::V
     par::P
     obj::O
     cons::C
-    nvar::Int
-    npar::Int
-    ncon::Int
-    nconaug::Int
-    nobj::Int
-    nnzc::Int
-    nnzg::Int
-    nnzj::Int
-    nnzh::Int
-    x0::VT
-    θ::VT
-    lvar::VT
-    uvar::VT
-    y0::VT
-    lcon::VT
-    ucon::VT
+    nvar::NV
+    npar::NP
+    ncon::NC
+    nconaug::NA
+    nobj::NO
+    nnzc::ZC
+    nnzg::ZG
+    nnzj::ZJ
+    nnzh::ZH
+    x0::X0
+    θ::TH
+    lvar::LV
+    uvar::UV
+    y0::Y0
+    lcon::LC
+    ucon::UC
     minimize::Bool
     tag::S  # For storing variable/constraint tag (e.g., scenario tag for two-stage models)
     refs::R
     oracles::OR                # Tuple of VectorNonlinearOracle
     scalar_oracles::SOR        # Tuple of ScalarNonlinearOracle
     evals::EV                  # Tuple of OracleEvaluator (augment pre-existing constraint rows)
+end
+
+# Once a segment's length is an arg tree, the array slot becomes a pending
+# chain; materialization replays the appends in order with values resolved.
+struct PendingVec{A, SP, LB}
+    base::A
+    spec::SP
+    len::LB
+end
+
+@inline _nominal_vt(x0::AbstractVector) = typeof(x0)
+@inline _nominal_vt(p::PendingVec) = _nominal_vt(p.base)
+
+@inline function ExaCore{T, VT}(
+    name, backend::B, var::V, par::P, obj::O, cons::C,
+    nvar::NV, npar::NP, ncon::NC, nconaug::NA, nobj::NO,
+    nnzc::ZC, nnzg::ZG, nnzj::ZJ, nnzh::ZH,
+    x0::X0, θ::TH, lvar::LV, uvar::UV, y0::Y0, lcon::LC, ucon::UC,
+    minimize, tag::S, refs::R, oracles::OR, scalar_oracles::SOR, evals::EV,
+) where {T, VT <: AbstractVector{T}, B, S, V, P, O, C, OR, SOR, EV,
+         NV, NP, NC, NA, NO, ZC, ZG, ZJ, ZH, X0, TH, LV, UV, Y0, LC, UC, R}
+    return ExaCore{T, VT, B, S, V, P, O, C, OR, SOR, EV,
+                   NV, NP, NC, NA, NO, ZC, ZG, ZJ, ZH,
+                   X0, TH, LV, UV, Y0, LC, UC, R}(
+        name, backend, var, par, obj, cons,
+        nvar, npar, ncon, nconaug, nobj, nnzc, nnzg, nnzj, nnzh,
+        x0, θ, lvar, uvar, y0, lcon, ucon,
+        minimize, tag, refs, oracles, scalar_oracles, evals,
+    )
 end
 
 @inline function _exa_core(
@@ -365,7 +401,8 @@ end
         evals = (),
     )
 
-    return ExaCore(
+    VTn = _nominal_vt(x0)
+    return ExaCore{eltype(VTn), VTn}(
         name,
         backend,
         var,
@@ -496,7 +533,7 @@ julia> result = ipopt(m; print_level=0)    # solve the problem
 ```
 """
 # No-oracle path: always returns ExaModel (type-stable for juliac --trim=safe).
-function ExaModel(c::ExaCore{T, VT, B, S, V, P, O, C, R, Tuple{}, Tuple{}, Tuple{}}; prod = false, kwargs...) where {T, VT, B, S, V, P, O, C, R}
+function ExaModel(c::ExaCore{T, VT, B, S, V, P, O, C, Tuple{}, Tuple{}, Tuple{}}; prod = false, kwargs...) where {T, VT, B, S, V, P, O, C}
     return ExaModel(
         c.name,
         c.var,
@@ -602,6 +639,14 @@ function __bound_check(a::UnitRange{Int}, b::I) where {I<:Integer}
 end
 
 
+# ── Deferred array building ──────────────────────────────────────────────────
+# (PendingVec is defined above the core struct; appends chain below.)
+for BT in (:Number, :AbstractArray, :(Base.Generator), :DeferredFill, :DeferredCollect)
+    @eval @inline append!(backend, a, b::$BT, lb::_ArgLike) = PendingVec(a, b, lb)
+    @eval @inline append!(backend, a::PendingVec, b::$BT, lb) = PendingVec(a, b, lb)
+    @eval @inline append!(backend, a::PendingVec, b::$BT, lb::_ArgLike) = PendingVec(a, b, lb)
+end
+
 function append!(backend, a, b::Base.Generator, lb)
     if lb != 0
         b = _adapt_gen(b)
@@ -644,11 +689,14 @@ end
 @inline _total(n, ns...) = _length(n) * _total(ns...)
 @inline _length(n::Int) = n
 @inline _length(n::UnitRange) = length(n)
+@inline _length(n::_ArgLike) = n
+@inline _length(r::ArgRange) = Node1(length, r)
 @inline size(ns) = _size(ns...)
 @inline _size() = ()
 @inline _size(n, ns...) = (_length(n), _size(ns...)...)
 @inline _start(n::Int) = 1
 @inline _start(n::UnitRange) = n.start
+@inline _start(r::ArgRange) = r.lo
 
 """
     add_var(core, dims...; start = 0, lvar = -Inf, uvar = Inf, name = nothing, tag = nothing)
