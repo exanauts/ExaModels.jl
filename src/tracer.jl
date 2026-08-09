@@ -51,6 +51,13 @@ end
 @inline (::ArgTracer)(i, x, θ) = 1
 @inline (::ArgIndexed)(i, x, θ) = 1
 
+# Value-only ops (length, integer div, rounding) appear inside arg subtrees
+# that ride expression trees (deferred offsets above all). They are constants
+# under the sparsity/compressor probe, like the leaves; materialization
+# resolves them away before any kernel runs.
+@inline (n::Node1{typeof(length), I})(i, x, θ) where {I} = 1
+@inline (n::Node2{typeof(div), I1, I2})(i, x, θ) where {I1, I2} = 1
+
 # ── Resolution: evaluate an arg tree against the instantiation args ──────────
 
 @inline _lookup(x, ::Val{J}) where {J} = J isa Symbol ? getproperty(x, J) : getindex(x, J)
@@ -123,6 +130,7 @@ end
 # ride as a singleton functor so the node stays a named type.
 struct _RoundTo{T, F} end
 @inline (::_RoundTo{T, F})(x) where {T, F} = F(T, x)
+@inline (n::Node1{<:_RoundTo, I})(i, x, θ) where {I} = 1
 @inline Base.div(a::_ArgLike, b::Union{Integer, _ArgLike}, ::RoundingMode{:ToZero}) = Node2(div, a, b)
 @inline Base.div(a::Integer, b::_ArgLike, ::RoundingMode{:ToZero}) = Node2(div, a, b)
 @inline Base.floor(::Type{T}, n::_ArgLike) where {T} = Node1(_RoundTo{T, floor}(), n)
@@ -146,6 +154,7 @@ end
 @inline Base.collect(g::Base.Generator{<:ArgRange}) = DeferredCollect(g.f, g.iter)
 @inline Base.length(d::DeferredCollect) = Node1(length, d)
 @inline Base.size(r::ArgRange) = (Node1(length, r),)
+@inline Base.size(t::ArgNode) = (Node1(length, t),)
 @inline Base.size(d::DeferredCollect) = (Node1(length, d),)
 @inline resolve(d::DeferredCollect, args) =
     [resolve(d.f(x), args) for x in resolve(d.iter, args)]
@@ -185,3 +194,20 @@ Base.iterate(::ArgNode, state...) = throw(
         "add_var/add_con/add_obj — they are iterated at materialization.",
     ),
 )
+
+# ── Traced value generators ──────────────────────────────────────────────────
+# A start/bound/value generator over a deferred range would otherwise carry
+# its closure into the core (blocking serialization). Trace the body once on
+# the DataSource sentinel — algebraic bodies become closure-free trees,
+# evaluated per element at materialization (arg leaves resolved first).
+# Untraceable bodies (control flow) keep the closure: fine in-process, and
+# the serializability gate names them.
+struct TracedValues{E, I}
+    tree::E
+    iter::I
+end
+const _EMPTYV = Float64[]
+function resolve(tv::TracedValues, args)
+    t = _rt(tv.tree, args)
+    return Base.Generator(i -> t isa Real ? t : t(i, _EMPTYV, _EMPTYV), resolve(tv.iter, args))
+end

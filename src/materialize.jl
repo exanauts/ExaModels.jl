@@ -49,6 +49,13 @@ end
 @inline _rt(x, args) = x
 @inline _rt(n::ArgTracer, args) = resolve(n, args)
 @inline _rt(n::ArgIndexed, args) = resolve(n, args)
+# Value-only ops are pure arg subtrees by construction (length, integer
+# division, rounding never wrap variables): they resolve to their value
+# rather than being rebuilt — a rebuilt one would survive as an unevaluated
+# node that the sparsity probe then misreads as a constant 1.
+@inline _rt(n::Node1{typeof(length), I}, args) where {I} = resolve(n, args)
+@inline _rt(n::Node1{<:_RoundTo, I}, args) where {I} = resolve(n, args)
+@inline _rt(n::Node2{typeof(div), I1, I2}, args) where {I1, I2} = resolve(n, args)
 @inline _rt(n::Node1{F, I}, args) where {F, I} = Node1(F.instance, _rt(n.inner, args))
 @inline _rt(n::Node2{F, I1, I2}, args) where {F, I1, I2} =
     Node2(F.instance, _rt(n.inner1, args), _rt(n.inner2, args))
@@ -66,6 +73,7 @@ end
 
 @inline _resolve_itr(itr, args) = itr
 @inline _resolve_itr(r::ArgRange, args) = resolve(r, args)
+@inline _resolve_itr(n::_ArgLike, args) = resolve(n, args)
 @inline _resolve_itr(d::DeferredCollect, args) = resolve(d, args)
 
 @inline _resolve_entry(cn::Constraint, args) = Constraint(

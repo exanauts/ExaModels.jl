@@ -646,10 +646,23 @@ end
 
 # ── Deferred array building ──────────────────────────────────────────────────
 # (PendingVec is defined above the core struct; appends chain below.)
+@inline _defer_spec(b) = b
+@inline function _defer_spec(b::Base.Generator)
+    try
+        return TracedValues(b.f(DataSource()), b.iter)
+    catch
+        return b   # untraceable body: keep the closure (in-process only)
+    end
+end
+# Array-valued arg specs (lvar = args.vmin, or -args.rate_a trees): defer
+# regardless of whether the length is.
+@inline append!(backend, a, b::_ArgLike, lb) = PendingVec(a, b, lb)
+@inline append!(backend, a::PendingVec, b::_ArgLike, lb) = PendingVec(a, b, lb)
+
 for BT in (:Number, :AbstractArray, :(Base.Generator), :DeferredFill, :DeferredCollect)
-    @eval @inline append!(backend, a, b::$BT, lb::_ArgLike) = PendingVec(a, b, lb)
-    @eval @inline append!(backend, a::PendingVec, b::$BT, lb) = PendingVec(a, b, lb)
-    @eval @inline append!(backend, a::PendingVec, b::$BT, lb::_ArgLike) = PendingVec(a, b, lb)
+    @eval @inline append!(backend, a, b::$BT, lb::_ArgLike) = PendingVec(a, _defer_spec(b), lb)
+    @eval @inline append!(backend, a::PendingVec, b::$BT, lb) = PendingVec(a, _defer_spec(b), lb)
+    @eval @inline append!(backend, a::PendingVec, b::$BT, lb::_ArgLike) = PendingVec(a, _defer_spec(b), lb)
 end
 
 function append!(backend, a, b::Base.Generator, lb)
@@ -1334,6 +1347,7 @@ end
 # Helper to infer dimensions from iterator
 _infer_subexpr_dims(itr::ArgRange) = (itr,)
 _infer_subexpr_dims(itr::DeferredCollect) = (Node1(length, itr),)
+_infer_subexpr_dims(itr::Union{ArgTracer, ArgIndexed, Node1, Node2}) = (Node1(length, itr),)
 _infer_subexpr_dims(itr::AbstractRange) = (itr,)
 _infer_subexpr_dims(itr::AbstractArray) = Base.size(itr)
 _infer_subexpr_dims(itr::Base.Iterators.ProductIterator) = itr.iterators
@@ -1759,6 +1773,7 @@ end
 _adapt_gen(gen) = Base.Generator(gen.f, collect(gen.iter))
 _adapt_gen(gen::Base.Generator{<:ArgRange}) = gen
 _adapt_gen(gen::Base.Generator{<:DeferredCollect}) = gen
+_adapt_gen(gen::Base.Generator{<:Union{ArgTracer, ArgIndexed, Node1, Node2}}) = gen
 _adapt_gen(gen::Base.Generator{P}) where {P<:Union{AbstractArray,AbstractRange}} = gen
 _adapt_gen(gen::Tuple{E, I}) where {E<:AbstractNode, I} = (gen[1], collect(gen[2]))
 _adapt_gen(gen::Tuple{E, I}) where {E<:AbstractNode, I<:Union{AbstractArray,AbstractRange}} = gen
