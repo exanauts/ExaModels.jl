@@ -41,6 +41,43 @@ end
     c.ucon isa AbstractVector
 )
 
+# ── Structure-preserving tree rewrite ────────────────────────────────────────
+# Replace arg leaves in an expression tree with their resolved values, using
+# the RAW node constructors (never the operator overloads, which simplify and
+# would change the structure the compressors were computed over).
+
+@inline _rt(x, args) = x
+@inline _rt(n::ArgTracer, args) = resolve(n, args)
+@inline _rt(n::ArgIndexed, args) = resolve(n, args)
+@inline _rt(n::Node1{F, I}, args) where {F, I} = Node1(F.instance, _rt(n.inner, args))
+@inline _rt(n::Node2{F, I1, I2}, args) where {F, I1, I2} =
+    Node2(F.instance, _rt(n.inner1, args), _rt(n.inner2, args))
+@inline _rt(v::Var{I}, args) where {I} = Var(_rt(v.i, args))
+@inline _rt(p::ParameterNode{I}, args) where {I} = ParameterNode(_rt(p.i, args))
+@inline _rt(n::SumNode, args) = SumNode(map(c -> _rt(c, args), n.inners))
+@inline _rt(n::ProdNode, args) = ProdNode(map(c -> _rt(c, args), n.inners))
+@inline _rt(p::Pair, args) = _rt(p.first, args) => _rt(p.second, args)
+
+@inline _resolve_sf(f::SIMDFunction, args) = SIMDFunction(
+    _rt(f.f, args), f.comp1, f.comp2,
+    resolve(f.o0, args)::Int, resolve(f.o1, args)::Int, resolve(f.o2, args)::Int,
+    f.o1step, f.o2step,
+)
+
+@inline _resolve_itr(itr, args) = itr
+@inline _resolve_itr(r::ArgRange, args) = resolve(r, args)
+@inline _resolve_itr(d::DeferredCollect, args) = resolve(d, args)
+
+@inline _resolve_entry(cn::Constraint, args) = Constraint(
+    _resolve_sf(cn.f, args),
+    _resolve_itr(cn.itr, args),
+    resolve(cn.offset, args)::Int,
+    map(d -> _resolve_dim(d, args), cn.size),
+    cn.tag,
+)
+@inline _resolve_entry(o::Objective, args) =
+    Objective(_resolve_sf(o.f, args), _resolve_itr(o.itr, args))
+
 """
     materialize(core, args = nothing) -> ExaCore
 
@@ -58,8 +95,8 @@ function _materialize(c::ExaCore, args)
         backend = c.backend,
         var = map(v -> _resolve_handle(v, args), c.var),
         par = map(p -> _resolve_handle(p, args), c.par),
-        obj = c.obj,
-        cons = c.cons,
+        obj = map(o -> _resolve_entry(o, args), c.obj),
+        cons = map(cn -> _resolve_entry(cn, args), c.cons),
         nvar = resolve(c.nvar, args)::Int,
         npar = resolve(c.npar, args)::Int,
         ncon = resolve(c.ncon, args)::Int,

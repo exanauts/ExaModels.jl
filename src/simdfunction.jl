@@ -13,13 +13,16 @@ struct Compressor{I}
 end
 @inline (i::Compressor{I})(n) where {I} = @inbounds i.inner[n]
 
-struct SIMDFunction{F,C1,C2}
+# o0/o1/o2 carry their own slot types: Int on the sentinel-free path, an
+# arg-node tree when the enclosing counters are deferred. The steps are
+# structural (compressor lengths) and stay Int.
+struct SIMDFunction{F,C1,C2,O0,O1,O2}
     f::F
     comp1::C1
     comp2::C2
-    o0::Int
-    o1::Int
-    o2::Int
+    o0::O0
+    o1::O1
+    o2::O2
     o1step::Int
     o2step::Int
 end

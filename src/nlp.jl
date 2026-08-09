@@ -633,6 +633,9 @@ end
 _bound_check(sizes, is) = nothing
 _bound_check(sizes, is::Tuple{}) = nothing
 
+# Symbolic sizes cannot be checked at construction; materialization computes
+# real offsets, and evaluation stays in bounds by construction.
+@inline __bound_check(a::Union{ArgTracer, ArgIndexed, Node1, Node2, ArgRange}, b) = nothing
 function __bound_check(a::I, b::I) where {I<:Integer}
     @assert(1 <= b <= a, "Variable index bound error")
 end
@@ -699,6 +702,7 @@ end
 @inline _start(n::Int) = 1
 @inline _start(n::UnitRange) = n.start
 @inline _start(r::ArgRange) = r.lo
+@inline _start(n::_ArgLike) = 1
 
 """
     add_var(core, dims...; start = 0, lvar = -Inf, uvar = Inf, name = nothing, tag = nothing)
@@ -1328,6 +1332,7 @@ function _add_con!(c, f, pars, dims, tag)
 end
 
 # Helper to infer dimensions from iterator
+_infer_subexpr_dims(itr::ArgRange) = (itr,)
 _infer_subexpr_dims(itr::AbstractRange) = (itr,)
 _infer_subexpr_dims(itr::AbstractArray) = Base.size(itr)
 _infer_subexpr_dims(itr::Base.Iterators.ProductIterator) = itr.iterators
@@ -1751,6 +1756,7 @@ function multipliers(result::SolverCore.AbstractExecutionStats, y::Constraint)
 end
 
 _adapt_gen(gen) = Base.Generator(gen.f, collect(gen.iter))
+_adapt_gen(gen::Base.Generator{<:ArgRange}) = gen
 _adapt_gen(gen::Base.Generator{P}) where {P<:Union{AbstractArray,AbstractRange}} = gen
 _adapt_gen(gen::Tuple{E, I}) where {E<:AbstractNode, I} = (gen[1], collect(gen[2]))
 _adapt_gen(gen::Tuple{E, I}) where {E<:AbstractNode, I<:Union{AbstractArray,AbstractRange}} = gen

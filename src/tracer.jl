@@ -66,9 +66,11 @@ fields by name; a bare value binds the tracer used directly).
 @inline resolve(v::ArgIndexed{I, J}, args) where {I, J} =
     _lookup(resolve(getfield(v, :inner), args), Val(J))
 @inline resolve(v::ArgIndexed{I, J}, ::Nothing) where {I, J} = _args_error(J)
-# A bare (non-NamedTuple) arg binds field accesses too — the single-field
-# schema convenience (`ExaModel(core, 1000)` for a core that reads args.N).
-@inline resolve(v::ArgIndexed{ArgTracer, J}, args::Number) where {J} = args
+# An indexed reference (`args.N`) binds only by name: a bare value satisfies
+# only the tracer used directly (`add_var(c, args)`), never a field lookup.
+@inline resolve(v::ArgIndexed{I, J}, args::Number) where {I, J} = throw(ArgumentError(
+    "this core references field `$J` of the instantiation argument; a bare " *
+    "value binds only a tracer used directly — pass (; $J = ...)"))
 @inline resolve(n::Node1{F, I}, args) where {F, I} = F.instance(resolve(n.inner, args))
 @inline resolve(n::Node2{F, I1, I2}, args) where {F, I1, I2} =
     F.instance(resolve(n.inner1, args), resolve(n.inner2, args))
@@ -109,6 +111,7 @@ for (A, S, B) in (
 end
 
 @inline Base.length(t::ArgNode) = Node1(length, t)
+@inline Base.length(r::ArgRange) = Node1(length, r)
 
 struct DeferredFill{V, N}
     value::V
