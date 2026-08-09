@@ -534,6 +534,7 @@ julia> result = ipopt(m; print_level=0)    # solve the problem
 """
 # No-oracle path: always returns ExaModel (type-stable for juliac --trim=safe).
 function ExaModel(c::ExaCore{T, VT, B, S, V, P, O, C, Tuple{}, Tuple{}, Tuple{}}; prod = false, kwargs...) where {T, VT, B, S, V, P, O, C}
+    c = materialize(c)
     return ExaModel(
         c.name,
         c.var,
@@ -563,6 +564,7 @@ end
 
 # Oracle path: always returns ExaModelWithOracle (type-stable for juliac --trim=safe).
 function ExaModel(c::ExaCore; prod = false, kwargs...)
+    c = materialize(c)
     return _build_with_oracle(c; prod, kwargs...)
 end
 

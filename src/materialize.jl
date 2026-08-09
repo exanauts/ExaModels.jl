@@ -23,17 +23,36 @@
 
 @inline _resolve_pending(backend, a, args) = a
 function _resolve_pending(backend, p::PendingVec, args)
-    a = _resolve_pending(backend, p.base, args)
+    a = _pending_base(backend, p.base, args)
     return append!(backend, a, resolve(p.spec, args), resolve(p.len, args)::Int)
 end
+# The chain's leaf is the live core's array and append! mutates: detach with
+# a copy exactly once, at the bottom, so one core materializes any number of
+# times.
+@inline _pending_base(backend, a::AbstractVector, args) = copy(a)
+@inline _pending_base(backend, p::PendingVec, args) = _resolve_pending(backend, p, args)
+
+@inline _deferred(c::ExaCore) = !(
+    c.nvar isa Int && c.npar isa Int && c.ncon isa Int && c.nconaug isa Int &&
+    c.nobj isa Int && c.nnzc isa Int && c.nnzg isa Int && c.nnzj isa Int &&
+    c.nnzh isa Int && c.x0 isa AbstractVector && c.θ isa AbstractVector &&
+    c.lvar isa AbstractVector && c.uvar isa AbstractVector &&
+    c.y0 isa AbstractVector && c.lcon isa AbstractVector &&
+    c.ucon isa AbstractVector
+)
 
 """
     materialize(core, args = nothing) -> ExaCore
 
 Resolve the core's deferred value slots (counters, offsets, dimensions,
-array segments) against `args`. Sentinel-free cores pass through unchanged.
+array segments) against `args`. A sentinel-free core is returned as-is
+(`===`); a deferred core materialized without args names the missing
+argument. Internal — the public surface is `ExaModel(core, args)`.
 """
-function materialize(c::ExaCore, args = nothing)
+@inline materialize(c::ExaCore, ::Nothing = nothing) = _deferred(c) ? _materialize(c, nothing) : c
+@inline materialize(c::ExaCore, args) = _materialize(c, args)
+
+function _materialize(c::ExaCore, args)
     return _exa_core(;
         name = c.name,
         backend = c.backend,
@@ -65,3 +84,12 @@ function materialize(c::ExaCore, args = nothing)
         evals = c.evals,
     )
 end
+
+"""
+    ExaModel(core, args; kwargs...)
+
+Materialize `core` at `args` and build the model — `ExaModel(core)` for a
+sentinel-free core is unchanged. `args` binds a NamedTuple by name, a bare
+value for a single-field schema, or the tracer's direct value.
+"""
+@inline ExaModel(c::ExaCore, args; kwargs...) = ExaModel(materialize(c, args); kwargs...)
