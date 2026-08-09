@@ -79,6 +79,18 @@ concatenated iterators/parameter tables collapses repeated-pattern models
 merge point is construction itself (entries arrive traced), even more
 natural than the tape's freeze step.
 
+## v3 measured (implemented on this branch)
+
+| S | record (traces eagerly) | freeze | materialize₁ | re-materialize |
+|---|---|---|---|---|
+| 50 | 1.2 | 0.1 | 20.1 | 0.002 |
+| 200 | 4.7 | 1.0 | 117.4 | **0.009** |
+
+Recording with eager tracing is near-free (the old 189 s was entry width
+alone); first materialization equals eager creation (117 vs 113 s — the
+per-type compile that pattern merging targets); re-materialization at new
+args is milliseconds. One core, many instantiations.
+
 ## Measurement appendix (evidence base; S = distinct add_con statements, cold, n = 100 fixed)
 
 | S | eager `ExaCore()` (= LegacyExaCore wrapper) | eager typed `Val(true)` | tape record | tape materialize |
