@@ -43,9 +43,9 @@ are introduced.  Use `Expression` to share common sub-expressions across multipl
 objectives or constraints without duplicating the expression tree. An optional
 `tag` field carries user-defined metadata.
 """
-struct Expression{S, F, I, T}
+struct Expression{S, L, F, I, T}
     size::S
-    length::Int
+    length::L
     f::F           # The generator function
     iter::I        # The collected iterator (for indexing)
     tag::T
@@ -659,7 +659,7 @@ end
 @inline append!(backend, a, b::_ArgLike, lb) = PendingVec(a, b, lb)
 @inline append!(backend, a::PendingVec, b::_ArgLike, lb) = PendingVec(a, b, lb)
 
-for BT in (:Number, :AbstractArray, :(Base.Generator), :DeferredFill, :DeferredCollect)
+for BT in (:Number, :AbstractArray, :(Base.Generator), :DeferredFill, :DeferredCollect, :Deferred)
     @eval @inline append!(backend, a, b::$BT, lb::_ArgLike) = PendingVec(a, _defer_spec(b), lb)
     @eval @inline append!(backend, a::PendingVec, b::$BT, lb) = PendingVec(a, _defer_spec(b), lb)
     @eval @inline append!(backend, a::PendingVec, b::$BT, lb::_ArgLike) = PendingVec(a, _defer_spec(b), lb)
@@ -1348,6 +1348,7 @@ end
 _infer_subexpr_dims(itr::ArgRange) = (itr,)
 _infer_subexpr_dims(itr::DeferredCollect) = (Node1(length, itr),)
 _infer_subexpr_dims(itr::Union{ArgTracer, ArgIndexed, Node1, Node2}) = (Node1(length, itr),)
+_infer_subexpr_dims(itr::Deferred) = (Node1(length, itr),)
 _infer_subexpr_dims(itr::AbstractRange) = (itr,)
 _infer_subexpr_dims(itr::AbstractArray) = Base.size(itr)
 _infer_subexpr_dims(itr::Base.Iterators.ProductIterator) = itr.iterators
@@ -1393,13 +1394,19 @@ c, s = add_expr(c, x[i, k]^2 for (i, k) in itr)
 # s[i, k] substitutes x[i,k]^2 directly
 ```
 """
+# Deferred subexpression iterators stay deferred: symbolic indexing (s[i]
+# with a node index) substitutes the element directly and never consults
+# the collected iterator.
+@inline _expr_iter(itr) = collect(itr)
+@inline _expr_iter(itr::Union{ArgRange, DeferredCollect, Deferred, ArgTracer, ArgIndexed, Node1, Node2}) = itr
+
 @inline function add_expr(c::C, gen::Base.Generator; name = nothing, tag = nothing) where {T, C <: ExaCore{T}}
     ns = _infer_subexpr_dims(gen.iter)
 
     gen = _adapt_gen(gen)
     n = length(gen.iter)
 
-    ex = Expression(ns, n, gen.f, collect(gen.iter), tag)
+    ex = Expression(ns, n, gen.f, _expr_iter(gen.iter), tag)
     return (ExaCore(c; refs = add_refs(c.refs, name, ex)), ex)
 end
 
@@ -1774,6 +1781,8 @@ _adapt_gen(gen) = Base.Generator(gen.f, collect(gen.iter))
 _adapt_gen(gen::Base.Generator{<:ArgRange}) = gen
 _adapt_gen(gen::Base.Generator{<:DeferredCollect}) = gen
 _adapt_gen(gen::Base.Generator{<:Union{ArgTracer, ArgIndexed, Node1, Node2}}) = gen
+_adapt_gen(gen::Base.Generator{<:_DefProd2}) = any(x -> x isa _DefIter, gen.iter.iterators) ? gen : Base.Generator(gen.f, collect(gen.iter))
+_adapt_gen(gen::Base.Generator{<:Deferred}) = gen
 _adapt_gen(gen::Base.Generator{P}) where {P<:Union{AbstractArray,AbstractRange}} = gen
 _adapt_gen(gen::Tuple{E, I}) where {E<:AbstractNode, I} = (gen[1], collect(gen[2]))
 _adapt_gen(gen::Tuple{E, I}) where {E<:AbstractNode, I<:Union{AbstractArray,AbstractRange}} = gen

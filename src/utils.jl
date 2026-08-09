@@ -6,6 +6,10 @@ convert_array(d::DeferredCollect, backend) = d
 convert_array(d::DeferredCollect, ::Nothing) = d
 convert_array(n::Union{ArgTracer, ArgIndexed, Node1, Node2}, backend) = n
 convert_array(n::Union{ArgTracer, ArgIndexed, Node1, Node2}, ::Nothing) = n
+convert_array(d::Deferred, backend) = d
+convert_array(d::Deferred, ::Nothing) = d
+convert_array(p::ExaModels._DefProd2, backend) = p
+convert_array(p::ExaModels._DefProd2, ::Nothing) = p
 
 # WrapperNLPModel serves as a wrapper for ExaNLPModel, or even any NLPModels.
 # This is useful when you want to use a solver that does not support non-stardard array data types.

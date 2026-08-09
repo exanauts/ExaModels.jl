@@ -75,6 +75,9 @@ end
 @inline _resolve_itr(r::ArgRange, args) = resolve(r, args)
 @inline _resolve_itr(n::_ArgLike, args) = resolve(n, args)
 @inline _resolve_itr(d::DeferredCollect, args) = resolve(d, args)
+@inline _resolve_itr(d::Deferred, args) = resolve(d, args)
+@inline _resolve_itr(p::_DefProd2, args) =
+    collect(resolve(p, args))
 
 @inline _resolve_entry(cn::Constraint, args) = Constraint(
     _resolve_sf(cn.f, args),

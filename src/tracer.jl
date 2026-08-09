@@ -152,6 +152,65 @@ struct DeferredCollect{F, I}
     iter::I
 end
 @inline Base.collect(g::Base.Generator{<:ArgRange}) = DeferredCollect(g.f, g.iter)
+# Multi-dimensional comprehensions over deferred ranges: defer the whole
+# collect over the product (resolution yields the elements in column-major
+# order, matching the eager matrix's linearization).
+const _DefIter = Union{ArgRange, DeferredCollect}
+# Mixed products (a fixed range beside a deferred one) defer too; the
+# all-eager product keeps Base semantics untouched.
+const _MixIter = Union{ArgRange, DeferredCollect, AbstractRange, AbstractArray}
+# Any-arity products with at least one deferred component defer; all-eager
+# range products delegate to Base's own collect via invoke, so their
+# semantics (shape included) are untouched.
+const _RangeLike = Union{_DefIter, AbstractRange, AbstractVector}
+const _DefProd2 = Iterators.ProductIterator{<:Tuple{_RangeLike, Vararg{_RangeLike}}}
+@inline function Base.collect(g::Base.Generator{<:_DefProd2})
+    if any(x -> x isa _DefIter, g.iter.iterators)
+        return DeferredCollect(g.f, g.iter)
+    end
+    return invoke(Base.collect, Tuple{Base.Generator}, g)
+end
+@inline _iterlen(r) = length(r)
+@inline _iterlen(r::_DefIter) = Node1(length, r)
+@inline function Base.length(p::_DefProd2)
+    return prod(map(_iterlen, p.iterators))
+end
+
+# A completely general escape: a function of the resolved args, evaluated at
+# materialization. Covers computed start arrays, index-record collections
+# (measurement partitions, pair sets), seeded randomness — anything a value
+# slot or an index set needs that the algebraic vocabulary cannot spell.
+# Closure-class: fine in-process; the serializability gate names it.
+"""
+    Deferred(f)
+
+A value computed from the resolved instantiation args at materialization:
+`Deferred(a -> [g(i) for i in 1:a.N])` may occupy any value slot (starts,
+bounds, parameter values) or stand as an index set. The function receives
+the resolved args and runs once per materialization.
+"""
+struct Deferred{F}
+    f::F
+end
+@inline resolve(d::Deferred, args) = d.f(args)
+# Comprehensions over deferred comprehensions (and over Deferred index sets)
+# compose by nesting.
+@inline Base.collect(g::Base.Generator{<:DeferredCollect}) = DeferredCollect(g.f, g.iter)
+# Indexing a deferred collection inside another deferred body: the lookup
+# itself defers, and tuples resolve elementwise so deferred entries inside
+# tuple-valued elements resolve too.
+struct DeferredIndex{D, I}
+    d::D
+    i::I
+end
+@inline Base.getindex(d::DeferredCollect, i...) = DeferredIndex(d, i)
+@inline Base.getindex(d::Deferred, i...) = DeferredIndex(d, i)
+@inline resolve(di::DeferredIndex, args) =
+    resolve(di.d, args)[map(x -> resolve(x, args), di.i)...]
+@inline resolve(t::Tuple, args) = map(x -> resolve(x, args), t)
+@inline Base.collect(g::Base.Generator{<:Deferred}) = DeferredCollect(g.f, g.iter)
+@inline Base.length(d::Deferred) = Node1(length, d)
+@inline Base.size(d::Deferred) = (Node1(length, d),)
 @inline Base.length(d::DeferredCollect) = Node1(length, d)
 @inline Base.size(r::ArgRange) = (Node1(length, r),)
 @inline Base.size(t::ArgNode) = (Node1(length, t),)
