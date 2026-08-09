@@ -82,7 +82,7 @@ function runtests()
         end
 
         @testset "instantiate is type-stable" begin
-            core = @inferred ExaModels.instantiate(tape, (; N = 10))
+            core = @inferred ExaModels.instantiate(ExaModels.freeze(tape), (; N = 10))
             @test core isa ExaCore{Float64}
         end
 
@@ -134,7 +134,7 @@ function runtests()
                 @test hess_structure(mt) == hess_structure(mc)
                 @test hess_coord(mt, xr, yr) == hess_coord(mc, xr, yr)
             end
-            core = @inferred ExaModels.instantiate(ct, (; N = 10))
+            core = @inferred ExaModels.instantiate(ExaModels.freeze(ct), (; N = 10))
             @test core isa ExaCore{Float64}
         end
 
@@ -143,7 +143,7 @@ function runtests()
             m_nt = ExaModel(t, (; N = 50))
             m_bare = ExaModel(t, 50)               # single-field schema sugar
             compare_models(m_bare, m_nt)
-            core = @inferred ExaModels.instantiate(t, 50)
+            core = @inferred ExaModels.instantiate(ExaModels.freeze(t), 50)
             @test core isa ExaCore{Float64}
             @test_throws ArgumentError ExaModel(t)          # schema needs N
             @test_throws ArgumentError ExaModel(t, (50,))   # tuples are positional; tapes bind by name
@@ -161,7 +161,7 @@ function runtests()
             m_tape = ExaModel(ts)
             m_core = ExaModel(build_static(ExaCore()))
             compare_models(m_tape, m_core)
-            core2 = @inferred ExaModels.instantiate(ts)
+            core2 = @inferred ExaModels.instantiate(ExaModels.freeze(ts))
             @test core2 isa ExaCore{Float64}
         end
 
@@ -187,7 +187,7 @@ function runtests()
                 m_ref = lv_direct(case.name, N)
                 compare_models(m_rec, m_ref; dense = dense)
             end
-            core = @inferred ExaModels.instantiate(t, (; N = case.sizes[1]))
+            core = @inferred ExaModels.instantiate(ExaModels.freeze(t), (; N = case.sizes[1]))
             @test core isa ExaCore{Float64}
         end
 
@@ -198,7 +198,7 @@ function runtests()
                 m_ref, _, _ = _exa_luksan_vlcek_model(nothing, N; M = M)
                 compare_models(m_rec, m_ref)
             end
-            core = @inferred ExaModels.instantiate(t, (; N = 6, M = 2))
+            core = @inferred ExaModels.instantiate(ExaModels.freeze(t), (; N = 6, M = 2))
             @test core isa ExaCore{Float64}
         end
 
@@ -213,7 +213,7 @@ function runtests()
                     COPSBenchmark.ExaModelsBackend(), n)
                 compare_models(m_rec, m_ref; dense = true)
             end
-            core = @inferred ExaModels.instantiate(t, (; n = sizes[1]))
+            core = @inferred ExaModels.instantiate(ExaModels.freeze(t), (; n = sizes[1]))
             @test core isa ExaCore{Float64}
         end
 
@@ -226,7 +226,7 @@ function runtests()
                 m_ref, _, _ = __exa_ac_power_model(nothing, data)
                 compare_models(m_rec, m_ref)
             end
-            core = @inferred ExaModels.instantiate(t, data3)
+            core = @inferred ExaModels.instantiate(ExaModels.freeze(t), data3)
             @test core isa ExaCore{Float64}
         end
 

@@ -106,7 +106,22 @@ inference unit); the core's own accumulation demonstrably avoids this
 cost. Exact micro-cause not yet isolated — it does not need to be, because
 recording has no static obligations at all:
 
-**Fix design — record dynamic, freeze once.** Recording is the by-design
+**Fix implemented and measured — record dynamic, freeze once.**
+Recording at S = 200 drops **189.3 s → 3.5 s** with the erased spine
+(materialization unchanged at 117.9 s ≈ eager's 113.1 s), so lazy total ≈
+eager total at the far tail while keeping the small-S advantage. A toy
+isolated the mechanism first: accumulating 200 *narrow* marker types costs
+0.04 s, 200 closure-carrying entries cost 188.7 s — entry width, not kind
+mixing, drives the quadratic (which also answers "separate var/con/obj
+spines": separation alone cannot fix it, though it remains the right
+*structure* for materialization order in the release). One aliasing bug
+surfaced and is worth remembering: `TapeCon{length(entries) + 1}` was
+evaluated after the append in the same expression — correct under the old
+immutable append, off by one under the mutating push — caught by the
+augmented-model parity probe, fixed by reading the position before
+appending.
+
+**Original design sketch.** Recording is the by-design
 dynamic phase (user code may be arbitrarily type-unstable), so the tape
 records entries onto a type-erased spine (`Vector{Any}`; O(1) pushes, no
 type growth), and a `freeze` step builds the concretely-typed entries

@@ -16,7 +16,7 @@ include("user_model.jl")
 
 # Recorded once, at precompile time; nothing below this line enters the
 # compiled call graph except `instantiate` and the evaluation kernels.
-const TAPE = build(ExaModels.ExaTape(), ExaModels.DataTracer(make_data($template_n)))
+const TAPE = ExaModels.freeze(build(ExaModels.ExaTape(), ExaModels.DataTracer(make_data($template_n))))
 """,
         "make_data($template_n)",
     )
@@ -417,6 +417,7 @@ function ExaModels.compile_library(
     force::Bool = false,
 )
     _schema_entries(template)   # validates field/column types, throws otherwise
+    tape = ExaModels.freeze(tape)
     _assert_serializable(tape)
     Base.isidentifier(Symbol(prefix)) ||
         throw(ArgumentError("prefix must be a valid C identifier, got \"$prefix\""))

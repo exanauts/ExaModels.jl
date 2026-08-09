@@ -371,8 +371,29 @@ struct ExaTape{E, C}
     entries::E
     config::C
 end
-ExaTape(; minimize = true) = ExaTape((), (; minimize = minimize))
+# Recording is the dynamic phase: entries accumulate on a type-erased spine
+# (O(1) pushes — wide, closure-carrying entry types make growing-tuple
+# accumulation quadratic in the statement count; measured in
+# docs/design/lazy-core.md). `freeze` builds the concretely-typed entries
+# tuple once, at the record/materialize boundary; every static guarantee
+# (@inferred materialization, trim, serialization) attaches to the frozen
+# tape.
+ExaTape(; minimize = true) = ExaTape(Any[], (; minimize = minimize))
 
+"""
+    freeze(tape::ExaTape) -> ExaTape
+
+Convert a recording tape (type-erased entry spine) into its concretely-typed
+form — one tuple construction, after which materialization is fully
+inferrable. Idempotent on already-frozen tapes. Called automatically by
+`ExaModel`/`instantiate`; call it explicitly when instantiating one tape
+many times, or when the tape becomes a `const` for AOT.
+"""
+freeze(tape::ExaTape{Vector{Any}}) = ExaTape((tape.entries...,), tape.config)
+freeze(tape::ExaTape) = tape
+
+
+@inline _append(tape::ExaTape{Vector{Any}}, entry) = (push!(tape.entries, entry); tape)
 @inline _append(tape::ExaTape, entry) = ExaTape((tape.entries..., entry), tape.config)
 
 function Base.show(io::IO, tape::ExaTape)
@@ -428,7 +449,9 @@ end
     ucon = nothing,
 )
     entry = ConEntry(gen.f, gen.iter, start, lcon, ucon, name, tag)
-    (_append(tape, entry), TapeCon{length(tape.entries) + 1}())
+    k = length(tape.entries) + 1   # this entry's position — read BEFORE the
+    # append: the recording spine mutates, so reading after would be off by one
+    (_append(tape, entry), TapeCon{k}())
 end
 
 @inline function add_con!(tape::ExaTape, ::TapeCon{K}, gen::Base.Generator; tag = nothing) where {K}
@@ -454,7 +477,9 @@ end
     ucon = nothing,
 )
     entry = ConTreeEntry(expr, itr, start, lcon, ucon, name, tag)
-    (_append(tape, entry), TapeCon{length(tape.entries) + 1}())
+    k = length(tape.entries) + 1   # this entry's position — read BEFORE the
+    # append: the recording spine mutates, so reading after would be off by one
+    (_append(tape, entry), TapeCon{k}())
 end
 
 @inline function add_obj(tape::ExaTape, expr::AbstractNode, itr = 1:1; name = nothing)
@@ -526,6 +551,8 @@ end
 # Positional core: Type{T} dispatch keeps inference exact through the
 # keyword seam (a Type-valued keyword argument loses its constant-ness in
 # kwcall, which surfaces as an abstract ExaCore under juliac's verifier).
+@inline _instantiate_impl(tape::ExaTape{Vector{Any}}, args, ::Type{T}, backend) where {T <: AbstractFloat} =
+    _instantiate_impl(freeze(tape), args, T, backend)
 @inline function _instantiate_impl(tape::ExaTape, args, ::Type{T}, backend) where {T <: AbstractFloat}
     c = ExaCore(T; backend = backend, minimize = tape.config.minimize, concrete = Val(true))
     return _instantiate_entries(c, args, tape.entries)
