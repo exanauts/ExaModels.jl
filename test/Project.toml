@@ -1,4 +1,6 @@
 [deps]
+COPSBenchmark = "3c263af4-7bba-497b-afe4-00c59a0a48a5"
+LuksanVlcekBenchmark = "dc0393f0-98a3-4386-a65b-465e1307889b"
 Downloads = "f43a241f-c20a-4ad4-852c-f6b1247861c6"
 ExaModels = "1037b233-b668-4ce9-9b63-f9f681f55dd2"
 ForwardDiff = "f6369f11-7733-5829-9624-2563aa707210"
@@ -19,3 +21,10 @@ Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
 SparseArrays = "2f01184e-e22b-5df5-ae63-d93ebab69eaf"
 SpecialFunctions = "276daf66-3868-5448-9aa4-cd146d93841b"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+
+# LazyTest drives the benchmark packages' own core builders rather than keeping
+# transcriptions here, so the suite needs both. Both branches carry the
+# `*_core` builders written against this branch's lazy core.
+[sources]
+COPSBenchmark = {url = "https://github.com/MadNLP/COPSBenchmark.jl", rev = "ss/tape"}
+LuksanVlcekBenchmark = {url = "https://github.com/MadNLP/LuksanVlcekBenchmark.jl", rev = "ss/tape"}
