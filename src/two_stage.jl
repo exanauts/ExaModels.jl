@@ -35,8 +35,8 @@ abstract type AbstractTwoStageVariable{V} end
 
 const FirstStageVariable{S,L,O} = Variable{S,L,O,<: FirstStageTag}
 const SecondStageVariable{S,L,O} = Variable{S,L,O,<: SecondStageTag} 
-const FirstStageParameter{S,O} = Parameter{S,O,<: FirstStageTag}
-const SecondStageParameter{S,O} = Parameter{S,O,<: SecondStageTag} 
+const FirstStageParameter{S,L,O} = Parameter{S,L,O,<: FirstStageTag}
+const SecondStageParameter{S,L,O} = Parameter{S,L,O,<: SecondStageTag} 
 const FirstStageExpression{S,F,I} = Expression{S,F,I,<: FirstStageTag}
 const SecondStageExpression{S,F,I} = Expression{S,F,I,<: SecondStageTag}
 const FirstStageConstraint{F,I,O,S} = Constraint{F,I,O,S,<: FirstStageConstraintTag}

@@ -252,6 +252,10 @@ macro register_bivariate(f, df1, df2, ddf11, ddf12, ddf22)
                 $f(n.inner1, n.inner2(i, x, θ))
             @inline (n::ExaModels.Node2{typeof($f),I1,I2})(i, x, θ) where {I1,I2<:Real} =
                 $f(n.inner1(i, x, θ), n.inner2)
+            # Materialized trees may carry constant-only subtrees (raw
+            # rebuilds do not fold): both-Real disambiguates the two above.
+            @inline (n::ExaModels.Node2{typeof($f),I1,I2})(i, x, θ) where {I1<:Real,I2<:Real} =
+                $f(n.inner1, n.inner2)
         end,
     )
 end

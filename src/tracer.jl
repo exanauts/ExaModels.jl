@@ -44,6 +44,13 @@ end
 @inline Base.indexed_iterate(v::ArgIndexed{I, n}, idx, start = 1) where {I, n} =
     (ArgIndexed(v, idx), idx + 1)
 
+# An arg node is a constant with respect to (i, x, θ): the sparsity/compressor
+# pass probes trees by evaluating them, and an unresolved arg leaf behaves
+# there exactly as `Constant` does (its value is irrelevant to structure —
+# kernels only ever see materialized trees, where these leaves are numbers).
+@inline (::ArgTracer)(i, x, θ) = 1
+@inline (::ArgIndexed)(i, x, θ) = 1
+
 # ── Resolution: evaluate an arg tree against the instantiation args ──────────
 
 @inline _lookup(x, ::Val{J}) where {J} = J isa Symbol ? getproperty(x, J) : getindex(x, J)
