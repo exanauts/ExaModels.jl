@@ -302,33 +302,10 @@ struct ParEntry{D, V, Nm, Tg, R}
     par::R
 end
 
-struct ConEntry{F, I, St, Lc, Uc, Nm, Tg}
-    f::F
-    itr::I
-    start::St
-    lcon::Lc
-    ucon::Uc
-    name::Nm
-    tag::Tg
-end
-
-struct ConAugEntry{K, F, I, Tg}
-    f::F
-    itr::I
-    tag::Tg
-end
-@inline ConAugEntry{K}(f::F, itr::I, tag::Tg) where {K, F, I, Tg} =
-    ConAugEntry{K, F, I, Tg}(f, itr, tag)
-
-struct ObjEntry{F, I, Nm}
-    f::F
-    itr::I
-    name::Nm
-end
-
 # Tree-based entries: the expression is a pre-built Node tree (with
-# TapeVarIndexed/TapeParIndexed sentinels) instead of an uncalled closure —
-# the Python-friendly path, since no Julia function needs to be written.
+# TapeVarIndexed/TapeParIndexed sentinels). Every recorded constraint and
+# objective takes this form — Julia generators trace into it at record time,
+# and non-Julia frontends build it directly.
 struct ConTreeEntry{E, I, St, Lc, Uc, Nm, Tg}
     expr::E
     itr::I
@@ -439,30 +416,19 @@ end
     add_par(tape, length(value); tag = tag, name = name, value = value)
 end
 
-@inline function add_con(
-    tape::ExaTape,
-    gen::Base.Generator;
-    tag = nothing,
-    name = nothing,
-    start = nothing,
-    lcon = nothing,
-    ucon = nothing,
-)
-    entry = ConEntry(gen.f, gen.iter, start, lcon, ucon, name, tag)
-    k = length(tape.entries) + 1   # this entry's position — read BEFORE the
-    # append: the recording spine mutates, so reading after would be off by one
-    (_append(tape, entry), TapeCon{k}())
-end
+# v3 (the concrete lazy core): generators trace at record time — the closure
+# runs once on the sentinel here and is then discarded; the entry stores the
+# traced tree in the tree-entry form. Entries are therefore narrow (the
+# accumulation cost class measured linear), closure-free (serializable), and
+# a broken user expression fails at this line, not at materialization.
+@inline add_con(tape::ExaTape, gen::Base.Generator; kwargs...) =
+    add_con(tape, gen.f(DataSource()), gen.iter; kwargs...)
 
-@inline function add_con!(tape::ExaTape, ::TapeCon{K}, gen::Base.Generator; tag = nothing) where {K}
-    entry = ConAugEntry{K}(gen.f, gen.iter, tag)
-    (_append(tape, entry), TapeConAug())
-end
+@inline add_con!(tape::ExaTape, con::TapeCon, gen::Base.Generator; tag = nothing) =
+    add_con!(tape, con, gen.f(DataSource()), gen.iter; tag = tag)
 
-@inline function add_obj(tape::ExaTape, gen::Base.Generator; name = nothing)
-    entry = ObjEntry(gen.f, gen.iter, name)
-    (_append(tape, entry), TapeObj())
-end
+@inline add_obj(tape::ExaTape, gen::Base.Generator; name = nothing) =
+    add_obj(tape, gen.f(DataSource()), gen.iter; name = name)
 
 # Tree forms, mirroring the real API's `add_con(c, expr::AbstractNode, pars)`
 # and `add_obj(c, expr::AbstractNode, pars)`.
@@ -560,7 +526,7 @@ end
 
 # The materialization walks the entries, threading a positional tuple of
 # realized handles (one slot per entry; `nothing` for entries whose handles
-# bind through Refs) so that ConAugEntry{K} can look up its target
+# bind through Refs) so that ConAugTreeEntry{K} can look up its target
 # Constraint type-stably. The walk is a @generated flat unroll rather than a
 # vararg recursion: recursion nests one growing method signature per entry,
 # which turns inference quadratic in the statement count (measured: 3× the
@@ -619,31 +585,8 @@ end
     return (c, nothing)
 end
 
-@inline function _instantiate_entry(c::ExaCore{T}, handles, e::ConEntry, args) where {T}
-    c, con = add_con(
-        c,
-        _rebind(e.f(DataSource())),
-        _collect_pars(resolve(e.itr, args));
-        tag = e.tag,
-        name = e.name,
-        start = _kw(e.start, args, zero(T)),
-        lcon = _kw(e.lcon, args, zero(T)),
-        ucon = _kw(e.ucon, args, zero(T)),
-    )
-    return (c, con)
-end
 
-@inline function _instantiate_entry(c::ExaCore{T}, handles, e::ConAugEntry{K}, args) where {T, K}
-    pair = _rebind(e.f(DataSource()))
-    gen = Base.Generator(FixedExpr(pair), resolve(e.itr, args))
-    c, _ = add_con!(c, handles[K], gen; tag = e.tag)
-    return (c, nothing)
-end
 
-@inline function _instantiate_entry(c::ExaCore{T}, handles, e::ObjEntry, args) where {T}
-    c, _ = add_obj(c, _rebind(e.f(DataSource())), _collect_pars(resolve(e.itr, args)); name = e.name)
-    return (c, nothing)
-end
 
 @inline function _instantiate_entry(c::ExaCore{T}, handles, e::ConTreeEntry, args) where {T}
     c, con = add_con(

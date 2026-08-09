@@ -385,22 +385,31 @@ end
 # generated app can load (practically: tree-built tapes). Anonymous closures
 # recorded from generators live in the recording session's modules and cannot
 # be deserialized elsewhere — reject them with a pointer to the tree forms.
+# Entries are traced trees (closure-free by construction — generators trace
+# at record time), so what can still smuggle a foreign closure in is a VALUE
+# position: a generator kwarg (start = (f(i) for ...)), a deferred
+# comprehension body, or a raw function. Walk every entry field for those.
+_serializable_root(::Type{T}) where {T} =
+    Base.moduleroot(parentmodule(T)) in (ExaModels, Base, Core)
+_assert_value(e, x::Base.Generator) = (_assert_value(e, x.f); _assert_value(e, x.iter))
+_assert_value(e, x::ExaModels.DeferredCollect) = _assert_value(e, x.f)
+_assert_value(e, x::ExaModels.TracerExpr) = foreach(a -> _assert_value(e, a), x.args)
+_assert_value(e, x::Function) =
+    _serializable_root(typeof(x)) || throw(
+        ArgumentError(
+            "the tape carries a function defined outside ExaModels/Base " *
+            "($(typeof(x)) in $(typeof(e))): value positions (start/lcon/" *
+            "ucon/value generators, comprehension bodies) must be " *
+            "expressible with ExaModels' tracer vocabulary to serialize — " *
+            "or use the model-file form of compile_library",
+        ),
+    )
+_assert_value(e, x) = nothing
+
 function _assert_serializable(tape::ExaModels.ExaTape)
     for e in tape.entries
-        for field in (:f, :expr)
-            if hasproperty(e, field)
-                m = parentmodule(typeof(getproperty(e, field)))
-                root = Base.moduleroot(m)
-                root in (ExaModels, Base, Core) || throw(
-                    ArgumentError(
-                        "the tape contains a closure defined in $root " *
-                        "($(typeof(e))); tapes for compile_library must be " *
-                        "built from expression trees (add_con(tape, expr, " *
-                        "itr) forms — the examodels-py path), or use the " *
-                        "model-file form of compile_library",
-                    ),
-                )
-            end
+        for i in 1:nfields(e)
+            _assert_value(e, getfield(e, i))
         end
     end
 end
