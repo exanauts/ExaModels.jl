@@ -1,5 +1,6 @@
 [deps]
 CNLPModels = "e8ddee8d-ce21-405b-9ec9-45cea2c1b284"
+ExaModelC = "d1a2c104-0a5f-4b00-a03d-9353a5ace830"
 COPSBenchmark = "3c263af4-7bba-497b-afe4-00c59a0a48a5"
 Downloads = "f43a241f-c20a-4ad4-852c-f6b1247861c6"
 LuksanVlcekBenchmark = "dc0393f0-98a3-4386-a65b-465e1307889b"
@@ -26,5 +27,6 @@ Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 
 [sources]
 CNLPModels = {url = "https://github.com/MadNLP/CNLPModels.jl", rev = "master"}
+ExaModelC = {path = "../ExaModelC"}
 COPSBenchmark = {url = "https://github.com/MadNLP/COPSBenchmark.jl", rev = "ss/tape"}
 LuksanVlcekBenchmark = {url = "https://github.com/MadNLP/LuksanVlcekBenchmark.jl", rev = "ss/tape"}

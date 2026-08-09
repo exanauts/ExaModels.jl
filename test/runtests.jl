@@ -28,6 +28,18 @@ include("PrettyPrintTest.jl")
 include("OracleTest/OracleTest.jl")
 include("RecorderTest/RecorderTest.jl")
 
+# The AOT tests live with the ExaModelC subpackage (its own CI runs them
+# too); ExaModels CI runs them here so a change in ExaModels cannot break
+# the compile path unnoticed.
+module ExaModelCTest
+using Test, ExaModels, ExaModelC
+import JuliaC
+include(joinpath(@__DIR__, "..", "ExaModelC", "test", "aot_libraries.jl"))
+runtests() = @testset "ExaModelC (AOT)" begin
+    aot_library_tests()
+end
+end # module ExaModelCTest
+
 @testset verbose = true "ExaModels test" begin
     @info "Running Deprecated API Test"
     DeprecatedTest.runtests()
@@ -65,6 +77,9 @@ include("RecorderTest/RecorderTest.jl")
     @info "Running Recorder Test"
     RecorderTest.runtests()
 end
+
+    @info "Running ExaModelC AOT Test"
+    ExaModelCTest.runtests()
 
 # Force full GC before Julia exits so that OpenCL/PoCL objects are finalized
 # in the correct order, preventing segfaults during Julia's atexit teardown.
