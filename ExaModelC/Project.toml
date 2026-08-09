@@ -1,0 +1,12 @@
+name = "ExaModelC"
+uuid = "d1a2c104-0a5f-4b00-a03d-9353a5ace830"
+version = "0.1.0"
+
+[deps]
+ExaModels = "1037b233-b668-4ce9-9b63-f9f681f55dd2"
+JuliaC = "acedd4c2-ced6-4a15-accc-2607eb759ba2"
+Serialization = "9e88b42a-f829-5b0c-bbe9-9e923198166b"
+
+[compat]
+JuliaC = "0.3"
+julia = "1.12"

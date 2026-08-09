@@ -1,0 +1,11 @@
+[deps]
+CNLPModels = "e8ddee8d-ce21-405b-9ec9-45cea2c1b284"
+ExaModels = "1037b233-b668-4ce9-9b63-f9f681f55dd2"
+JuliaC = "acedd4c2-ced6-4a15-accc-2607eb759ba2"
+MadNLP = "2621e9c9-9eb4-46b1-8089-e8c72242dfb6"
+NLPModels = "a4795742-8479-5a88-8948-cc11e1c8c1a6"
+Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+
+[sources]
+CNLPModels = {url = "https://github.com/MadNLP/CNLPModels.jl", rev = "master"}
+ExaModels = {path = "../.."}
