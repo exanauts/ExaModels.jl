@@ -73,6 +73,27 @@ function _print_tree(io::IO, node::DataIndexed{I,n}, indent::Int) where {I,n}
         print(io, ".", n)
     end
 end
+function _print_tree(io::IO, node::ArgTracer, indent::Int)
+    print(io, " "^indent, "args")
+end
+function _print_tree(io::IO, node::ArgIndexed{I, n}, indent::Int) where {I, n}
+    _print_tree(io, getfield(node, :inner), 0)  # getfield bypasses getproperty override
+    if n isa Integer
+        print(io, "[", n, "]")
+    else
+        print(io, ".", n)
+    end
+end
+function _print_tree(io::IO, r::ArgRange, indent::Int)
+    print(io, " "^indent)
+    _print_tree(io, r.lo, 0)
+    if r.step !== nothing
+        print(io, ":")
+        _print_tree(io, r.step, 0)
+    end
+    print(io, ":")
+    _print_tree(io, r.hi, 0)
+end
 function _print_tree(io::IO, node::VarSource, indent::Int)
     print(io, " "^indent, "x")
 end
@@ -249,6 +270,10 @@ function Base.show(io::IO, node::DataSource)
     print(io, "i")
 end
 
+Base.show(io::IO, ::ArgTracer) = print(io, "args")
+Base.show(io::IO, node::ArgIndexed) = print(io, _expr_string(node))
+Base.show(io::IO, r::ArgRange) = print(io, _expr_string(r))
+
 function Base.show(io::IO, node::DataIndexed{I,n}) where {I,n}
     print(io, _expr_string(node))
 end
@@ -357,6 +382,8 @@ _short_type(::ParameterSource) = "ParameterSource"
 _short_type(::ParameterNode) = "ParameterNode"
 _short_type(::DataSource) = "DataSource"
 _short_type(::DataIndexed) = "DataIndexed"
+_short_type(::ArgTracer) = "ArgTracer"
+_short_type(::ArgIndexed) = "ArgIndexed"
 _short_type(::Constant{T}) where {T} = "Constant{$T}"
 _short_type(::Node1{F}) where {F} = "Node1{$(_opname(F))}"
 _short_type(::Node2{F}) where {F} = "Node2{$(_opname(F))}"
