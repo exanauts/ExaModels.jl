@@ -26,6 +26,7 @@ include("GetterSetterTest/GetterSetterTest.jl")
 include("PrettyPrintTest.jl")
 # include("OptimalControlTest/OptimalControlTest.jl")
 include("OracleTest/OracleTest.jl")
+include("LazyTest/LazyTest.jl")
 
 @testset verbose = true "ExaModels test" begin
     @info "Running Deprecated API Test"
@@ -48,6 +49,9 @@ include("OracleTest/OracleTest.jl")
 
     @info "Running TwoStage Test"
     TwoStageTest.runtests()
+
+    @info "Running Lazy Core Test"
+    LazyTest.runtests()
 
     @info "Running Getter/Setter Test"
     GetterSetterTest.runtests()

@@ -423,6 +423,7 @@ _serializable_root(::Type{T}) where {T} =
     Base.moduleroot(parentmodule(T)) in (ExaModels, Base, Core)
 _assert_value(e, x::Base.Generator) = (_assert_value(e, x.f); _assert_value(e, x.iter))
 _assert_value(e, x::ExaModels.DeferredCollect) = _assert_value(e, x.f)
+_assert_value(e, x::ExaModels.TracedValues) = _assert_value(e, x.iter)
 _assert_value(e, x::ExaModels.DeferredFill) =
     (_assert_value(e, x.value); _assert_value(e, x.n))
 _assert_value(e, x::ExaModels.ArgRange) =
