@@ -59,16 +59,49 @@ Distinct `add_con` statements grow the entry tuple types — the compile-time
 axis. Measured cold (fresh process per cell), n = 100 fixed; `construct` =
 build + `ExaModel` + evaluation-structure compile.
 
-<!-- SCALING-TABLE: fill from ~/rune-work/logs/scaling.log -->
+| S | eager core | lazy (vararg fold) | lazy (@generated unroll) |
+|---|---|---|---|
+| 10 | 14.5 s | 7.0 s | — |
+| 50 | 28.8 s | 26.3 s | — |
+| 100 | 49.8 s | 67.8 s | 61.3 s |
+| 200 | 106.5 s | 322.8 s | 305.9 s |
+
+Eager grows linearly (~0.5 s/statement). The lazy path is at parity or
+faster through S ≈ 50 — the realistic hand-written range (LuksanVlcek
+models are 4–10 statements, OPF is 16) — and turns quadratic past
+S ≈ 70–100, the machine-generated-model regime.
 
 Flag asymmetry to keep in mind: default eager `ExaCore()` is
 `concrete = Val(false)` while materialization always builds
-`concrete = Val(true)`; part of any delta is that difference, not fold
-overhead.
+`concrete = Val(true)`; part of the small-S advantage is that difference.
 
-## Not explored yet
+## The quadratic tail: first fix disproven, next candidates
 
-Whether the materialization fold hits a recursion/inference limit beyond
-S ≈ several hundred (it recurses per entry; eager construction is
-user-driven and has no single recursion). If S = 200 degrades, the fold can
-be `@generated`-unrolled.
+Replacing the vararg recursion with a `@generated` flat unroll (so
+inference sees one flat body, like user-written code) was the obvious fix
+and it is **not** the answer: 322.8 s → 305.9 s at S = 200, noise-level.
+The unroll is kept on this branch (marginally better, simpler to reason
+about), but the dominant cost is elsewhere: the *types* threaded through
+the one inferred materialization body — the core (whose constraint tuple
+grows per entry) and the handles tuple — give inference O(S)-sized types in
+an S-statement body, an O(S²) minimum that eager construction avoids
+because its `add_*` calls are dispatched one at a time from dynamic scope,
+never inferred as one unit.
+
+Next candidates, unexplored:
+
+1. **Chunked materialization with function barriers** — split the entries
+   into fixed-size blocks, each its own inferred unit; caps the
+   per-unit statement count, though the core type still grows across
+   chunks.
+2. **Type-erased handle threading** — handles as `Vector{Any}` with a
+   type-assert at the (rare) `ConAugEntry` lookup; removes one of the two
+   growing types from every signature.
+3. **Dynamic materialization mode** — for very large tapes, run the fold in
+   deliberately `@nospecialize`d/dynamic style (what eager top-level
+   construction effectively is) and pay per-call dispatch instead of
+   whole-chain inference; a `materialize(tape; dynamic = true)` escape
+   hatch.
+
+None of this blocks the release for the realistic range; it gates the
+claim that machine-generated many-statement models can migrate.

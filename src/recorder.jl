@@ -528,16 +528,27 @@ end
 # kwcall, which surfaces as an abstract ExaCore under juliac's verifier).
 @inline function _instantiate_impl(tape::ExaTape, args, ::Type{T}, backend) where {T <: AbstractFloat}
     c = ExaCore(T; backend = backend, minimize = tape.config.minimize, concrete = Val(true))
-    return _instantiate(c, (), args, tape.entries...)
+    return _instantiate_entries(c, args, tape.entries)
 end
 
-# The fold threads a positional tuple of realized handles (one slot per entry;
-# `nothing` for entries whose handles bind through Refs) so that ConAugEntry{K}
-# can look up its target Constraint type-stably.
-@inline _instantiate(c::ExaCore, handles, args) = c
-@inline function _instantiate(c::ExaCore, handles, args, entry, rest...)
-    c, h = _instantiate_entry(c, handles, entry, args)
-    return _instantiate(c, (handles..., h), args, rest...)
+# The materialization walks the entries, threading a positional tuple of
+# realized handles (one slot per entry; `nothing` for entries whose handles
+# bind through Refs) so that ConAugEntry{K} can look up its target
+# Constraint type-stably. The walk is a @generated flat unroll rather than a
+# vararg recursion: recursion nests one growing method signature per entry,
+# which turns inference quadratic in the statement count (measured: 3× the
+# eager path at 200 statements, parity at 50); the unrolled body is the
+# same shape as user-written construction code and inference treats it the
+# same way.
+@generated function _instantiate_entries(c::ExaCore, args, entries::Tuple)
+    body = Expr(:block)
+    push!(body.args, :(handles = ()))
+    for k in 1:length(entries.parameters)
+        push!(body.args, :((c, h) = _instantiate_entry(c, handles, entries[$k], args)))
+        push!(body.args, :(handles = (handles..., h)))
+    end
+    push!(body.args, :(return c))
+    return body
 end
 
 # The low-level (tree, pars) forms do not run the generator path's
