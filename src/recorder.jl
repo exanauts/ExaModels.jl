@@ -302,33 +302,10 @@ struct ParEntry{D, V, Nm, Tg, R}
     par::R
 end
 
-struct ConEntry{F, I, St, Lc, Uc, Nm, Tg}
-    f::F
-    itr::I
-    start::St
-    lcon::Lc
-    ucon::Uc
-    name::Nm
-    tag::Tg
-end
-
-struct ConAugEntry{K, F, I, Tg}
-    f::F
-    itr::I
-    tag::Tg
-end
-@inline ConAugEntry{K}(f::F, itr::I, tag::Tg) where {K, F, I, Tg} =
-    ConAugEntry{K, F, I, Tg}(f, itr, tag)
-
-struct ObjEntry{F, I, Nm}
-    f::F
-    itr::I
-    name::Nm
-end
-
 # Tree-based entries: the expression is a pre-built Node tree (with
-# TapeVarIndexed/TapeParIndexed sentinels) instead of an uncalled closure —
-# the Python-friendly path, since no Julia function needs to be written.
+# TapeVarIndexed/TapeParIndexed sentinels). Every recorded constraint and
+# objective takes this form — Julia generators trace into it at record time,
+# and non-Julia frontends build it directly.
 struct ConTreeEntry{E, I, St, Lc, Uc, Nm, Tg}
     expr::E
     itr::I
@@ -371,8 +348,29 @@ struct ExaTape{E, C}
     entries::E
     config::C
 end
-ExaTape(; minimize = true) = ExaTape((), (; minimize = minimize))
+# Recording is the dynamic phase: entries accumulate on a type-erased spine
+# (O(1) pushes — wide, closure-carrying entry types make growing-tuple
+# accumulation quadratic in the statement count; measured in
+# docs/design/lazy-core.md). `freeze` builds the concretely-typed entries
+# tuple once, at the record/materialize boundary; every static guarantee
+# (@inferred materialization, trim, serialization) attaches to the frozen
+# tape.
+ExaTape(; minimize = true) = ExaTape(Any[], (; minimize = minimize))
 
+"""
+    freeze(tape::ExaTape) -> ExaTape
+
+Convert a recording tape (type-erased entry spine) into its concretely-typed
+form — one tuple construction, after which materialization is fully
+inferrable. Idempotent on already-frozen tapes. Called automatically by
+`ExaModel`/`instantiate`; call it explicitly when instantiating one tape
+many times, or when the tape becomes a `const` for AOT.
+"""
+freeze(tape::ExaTape{Vector{Any}}) = ExaTape((tape.entries...,), tape.config)
+freeze(tape::ExaTape) = tape
+
+
+@inline _append(tape::ExaTape{Vector{Any}}, entry) = (push!(tape.entries, entry); tape)
 @inline _append(tape::ExaTape, entry) = ExaTape((tape.entries..., entry), tape.config)
 
 function Base.show(io::IO, tape::ExaTape)
@@ -418,28 +416,19 @@ end
     add_par(tape, length(value); tag = tag, name = name, value = value)
 end
 
-@inline function add_con(
-    tape::ExaTape,
-    gen::Base.Generator;
-    tag = nothing,
-    name = nothing,
-    start = nothing,
-    lcon = nothing,
-    ucon = nothing,
-)
-    entry = ConEntry(gen.f, gen.iter, start, lcon, ucon, name, tag)
-    (_append(tape, entry), TapeCon{length(tape.entries) + 1}())
-end
+# v3 (the concrete lazy core): generators trace at record time — the closure
+# runs once on the sentinel here and is then discarded; the entry stores the
+# traced tree in the tree-entry form. Entries are therefore narrow (the
+# accumulation cost class measured linear), closure-free (serializable), and
+# a broken user expression fails at this line, not at materialization.
+@inline add_con(tape::ExaTape, gen::Base.Generator; kwargs...) =
+    add_con(tape, gen.f(DataSource()), gen.iter; kwargs...)
 
-@inline function add_con!(tape::ExaTape, ::TapeCon{K}, gen::Base.Generator; tag = nothing) where {K}
-    entry = ConAugEntry{K}(gen.f, gen.iter, tag)
-    (_append(tape, entry), TapeConAug())
-end
+@inline add_con!(tape::ExaTape, con::TapeCon, gen::Base.Generator; tag = nothing) =
+    add_con!(tape, con, gen.f(DataSource()), gen.iter; tag = tag)
 
-@inline function add_obj(tape::ExaTape, gen::Base.Generator; name = nothing)
-    entry = ObjEntry(gen.f, gen.iter, name)
-    (_append(tape, entry), TapeObj())
-end
+@inline add_obj(tape::ExaTape, gen::Base.Generator; name = nothing) =
+    add_obj(tape, gen.f(DataSource()), gen.iter; name = name)
 
 # Tree forms, mirroring the real API's `add_con(c, expr::AbstractNode, pars)`
 # and `add_obj(c, expr::AbstractNode, pars)`.
@@ -454,7 +443,9 @@ end
     ucon = nothing,
 )
     entry = ConTreeEntry(expr, itr, start, lcon, ucon, name, tag)
-    (_append(tape, entry), TapeCon{length(tape.entries) + 1}())
+    k = length(tape.entries) + 1   # this entry's position — read BEFORE the
+    # append: the recording spine mutates, so reading after would be off by one
+    (_append(tape, entry), TapeCon{k}())
 end
 
 @inline function add_obj(tape::ExaTape, expr::AbstractNode, itr = 1:1; name = nothing)
@@ -526,18 +517,31 @@ end
 # Positional core: Type{T} dispatch keeps inference exact through the
 # keyword seam (a Type-valued keyword argument loses its constant-ness in
 # kwcall, which surfaces as an abstract ExaCore under juliac's verifier).
+@inline _instantiate_impl(tape::ExaTape{Vector{Any}}, args, ::Type{T}, backend) where {T <: AbstractFloat} =
+    _instantiate_impl(freeze(tape), args, T, backend)
 @inline function _instantiate_impl(tape::ExaTape, args, ::Type{T}, backend) where {T <: AbstractFloat}
     c = ExaCore(T; backend = backend, minimize = tape.config.minimize, concrete = Val(true))
-    return _instantiate(c, (), args, tape.entries...)
+    return _instantiate_entries(c, args, tape.entries)
 end
 
-# The fold threads a positional tuple of realized handles (one slot per entry;
-# `nothing` for entries whose handles bind through Refs) so that ConAugEntry{K}
-# can look up its target Constraint type-stably.
-@inline _instantiate(c::ExaCore, handles, args) = c
-@inline function _instantiate(c::ExaCore, handles, args, entry, rest...)
-    c, h = _instantiate_entry(c, handles, entry, args)
-    return _instantiate(c, (handles..., h), args, rest...)
+# The materialization walks the entries, threading a positional tuple of
+# realized handles (one slot per entry; `nothing` for entries whose handles
+# bind through Refs) so that ConAugTreeEntry{K} can look up its target
+# Constraint type-stably. The walk is a @generated flat unroll rather than a
+# vararg recursion: recursion nests one growing method signature per entry,
+# which turns inference quadratic in the statement count (measured: 3× the
+# eager path at 200 statements, parity at 50); the unrolled body is the
+# same shape as user-written construction code and inference treats it the
+# same way.
+@generated function _instantiate_entries(c::ExaCore, args, entries::Tuple)
+    body = Expr(:block)
+    push!(body.args, :(handles = ()))
+    for k in 1:length(entries.parameters)
+        push!(body.args, :((c, h) = _instantiate_entry(c, handles, entries[$k], args)))
+        push!(body.args, :(handles = (handles..., h)))
+    end
+    push!(body.args, :(return c))
+    return body
 end
 
 # The low-level (tree, pars) forms do not run the generator path's
@@ -581,31 +585,8 @@ end
     return (c, nothing)
 end
 
-@inline function _instantiate_entry(c::ExaCore{T}, handles, e::ConEntry, args) where {T}
-    c, con = add_con(
-        c,
-        _rebind(e.f(DataSource())),
-        _collect_pars(resolve(e.itr, args));
-        tag = e.tag,
-        name = e.name,
-        start = _kw(e.start, args, zero(T)),
-        lcon = _kw(e.lcon, args, zero(T)),
-        ucon = _kw(e.ucon, args, zero(T)),
-    )
-    return (c, con)
-end
 
-@inline function _instantiate_entry(c::ExaCore{T}, handles, e::ConAugEntry{K}, args) where {T, K}
-    pair = _rebind(e.f(DataSource()))
-    gen = Base.Generator(FixedExpr(pair), resolve(e.itr, args))
-    c, _ = add_con!(c, handles[K], gen; tag = e.tag)
-    return (c, nothing)
-end
 
-@inline function _instantiate_entry(c::ExaCore{T}, handles, e::ObjEntry, args) where {T}
-    c, _ = add_obj(c, _rebind(e.f(DataSource())), _collect_pars(resolve(e.itr, args)); name = e.name)
-    return (c, nothing)
-end
 
 @inline function _instantiate_entry(c::ExaCore{T}, handles, e::ConTreeEntry, args) where {T}
     c, con = add_con(
@@ -633,36 +614,3 @@ end
 end
 
 # ── One-command shared-library compilation (ExaModelsJuliaC extension) ────────
-
-"""
-    compile_library(model_file; prefix = "rec", out = "lib_out",
-                    template_n = 4, trim = "safe", privatize = true,
-                    verbose = false) -> (; libpath, outdir)
-
-Compile a recorded model into a self-contained shared library exposing the
-NLP through a C interface, in one command. Requires `using JuliaC`
-(implemented in the `ExaModelsJuliaC` package extension).
-
-`model_file` is a Julia source file defining
-
-- `build(c, args)` — the model, written against the tape exactly as against
-  an `ExaCore` (it is passed to [`record`](@ref)), and
-- `make_data(n::Integer)::NamedTuple` — the args for size `n` (also used at
-  `template_n` as the recording schema).
-
-The generated library exports, for the chosen `prefix` (C ABI: 1-based
-indices, lower-triangle Lagrangian Hessian with `obj_weight`, `Cint` status
-returns): `<prefix>_new(n) -> id` (any number of instances may coexist),
-and id-first `<prefix>_nvar/_ncon/_nnzj/_nnzh`, `<prefix>_meta`,
-`<prefix>_obj/_grad/_cons/_jac/_hess` and the two `_structure` functions —
-the convention consumed by CNLPModels.jl. The tape
-is recorded at the generated package's precompile time, so the compiled
-call graph contains no user model code.
-"""
-function compile_library end
-
-# Post-solve access through tape handles: after a instantiate, the handle's Ref
-# points at the instantiated model's variable, so solution retrieval forwards to
-# it (semantics: the LAST instantiate of this tape).
-solution(result::SolverCore.AbstractExecutionStats, tv::TapeVar) =
-    solution(result, tv.ref[])
