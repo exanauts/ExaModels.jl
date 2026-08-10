@@ -334,13 +334,11 @@ jobs:
         with:
           version: '1'
       - uses: julia-actions/cache@v3
-      - uses: actions/setup-python@v5
-        continue-on-error: true
-        with:
-          python-version: '3.x'
-      - name: Install numpy
-        continue-on-error: true
-        run: python -m pip install --upgrade numpy
+      # No `setup-python` here: both legs are self-hosted, and that action
+      # assumes the hosted layout — it tries to write to `/Users/runner`, which
+      # on a self-hosted Mac does not exist (`mkdir: Permission denied`), and
+      # takes the job with it. The runners have their own Python; the test
+      # probes for one with numpy and skips that leg when it finds none.
       - name: Run ExaModelsC tests
         env:
           CNLPMODELS_PY: ${{ github.workspace }}/cnlpmodels-py/src
