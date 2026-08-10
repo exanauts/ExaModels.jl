@@ -397,15 +397,14 @@ end
     )
 end
 
-@inline ExaCore(::Type{T}; backend = nothing, concrete = Val(false), kwargs...) where {T<:AbstractFloat} =
-    _make_exacore(concrete, T, backend; kwargs...)
-@inline ExaCore(; backend = nothing, concrete = Val(false), kwargs...) = ExaCore(default_T(backend); backend, concrete, kwargs...)
-@inline _make_exacore(::Val{true}, ::Type{T}, backend; kwargs...) where {T} =
+# `concrete` is accepted and ignored. It selected between the immutable core and
+# the deprecated mutable wrapper; there is only the immutable one now, and
+# `ExaCore(concrete = Val(true))` is the spelling every existing model and
+# document uses, so it keeps working rather than breaking all of them at once.
+@inline ExaCore(::Type{T}; backend = nothing, concrete = nothing, kwargs...) where {T<:AbstractFloat} =
     _exa_core(; x0 = convert_array(zeros(T, 0), backend), backend, kwargs...)
-# Val{false} is overridden in deprecated.jl once LegacyExaCore is defined;
-# this fallback handles any other Val value by returning a concrete ExaCore.
-@inline _make_exacore(::Val, ::Type{T}, backend; kwargs...) where {T} =
-    _exa_core(; x0 = convert_array(zeros(T, 0), backend), backend, kwargs...)
+@inline ExaCore(; backend = nothing, concrete = nothing, kwargs...) =
+    ExaCore(default_T(backend); backend, kwargs...)
 @inline ExaCore(c::C; kwargs...) where C <: ExaCore = _exa_core(
     ;
     zip(fieldnames(C), ntuple(i -> getfield(c, i), Val(fieldcount(C))))...,
