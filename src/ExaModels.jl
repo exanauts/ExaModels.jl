@@ -46,6 +46,7 @@ import SolverCore
 import Printf
 
 include("templates.jl")
+include("argument.jl")
 include("graph.jl")
 include("register.jl")
 include("specialization.jl")
@@ -82,6 +83,8 @@ export ExaModel,
     multipliers_L,
     multipliers_U,
     Constant,
+    ArgSource,
+    instantiate,
     SumNode,
     ProdNode,
     exa_sum,

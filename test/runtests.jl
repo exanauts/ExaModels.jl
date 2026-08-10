@@ -15,6 +15,7 @@ ad_tolerance(::Type{Float32}) = 1e-4
 sol_tolerance(::Type{Float32}) = 1e-1
 solver_tolerance(::Type{Float32}) = 1e-4
 
+include("ArgumentTest/ArgumentTest.jl")
 include("NLPTest/NLPTest.jl")
 include("ADTest/ADTest.jl")
 include("JuMPTest/JuMPTest.jl")
@@ -27,6 +28,9 @@ include("PrettyPrintTest.jl")
 include("OracleTest/OracleTest.jl")
 
 @testset verbose = true "ExaModels test" begin
+    @info "Running Argument Test"
+    ArgumentTest.runtests()
+
     @info "Running AD Test"
     ADTest.runtests()
 

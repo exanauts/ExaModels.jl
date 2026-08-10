@@ -152,6 +152,25 @@ macro register_bivariate(f, df1, df2, ddf11, ddf12, ddf22)
                 end
             end
 
+            # An argument scalar meeting a graph node — `h * x[i]` where
+            # `h = 1/(arg.N+1)`.  It enters the graph as an `ArgLeaf`, which is
+            # a leaf of unknown value in the same sense `DataIndexed` is, and
+            # becomes a plain `Real` at instantiation.  Arithmetic between two
+            # argument nodes is not this case and stays in the argument world.
+            @inline function $f(
+                d1::D1,
+                d2::D2,
+            ) where {D1<:ExaModels.AbstractNode,D2<:ExaModels.AbstractArgNode}
+                ExaModels.Node2($f, d1, ExaModels.ArgLeaf(d2))
+            end
+
+            @inline function $f(
+                d1::D1,
+                d2::D2,
+            ) where {D1<:ExaModels.AbstractArgNode,D2<:ExaModels.AbstractNode}
+                ExaModels.Node2($f, ExaModels.ArgLeaf(d1), d2)
+            end
+
             @inline function $f(
                 d1::D1,
                 d2::D2,

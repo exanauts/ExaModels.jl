@@ -304,3 +304,46 @@ jobs:
           path: |
             benchmark/comparison.txt
             benchmark/pr_number.txt
+
+  # ExaModelsC compiles a model into a native shared library with juliac, so it
+  # is platform-specific in a way the rest of the package is not. Not on GPU
+  # runners, where it is not expected to work yet, and not on Windows: juliac
+  # implements runtime privatization only for Linux and macOS, so a library
+  # compiled there cannot be loaded back into Julia (see `compile_library`).
+  examodelsc:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: '["self-hosted","Linux","examodels"]'
+            name: linux
+          - runner: '["self-hosted","macOS","examodels"]'
+            name: macos
+    name: examodelsc (${{ matrix.name }})
+    runs-on: ${{ fromJSON(matrix.runner) }}
+    steps:
+      - uses: actions/checkout@v4
+      # The Python consumer is an unrelated package and not a Julia dependency;
+      # the test finds it through CNLPMODELS_PY and skips the leg if absent.
+      - uses: actions/checkout@v4
+        with:
+          repository: MadNLP/cnlpmodels-py
+          ref: master
+          path: cnlpmodels-py
+      - uses: julia-actions/setup-julia@latest
+        with:
+          version: '1'
+      - uses: julia-actions/cache@v3
+      # No `setup-python` here: both legs are self-hosted, and that action
+      # assumes the hosted layout — it tries to write to `/Users/runner`, which
+      # on a self-hosted Mac does not exist (`mkdir: Permission denied`), and
+      # takes the job with it. The runners have their own Python; the test
+      # probes for one with numpy and skips that leg when it finds none.
+      - name: Run ExaModelsC tests
+        env:
+          CNLPMODELS_PY: ${{ github.workspace }}/cnlpmodels-py/src
+        run: |
+          julia --startup-file=no --color=yes --project=ExaModelsC/test -e '
+            using Pkg
+            Pkg.instantiate()
+            include("ExaModelsC/test/runtests.jl")'

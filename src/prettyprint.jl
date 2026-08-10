@@ -65,6 +65,9 @@ end
 function _print_tree(io::IO, node::DataSource, indent::Int)
     print(io, " "^indent, "i")
 end
+function _print_tree(io::IO, node::ArgLeaf, indent::Int)
+    print(io, " "^indent, _arg_string(getfield(node, :a)))
+end
 function _print_tree(io::IO, node::DataIndexed{I,n}, indent::Int) where {I,n}
     _print_tree(io, getfield(node, :inner), 0)  # getfield bypasses getproperty override
     if n isa Integer
@@ -357,6 +360,7 @@ _short_type(::ParameterSource) = "ParameterSource"
 _short_type(::ParameterNode) = "ParameterNode"
 _short_type(::DataSource) = "DataSource"
 _short_type(::DataIndexed) = "DataIndexed"
+_short_type(::ArgLeaf) = "ArgLeaf"
 _short_type(::Constant{T}) where {T} = "Constant{$T}"
 _short_type(::Node1{F}) where {F} = "Node1{$(_opname(F))}"
 _short_type(::Node2{F}) where {F} = "Node2{$(_opname(F))}"
