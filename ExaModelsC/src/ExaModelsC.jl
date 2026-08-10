@@ -85,6 +85,14 @@ against the Julia installation it was built with.
 | Python (`cnlpmodels`), C | works | works |
 | **Julia (`CNLPModels.jl`)** | works | **aborts on the first call** |
 
+!!! warning "Windows"
+    `juliac` implements runtime privatization for Linux and macOS only — on
+    Windows `privatize_libjulia!` warns "not implemented for this OS" and does
+    nothing. A library compiled there therefore keeps the standard `libjulia`
+    soname and **cannot be loaded back into Julia**, whatever `bundle` is set
+    to; it is still usable from Python and C, where the calling thread is
+    genuinely foreign.
+
 Privatizing is the part that matters, not bundling.  A
 `juliac` library links `libjulia`; `--trim` reduces the compiled *code*, not the
 runtime.  Loaded into a process that is already Julia, a library sharing the

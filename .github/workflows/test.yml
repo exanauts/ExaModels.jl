@@ -306,9 +306,10 @@ jobs:
             benchmark/pr_number.txt
 
   # ExaModelsC compiles a model into a native shared library with juliac, so it
-  # is platform-specific in a way the rest of the package is not, and mirrors
-  # the AOT compilation test's treatment: run wherever AOT runs, and not on GPU
-  # runners, where it is not expected to work yet.
+  # is platform-specific in a way the rest of the package is not. Not on GPU
+  # runners, where it is not expected to work yet, and not on Windows: juliac
+  # implements runtime privatization only for Linux and macOS, so a library
+  # compiled there cannot be loaded back into Julia (see `compile_library`).
   examodelsc:
     strategy:
       fail-fast: false
@@ -318,8 +319,6 @@ jobs:
             name: linux
           - runner: '["self-hosted","macOS"]'
             name: macos
-          - runner: '["windows-latest"]'
-            name: windows
     name: examodelsc (${{ matrix.name }})
     runs-on: ${{ fromJSON(matrix.runner) }}
     steps:
