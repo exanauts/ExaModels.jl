@@ -83,7 +83,7 @@ jobs:
         julia-version: ['1', 'lts']
         julia-arch: [x64]
         os: [ubuntu-latest]
-        backend: ['cuda13', 'amdgpu', 'oneapi']
+        backend: ['cuda', 'amdgpu', 'oneapi']
         exclude:
           - julia-version: 'lts'
             backend: 'oneapi'
@@ -114,7 +114,7 @@ jobs:
       run: |
         julia --startup-file=no --project=test -e 'using Pkg; Pkg.add("AMDGPU")'
     - name: Add CUDA.jl to test environment
-      if: matrix.backend == 'cuda13'
+      if: matrix.backend == 'cuda'
       run: |
         julia --startup-file=no --project=test -e 'using Pkg; Pkg.add("CUDA")'
     - name: Add oneAPI.jl to test environment
@@ -195,7 +195,7 @@ jobs:
   bench-cuda:
     if: github.event_name == 'pull_request'
     needs: [github, cpu, gpu, metal]
-    runs-on: ['self-hosted', 'gpu', 'cuda13']
+    runs-on: ['self-hosted', 'gpu', 'cuda']
     env:
       # opt out of MPS on the self-hosted runner
       CUDA_MPS_PIPE_DIRECTORY: /tmp/no-mps-${{ github.run_id }}
