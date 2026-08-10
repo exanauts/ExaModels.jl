@@ -184,7 +184,7 @@ m = ExaModel(chain, 6, chain_pairs(6), 1 / 7)
 # using CNLPModels, NLPModelsIpopt
 #
 # lib = CNLPModels.load("/opt/models/rosen/lib/librosen.so")
-# m = CNLPModel(lib; prefix = "rosen", args = 1000)   # rosen_new(1000)
+# m = CNLPModel(lib, 1000; prefix = "rosen")          # rosen_new(1000)
 # result = ipopt(m)
 # ```
 
@@ -194,7 +194,7 @@ m = ExaModel(chain, 6, chain_pairs(6), 1 / 7)
 # import cnlpmodels
 #
 # lib = cnlpmodels.load("/opt/models/rosen/lib/librosen.so")
-# m = cnlpmodels.CModel(lib, prefix="rosen", args=1000)
+# m = cnlpmodels.CModel(lib, 1000, prefix="rosen")
 # x, info = cnlpmodels.solve_ipopt(m)      # via cyipopt, if installed
 # ```
 

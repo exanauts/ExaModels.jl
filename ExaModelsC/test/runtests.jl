@@ -54,7 +54,7 @@ function runtests()
             # Compiled with the example N = 4; instantiated at 25.  If the size
             # had been baked in rather than deferred, this is where it shows.
             N = 25
-            m = CNLPModels.CNLPModel(lib; prefix = r.prefix, args = N)
+            m = CNLPModels.CNLPModel(lib, N; prefix = r.prefix)
             ref = ExaModel(build(), N)
 
             @test m.meta.nvar == ref.meta.nvar == N
@@ -85,8 +85,8 @@ function runtests()
         end
 
         @testset "instances are independent" begin
-            m1 = CNLPModels.CNLPModel(lib; prefix = r.prefix, args = 6)
-            m2 = CNLPModels.CNLPModel(lib; prefix = r.prefix, args = 11)
+            m1 = CNLPModels.CNLPModel(lib, 6; prefix = r.prefix)
+            m2 = CNLPModels.CNLPModel(lib, 11; prefix = r.prefix)
             @test m1.meta.nvar == 6
             @test m2.meta.nvar == 11
             # The second instantiation must not have disturbed the first.
@@ -180,7 +180,7 @@ function runtests()
 
         @testset "solving through the library agrees with solving in Julia" begin
             N = 20
-            m = CNLPModels.CNLPModel(lib; prefix = r.prefix, args = N)
+            m = CNLPModels.CNLPModel(lib, N; prefix = r.prefix)
             ref = ExaModel(build(), N)
 
             res = NLPModelsIpopt.ipopt(m; print_level = 0)

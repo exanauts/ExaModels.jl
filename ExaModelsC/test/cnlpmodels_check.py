@@ -18,7 +18,7 @@ def main():
     libpath, prefix, n, outfile = sys.argv[1], sys.argv[2], int(sys.argv[3]), sys.argv[4]
 
     lib = cnlpmodels.load(libpath)
-    m = cnlpmodels.CModel(lib, args=n, prefix=prefix)
+    m = cnlpmodels.CModel(lib, n, prefix=prefix)
 
     # The same point the Julia side uses, generated identically rather than
     # passed across, so a mismatch in the point itself would show up as a

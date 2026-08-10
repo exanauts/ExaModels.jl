@@ -40,13 +40,13 @@ which is part of ExaModels:
 ```julia
 using CNLPModels, NLPModelsIpopt
 lib = CNLPModels.load("/opt/models/rosen/lib/librosen.so")
-ipopt(CNLPModel(lib; prefix = "rosen", args = 1000))
+ipopt(CNLPModel(lib, 1000; prefix = "rosen"))
 ```
 
 ```python
 import cnlpmodels
 lib = cnlpmodels.load("/opt/models/rosen/lib/librosen.so")
-m = cnlpmodels.CModel(lib, prefix="rosen", args=1000)
+m = cnlpmodels.CModel(lib, 1000, prefix="rosen")
 ```
 
 Both consumers default `prefix` to `"rec"` when handed a library handle, while
@@ -120,7 +120,7 @@ which case the library is installed on the CNLPModels search path
 
 ```julia
 compile_library("rosenrock", core, 1000)        # → \$CNLPMODELS_PATH/rosenrock/
-CNLPModel("rosenrock"; args = 1000)              # finds it, prefix defaults to the name
+CNLPModel("rosenrock", 1000)                    # finds it, prefix defaults to the name
 ```
 
 The example values are given exactly as they would be to `ExaModel(core, ...)`,
@@ -216,8 +216,9 @@ end
 #
 # The schema is derived from the example values' TYPES, one field per
 # placeholder.  Placeholders are positional, so the fields are named `arg1`,
-# `arg2`, ... — CNLPModels binds a tuple positionally against the schema's field
-# order, and a named tuple by these names.
+# `arg2`, ... — and a consumer binds its own arguments positionally against
+# that field order, `CNLPModel(lib, arg1, arg2, ...)`, the same spelling the
+# example values are given in here.
 
 struct Field
     name::String
