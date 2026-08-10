@@ -158,7 +158,7 @@ placeholder that will be gone: it is substituted once at instantiation, leaving
 the plain `Real` a core built with concrete sizes would have had.
 
 What the two share is that neither has a value while sparsity is being
-discovered.  That discovery evaluates the graph at [`Identity`](@ref) against a
+discovered.  That discovery evaluates the graph at `Identity` against a
 `NaNSource`, and structure does not depend on values, so both answer `NaN`
 there — which is why this leaf needs no separate treatment in the probe.
 
