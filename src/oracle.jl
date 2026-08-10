@@ -1276,7 +1276,7 @@ end
 Register an oracle evaluator that augments pre-existing constraint rows.
 
 - `cons`: a tuple of [`Constraint`](@ref) handles whose rows will be filled.
-- `vars`: a tuple of [`Variable`](@ref) handles whose values are passed to the callbacks.
+- `vars`: a tuple of `Variable` handles whose values are passed to the callbacks.
 - `f!(res, x_local)`: fills `res[1:ncon_total]` given `x_local[1:nvar_total]`.
 
 Sparsity is declared via `jac_structure!(rows, cols)` / `hess_structure!(rows, cols)`,

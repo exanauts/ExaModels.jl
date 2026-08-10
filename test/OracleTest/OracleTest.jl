@@ -32,13 +32,13 @@ _atol(backend, tight = 1.0e-12) =
 
 function _build_oracle_model(backend)
     c = ExaCore(Float64; backend = backend)
-    x = variable(c, 4; lvar = -Inf, uvar = Inf, start = [0.5, 0.5, 0.6, 0.4])
+    c, x = add_var(c, 4; lvar = -Inf, uvar = Inf, start = [0.5, 0.5, 0.6, 0.4])
 
     # Objective: sum x[i]^2
-    objective(c, x[i]^2 for i in 1:4)
+    c, _ = add_obj(c, x[i]^2 for i in 1:4)
 
     # SIMD constraint: x[1] + x[2] = 1
-    constraint(c, x[1] + x[2]; lcon = 1.0, ucon = 1.0)
+    c, _ = add_con(c, x[1] + x[2]; lcon = 1.0, ucon = 1.0)
 
     # Oracle A: linear  c = x[3] - x[4] = 0
     oracle_A = VectorNonlinearOracle(
@@ -54,7 +54,7 @@ function _build_oracle_model(backend)
         f! = (cv, xv) -> (cv[1] = xv[3] - xv[4]; nothing),
         jac! = (vv, xv) -> (vv[1] = 1.0; vv[2] = -1.0; nothing),
     )
-    constraint(c, oracle_A)
+    c = constraint(c, oracle_A)
 
     # Oracle B: nonlinear  c = x[3]^2 + x[4]^2 ≥ 0  (lcon=-Inf, ucon=Inf for a free residual)
     oracle_B = VectorNonlinearOracle(
@@ -73,7 +73,7 @@ function _build_oracle_model(backend)
         jac! = (vv, xv) -> (vv[1] = 2 * xv[3]; vv[2] = 2 * xv[4]; nothing),
         hess! = (hv, xv, yv) -> (hv[1] = 2 * yv[1]; hv[2] = 2 * yv[1]; nothing),
     )
-    constraint(c, oracle_B)
+    c = constraint(c, oracle_B)
 
     return ExaModel(c)
 end
@@ -114,7 +114,7 @@ function test_model_type()
 
         # plain model (no oracle) still returns ExaModel
         c2 = ExaCore(Float64)
-        x2 = variable(c2, 3)
+        c2, x2 = add_var(c2, 3)
         @test ExaModel(c2) isa ExaModel
     end
 end
@@ -218,9 +218,9 @@ end
 function test_jprod_jtprod(backend)
     return @testset "jprod_nln! and jtprod_nln!" begin
         c = ExaCore(Float64; backend = backend)
-        x = variable(c, 4; lvar = -Inf, uvar = Inf, start = [0.5, 0.5, 0.6, 0.4])
-        objective(c, x[i]^2 for i in 1:4)
-        constraint(c, x[1] + x[2]; lcon = 1.0, ucon = 1.0)
+        c, x = add_var(c, 4; lvar = -Inf, uvar = Inf, start = [0.5, 0.5, 0.6, 0.4])
+        c, _ = add_obj(c, x[i]^2 for i in 1:4)
+        c, _ = add_con(c, x[1] + x[2]; lcon = 1.0, ucon = 1.0)
         oracle_A = VectorNonlinearOracle(
             nvar = 4, ncon = 1, nnzj = 2, nnzh = 0,
             jac_rows = [1, 1], jac_cols = [3, 4],
@@ -229,7 +229,7 @@ function test_jprod_jtprod(backend)
             f! = (cv, xv) -> (cv[1] = xv[3] - xv[4]; nothing),
             jac! = (vv, xv) -> (vv[1] = 1.0; vv[2] = -1.0; nothing),
         )
-        constraint(c, oracle_A)
+        c = constraint(c, oracle_A)
         oracle_B = VectorNonlinearOracle(
             nvar = 4, ncon = 1, nnzj = 2, nnzh = 2,
             jac_rows = [1, 1], jac_cols = [3, 4],
@@ -240,7 +240,7 @@ function test_jprod_jtprod(backend)
             jac! = (vv, xv) -> (vv[1] = 2 * xv[3]; vv[2] = 2 * xv[4]; nothing),
             hess! = (hv, xv, yv) -> (hv[1] = 2 * yv[1]; hv[2] = 2 * yv[1]; nothing),
         )
-        constraint(c, oracle_B)
+        c = constraint(c, oracle_B)
         m = ExaModel(c; prod = true)
         x0 = ExaModels.convert_array(X0, backend)
         J = analytic_jac_dense(X0)
@@ -261,9 +261,9 @@ end
 function test_hprod(backend)
     return @testset "hprod!" begin
         c = ExaCore(Float64; backend = backend)
-        x = variable(c, 4; lvar = -Inf, uvar = Inf, start = [0.5, 0.5, 0.6, 0.4])
-        objective(c, x[i]^2 for i in 1:4)
-        constraint(c, x[1] + x[2]; lcon = 1.0, ucon = 1.0)
+        c, x = add_var(c, 4; lvar = -Inf, uvar = Inf, start = [0.5, 0.5, 0.6, 0.4])
+        c, _ = add_obj(c, x[i]^2 for i in 1:4)
+        c, _ = add_con(c, x[1] + x[2]; lcon = 1.0, ucon = 1.0)
         oracle_A = VectorNonlinearOracle(
             nvar = 4, ncon = 1, nnzj = 2, nnzh = 0,
             jac_rows = [1, 1], jac_cols = [3, 4],
@@ -272,7 +272,7 @@ function test_hprod(backend)
             f! = (cv, xv) -> (cv[1] = xv[3] - xv[4]; nothing),
             jac! = (vv, xv) -> (vv[1] = 1.0; vv[2] = -1.0; nothing),
         )
-        constraint(c, oracle_A)
+        c = constraint(c, oracle_A)
         oracle_B = VectorNonlinearOracle(
             nvar = 4, ncon = 1, nnzj = 2, nnzh = 2,
             jac_rows = [1, 1], jac_cols = [3, 4],
@@ -283,7 +283,7 @@ function test_hprod(backend)
             jac! = (vv, xv) -> (vv[1] = 2 * xv[3]; vv[2] = 2 * xv[4]; nothing),
             hess! = (hv, xv, yv) -> (hv[1] = 2 * yv[1]; hv[2] = 2 * yv[1]; nothing),
         )
-        constraint(c, oracle_B)
+        c = constraint(c, oracle_B)
         m = ExaModel(c; prod = true)
         x0 = ExaModels.convert_array(X0, backend)
         y0 = ExaModels.convert_array([0.0, 0.0, 1.0], backend)
@@ -307,9 +307,9 @@ function test_val_false_jprod_jtprod_hprod(backend)
     # exercised end-to-end against the analytic Jacobian / Hessian.
     return @testset "adapt=Val(false) jprod/jtprod/hprod (prod=true)" begin
         c = ExaCore(Float64; backend = backend)
-        x = variable(c, 4; lvar = -Inf, uvar = Inf, start = [0.5, 0.5, 0.6, 0.4])
-        objective(c, x[i]^2 for i in 1:4)
-        constraint(c, x[1] + x[2]; lcon = 1.0, ucon = 1.0)
+        c, x = add_var(c, 4; lvar = -Inf, uvar = Inf, start = [0.5, 0.5, 0.6, 0.4])
+        c, _ = add_obj(c, x[i]^2 for i in 1:4)
+        c, _ = add_con(c, x[1] + x[2]; lcon = 1.0, ucon = 1.0)
         oracle_A = VectorNonlinearOracle(
             nvar = 4, ncon = 1, nnzj = 2, nnzh = 0,
             jac_rows = [1, 1], jac_cols = [3, 4],
@@ -324,7 +324,7 @@ function test_val_false_jprod_jtprod_hprod(backend)
                 nothing
             end,
         )
-        constraint(c, oracle_A)
+        c = constraint(c, oracle_A)
         oracle_B = VectorNonlinearOracle(
             nvar = 4, ncon = 1, nnzj = 2, nnzh = 2,
             jac_rows = [1, 1], jac_cols = [3, 4],
@@ -335,7 +335,7 @@ function test_val_false_jprod_jtprod_hprod(backend)
             jac! = (vv, xv) -> (vv .= 2 .* xv[3:4]; nothing),
             hess! = (hv, xv, yv) -> (hv .= 2 .* yv[1:1]; nothing),
         )
-        constraint(c, oracle_B)
+        c = constraint(c, oracle_B)
         m = ExaModel(c; prod = true)
 
         x0 = ExaModels.convert_array(X0, backend)
@@ -361,12 +361,12 @@ end
 function test_multiple_oracles(backend)
     return @testset "multiple oracles offsets" begin
         c = ExaCore(Float64; backend = backend)
-        x = variable(c, 4; lvar = -Inf, uvar = Inf)
-        objective(c, x[i]^2 for i in 1:4)
+        c, x = add_var(c, 4; lvar = -Inf, uvar = Inf)
+        c, _ = add_obj(c, x[i]^2 for i in 1:4)
 
         # 2 SIMD constraints
-        constraint(c, x[1] + x[2]; lcon = 1.0, ucon = 1.0)
-        constraint(c, x[3] - x[4]; lcon = 0.0, ucon = 0.0)
+        c, _ = add_con(c, x[1] + x[2]; lcon = 1.0, ucon = 1.0)
+        c, _ = add_con(c, x[3] - x[4]; lcon = 0.0, ucon = 0.0)
 
         # Oracle 1 (ncon=1): x[1] - x[2] = 0
         o1 = VectorNonlinearOracle(
@@ -377,7 +377,7 @@ function test_multiple_oracles(backend)
             f! = (cv, xv) -> (cv[1] = xv[1] - xv[2]; nothing),
             jac! = (vv, xv) -> (vv[1] = 1.0; vv[2] = -1.0; nothing),
         )
-        constraint(c, o1)
+        c = constraint(c, o1)
 
         # Oracle 2 (ncon=2): [x[1]*x[3], x[2]*x[4]]
         o2 = VectorNonlinearOracle(
@@ -390,7 +390,7 @@ function test_multiple_oracles(backend)
             jac! = (vv, xv) -> (vv[1] = xv[3]; vv[2] = xv[1]; vv[3] = xv[4]; vv[4] = xv[2]; nothing),
             hess! = (hv, xv, yv) -> (hv[1] = yv[1]; hv[2] = yv[2]; nothing),
         )
-        constraint(c, o2)
+        c = constraint(c, o2)
 
         m = ExaModel(c)
         @test m isa ExaModelWithOracle
@@ -427,9 +427,9 @@ function test_gpu_oracle(backend)
     # For CPU backends the callbacks just receive plain Arrays, which is fine.
     return @testset "adapt=Val(false) oracle" begin
         c = ExaCore(Float64; backend = backend)
-        x = variable(c, 4; lvar = -Inf, uvar = Inf, start = [0.5, 0.5, 0.6, 0.4])
-        objective(c, x[i]^2 for i in 1:4)
-        constraint(c, x[1] + x[2]; lcon = 1.0, ucon = 1.0)
+        c, x = add_var(c, 4; lvar = -Inf, uvar = Inf, start = [0.5, 0.5, 0.6, 0.4])
+        c, _ = add_obj(c, x[i]^2 for i in 1:4)
+        c, _ = add_con(c, x[1] + x[2]; lcon = 1.0, ucon = 1.0)
 
         # Oracle with adapt=Val(false): callbacks receive the native array type of the
         # backend (CuArray on CUDA, Array on CPU) without any host copy.
@@ -449,7 +449,7 @@ function test_gpu_oracle(backend)
             jac! = (vv, xv) -> (vv .= 2 .* xv[3:4]; nothing),
             hess! = (hv, xv, yv) -> (hv .= 2 .* yv; nothing),
         )
-        constraint(c, oracle_gpu)
+        c = constraint(c, oracle_gpu)
         m = ExaModel(c)
         @test m isa ExaModelWithOracle
 
@@ -504,13 +504,13 @@ end
 
 function _build_matfree_oracle_model(backend)
     c = ExaCore(Float64; backend = backend)
-    x = variable(c, 4; lvar = -Inf, uvar = Inf, start = [0.5, 0.5, 0.6, 0.4])
+    c, x = add_var(c, 4; lvar = -Inf, uvar = Inf, start = [0.5, 0.5, 0.6, 0.4])
 
     # Objective: sum x[i]^2
-    objective(c, x[i]^2 for i in 1:4)
+    c, _ = add_obj(c, x[i]^2 for i in 1:4)
 
     # SIMD constraint: x[1] + x[2] = 1
-    constraint(c, x[1] + x[2]; lcon = 1.0, ucon = 1.0)
+    c, _ = add_con(c, x[1] + x[2]; lcon = 1.0, ucon = 1.0)
 
     # Oracle A (linear, matrix-free only): x[3] - x[4] = 0
     oracle_A = VectorNonlinearOracle(
@@ -523,7 +523,7 @@ function _build_matfree_oracle_model(backend)
         lcon = [0.0],
         ucon = [0.0],
     )
-    constraint(c, oracle_A)
+    c = constraint(c, oracle_A)
 
     # Oracle B (nonlinear, matrix-free): x[3]^2 + x[4]^2 ≥ 0
     oracle_B = VectorNonlinearOracle(
@@ -537,7 +537,7 @@ function _build_matfree_oracle_model(backend)
         lcon = [-Inf],
         ucon = [Inf],
     )
-    constraint(c, oracle_B)
+    c = constraint(c, oracle_B)
 
     return ExaModel(c)
 end
@@ -615,9 +615,9 @@ end
 function test_matfree_jprod_jtprod(backend)
     return @testset "matfree jprod_nln! and jtprod_nln!" begin
         c = ExaCore(Float64; backend = backend)
-        x = variable(c, 4; lvar = -Inf, uvar = Inf, start = [0.5, 0.5, 0.6, 0.4])
-        objective(c, x[i]^2 for i in 1:4)
-        constraint(c, x[1] + x[2]; lcon = 1.0, ucon = 1.0)
+        c, x = add_var(c, 4; lvar = -Inf, uvar = Inf, start = [0.5, 0.5, 0.6, 0.4])
+        c, _ = add_obj(c, x[i]^2 for i in 1:4)
+        c, _ = add_con(c, x[1] + x[2]; lcon = 1.0, ucon = 1.0)
         oracle_A = VectorNonlinearOracle(
             nvar = 4, ncon = 1,
             adapt = Val(true),
@@ -626,7 +626,7 @@ function test_matfree_jprod_jtprod(backend)
             vjp! = (Jtv, xv, w) -> (fill!(Jtv, 0.0); Jtv[3] = w[1]; Jtv[4] = -w[1]; nothing),
             lcon = [0.0], ucon = [0.0],
         )
-        constraint(c, oracle_A)
+        c = constraint(c, oracle_A)
         oracle_B = VectorNonlinearOracle(
             nvar = 4, ncon = 1,
             adapt = Val(true),
@@ -636,7 +636,7 @@ function test_matfree_jprod_jtprod(backend)
             hvp! = (Hv, xv, w, v) -> (fill!(Hv, 0.0); Hv[3] = 2 * w[1] * v[3]; Hv[4] = 2 * w[1] * v[4]; nothing),
             lcon = [-Inf], ucon = [Inf],
         )
-        constraint(c, oracle_B)
+        c = constraint(c, oracle_B)
         m = ExaModel(c; prod = true)
         x0 = ExaModels.convert_array(X0, backend)
         J = analytic_jac_dense(X0)
@@ -657,9 +657,9 @@ end
 function test_matfree_hprod(backend)
     return @testset "matfree hprod!" begin
         c = ExaCore(Float64; backend = backend)
-        x = variable(c, 4; lvar = -Inf, uvar = Inf, start = [0.5, 0.5, 0.6, 0.4])
-        objective(c, x[i]^2 for i in 1:4)
-        constraint(c, x[1] + x[2]; lcon = 1.0, ucon = 1.0)
+        c, x = add_var(c, 4; lvar = -Inf, uvar = Inf, start = [0.5, 0.5, 0.6, 0.4])
+        c, _ = add_obj(c, x[i]^2 for i in 1:4)
+        c, _ = add_con(c, x[1] + x[2]; lcon = 1.0, ucon = 1.0)
         oracle_A = VectorNonlinearOracle(
             nvar = 4, ncon = 1,
             adapt = Val(true),
@@ -668,7 +668,7 @@ function test_matfree_hprod(backend)
             vjp! = (Jtv, xv, w) -> (fill!(Jtv, 0.0); Jtv[3] = w[1]; Jtv[4] = -w[1]; nothing),
             lcon = [0.0], ucon = [0.0],
         )
-        constraint(c, oracle_A)
+        c = constraint(c, oracle_A)
         oracle_B = VectorNonlinearOracle(
             nvar = 4, ncon = 1,
             adapt = Val(true),
@@ -678,7 +678,7 @@ function test_matfree_hprod(backend)
             hvp! = (Hv, xv, w, v) -> (fill!(Hv, 0.0); Hv[3] = 2 * w[1] * v[3]; Hv[4] = 2 * w[1] * v[4]; nothing),
             lcon = [-Inf], ucon = [Inf],
         )
-        constraint(c, oracle_B)
+        c = constraint(c, oracle_B)
         m = ExaModel(c; prod = true)
         x0 = ExaModels.convert_array(X0, backend)
         y0 = ExaModels.convert_array([0.0, 0.0, 1.0], backend)
@@ -801,43 +801,6 @@ function test_embed_oracle()
     end
 end
 
-function test_legacy_oracle_forwarding()
-    return @testset "LegacyExaCore oracle forwarding" begin
-        c = ExaCore(Float64)                                 # legacy mutable wrapper
-        x = variable(c, 2; start = [1.0, 2.0])
-        oracle = VectorNonlinearOracle(
-            nvar = 2, ncon = 1, nnzj = 2, nnzh = 0,
-            jac_rows = [1, 1], jac_cols = [1, 2],
-            lcon = [0.0], ucon = [0.0],
-            adapt = Val(true),
-            f! = (cv, xv) -> (cv[1] = xv[1] + xv[2]; nothing),
-            jac! = (vv, xv) -> (vv[1] = 1.0; vv[2] = 1.0; nothing),
-        )
-        constraint(c, oracle)
-        m = ExaModel(c)
-        @test m isa ExaModelWithOracle
-        g = zeros(1)
-        NLPModels.cons_nln!(m, [3.0, 4.0], g)
-        @test g[1] ≈ 7.0
-
-        # embed_oracle forwarder must return (core, z, oracle) to match the
-        # immutable signature and the rest of the LegacyExaCore add_* family.
-        c2 = ExaCore(Float64)
-        x2 = variable(c2, 2; start = [1.0, 2.0])
-        ret = embed_oracle(
-            c2, x2, 2;
-            f! = (y, xv) -> (y .= xv .^ 2; nothing),
-            jvp! = (Jv, xv, v) -> (Jv .= 2 .* xv .* v; nothing),
-            vjp! = (Jtv, xv, w) -> (Jtv .= 2 .* xv .* w; nothing),
-            adapt = Val(true),
-        )
-        @test ret isa Tuple && length(ret) == 3
-        @test ret[1] === c2                              # same legacy core, mutated in place
-        @test ret[2] isa ExaModels.Variable
-        @test ret[3] isa VectorNonlinearOracle
-    end
-end
-
 function runtests()
     return @testset "OracleTest" begin
         @testset "VectorNonlinearOracle type checks" begin
@@ -878,7 +841,6 @@ function runtests()
             test_add_eval()
             test_add_con_macro_oracle()
             test_embed_oracle()
-            test_legacy_oracle_forwarding()
         end
     end
 end
