@@ -30,18 +30,18 @@ function runtests()
             c = build()
             # A shape `P_new(n)` cannot carry must be refused up front, with a
             # reason — not discovered as a missing symbol at load time.
-            @test_throws ArgumentError compile_library(c, OUT; arg = (N = 4, v = [1.0]))
-            @test_throws ArgumentError compile_library(c, OUT; arg = (x = 1.5,))
+            @test_throws ArgumentError compile_library(OUT, c, (N = 4, v = [1.0]))
+            @test_throws ArgumentError compile_library(OUT, c, (x = 1.5,))
             # And a prefix that is not a C identifier is caught before juliac.
-            @test_throws ArgumentError compile_library(c, OUT; arg = 4, prefix = "lib-a")
-            @test_throws ArgumentError compile_library(c, OUT; arg = 4, prefix = "2fast")
+            @test_throws ArgumentError compile_library(OUT, c, 4; prefix = "lib-a")
+            @test_throws ArgumentError compile_library(OUT, c, 4; prefix = "2fast")
         end
 
         # Compiling takes minutes, so the library is built once and every
         # behavioural test below reads that one artifact.
         # Compiling takes minutes, so the library is built once and every
         # behavioural test below reads that one artifact.
-        r = compile_library(build(), joinpath(OUT, "rosen"); arg = 4)
+        r = compile_library(joinpath(OUT, "rosen"), build(), 4)
 
         @testset "the library exists and loads" begin
             @test isfile(r.libpath)
@@ -100,7 +100,7 @@ function runtests()
             # caller; it cannot be loaded from Julia — see `compile_library`'s
             # docstring for why — so it is checked structurally here and the
             # Python leg below exercises the behaviour.
-            u = compile_library(build(), joinpath(OUT, "flat"); arg = 4, bundle = false)
+            u = compile_library(joinpath(OUT, "flat"), build(), 4; bundle = false)
             @test isfile(u.libpath)
             @test u.libpath == joinpath(
                 u.outdir, "lib" * u.prefix * "." * Base.BinaryPlatforms.platform_dlext())

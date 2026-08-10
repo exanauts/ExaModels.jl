@@ -17,7 +17,7 @@ c, N = ExaCore(concrete = Val(true), nargs = Val(1))
 @add_var(c, x, N; start = 1.0)
 @add_obj(c, (x[i] - 1)^2 for i in 1:N)
 
-compile_library(c, "/opt/models/rosen"; arg = 10)
+compile_library("/opt/models/rosen", c, 10)
 ```
 
 `arg` here is an *example* value for the placeholder: it is never baked in, but
@@ -67,7 +67,7 @@ export compile_library
 const _GEN_UUID = "b41c7e02-9f3d-4a58-8e6c-2d0f5a7c9b13"
 
 """
-    compile_library(core, out; arg, prefix = basename(out), trim = "safe",
+    compile_library(out, core, args...; prefix = basename(out), trim = "safe",
                     bundle = true, verbose = false)
         -> (; libpath, outdir, prefix)
 
@@ -119,13 +119,15 @@ which case the library is installed on the CNLPModels search path
 (`CNLPMODELS_PATH`), where both consumers find it by that name:
 
 ```julia
-compile_library(core, "rosenrock"; arg = 1000)   # → \$CNLPMODELS_PATH/librosenrock.so
+compile_library("rosenrock", core, 1000)        # → \$CNLPMODELS_PATH/rosenrock/
 CNLPModel("rosenrock"; args = 1000)              # finds it, prefix defaults to the name
 ```
 
-`core` must be an `ExaCore` built against a single
-[`ExaModels.ArgSource`](@ref) — i.e. `ExaCore(nargs = Val(1))`, since the
-scalar ABI carries one instantiation argument.  `arg` is an
+The example values are given exactly as they would be to `ExaModel(core, ...)`,
+which is the point: compiling and instantiating a recipe should not be spelled
+two different ways.  `core` must be built against a single
+[`ExaModels.ArgSource`](@ref) — `ExaCore(nargs = Val(1))` — since the scalar ABI
+carries one instantiation argument.  The example is
 example argument of the shape the library will be instantiated with.  The
 example is used twice — to pin the types `juliac` needs in order to trim, and to
 check that the core actually instantiates before spending minutes compiling it.
@@ -145,16 +147,31 @@ yet; `compile_library` says so rather than emitting a library that would fail
 at load.
 """
 function compile_library(
+    out::AbstractString,
     core::ExaModels.ExaCore,
-    out::AbstractString;
-    arg,
+    args...;
     prefix::AbstractString = basename(abspath(out)),
     trim::AbstractString = "safe",
     bundle::Bool = true,
     verbose::Bool = false,
 )
     _check_prefix(prefix)
-    field = _scalar_field(arg)
+    isempty(args) && throw(
+        ArgumentError(
+            "give one example value per placeholder, as you would to " *
+            "`ExaModel(core, ...)` — its types are what the compiler needs.",
+        ),
+    )
+    fields = _schema(args)
+    _is_scalar_new(fields) || throw(
+        ArgumentError(
+            "this recipe needs the schema + builder interface, which is not " *
+            "emitted yet — only a single integer placeholder (`<prefix>_new(n)`) " *
+            "is. Its schema would be: " * _schema_json(fields),
+        ),
+    )
+    arg = only(args)
+    field = nothing
     out = _resolve_out(out, bundle)
 
     # Instantiate here, in this process, before generating anything.  A core
@@ -195,27 +212,72 @@ function _resolve_out(out::AbstractString, bundle::Bool)
     return bundle ? joinpath(first(dirs), out) : first(dirs)
 end
 
-# ── Reading the example argument ──────────────────────────────────────────────
+# ── Reading the example arguments ─────────────────────────────────────────────
+#
+# The schema is derived from the example values' TYPES, one field per
+# placeholder.  Placeholders are positional, so the fields are named `arg1`,
+# `arg2`, ... — CNLPModels binds a tuple positionally against the schema's field
+# order, and a named tuple by these names.
 
-# `P_new` carries one integer, so the example has to say where that integer
-# goes.  Returns `nothing` when the argument *is* the integer, or the field name
-# to wrap it in.  Anything else is the structured case, which needs the schema
-# ABI rather than `P_new`.
-function _scalar_field(arg)
-    arg isa Integer && return nothing
-    if arg isa NamedTuple && length(arg) == 1
-        v = first(arg)
-        v isa Integer && return first(keys(arg))
+struct Field
+    name::String
+    kind::String                            # "scalar" | "array" | "table"
+    type::String                            # "f64" | "i64" — scalars and arrays
+    columns::Vector{Pair{String,String}}    # tables only: name => type
+end
+
+_ctype(::Type{<:Integer}) = "i64"
+_ctype(::Type{<:AbstractFloat}) = "f64"
+_ctype(::Type{T}) where {T} = throw(
+    ArgumentError(
+        "an argument of type $T cannot cross the C boundary; the interface " *
+        "carries 64-bit integers and floats, as scalars, arrays, or tables of " *
+        "them.",
+    ),
+)
+
+function _field(name::AbstractString, v)
+    v isa Union{Integer,AbstractFloat} &&
+        return Field(name, "scalar", _ctype(typeof(v)), Pair{String,String}[])
+    if v isa AbstractVector
+        isempty(v) && throw(
+            ArgumentError(
+                "the example for `$name` is empty, so there is nothing to read " *
+                "its element type from — give one with at least one element.",
+            ),
+        )
+        el = first(v)
+        el isa NamedTuple && return Field(
+            name, "table", "",
+            [String(k) => _ctype(typeof(getfield(el, k))) for k in keys(el)],
+        )
+        return Field(name, "array", _ctype(typeof(el)), Pair{String,String}[])
     end
     throw(
         ArgumentError(
-            "compile_library currently emits the scalar instantiation ABI " *
-            "(`<prefix>_new(n)`), so the example `arg` must be an Integer or a " *
-            "NamedTuple with exactly one integer field — got $(typeof(arg)). " *
-            "Structured data (the schema + builder ABI) is not implemented yet.",
+            "an argument of type $(typeof(v)) cannot cross the C boundary; give " *
+            "a number, a vector of numbers, or a vector of NamedTuples (a table).",
         ),
     )
 end
+
+_schema(args) = [_field("arg$i", a) for (i, a) in enumerate(args)]
+
+# The published schema, in the shape both consumers parse.
+function _schema_json(fields::Vector{Field})
+    parts = map(fields) do f
+        f.kind == "table" ?
+        """{"name":"$(f.name)","kind":"table","columns":[""" *
+        join(["""{"name":"$(c.first)","type":"$(c.second)"}""" for c in f.columns], ",") *
+        "]}" :
+        """{"name":"$(f.name)","kind":"$(f.kind)","type":"$(f.type)"}"""
+    end
+    return """{"abi":2,"fields":[""" * join(parts, ",") * "]}"
+end
+
+# `P_new(n)` stays as the fast path: one integer placeholder needs no builder.
+_is_scalar_new(fields) =
+    length(fields) == 1 && fields[1].kind == "scalar" && fields[1].type == "i64"
 
 # The prefix becomes a C symbol and a Julia identifier in generated source, so
 # it has to be one. Checked here rather than discovered as a syntax error in a
