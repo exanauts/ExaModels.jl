@@ -343,19 +343,6 @@ function runtests()
             @test !ExaModels._mentions_arg(typeof(instantiate(c, (N = 2,))))
         end
 
-        @testset "the deprecated core does not accept arg" begin
-            lc = @test_logs (:warn,) match_mode = :any ExaModels.ExaCore()
-            @test lc isa ExaModels.LegacyExaCore
-            ExaModels.@add_var(lc, xl, 2; start = 1.0)   # an empty core has no meta to build
-
-            # Refused explicitly — not quietly built with placeholders still in.
-            @test_throws ArgumentError ExaModels.ExaModel(lc, (N = 2,))
-            # The ordinary path through it is untouched.
-            m = ExaModels.ExaModel(lc, nothing)
-            @test m isa ExaModels.ExaModel
-            @test m.meta.nvar == 2
-        end
-
         @testset "per-iteration indexing of arg is rejected with a reason" begin
             c = ExaModels.ExaCore(concrete = Val(true))
             ExaModels.@add_var(c, y, arg.N; start = 0.0)

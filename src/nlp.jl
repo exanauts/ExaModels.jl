@@ -458,10 +458,33 @@ end
     )
 end
 
-@inline ExaCore(::Type{T}; backend = nothing, concrete = Val(false), nargs = Val(0), kwargs...) where {T<:AbstractFloat} =
-    _with_args(_make_exacore(concrete, T, backend; kwargs...), nargs)
-@inline ExaCore(; backend = nothing, concrete = Val(false), nargs = Val(0), kwargs...) =
-    ExaCore(default_T(backend); backend, concrete, nargs, kwargs...)
+# `concrete` chose between the immutable core and the deprecated mutable
+# wrapper. There is only the immutable one now, so `Val(true)` is accepted and
+# does nothing — that is the spelling every existing model and document uses,
+# and breaking all of them here would be gratuitous. `Val(false)` asked for the
+# core that no longer exists, so it says so rather than quietly handing back the
+# other one.
+@inline _concrete(::Nothing) = nothing
+@inline _concrete(::Val{true}) = nothing
+_concrete(::Val{false}) = throw(
+    ArgumentError(
+        "`concrete = Val(false)` selected the mutable `LegacyExaCore`, which has " *
+        "been removed. `ExaCore()` returns the immutable core — drop the keyword.",
+    ),
+)
+
+@inline function ExaCore(
+    ::Type{T}; backend = nothing, concrete = nothing, nargs = Val(0), kwargs...,
+) where {T<:AbstractFloat}
+    _concrete(concrete)
+    return _with_args(
+        _exa_core_from_x0(convert_array(zeros(T, 0), backend), backend; kwargs...), nargs,
+    )
+end
+@inline function ExaCore(; backend = nothing, concrete = nothing, nargs = Val(0), kwargs...)
+    _concrete(concrete)
+    return ExaCore(default_T(backend); backend, nargs, kwargs...)
+end
 
 """
     _with_args(core, ::Val{N})
@@ -484,12 +507,6 @@ is known statically and destructuring stays inferable.
 @inline _with_args(core, ::Val{0}) = core
 @inline _with_args(core, ::Val{N}) where {N} =
     (core, ntuple(k -> ArgSource{k}(), Val(N))...)
-@inline _make_exacore(::Val{true}, ::Type{T}, backend; kwargs...) where {T} =
-    _exa_core_from_x0(convert_array(zeros(T, 0), backend), backend; kwargs...)
-# Val{false} is overridden in deprecated.jl once LegacyExaCore is defined;
-# this fallback handles any other Val value by returning a concrete ExaCore.
-@inline _make_exacore(::Val, ::Type{T}, backend; kwargs...) where {T} =
-    _exa_core_from_x0(convert_array(zeros(T, 0), backend), backend; kwargs...)
 
 # `T` used to be recovered from the `VT <: AbstractVector{T}` bound, i.e. it was
 # `eltype(x0)` — NOT the requested float type.  The two differ on backends that
