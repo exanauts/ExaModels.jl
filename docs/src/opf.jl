@@ -205,7 +205,7 @@ Downloads.download(
     case,
 )
 
-# Then, we can model/sovle the problem.
+# Then, we can model/solve the problem.
 using PowerModels, ExaModels, NLPModelsIpopt
 
 m = ac_power_model(case)
