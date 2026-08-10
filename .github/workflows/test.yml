@@ -49,7 +49,7 @@ jobs:
         julia-version: ['1', 'lts']
         julia-arch: [x64]
         os: [ubuntu-latest]
-    runs-on: ['self-hosted']
+    runs-on: ['self-hosted', 'examodels']
     steps:
     - name: Checkout code
       uses: actions/checkout@v2
@@ -87,7 +87,7 @@ jobs:
         exclude:
           - julia-version: 'lts'
             backend: 'oneapi'
-    runs-on: ['self-hosted', 'gpu', '${{ matrix.backend }}']
+    runs-on: ['self-hosted', 'gpu', '${{ matrix.backend }}', 'examodels']
     continue-on-error: ${{ matrix.backend == 'oneapi' }}
     env:
       # oneAPI specific variables
@@ -137,7 +137,7 @@ jobs:
         julia-arch: [aarch64]
         os: [macos-latest]
         backend: ['metal']
-    runs-on: ['self-hosted', 'gpu', '${{ matrix.backend }}']
+    runs-on: ['self-hosted', 'gpu', '${{ matrix.backend }}', 'examodels']
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -170,7 +170,7 @@ jobs:
   bench-nothing:
     if: github.event_name == 'pull_request'
     needs: [github, cpu, gpu, metal]
-    runs-on: ['self-hosted']
+    runs-on: ['self-hosted', 'examodels']
     steps:
       - uses: actions/checkout@v4
       - uses: julia-actions/setup-julia@latest
@@ -195,7 +195,7 @@ jobs:
   bench-cuda:
     if: github.event_name == 'pull_request'
     needs: [github, cpu, gpu, metal]
-    runs-on: ['self-hosted', 'gpu', 'cuda']
+    runs-on: ['self-hosted', 'gpu', 'cuda', 'examodels']
     env:
       # opt out of MPS on the self-hosted runner
       CUDA_MPS_PIPE_DIRECTORY: /tmp/no-mps-${{ github.run_id }}
@@ -223,7 +223,7 @@ jobs:
   bench-amdgpu:
     if: github.event_name == 'pull_request'
     needs: [github, cpu, gpu, metal]
-    runs-on: ['self-hosted', 'gpu', 'amdgpu']
+    runs-on: ['self-hosted', 'gpu', 'amdgpu', 'examodels']
     steps:
       - uses: actions/checkout@v4
       - uses: julia-actions/setup-julia@latest
@@ -248,7 +248,7 @@ jobs:
   bench-oneapi:
     if: github.event_name == 'pull_request'
     needs: [github, cpu, gpu, metal]
-    runs-on: ['self-hosted', 'gpu', 'oneapi']
+    runs-on: ['self-hosted', 'gpu', 'oneapi', 'examodels']
     continue-on-error: true
     env:
       OverrideDefaultFP64Settings: '1'
@@ -315,9 +315,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - runner: '["self-hosted","Linux"]'
+          - runner: '["self-hosted","Linux","examodels"]'
             name: linux
-          - runner: '["self-hosted","macOS"]'
+          - runner: '["self-hosted","macOS","examodels"]'
             name: macos
     name: examodelsc (${{ matrix.name }})
     runs-on: ${{ fromJSON(matrix.runner) }}

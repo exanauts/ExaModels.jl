@@ -10,7 +10,7 @@ on:
 jobs:
   build:
     runs-on:
-      labels: cuda
+      labels: [self-hosted, gpu, cuda, examodels]
     steps:
       - uses: actions/checkout@v2
       - uses: julia-actions/setup-julia@latest
