@@ -2,7 +2,13 @@ module ArgumentTest
 
 using Test
 import ExaModels
-import ExaModels: arg, instantiate, ArgSource, ArgIndexed, ArgNode1, ArgNode2, _anyarg
+import NLPModels
+import ExaModels: instantiate, ArgSource, ArgIndexed, ArgNode1, ArgNode2, _anyarg
+using Test: @inferred
+
+# `ArgSource` placeholders come from `ExaCore(nargs = ...)`; the bare
+# constructor is equivalent and is what most of these unit tests use.
+const arg = ArgSource()
 
 # The argument object every test instantiates against.
 const A = (
@@ -62,8 +68,8 @@ function runtests()
             @test _anyarg(arg.inner.k) === Val(true)
 
             # Access paths stay in the type, mirroring DataIndexed.
-            @test arg.N isa ArgIndexed{ArgSource, :N}
-            @test arg.inner.k isa ArgIndexed{ArgIndexed{ArgSource, :inner}, :k}
+            @test arg.N isa ArgIndexed{ArgSource{1}, :N}
+            @test arg.inner.k isa ArgIndexed{ArgIndexed{ArgSource{1}, :inner}, :k}
         end
 
         @testset "basic algebra" begin
@@ -95,14 +101,27 @@ function runtests()
             @test instantiate(arg.nh * zeros(4), A) == zeros(4)
             @test instantiate(arg.nh * ones(3), A) == fill(2.0, 3)
             @test instantiate(ones(3) * arg.nh, A) == fill(2.0, 3)
-            @test instantiate(arg.v .+ 1, A) == [2.0, 3.0, 4.0]
-            @test instantiate(2 .* arg.v, A) == [2.0, 4.0, 6.0]
-            @test instantiate(arg.v .* arg.nh, A) == [2.0, 4.0, 6.0]
-            @test instantiate(sqrt.(arg.v .^ 2), A) == [1.0, 2.0, 3.0]
-
             # Concrete container, symbolic index.
             w = [10.0, 20.0, 30.0]
             @test instantiate(w[arg.nh], A) == 20.0
+        end
+
+        @testset "broadcasting is refused, and says what to do instead" begin
+            # Deliberately unsupported: an array you want elementwise arithmetic
+            # on is one you can build in the args function.  The refusal has to
+            # be explicit, because Base's `broadcastable(x) = collect(x)`
+            # fallback would otherwise wrap the node in a `collect` and fail
+            # later as something unrecognisable.
+            for bad in (() -> arg.v .+ 1, () -> 2 .* arg.v, () -> sqrt.(arg.v))
+                err = try
+                    bad()
+                    nothing
+                catch e
+                    e
+                end
+                @test err isa ArgumentError
+                @test occursin("args", err.msg)
+            end
         end
 
         @testset "ranges and constructors" begin
@@ -139,12 +158,53 @@ function runtests()
             @test (@inferred instantiate((arg.N, 3), A)) == (10, 3)
         end
 
+        @testset "placeholders come from the core, and are numbered" begin
+            # `nargs = Val(0)` is the default and must be exactly main's
+            # behaviour: the core alone, not a one-element tuple.
+            @test ExaModels.ExaCore(concrete = Val(true)) isa ExaModels.ExaCore
+            @test ExaModels.ExaCore(concrete = Val(true), nargs = Val(0)) isa ExaModels.ExaCore
+
+            c1, a1 = ExaModels.ExaCore(concrete = Val(true), nargs = Val(1))
+            @test c1 isa ExaModels.ExaCore
+            @test a1 === ArgSource{1}()
+            @test ArgSource() === ArgSource{1}()
+
+            c3, b1, b2, b3 = ExaModels.ExaCore(concrete = Val(true), nargs = Val(3))
+            @test (b1, b2, b3) === (ArgSource{1}(), ArgSource{2}(), ArgSource{3}())
+
+            # Each placeholder resolves to its own argument object, by position.
+            @test instantiate(b1.v, (v = 1,), (v = 2,), (v = 3,)) == 1
+            @test instantiate(b2.v, (v = 1,), (v = 2,), (v = 3,)) == 2
+            @test instantiate(b3.v, (v = 1,), (v = 2,), (v = 3,)) == 3
+
+            # How many values come back is known statically.
+            f() = ExaModels.ExaCore(concrete = Val(true), nargs = Val(2))
+            @test (@inferred f()) isa Tuple{ExaModels.ExaCore, ArgSource{1}, ArgSource{2}}
+        end
+
+        @testset "a model built against two argument objects" begin
+            c, sz, dat = ExaModels.ExaCore(concrete = Val(true), nargs = Val(2))
+            ExaModels.@add_var(c, y, sz.N; lvar = dat.lo, start = dat.v)
+            ExaModels.@add_obj(c, y[i]^2 for i in 1:sz.N)
+
+            m = ExaModels.ExaModel(c, (N = 3,), (lo = [-1.0, -2.0, -3.0], v = [4.0, 5.0, 6.0]))
+            @test m.meta.nvar == 3
+            @test m.meta.lvar == [-1.0, -2.0, -3.0]
+            @test m.meta.x0 == [4.0, 5.0, 6.0]
+            @test ExaModels.obj(m, m.meta.x0) == 77.0     # 16 + 25 + 36
+
+            # The two are independent: re-instantiate with different data only.
+            m2 = ExaModels.ExaModel(c, (N = 2,), (lo = [0.0, 0.0], v = [1.0, 2.0]))
+            @test m2.meta.nvar == 2
+            @test m2.meta.x0 == [1.0, 2.0]
+        end
+
         @testset "building a model against arg" begin
             # The stated use case: sizes and starting values supplied later.
             c = ExaModels.ExaCore(concrete = Val(true))
-            c, y = ExaModels.add_var(c, arg.N; start = arg.v)
-            c, _ = ExaModels.add_obj(c, y[i]^2 for i in 1:arg.N)
-            c, _ = ExaModels.add_con(c, y[i] - 2.0 for i in 1:arg.N; lcon = 0.0, ucon = 0.0)
+            ExaModels.@add_var(c, y, arg.N; start = arg.v)
+            ExaModels.@add_obj(c, y[i]^2 for i in 1:arg.N)
+            ExaModels.@add_con(c, y[i] - 2.0 for i in 1:arg.N; lcon = 0.0, ucon = 0.0)
 
             m = ExaModels.ExaModel(c, (N = 3, v = [1.0, 2.0, 3.0]))
             @test m.meta.nvar == 3
@@ -162,17 +222,95 @@ function runtests()
 
             # Bounds too, not just sizes and starts.
             cb = ExaModels.ExaCore(concrete = Val(true))
-            cb, _ = ExaModels.add_var(cb, arg.N; lvar = arg.lo, uvar = 0.0)
+            ExaModels.@add_var(cb, xb, arg.N; lvar = arg.lo, uvar = 0.0)
             mb = ExaModels.ExaModel(cb, (N = 2, lo = [-1.0, -2.0]))
             @test mb.meta.lvar == [-1.0, -2.0]
             @test mb.meta.uvar == [0.0, 0.0]
         end
 
+        @testset "an argument scalar inside an expression" begin
+            # The LuksanVlcek shape: a loop-invariant scalar computed from the
+            # size and used as a coefficient, so an argument node lands in the
+            # expression graph next to `Var` nodes.  Built twice from one
+            # source and compared, which is the only check that catches a
+            # sparsity pattern that is plausible but wrong.
+            function build(src)
+                h = 1 / (src.N + 1)
+                c = ExaModels.ExaCore(concrete = Val(true))
+                ExaModels.@add_var(c, x, src.N; start = 1.0)
+                ExaModels.@add_obj(c, h * (x[i] - 2.0)^2 for i in 1:src.N)
+                ExaModels.@add_con(c, h * x[i] + x[i] for i in 1:src.N;
+                                   lcon = 0.0, ucon = 1.0)
+                return c
+            end
+
+            # NOTE: the evaluation point must not be called `x`.  `build` is a
+            # nested function, so its `@add_var(c, x, ...)` binds `x` in the
+            # *enclosing* local of that name rather than to one of its own —
+            # silently turning the point vector into a `Variable`, and failing
+            # far away as `+(::UnitRange, ::Int)` inside `getindex`.
+            a = (N = 6,)
+            ref = ExaModels.ExaModel(build(a))
+            m = ExaModels.ExaModel(build(arg), a)
+            pt = collect(0.1:0.1:0.6)
+            mult = collect(0.6:-0.1:0.1)
+
+            @test m.meta.nvar == ref.meta.nvar
+            @test m.meta.nnzj == ref.meta.nnzj
+            @test m.meta.nnzh == ref.meta.nnzh
+            @test ExaModels.obj(m, pt) ≈ ExaModels.obj(ref, pt)
+            @test NLPModels.grad(m, pt) ≈ NLPModels.grad(ref, pt)
+            @test NLPModels.cons(m, pt) ≈ NLPModels.cons(ref, pt)
+            @test NLPModels.jac_structure(m) == NLPModels.jac_structure(ref)
+            @test NLPModels.jac_coord(m, pt) ≈ NLPModels.jac_coord(ref, pt)
+            @test NLPModels.hess_structure(m) == NLPModels.hess_structure(ref)
+            @test NLPModels.hess_coord(m, pt, mult) ≈ NLPModels.hess_coord(ref, pt, mult)
+
+            # The coefficient really is deferred: the same core at another size
+            # uses a different h, so a baked-in value would show as a wrong
+            # objective rather than a wrong shape.
+            a9 = (N = 9,)
+            m9 = ExaModels.ExaModel(build(arg), a9)
+            ref9 = ExaModels.ExaModel(build(a9))
+            pt9 = collect(0.1:0.1:0.9)
+            @test ExaModels.obj(m9, pt9) ≈ ExaModels.obj(ref9, pt9)
+            # h differs between the two sizes, so a baked-in coefficient would
+            # make these agree.
+            @test !isapprox(ExaModels.obj(m9, pt9), ExaModels.obj(ref, pt))
+        end
+
+        @testset "a second block's offset is deferred too" begin
+            # The first block's length is symbolic, so the second block's
+            # offset is — and that offset is baked into every `Var` index of
+            # the second block's expressions.
+            function build(src)
+                c = ExaModels.ExaCore(concrete = Val(true))
+                ExaModels.@add_var(c, x, src.N; start = 1.0)
+                ExaModels.@add_var(c, z, 3; start = 2.0)
+                ExaModels.@add_obj(c, z[j]^2 for j in 1:3)
+                ExaModels.@add_con(c, x[i] + z[1] for i in 1:src.N;
+                                   lcon = 0.0, ucon = Inf)
+                return c
+            end
+
+            for N in (4, 7)
+                a = (N = N,)
+                ref = ExaModels.ExaModel(build(a))
+                m = ExaModels.ExaModel(build(arg), a)
+                pt = collect(1.0:(N + 3)) ./ 10     # not `x`; see the note above
+                @test m.meta.nvar == ref.meta.nvar == N + 3
+                @test ExaModels.obj(m, pt) ≈ ExaModels.obj(ref, pt)
+                @test NLPModels.cons(m, pt) ≈ NLPModels.cons(ref, pt)
+                @test NLPModels.jac_structure(m) == NLPModels.jac_structure(ref)
+                @test NLPModels.jac_coord(m, pt) ≈ NLPModels.jac_coord(ref, pt)
+            end
+        end
+
         @testset "a core with no arg dependency is built exactly as before" begin
             build() = begin
                 c = ExaModels.ExaCore(concrete = Val(true))
-                c, x = ExaModels.add_var(c, 4; start = 1.0)
-                c, _ = ExaModels.add_obj(c, x[i]^2 for i in 1:4)
+                ExaModels.@add_var(c, x, 4; start = 1.0)
+                ExaModels.@add_obj(c, x[i]^2 for i in 1:4)
                 c
             end
             c = build()
@@ -196,7 +334,7 @@ function runtests()
             # `instantiate` is the identity on types it has no method for, so a
             # placeholder could otherwise survive into a model that looks built.
             c = ExaModels.ExaCore(concrete = Val(true))
-            c, _ = ExaModels.add_var(c, arg.N; start = 0.0)
+            ExaModels.@add_var(c, xa, arg.N; start = 0.0)
             # Smuggle a placeholder into a slot nothing walks.
             bad = ExaModels.ExaCore(c; tag = Ref(arg.N))
             @test_throws ArgumentError ExaModels.ExaModel(bad, (N = 2,))
@@ -208,7 +346,7 @@ function runtests()
         @testset "the deprecated core does not accept arg" begin
             lc = @test_logs (:warn,) match_mode = :any ExaModels.ExaCore()
             @test lc isa ExaModels.LegacyExaCore
-            ExaModels.add_var(lc, 2; start = 1.0)   # an empty core has no meta to build
+            ExaModels.@add_var(lc, xl, 2; start = 1.0)   # an empty core has no meta to build
 
             # Refused explicitly — not quietly built with placeholders still in.
             @test_throws ArgumentError ExaModels.ExaModel(lc, (N = 2,))
@@ -220,9 +358,9 @@ function runtests()
 
         @testset "per-iteration indexing of arg is rejected with a reason" begin
             c = ExaModels.ExaCore(concrete = Val(true))
-            c, y = ExaModels.add_var(c, arg.N; start = 0.0)
+            ExaModels.@add_var(c, y, arg.N; start = 0.0)
             err = try
-                ExaModels.add_con(c, y[i] - arg.b[i] for i in 1:arg.N; lcon = 0.0, ucon = 0.0)
+                ExaModels.@add_con(c, y[i] - arg.b[i] for i in 1:arg.N; lcon = 0.0, ucon = 0.0)
                 nothing
             catch e
                 e

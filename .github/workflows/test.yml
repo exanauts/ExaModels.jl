@@ -304,3 +304,49 @@ jobs:
           path: |
             benchmark/comparison.txt
             benchmark/pr_number.txt
+
+  # ExaModelsC compiles a model into a native shared library with juliac, so it
+  # is platform-specific in a way the rest of the package is not, and mirrors
+  # the AOT compilation test's treatment: run wherever AOT runs, and not on GPU
+  # runners, where it is not expected to work yet.
+  examodelsc:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: '["self-hosted","Linux"]'
+            name: linux
+          - runner: '["self-hosted","macOS"]'
+            name: macos
+          - runner: '["windows-latest"]'
+            name: windows
+    name: examodelsc (${{ matrix.name }})
+    runs-on: ${{ fromJSON(matrix.runner) }}
+    steps:
+      - uses: actions/checkout@v4
+      # The Python consumer is an unrelated package and not a Julia dependency;
+      # the test finds it through CNLPMODELS_PY and skips the leg if absent.
+      - uses: actions/checkout@v4
+        with:
+          repository: MadNLP/cnlpmodels-py
+          ref: master
+          path: cnlpmodels-py
+      - uses: julia-actions/setup-julia@latest
+        with:
+          version: '1'
+      - uses: julia-actions/cache@v3
+      - uses: actions/setup-python@v5
+        continue-on-error: true
+        with:
+          python-version: '3.x'
+      - name: Install numpy
+        continue-on-error: true
+        run: python -m pip install --upgrade numpy
+      - name: Run ExaModelsC tests
+        env:
+          CNLPMODELS_PY: ${{ github.workspace }}/cnlpmodels-py/src
+        run: |
+          julia --startup-file=no --color=yes --project=ExaModelsC/test -e '
+            using Pkg
+            Pkg.instantiate()
+            include("ExaModelsC/test/runtests.jl")'

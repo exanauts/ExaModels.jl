@@ -1,5 +1,3 @@
-# CNLPModels is unregistered; dev it from a local checkout before running:
-#   julia --project=ExaModelsC/test -e 'using Pkg; Pkg.develop(path="/path/to/CNLPModels.jl")'
 [deps]
 CNLPModels = "e8ddee8d-ce21-405b-9ec9-45cea2c1b284"
 ExaModels = "1037b233-b668-4ce9-9b63-f9f681f55dd2"
@@ -11,3 +9,8 @@ Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 [sources]
 ExaModels = {path = "../.."}
 ExaModelsC = {path = ".."}
+# CNLPModels is unregistered, so it is resolved straight from its repository.
+# The Python consumer (https://github.com/MadNLP/cnlpmodels-py) is not a Julia
+# dependency at all — the test finds it through CNLPMODELS_PY and skips when it
+# is absent.
+CNLPModels = {url = "https://github.com/MadNLP/CNLPModels.jl", rev = "master"}

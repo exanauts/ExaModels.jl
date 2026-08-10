@@ -11,6 +11,7 @@ if !(@isdefined _PAGES)
         "Tutorial" => [
             "guide.md",
             "patterns.md",
+            "recipe.md",
             "constraint_augmentation.md",
             "performance.md",
             "gpu.md",
@@ -32,6 +33,7 @@ end
 if !(@isdefined _JL_FILENAMES)
     const _JL_FILENAMES = [
         "guide.jl",
+        "recipe.jl",
         "jump.jl",
         "quad.jl",
         "distillation.jl",

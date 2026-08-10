@@ -1,18 +1,52 @@
 # ── Symbolic build-time arguments ─────────────────────────────────────────────
 #
-# `ArgSource` mirrors [`DataSource`](@ref), one level up in the pipeline.
+# WHY THIS EXISTS
 #
-#   DataSource  — a placeholder for one *data record*, resolved per iteration
-#                 when the SIMD kernel runs.  Lives inside the expression graph.
-#   ArgSource   — a placeholder for the *model arguments* (sizes, initial
-#                 values, bounds), resolved once when `ExaModel(core)` is built.
-#                 Lives in the slots that the expression graph is built *from*.
+# An `ExaCore` is normally built from data already in hand, so the model and its
+# data are finished together and cannot be separated afterwards.  That is fine
+# until you want to compile the model ahead of time.
 #
-# The two share a shape: a sentinel singleton whose field/index access returns a
-# node encoding the access path in a type parameter, so the lookup compiles away.
-# They differ in what they are called with — `DataSource` is evaluated as
-# `node(i, x, θ)` on every kernel iteration, `ArgSource` as
-# `instantiate(node, arg)` exactly once.
+# Ahead-of-time compilation needs the opposite arrangement: the *structure* has
+# to become code, while the *data* stays a run-time input.  Nothing stopped a
+# user writing their own builder and pointing `juliac` at it, but
+# `--trim=safe` requires the whole call graph to resolve statically, and which
+# modelling constructs survive that is not something a model author can see
+# while writing.  The usual way to find out is to compile, read a trimming
+# error naming an inferred type somewhere in the machinery, and guess.
+#
+# A recipe removes the question.  Writing a model against `ArgSource`
+# placeholders *is* the separation that compilation requires: what stays in the
+# core becomes code, what goes into the arguments crosses the boundary as data.
+# A recipe that builds and instantiates is on the compilation pathway, and the
+# author never reasons about trimming.  `ExaModelsC` takes it from there —
+# shared library, C ABI, consumed by CNLPModels.jl or cnlpmodels.
+#
+# The same mechanism happens to make one core reusable at any size, which is
+# convenient, but it is a consequence rather than the motivation.
+#
+# ── HOW IT RELATES TO DataSource ──
+#
+# `ArgSource` borrows `DataSource`'s *encoding* — a sentinel whose field/index
+# access returns a node carrying the access path in a type parameter, so the
+# lookup compiles away — but the two are different ideas, and it is worth being
+# precise about which is which.
+#
+#   DataSource  — the PARAMETERIZATION of an algebraic pattern.  One expression
+#                 tree stands for many constraint rows or objective terms, and
+#                 the data point is what that tree is parameterized by: it is
+#                 bound afresh on every kernel iteration, as `node(i, x, θ)`.
+#                 Nothing is missing from such a tree; it is complete, and being
+#                 evaluated repeatedly is the whole point.
+#
+#   ArgSource   — a genuine PLACEHOLDER.  It stands for a quantity not yet known
+#                 while the model is being written — a size, a starting point, a
+#                 bound, the set a generator runs over.  It is substituted once,
+#                 by `instantiate(node, arg)`, and is gone afterwards: nothing
+#                 ever evaluates it.  It lives in the slots the expression graph
+#                 is built *from*, not inside the graph.
+#
+# So a core carrying `DataSource` nodes is a finished model; a core carrying
+# `ArgSource` nodes is a recipe for one.
 #
 # This lets an `ExaCore` be written against arguments that are not yet known:
 #
@@ -26,8 +60,8 @@
     AbstractArgNode
 
 Root type for the symbolic *argument* expression tree.  Nodes are built by
-ordinary Julia operations on [`arg`](@ref) (`arg.N`, `length(arg.v)`,
-`arg.nh * zeros(10)`, `1:arg.N`, `arg.v .+ 1`, …) and are resolved to concrete
+ordinary Julia operations on an [`ArgSource`](@ref) (`arg.N`, `length(arg.v)`,
+`arg.nh * zeros(10)`, `1:arg.N`, …) and are resolved to concrete
 values by [`instantiate`](@ref).
 """
 abstract type AbstractArgNode end
@@ -36,19 +70,19 @@ abstract type AbstractArgNode end
     ArgSource <: AbstractArgNode
 
 Sentinel node standing for the whole argument object supplied at instantiation
-time.  Field access or indexing returns an [`ArgIndexed`](@ref) node.  The
-exported singleton [`arg`](@ref) is the one instance ever needed.
-"""
-struct ArgSource <: AbstractArgNode end
+time.  Field access or indexing returns an [`ArgIndexed`](@ref) node.
 
-"""
-    arg
+Create one where you need it and give it whatever name reads best — it carries
+no state, so every instance is interchangeable:
 
-The singleton [`ArgSource`](@ref).  Write `arg.N`, `arg.v`, `arg[2]` in model
-building code to refer to fields of the arguments that will be supplied at
-instantiation time.
+```julia
+arg = ArgSource()
+@add_var(c, x, arg.N; start = arg.x0)
+```
 """
-const arg = ArgSource()
+struct ArgSource{K} <: AbstractArgNode end
+
+@inline ArgSource() = ArgSource{1}()
 
 """
     ArgIndexed{I, J} <: AbstractArgNode
@@ -105,17 +139,6 @@ struct ArgCall{F, A <: Tuple} <: AbstractArgNode
     args::A
 end
 
-"""
-    ArgBroadcasted{F, A} <: AbstractArgNode
-
-A deferred broadcast `f.(args...)`, produced when a fused broadcast expression
-contains an argument node (e.g. `arg.v .+ 1`).
-"""
-struct ArgBroadcasted{F, A} <: AbstractArgNode
-    f::F
-    args::A
-end
-
 # ── Access path construction ──────────────────────────────────────────────────
 #
 # Defined on the abstract type so every node stays symbolic under further
@@ -129,10 +152,12 @@ end
 # ── Instantiation ─────────────────────────────────────────────────────────────
 
 """
-    instantiate(x, arg)
+    instantiate(x, args...)
 
 Resolve every [`AbstractArgNode`](@ref) inside `x` against the concrete
-argument object `arg`, and return the resulting value.
+argument objects `args`, and return the resulting value.  An
+[`ArgSource`](@ref)`{K}` resolves to `args[K]`, so the order here is the order
+the placeholders came out of [`ExaCore`](@ref).
 
 `instantiate` is the identity on anything that carries no `ArgSource`
 dependency — including containers, which are returned unchanged (`===`) rather
@@ -141,6 +166,8 @@ than rebuilt — so it is safe to apply to every slot of a model unconditionally
 ## Example
 ```jldoctest
 julia> using ExaModels
+
+julia> arg = ArgSource();
 
 julia> ExaModels.instantiate(arg.nh * ones(3), (nh = 2,))
 3-element Vector{Float64}:
@@ -154,20 +181,18 @@ julia> ExaModels.instantiate(x, (nh = 2,)) === x     # identity, no arg dependen
 true
 ```
 """
-@inline instantiate(x, a) = x
-@inline instantiate(::ArgSource, a) = a
-@inline instantiate(n::ArgIndexed{I, J}, a) where {I, J} =
-    _arg_access(instantiate(getfield(n, :inner), a), J)
-@inline instantiate(n::ArgNode1, a) =
-    getfield(n, :f)(instantiate(getfield(n, :inner), a))
-@inline instantiate(n::ArgNode2, a) = getfield(n, :f)(
-    instantiate(getfield(n, :inner1), a),
-    instantiate(getfield(n, :inner2), a),
+@inline instantiate(x, a...) = x
+@inline instantiate(::ArgSource{K}, a...) where {K} = a[K]
+@inline instantiate(n::ArgIndexed{I, J}, a...) where {I, J} =
+    _arg_access(instantiate(getfield(n, :inner), a...), J)
+@inline instantiate(n::ArgNode1, a...) =
+    getfield(n, :f)(instantiate(getfield(n, :inner), a...))
+@inline instantiate(n::ArgNode2, a...) = getfield(n, :f)(
+    instantiate(getfield(n, :inner1), a...),
+    instantiate(getfield(n, :inner2), a...),
 )
-@inline instantiate(n::ArgCall, a) =
-    getfield(n, :f)(map(x -> instantiate(x, a), getfield(n, :args))...)
-@inline instantiate(n::ArgBroadcasted, a) =
-    broadcast(getfield(n, :f), map(x -> instantiate(x, a), getfield(n, :args))...)
+@inline instantiate(n::ArgCall, a...) =
+    getfield(n, :f)(map(x -> instantiate(x, a...), getfield(n, :args))...)
 
 @inline _arg_access(x, j::Symbol) = getproperty(x, j)
 @inline _arg_access(x, j) = getindex(x, j)
@@ -179,8 +204,8 @@ true
 # that looks fully instantiated and is not.  Mapping costs nothing observable:
 # an immutable tuple rebuilds `===` to itself, and each element is passed
 # through by identity when it has no dependency of its own.
-@inline instantiate(t::Tuple, a) = map(x -> instantiate(x, a), t)
-@inline instantiate(t::NamedTuple, a) = map(x -> instantiate(x, a), t)
+@inline instantiate(t::Tuple, a...) = map(x -> instantiate(x, a...), t)
+@inline instantiate(t::NamedTuple, a...) = map(x -> instantiate(x, a...), t)
 
 """
     _anyarg(xs...)
@@ -270,27 +295,21 @@ end
 
 # ── Broadcasting ──────────────────────────────────────────────────────────────
 #
-# Any fused broadcast containing an argument node becomes a single deferred
-# `ArgBroadcasted`.  `Broadcast.flatten` collapses the nesting first, so the
-# stored args are leaves and `instantiate` needs no Broadcasted handling.
-
-struct ArgBroadcastStyle <: Base.BroadcastStyle end
-Base.BroadcastStyle(::Type{<:AbstractArgNode}) = ArgBroadcastStyle()
-Base.BroadcastStyle(s::ArgBroadcastStyle, ::Base.BroadcastStyle) = s
-Base.BroadcastStyle(s::ArgBroadcastStyle, ::ArgBroadcastStyle) = s
-
-# An argument node enters a broadcast as itself.  Without this the fallback
-# `broadcastable(x) = collect(x)` would fire and wrap it in a `collect` node.
-Base.broadcastable(a::AbstractArgNode) = a
-
-# Skip axis computation: the shapes are not known until instantiation, and the
-# result is built by `broadcast` there anyway.
-Base.Broadcast.instantiate(bc::Base.Broadcast.Broadcasted{ArgBroadcastStyle}) = bc
-
-function Base.copy(bc::Base.Broadcast.Broadcasted{ArgBroadcastStyle})
-    flat = Base.Broadcast.flatten(bc)
-    return ArgBroadcasted(flat.f, flat.args)
-end
+# Deliberately unsupported.  A deferred broadcast is implementable — it needs a
+# `BroadcastStyle`, a `broadcastable`, and an override of Broadcast's own
+# `instantiate` to skip axis computation — but nothing needs it: an array you
+# want elementwise arithmetic on is an array you can build in the function that
+# produces the arguments.  Refused explicitly, because the fallback
+# `broadcastable(x) = collect(x)` would otherwise wrap the node in a `collect`
+# and fail later with something unrecognisable.
+Base.broadcastable(::AbstractArgNode) = throw(
+    ArgumentError(
+        "cannot broadcast over an argument placeholder. Compute the array in " *
+        "the function that builds your arguments and pass it in — e.g. " *
+        "`myargs(N) = (; N = N, scaled = 2 .* v)`, then refer to `arg.scaled` " *
+        "— rather than writing the elementwise operation against `arg`.",
+    ),
+)
 
 # ── Display ───────────────────────────────────────────────────────────────────
 
@@ -316,8 +335,6 @@ function _arg_string(n::ArgNode2)
 end
 _arg_string(n::ArgCall) =
     "$(_arg_fname(getfield(n, :f)))($(join(map(_arg_string, getfield(n, :args)), ", ")))"
-_arg_string(n::ArgBroadcasted) =
-    "$(_arg_fname(getfield(n, :f))).($(join(map(_arg_string, getfield(n, :args)), ", ")))"
 
 _arg_fname(f) = string(f)
 _arg_fname(f::Base.Fix1) = "$(string(f.f))($(string(f.x)), ·)"

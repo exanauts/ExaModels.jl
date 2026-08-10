@@ -145,6 +145,34 @@ struct ParameterNode{I} <: AbstractNode
 end
 
 """
+    ArgLeaf{A} <: AbstractNode
+
+A scalar drawn from the model arguments, sitting inside the expression graph —
+`h = 1 / (arg.N + 1)` used as a coefficient, or a variable offset that is not
+known until the core is instantiated.
+
+It borrows [`DataIndexed`](@ref)'s handling without being the same thing.  A
+`DataIndexed` is a *parameter* of the pattern — its value arrives on every
+kernel iteration, and the tree is complete without it.  An `ArgLeaf` is a
+placeholder that will be gone: it is substituted once at instantiation, leaving
+the plain `Real` a core built with concrete sizes would have had.
+
+What the two share is that neither has a value while sparsity is being
+discovered.  That discovery evaluates the graph at [`Identity`](@ref) against a
+`NaNSource`, and structure does not depend on values, so both answer `NaN`
+there — which is why this leaf needs no separate treatment in the probe.
+
+Wrapping happens automatically: an [`AbstractArgNode`](@ref) combined with a
+graph node through any registered operation becomes an `ArgLeaf` child of the
+resulting [`Node2`](@ref).  Arithmetic *between* argument nodes stays in the
+argument world and never reaches the graph.
+"""
+struct ArgLeaf{A} <: AbstractNode
+    a::A
+end
+
+
+"""
     DataSource <: AbstractNode
 
 Sentinel node used as the root of a parameter (data) array.  Indexing or
@@ -240,6 +268,11 @@ struct Identity end
 
 @inline (v::DataIndexed)(i::Identity, x, θ) = eltype(θ)(NaN)
 @inline (v::DataSource)(i::Identity, x, θ) = eltype(θ)(NaN)
+
+# An argument scalar is unknown at build time in exactly the sense a data field
+# is, and answers the sparsity probe identically.
+@inline (v::ArgLeaf)(i, x, θ) = eltype(θ)(NaN)
+@inline (v::ArgLeaf)(i::Identity, x, θ) = eltype(θ)(NaN)
 
 """
     AdjointNode1{F, T, I} <: AbstractAdjointNode
@@ -495,7 +528,7 @@ end
         "cannot index an `arg` expression with an iteration index: `arg` is " *
         "resolved once when the model is instantiated, so it cannot vary per " *
         "row. Pass per-iteration data through the generator instead — " *
-        "`add_con(core, x[d.i] - d.b for d in data)` — and keep `arg` for " *
+        "`@add_con(core, x[d.i] - d.b for d in data)` — and keep `arg` for " *
         "sizes, starting points and bounds.",
     ),
 )
@@ -509,27 +542,30 @@ end
 # (`Constant`, `Null`, `VarSource`, `DataSource`, …) fall through to the generic
 # identity in argument.jl.
 
-@inline function instantiate(n::Var{I}, a) where {I}
-    i = instantiate(n.i, a)
+@inline function instantiate(n::Var{I}, a...) where {I}
+    i = instantiate(n.i, a...)
     return Var{typeof(i)}(i)
 end
-@inline function instantiate(n::ParameterNode{I}, a) where {I}
-    i = instantiate(n.i, a)
+@inline function instantiate(n::ParameterNode{I}, a...) where {I}
+    i = instantiate(n.i, a...)
     return ParameterNode{typeof(i)}(i)
 end
-@inline function instantiate(n::Node1{F,I}, a) where {F,I}
-    i = instantiate(n.inner, a)
+@inline function instantiate(n::Node1{F,I}, a...) where {F,I}
+    i = instantiate(n.inner, a...)
     return Node1{F,typeof(i)}(i)
 end
-@inline function instantiate(n::Node2{F,I1,I2}, a) where {F,I1,I2}
-    i1 = instantiate(n.inner1, a)
-    i2 = instantiate(n.inner2, a)
+@inline function instantiate(n::Node2{F,I1,I2}, a...) where {F,I1,I2}
+    i1 = instantiate(n.inner1, a...)
+    i2 = instantiate(n.inner2, a...)
     return Node2{F,typeof(i1),typeof(i2)}(i1, i2)
 end
-@inline instantiate(n::SumNode, a) = SumNode(instantiate(n.inners, a))
-@inline instantiate(n::ProdNode, a) = ProdNode(instantiate(n.inners, a))
+@inline instantiate(n::SumNode, a...) = SumNode(instantiate(n.inners, a...))
+@inline instantiate(n::ProdNode, a...) = ProdNode(instantiate(n.inners, a...))
 # `DataIndexed` overrides `getproperty` to keep building access paths, so its
 # own field has to be read with `getfield`.
-@inline instantiate(n::DataIndexed{I,J}, a) where {I,J} =
-    DataIndexed(instantiate(getfield(n, :inner), a), J)
-@inline instantiate(p::Pair, a) = instantiate(p.first, a) => instantiate(p.second, a)
+@inline instantiate(n::DataIndexed{I,J}, a...) where {I,J} =
+    DataIndexed(instantiate(getfield(n, :inner), a...), J)
+@inline instantiate(p::Pair, a...) = instantiate(p.first, a...) => instantiate(p.second, a...)
+# An `ArgLeaf` does not survive instantiation: it *becomes* the scalar, leaving
+# a graph indistinguishable from one built with concrete sizes.
+@inline instantiate(n::ArgLeaf, a...) = instantiate(getfield(n, :a), a...)

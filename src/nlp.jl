@@ -311,7 +311,7 @@ An ExaCore
 # parameter, and `VT` is no longer constrained to `AbstractVector{T}`.  Nothing
 # changes for an ordinary core — every one of them resolves to `Int` and to the
 # backend's vector type exactly as before.  The looseness exists so that a core
-# built against [`arg`](@ref) can hold deferred values (`nvar = arg.N`,
+# built against an [`ArgSource`](@ref) can hold deferred values (`nvar = arg.N`,
 # `x0 = <pending append>`) until `ExaModel(core, argvals)` instantiates them.
 #
 # The new parameters are appended, so existing partial parameterizations
@@ -458,9 +458,32 @@ end
     )
 end
 
-@inline ExaCore(::Type{T}; backend = nothing, concrete = Val(false), kwargs...) where {T<:AbstractFloat} =
-    _make_exacore(concrete, T, backend; kwargs...)
-@inline ExaCore(; backend = nothing, concrete = Val(false), kwargs...) = ExaCore(default_T(backend); backend, concrete, kwargs...)
+@inline ExaCore(::Type{T}; backend = nothing, concrete = Val(false), nargs = Val(0), kwargs...) where {T<:AbstractFloat} =
+    _with_args(_make_exacore(concrete, T, backend; kwargs...), nargs)
+@inline ExaCore(; backend = nothing, concrete = Val(false), nargs = Val(0), kwargs...) =
+    ExaCore(default_T(backend); backend, concrete, nargs, kwargs...)
+
+"""
+    _with_args(core, ::Val{N})
+
+The core alone when `N == 0`, or the core followed by `N` distinct
+[`ArgSource`](@ref) placeholders:
+
+```julia
+core                = ExaCore()                   # Val(0) — unchanged behaviour
+core, N             = ExaCore(nargs = Val(1))
+core, N, data       = ExaCore(nargs = Val(2))
+```
+
+`N == 0` *is* the "not a recipe" case, so a separate boolean would say nothing
+this does not.  The placeholders are numbered in the order returned, and
+`ExaModel(core, a...)` consumes the concrete objects in that same order.
+`ntuple` over a `Val` keeps the arity in the type, so how many values come back
+is known statically and destructuring stays inferable.
+"""
+@inline _with_args(core, ::Val{0}) = core
+@inline _with_args(core, ::Val{N}) where {N} =
+    (core, ntuple(k -> ArgSource{k}(), Val(N))...)
 @inline _make_exacore(::Val{true}, ::Type{T}, backend; kwargs...) where {T} =
     _exa_core_from_x0(convert_array(zeros(T, 0), backend), backend; kwargs...)
 # Val{false} is overridden in deprecated.jl once LegacyExaCore is defined;
@@ -489,59 +512,59 @@ end
 # rather than re-derived: it is the float type the core was created with, and
 # instantiating changes sizes, never the element type.
 
-function instantiate(c::ExaCore{T}, a) where {T}
+function instantiate(c::ExaCore{T}, a...) where {T}
     return ExaCore{T}(
         c.name,
         c.backend,
-        instantiate(c.var, a),
-        instantiate(c.par, a),
-        instantiate(c.obj, a),
-        instantiate(c.cons, a),
-        instantiate(c.nvar, a),
-        instantiate(c.npar, a),
-        instantiate(c.ncon, a),
-        instantiate(c.nconaug, a),
-        instantiate(c.nobj, a),
-        instantiate(c.nnzc, a),
-        instantiate(c.nnzg, a),
-        instantiate(c.nnzj, a),
-        instantiate(c.nnzh, a),
-        instantiate(c.x0, a),
-        instantiate(c.θ, a),
-        instantiate(c.lvar, a),
-        instantiate(c.uvar, a),
-        instantiate(c.y0, a),
-        instantiate(c.lcon, a),
-        instantiate(c.ucon, a),
+        instantiate(c.var, a...),
+        instantiate(c.par, a...),
+        instantiate(c.obj, a...),
+        instantiate(c.cons, a...),
+        instantiate(c.nvar, a...),
+        instantiate(c.npar, a...),
+        instantiate(c.ncon, a...),
+        instantiate(c.nconaug, a...),
+        instantiate(c.nobj, a...),
+        instantiate(c.nnzc, a...),
+        instantiate(c.nnzg, a...),
+        instantiate(c.nnzj, a...),
+        instantiate(c.nnzh, a...),
+        instantiate(c.x0, a...),
+        instantiate(c.θ, a...),
+        instantiate(c.lvar, a...),
+        instantiate(c.uvar, a...),
+        instantiate(c.y0, a...),
+        instantiate(c.lcon, a...),
+        instantiate(c.ucon, a...),
         c.minimize,
-        instantiate(c.tag, a),
-        instantiate(c.refs, a),
-        instantiate(c.oracles, a),
-        instantiate(c.scalar_oracles, a),
-        instantiate(c.evals, a),
+        instantiate(c.tag, a...),
+        instantiate(c.refs, a...),
+        instantiate(c.oracles, a...),
+        instantiate(c.scalar_oracles, a...),
+        instantiate(c.evals, a...),
     )
 end
 
-instantiate(v::Variable, a) =
-    Variable(instantiate(v.size, a), instantiate(v.length, a), instantiate(v.offset, a),
-             v.name, instantiate(v.tag, a))
-instantiate(p::Parameter, a) =
-    Parameter(instantiate(p.size, a), instantiate(p.length, a), instantiate(p.offset, a),
-              instantiate(p.tag, a))
-instantiate(e::Expression, a) =
-    Expression(instantiate(e.size, a), instantiate(e.length, a), instantiate(e.f, a),
-               instantiate(e.iter, a), instantiate(e.tag, a))
-instantiate(o::Objective, a) = Objective(instantiate(o.f, a), instantiate(o.itr, a))
-instantiate(c::Constraint, a) =
-    Constraint(instantiate(c.f, a), instantiate(c.itr, a), instantiate(c.offset, a),
-               instantiate(c.size, a), instantiate(c.tag, a))
-instantiate(c::ConstraintAugmentation, a) =
-    ConstraintAugmentation(instantiate(c.f, a), instantiate(c.itr, a),
-                           instantiate(c.oa, a), instantiate(c.dims, a),
-                           instantiate(c.tag, a))
-instantiate(f::SIMDFunction, a) =
-    SIMDFunction(instantiate(f.f, a), f.comp1, f.comp2,
-                 instantiate(f.o0, a), instantiate(f.o1, a), instantiate(f.o2, a),
+instantiate(v::Variable, a...) =
+    Variable(instantiate(v.size, a...), instantiate(v.length, a...), instantiate(v.offset, a...),
+             v.name, instantiate(v.tag, a...))
+instantiate(p::Parameter, a...) =
+    Parameter(instantiate(p.size, a...), instantiate(p.length, a...), instantiate(p.offset, a...),
+              instantiate(p.tag, a...))
+instantiate(e::Expression, a...) =
+    Expression(instantiate(e.size, a...), instantiate(e.length, a...), instantiate(e.f, a...),
+               instantiate(e.iter, a...), instantiate(e.tag, a...))
+instantiate(o::Objective, a...) = Objective(instantiate(o.f, a...), instantiate(o.itr, a...))
+instantiate(c::Constraint, a...) =
+    Constraint(instantiate(c.f, a...), instantiate(c.itr, a...), instantiate(c.offset, a...),
+               instantiate(c.size, a...), instantiate(c.tag, a...))
+instantiate(c::ConstraintAugmentation, a...) =
+    ConstraintAugmentation(instantiate(c.f, a...), instantiate(c.itr, a...),
+                           instantiate(c.oa, a...), instantiate(c.dims, a...),
+                           instantiate(c.tag, a...))
+instantiate(f::SIMDFunction, a...) =
+    SIMDFunction(instantiate(f.f, a...), f.comp1, f.comp2,
+                 instantiate(f.o0, a...), instantiate(f.o1, a...), instantiate(f.o2, a...),
                  f.o1step, f.o2step)
 
 # `instantiate` is the identity on anything it has no method for, which is what
@@ -670,6 +693,7 @@ julia> result = ipopt(m; print_level=0)    # solve the problem
 """
 # No-oracle path: always returns ExaModel (type-stable for juliac --trim=safe).
 function ExaModel(c::ExaCore{T, VT, B, S, V, P, O, C, R, Tuple{}, Tuple{}, Tuple{}}; prod = false, kwargs...) where {T, VT, B, S, V, P, O, C, R}
+    _recipe_check(c)
     return ExaModel(
         c.name,
         c.var,
@@ -699,15 +723,16 @@ end
 
 # Oracle path: always returns ExaModelWithOracle (type-stable for juliac --trim=safe).
 function ExaModel(c::ExaCore; prod = false, kwargs...)
+    _recipe_check(c)
     return _build_with_oracle(c; prod, kwargs...)
 end
 
 """
     ExaModel(core, argvals; kwargs...)
 
-Instantiate a `core` that was built against [`arg`](@ref) placeholders, then
-build the model from it.  `argvals` is any object whose fields the core's
-`arg.…` expressions name — typically a `NamedTuple`.
+Instantiate a `core` that was built against [`ArgSource`](@ref) placeholders, then
+build the model from it.  One `argvals` is supplied per placeholder the core
+was built with, in the order [`ExaCore`](@ref) returned them.
 
 `argvals = nothing` (the default) is the ordinary path and does nothing at all:
 a core with no argument dependency is built exactly as before.
@@ -716,20 +741,35 @@ a core with no argument dependency is built exactly as before.
 ```jldoctest
 julia> using ExaModels
 
-julia> c = ExaCore(concrete = Val(true));
+julia> c, N, v = ExaCore(concrete = Val(true), nargs = Val(2));
 
-julia> c, x = add_var(c, arg.N; start = arg.v);
+julia> @add_var(c, x, N; start = v);
 
-julia> m = ExaModel(c, (N = 3, v = [1.0, 2.0, 3.0]));
+julia> m = ExaModel(c, 3, [1.0, 2.0, 3.0]);
 
 julia> m.meta.nvar, m.meta.x0
 (3, [1.0, 2.0, 3.0])
 ```
 """
-function ExaModel(c::ExaCore, a; check = Val(true), kwargs...)
-    return ExaModel(_assert_instantiated(check, instantiate(c, a)); kwargs...)
+function ExaModel(c::ExaCore, a, as...; check = Val(true), kwargs...)
+    return ExaModel(_assert_instantiated(check, instantiate(c, a, as...)); kwargs...)
 end
 ExaModel(c::ExaCore, ::Nothing; kwargs...) = ExaModel(c; kwargs...)
+
+# A core built against `ArgSource` placeholders is not a model yet.  Reaching
+# `NLPModelMeta` with a deferred `nvar` fails with a `MethodError` naming a
+# nested node type, which says nothing about the actual mistake.  The check is
+# by dispatch on a `Val`, so it costs an ordinary core nothing.
+@inline _reject_recipe(::Val{false}) = nothing
+_reject_recipe(::Val{true}) = throw(
+    ArgumentError(
+        "this core was built against `ArgSource` placeholders, so it is a " *
+        "recipe rather than a model — supply one value per placeholder, in " *
+        "the order `ExaCore` returned them: `ExaModel(core, 1000)`.",
+    ),
+)
+@inline _recipe_check(c) =
+    _reject_recipe(_anyarg(c.nvar, c.ncon, c.npar, c.x0, c.θ, c.lvar, c.uvar, c.y0, c.lcon, c.ucon))
 
 build_extension(c::ExaCore; kwargs...) = nothing
 
@@ -741,8 +781,19 @@ end
 # is stored as a plain Int64 child — giving concrete type Node2{+, I, Int64}.
 # Going through _add_node_real would wrap the runtime offset in Val(d2::Int64),
 # which is type-unstable and breaks juliac --trim=safe.
-@inline _indexed_var(i::I, o::Union{Int,AbstractArgNode}) where {I<:AbstractNode} =
-    Var(Node2(+, i, o))
+@inline _indexed_var(i::I, o::Int) where {I<:AbstractNode} = Var(Node2(+, i, o))
+# A deferred offset enters the graph the same way any argument scalar does, so
+# that a graph carrying one is still evaluable (it answers the sparsity probe)
+# rather than a shape nothing can walk.
+@inline _indexed_var(i::I, o::AbstractArgNode) where {I<:AbstractNode} =
+    Var(Node2(+, i, ArgLeaf(o)))
+
+# A symbolic *index* — `x[n]` with `n = arg.N`, which the boundary cases of the
+# LuksanVlcek problems are written with.  Index and offset are folded together
+# in the argument world and enter as a single leaf, so instantiation yields
+# `Var{Int}`: byte-identical to what a concrete build produces, rather than a
+# `Var` wrapping an arithmetic node that would be re-evaluated per row.
+@inline _indexed_var(i::AbstractArgNode, o) = Var(ArgLeaf(i + o))
 @inline _indexed_var(i, o) = Var(i + o)
 @inline function Base.getindex(v::V, is...) where {V<:AbstractVariable}
     @assert(length(is) == length(v.size), "Variable index dimension error")
@@ -798,8 +849,18 @@ _bound_check(sizes, is) = nothing
 _bound_check(sizes, is::Tuple{}) = nothing
 
 # A symbolic extent cannot be checked until it is instantiated; the check that
-# matters then happens on the instantiated core.
+# matters then happens on the instantiated core.  Likewise a symbolic index:
+# neither side is known here.
 function __bound_check(a::AbstractArgNode, b)
+    return nothing
+end
+function __bound_check(a, b::AbstractArgNode)
+    return nothing
+end
+function __bound_check(a::AbstractArgNode, b::AbstractArgNode)
+    return nothing
+end
+function _bound_check(sizes, i::AbstractArgNode)
     return nothing
 end
 function __bound_check(a::I, b::I) where {I<:Integer}
@@ -867,6 +928,15 @@ end
 # A generator is arg-dependent when the thing it iterates is; look through it
 # rather than at it.
 @inline _anyarg(g::Base.Generator, xs...) = _anyarg(g.iter, xs...)
+
+# `start = (f(i) for i in 1:arg.N)` — the body is untouched (it runs per element
+# once the iterator is concrete); only what it iterates is deferred.
+@inline instantiate(g::Base.Generator, a...) = Base.Generator(g.f, instantiate(g.iter, a...))
+
+# A product iterator is arg-dependent when any of the ranges it crosses is.
+@inline _anyarg(p::Base.Iterators.ProductIterator, xs...) = _anyarg(p.iterators..., xs...)
+@inline instantiate(p::Base.Iterators.ProductIterator, a...) =
+    Base.Iterators.product(instantiate(p.iterators, a...)...)
 
 # `append!` mutates its accumulator and returns it.  That is exactly right while
 # the core is being built eagerly, and wrong once the append has to wait for an
@@ -1929,6 +1999,13 @@ function multipliers(result::SolverCore.AbstractExecutionStats, y::Constraint)
 end
 
 _adapt_gen(gen) = Base.Generator(gen.f, collect(gen.iter))
+# `for i in 1:nh, j in 1:nc` over symbolic ranges: `collect` on the product
+# needs `axes`, and `axes` needs concrete lengths, so it cannot run yet.  Defer
+# the collect itself — it happens at instantiation, on real ranges.
+@inline _adapt_gen(gen::Base.Generator{P}) where {P<:Base.Iterators.ProductIterator} =
+    _adapt_prod(_anyarg(gen.iter), gen)
+@inline _adapt_prod(::Val{false}, gen) = Base.Generator(gen.f, collect(gen.iter))
+@inline _adapt_prod(::Val{true}, gen) = Base.Generator(gen.f, ArgCall(collect, (gen.iter,)))
 _adapt_gen(gen::Base.Generator{P}) where {P<:Union{AbstractArray,AbstractRange}} = gen
 _adapt_gen(gen::Tuple{E, I}) where {E<:AbstractNode, I} = (gen[1], collect(gen[2]))
 _adapt_gen(gen::Tuple{E, I}) where {E<:AbstractNode, I<:Union{AbstractArray,AbstractRange}} = gen

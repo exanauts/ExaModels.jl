@@ -7,31 +7,51 @@ exposes the model through the plain C interface consumed by
 `cnlpmodels`).
 
 The core is the compile-time artifact.  It is built once against
-[`ExaModels.arg`](@ref) placeholders — sizes, starting points and bounds left
+[`ExaModels.ArgSource`](@ref) placeholders — sizes, starting points and bounds left
 open — and the compiled library resolves them per instance:
 
 ```julia
 using ExaModels, ExaModelsC
 
-c = ExaCore(concrete = Val(true))
-c, x = add_var(c, arg.N; start = 1.0)
-c, _ = add_obj(c, (x[i] - 1)^2 for i in 1:arg.N)
+c, N = ExaCore(concrete = Val(true), nargs = Val(1))
+@add_var(c, x, N; start = 1.0)
+@add_obj(c, (x[i] - 1)^2 for i in 1:N)
 
-compile_library(c, "/opt/models/rosen"; arg = (N = 10,))
+compile_library(c, "/opt/models/rosen"; arg = 10)
 ```
 
-`arg` here is an *example*: its values are never baked in, but its types are.
-`juliac --trim=safe` needs the whole call graph resolved statically, so the
-example fixes what `N` *is* (an `Int`) while leaving what it *equals* to
-`rec_new(n)` at runtime.
+`arg` here is an *example* value for the placeholder: it is never baked in, but
+its type is.  `juliac --trim=safe` needs the whole call graph resolved
+statically, so the example fixes what `N` *is* (an `Int`) while leaving what it
+*equals* to `rosen_new(n)` at runtime.
 
-Consume it from Julia with:
+## Consuming the result
+
+The C interface is the one implemented by two companion packages, neither of
+which is part of ExaModels:
+
+  - [CNLPModels.jl](https://github.com/MadNLP/CNLPModels.jl) — loads the library
+    as an `NLPModels.AbstractNLPModel`, so any JuliaSmoothOptimizers-compatible
+    solver can solve it.
+  - [cnlpmodels](https://github.com/MadNLP/cnlpmodels-py) — the same consumer
+    for Python, over ctypes and numpy, needing no Julia runtime on the caller's
+    side.
 
 ```julia
 using CNLPModels, NLPModelsIpopt
-m = CNLPModel(CNLPModels.load("/opt/models/rosen/lib/librosen.so"); args = 1000)
-ipopt(m)
+lib = CNLPModels.load("/opt/models/rosen/lib/librosen.so")
+ipopt(CNLPModel(lib; prefix = "rosen", args = 1000))
 ```
+
+```python
+import cnlpmodels
+lib = cnlpmodels.load("/opt/models/rosen/lib/librosen.so")
+m = cnlpmodels.CModel(lib, prefix="rosen", args=1000)
+```
+
+Both consumers default `prefix` to `"rec"` when handed a library handle, while
+`compile_library` defaults it to the output directory's name — pass it
+explicitly unless those coincide.  The test suite exercises both.
 """
 module ExaModelsC
 
@@ -48,13 +68,49 @@ const _GEN_UUID = "b41c7e02-9f3d-4a58-8e6c-2d0f5a7c9b13"
 
 """
     compile_library(core, out; arg, prefix = basename(out), trim = "safe",
-                    privatize = true, verbose = false)
+                    bundle = false, verbose = false)
         -> (; libpath, outdir, prefix)
 
-Compile `core` into a shared library under directory `out`, and return the path
-to it.
+Compile `core` into a shared library under `out`, and return the path to it.
 
-`core` must be an `ExaCore` built against [`ExaModels.arg`](@ref); `arg` is an
+## `bundle`
+
+`bundle = false` (the default) emits a single shared library, ~2 MB, linked
+against the Julia installation it was built with.  `bundle = true` emits a
+directory carrying a privatized copy of that runtime alongside it, ~80 MB,
+needing no Julia on the consumer's side.
+
+The choice is not only about size, and the difference is not subtle:
+
+| consumer | `bundle = false` | `bundle = true` |
+|:---------|:-----------------|:----------------|
+| Python (`cnlpmodels`), C | works | works |
+| **Julia (`CNLPModels.jl`)** | **aborts on the first call** | works |
+
+A `juliac` library links against `libjulia`; `--trim` reduces the compiled
+*code*, not the runtime.  Loaded into a process that is *already* Julia, a
+second unprivatized `libjulia` aborts (signal 6) the moment it is called —
+`RTLD_LOCAL | RTLD_DEEPBIND`, which both consumers use, does not save it.
+Privatizing renames the runtime's sonames, which is what makes the bundled form
+safe to load into Julia.
+
+So: leave the default for a Python or C caller, and pass `bundle = true` when
+the library will be loaded from Julia.
+
+## Where it goes
+
+`out` may be a directory path, or a bare **name** — no directory part — in
+which case the library is installed on the CNLPModels search path
+(`CNLPMODELS_PATH`), where both consumers find it by that name:
+
+```julia
+compile_library(core, "rosenrock"; arg = 1000)   # → \$CNLPMODELS_PATH/librosenrock.so
+CNLPModel("rosenrock"; args = 1000)              # finds it, prefix defaults to the name
+```
+
+`core` must be an `ExaCore` built against a single
+[`ExaModels.ArgSource`](@ref) — i.e. `ExaCore(nargs = Val(1))`, since the
+scalar ABI carries one instantiation argument.  `arg` is an
 example argument of the shape the library will be instantiated with.  The
 example is used twice — to pin the types `juliac` needs in order to trim, and to
 check that the core actually instantiates before spending minutes compiling it.
@@ -79,11 +135,12 @@ function compile_library(
     arg,
     prefix::AbstractString = basename(abspath(out)),
     trim::AbstractString = "safe",
-    privatize::Bool = true,
+    bundle::Bool = false,
     verbose::Bool = false,
 )
     _check_prefix(prefix)
     field = _scalar_field(arg)
+    out = _resolve_out(out, bundle)
 
     # Instantiate here, in this process, before generating anything.  A core
     # that cannot be instantiated produces a library that cannot be loaded, and
@@ -95,7 +152,32 @@ function compile_library(
     appdir = _generate_app(core, arg, field, prefix)
     verbose && @info "compile_library: generated app" appdir
 
-    return _drive_juliac(appdir, prefix, out, trim, privatize, verbose)
+    return _drive_juliac(appdir, prefix, out, trim, bundle, verbose)
+end
+
+# ── Where the library goes ────────────────────────────────────────────────────
+
+# A bare name — no directory part — is resolved against the CNLPModels search
+# path, so `compile_library(core, "rosenrock")` installs where
+# `CNLPModel("rosenrock")` and `cnlpmodels.CModel("rosenrock")` will look for
+# it.  No sigil is needed to say which is meant: a name is not a path.
+#
+# Both layouts are ones the consumers already try: a bundle lands at
+# `<dir>/<name>/lib/lib<name>.<ext>`, a single file at `<dir>/lib<name>.<ext>`.
+function _resolve_out(out::AbstractString, bundle::Bool)
+    (isabspath(out) || !isempty(splitdir(out)[1])) && return abspath(out)
+    dirs = filter(!isempty, split(get(ENV, "CNLPMODELS_PATH", ""), ':'))
+    isempty(dirs) && throw(
+        ArgumentError(
+            "`$out` has no directory part, so it is taken as a library name to " *
+            "install on the CNLPModels search path — but CNLPMODELS_PATH is " *
+            "not set. Set it, or pass a path such as `\"./$out\"`.",
+        ),
+    )
+    # Bundled models get a directory each — `<dir>/<name>/lib/lib<name>.<ext>`,
+    # the consumers' second candidate.  A single file goes straight in the
+    # directory as `<dir>/lib<name>.<ext>`, their first.
+    return bundle ? joinpath(first(dirs), out) : first(dirs)
 end
 
 # ── Reading the example argument ──────────────────────────────────────────────
@@ -386,21 +468,9 @@ end
 
 # ── Driving juliac ────────────────────────────────────────────────────────────
 
-function _drive_juliac(appdir, prefix, out, trim, privatize, verbose)
+function _drive_juliac(appdir, prefix, out, trim, bundle, verbose)
     outdir = abspath(out)
-    # One library per directory: the bundler refuses to overwrite an existing
-    # bundle, and privatized runtime files carry randomized names that would
-    # otherwise pile up across rebuilds.  Removal is per-entry and tolerant —
-    # on NFS a dying process leaves .nfs* ghosts that refuse to go and collide
-    # with nothing the bundler writes.
-    if isdir(outdir)
-        for entry in readdir(outdir; join = true)
-            try
-                rm(entry; recursive = true, force = true)
-            catch
-            end
-        end
-    end
+    mkpath(outdir)
 
     img = JuliaC.ImageRecipe(
         file = appdir,
@@ -411,8 +481,23 @@ function _drive_juliac(appdir, prefix, out, trim, privatize, verbose)
         verbose = verbose,
     )
     JuliaC.compile_products(img)
+    return _link(Val(bundle), img, prefix, outdir)
+end
 
-    mkpath(outdir)
+const _DLEXT = Base.BinaryPlatforms.platform_dlext()
+
+# ── bundled: self-contained, and the only form that can be loaded into Julia ──
+function _link(::Val{true}, img, prefix, outdir)
+    # The bundle owns its directory: the bundler refuses to overwrite an
+    # existing one, and privatized runtime files carry randomized names that
+    # would otherwise accumulate across rebuilds.  Removal is per-entry and
+    # tolerant — on NFS a dying process leaves .nfs* ghosts that refuse to go.
+    for entry in readdir(outdir; join = true)
+        try
+            rm(entry; recursive = true, force = true)
+        catch
+        end
+    end
     link = JuliaC.LinkRecipe(
         image_recipe = img,
         outname = joinpath(outdir, "lib" * prefix),
@@ -420,17 +505,26 @@ function _drive_juliac(appdir, prefix, out, trim, privatize, verbose)
     )
     JuliaC.link_products(link)
     JuliaC.bundle_products(
-        JuliaC.BundleRecipe(link_recipe = link, output_dir = outdir, privatize = privatize),
+        JuliaC.BundleRecipe(link_recipe = link, output_dir = outdir, privatize = true),
     )
-
     libroot = Sys.iswindows() ? "bin" : "lib"
-    libpath = joinpath(
-        outdir,
-        libroot,
-        "lib" * prefix * "." * Base.BinaryPlatforms.platform_dlext(),
+    libpath = joinpath(outdir, libroot, "lib" * prefix * "." * _DLEXT)
+    isfile(libpath) || error("juliac produced no library at $libpath")
+    return (; libpath, outdir, prefix)
+end
+
+# ── unbundled: one file, and it needs the Julia it was built against ─────────
+function _link(::Val{false}, img, prefix, outdir)
+    # Not cleared: without a bundle each model is a single file, so a directory
+    # may hold several and wiping it would delete a sibling.
+    libpath = joinpath(outdir, "lib" * prefix * "." * _DLEXT)
+    link = JuliaC.LinkRecipe(
+        image_recipe = img,
+        outname = splitext(libpath)[1],
+        rpath = JuliaC.RPATH_JULIA,   # absolute paths into the Julia installation
     )
-    isfile(libpath) ||
-        error("juliac reported success but produced no library at $libpath")
+    JuliaC.link_products(link)
+    isfile(libpath) || error("juliac produced no library at $libpath")
     return (; libpath, outdir, prefix)
 end
 
