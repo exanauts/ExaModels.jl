@@ -168,17 +168,18 @@ function ac_power_model(filename; backend = nothing, T = Float64)
         lcon = data.angmin,
         ucon = data.angmax,
     )
+
     @add_con(
         w,
         c7,
         p[b.f_idx]^2 + q[b.f_idx]^2 - b.rate_a_sq for b in data.branch;
-        lcon = fill!(similar(data.branch, Float64, length(data.branch)), -Inf),
+        lcon = fill!(similar(data.branch, T, length(data.branch)), -Inf),
     )
     @add_con(
         w,
         c8,
         p[b.t_idx]^2 + q[b.t_idx]^2 - b.rate_a_sq for b in data.branch;
-        lcon = fill!(similar(data.branch, Float64, length(data.branch)), -Inf),
+        lcon = fill!(similar(data.branch, T, length(data.branch)), -Inf),
     )
 
     @add_con(w, c9, b.pd + b.gs * vm[b.i]^2 for b in data.bus)
