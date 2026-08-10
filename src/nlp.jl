@@ -397,14 +397,29 @@ end
     )
 end
 
-# `concrete` is accepted and ignored. It selected between the immutable core and
-# the deprecated mutable wrapper; there is only the immutable one now, and
-# `ExaCore(concrete = Val(true))` is the spelling every existing model and
-# document uses, so it keeps working rather than breaking all of them at once.
-@inline ExaCore(::Type{T}; backend = nothing, concrete = nothing, kwargs...) where {T<:AbstractFloat} =
-    _exa_core(; x0 = convert_array(zeros(T, 0), backend), backend, kwargs...)
-@inline ExaCore(; backend = nothing, concrete = nothing, kwargs...) =
-    ExaCore(default_T(backend); backend, kwargs...)
+# `concrete` chose between the immutable core and the deprecated mutable
+# wrapper. There is only the immutable one now, so `Val(true)` is accepted and
+# does nothing — that is the spelling every existing model and document uses,
+# and breaking all of them here would be gratuitous. `Val(false)` asked for the
+# core that no longer exists, so it says so rather than quietly handing back the
+# other one.
+@inline _concrete(::Nothing) = nothing
+@inline _concrete(::Val{true}) = nothing
+_concrete(::Val{false}) = throw(
+    ArgumentError(
+        "`concrete = Val(false)` selected the mutable `LegacyExaCore`, which has " *
+        "been removed. `ExaCore()` returns the immutable core — drop the keyword.",
+    ),
+)
+
+@inline function ExaCore(::Type{T}; backend = nothing, concrete = nothing, kwargs...) where {T<:AbstractFloat}
+    _concrete(concrete)
+    return _exa_core(; x0 = convert_array(zeros(T, 0), backend), backend, kwargs...)
+end
+@inline function ExaCore(; backend = nothing, concrete = nothing, kwargs...)
+    _concrete(concrete)
+    return ExaCore(default_T(backend); backend, kwargs...)
+end
 @inline ExaCore(c::C; kwargs...) where C <: ExaCore = _exa_core(
     ;
     zip(fieldnames(C), ntuple(i -> getfield(c, i), Val(fieldcount(C))))...,
