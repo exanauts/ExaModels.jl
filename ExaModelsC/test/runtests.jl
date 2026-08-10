@@ -39,10 +39,9 @@ function runtests()
 
         # Compiling takes minutes, so the library is built once and every
         # behavioural test below reads that one artifact.
-        # Bundled: the only form CNLPModels.jl can load, since an unprivatized
-        # second libjulia aborts inside a Julia process.  Every test below that
-        # goes through CNLPModels.jl uses this one.
-        r = compile_library(build(), joinpath(OUT, "rosen"); arg = 4, bundle = true)
+        # Compiling takes minutes, so the library is built once and every
+        # behavioural test below reads that one artifact.
+        r = compile_library(build(), joinpath(OUT, "rosen"); arg = 4)
 
         @testset "the library exists and loads" begin
             @test isfile(r.libpath)
@@ -95,17 +94,19 @@ function runtests()
             @test NLPModels.obj(m2, fill(1.0, 11)) ≈ 11.0
         end
 
-        @testset "the default, unbundled form is a single file" begin
-            # `bundle = false` is the default: one ~2 MB library rather than an
-            # 80 MB directory.  It cannot be loaded from Julia — see
-            # `compile_library`'s docstring — so it is exercised from Python,
-            # in the leg below.
-            u = compile_library(build(), joinpath(OUT, "flat"); arg = 4)
+        @testset "bundle = false is a single file, for Python and C callers" begin
+            # One ~2 MB library rather than an 80 MB directory, linked against
+            # the installed Julia.  This is the form to hand a Python or C
+            # caller; it cannot be loaded from Julia — see `compile_library`'s
+            # docstring for why — so it is checked structurally here and the
+            # Python leg below exercises the behaviour.
+            u = compile_library(build(), joinpath(OUT, "flat"); arg = 4, bundle = false)
             @test isfile(u.libpath)
             @test u.libpath == joinpath(
                 u.outdir, "lib" * u.prefix * "." * Base.BinaryPlatforms.platform_dlext())
-            @test !isdir(joinpath(u.outdir, "lib", "julia"))   # not a bundle
+            @test !isdir(joinpath(u.outdir, "lib", "julia"))     # not a bundle
             @test filesize(u.libpath) < 20_000_000
+            @test filesize(u.libpath) < filesize(r.libpath) * 10 # far smaller than bundled
         end
 
         @testset "the Python consumer reads the same model" begin

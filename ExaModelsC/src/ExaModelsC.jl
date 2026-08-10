@@ -68,34 +68,41 @@ const _GEN_UUID = "b41c7e02-9f3d-4a58-8e6c-2d0f5a7c9b13"
 
 """
     compile_library(core, out; arg, prefix = basename(out), trim = "safe",
-                    bundle = false, verbose = false)
+                    bundle = true, verbose = false)
         -> (; libpath, outdir, prefix)
 
 Compile `core` into a shared library under `out`, and return the path to it.
 
 ## `bundle`
 
-`bundle = false` (the default) emits a single shared library, ~2 MB, linked
-against the Julia installation it was built with.  `bundle = true` emits a
-directory carrying a privatized copy of that runtime alongside it, ~80 MB,
-needing no Julia on the consumer's side.
+`bundle = true` (the default) emits a directory carrying the library together
+with a **privatized** copy of the Julia runtime — around 80 MB, needing no Julia
+on the consumer's side.  `bundle = false` emits a single ~2 MB library linked
+against the Julia installation it was built with.
 
-The choice is not only about size, and the difference is not subtle:
-
-| consumer | `bundle = false` | `bundle = true` |
-|:---------|:-----------------|:----------------|
+| consumer | `bundle = true` | `bundle = false` |
+|:---------|:----------------|:-----------------|
 | Python (`cnlpmodels`), C | works | works |
-| **Julia (`CNLPModels.jl`)** | **aborts on the first call** | works |
+| **Julia (`CNLPModels.jl`)** | works | **aborts on the first call** |
 
-A `juliac` library links against `libjulia`; `--trim` reduces the compiled
-*code*, not the runtime.  Loaded into a process that is *already* Julia, a
-second unprivatized `libjulia` aborts (signal 6) the moment it is called —
-`RTLD_LOCAL | RTLD_DEEPBIND`, which both consumers use, does not save it.
-Privatizing renames the runtime's sonames, which is what makes the bundled form
-safe to load into Julia.
+Privatizing is the part that matters, not bundling.  A
+`juliac` library links `libjulia`; `--trim` reduces the compiled *code*, not the
+runtime.  Loaded into a process that is already Julia, a library sharing the
+host's `libjulia` aborts on its first call: the `@ccallable` preamble adopts the
+calling thread, and `jl_init_threadtls` guards that with
+`if (jl_get_pgcstack() != NULL) abort();`.  `jl_get_pgcstack` reads *that
+runtime's* thread-local storage, so a privatized runtime — a distinct one, whose
+`pgcstack` is `NULL` — adopts legitimately, while a shared one aborts.  Linking
+against the installed Julia instead, or bundling without privatizing, both
+reproduce the abort; measured, not assumed.
 
-So: leave the default for a Python or C caller, and pass `bundle = true` when
-the library will be loaded from Julia.
+Fixing that properly means skipping the adoption when the thread is already a
+Julia thread, which is upstream in juliac's generated preamble.  Until then the
+privatized bundle is the only form `CNLPModels.jl` can load, which is why it is
+the default; pass `bundle = false` for a Python or C caller that would rather
+have 2 MB than 80.
+
+## Where it goes
 
 ## Where it goes
 
@@ -135,7 +142,7 @@ function compile_library(
     arg,
     prefix::AbstractString = basename(abspath(out)),
     trim::AbstractString = "safe",
-    bundle::Bool = false,
+    bundle::Bool = true,
     verbose::Bool = false,
 )
     _check_prefix(prefix)
@@ -174,8 +181,8 @@ function _resolve_out(out::AbstractString, bundle::Bool)
             "not set. Set it, or pass a path such as `\"./$out\"`.",
         ),
     )
-    # Bundled models get a directory each — `<dir>/<name>/lib/lib<name>.<ext>`,
-    # the consumers' second candidate.  A single file goes straight in the
+    # A bundle gets a directory of its own — `<dir>/<name>/lib/lib<name>.<ext>`,
+    # the consumers' second layout.  A single file goes straight into the
     # directory as `<dir>/lib<name>.<ext>`, their first.
     return bundle ? joinpath(first(dirs), out) : first(dirs)
 end
@@ -486,18 +493,20 @@ end
 
 const _DLEXT = Base.BinaryPlatforms.platform_dlext()
 
-# ── bundled: self-contained, and the only form that can be loaded into Julia ──
+# ── bundled: carries a privatized runtime; loadable from anything ────────────
 function _link(::Val{true}, img, prefix, outdir)
     # The bundle owns its directory: the bundler refuses to overwrite an
     # existing one, and privatized runtime files carry randomized names that
     # would otherwise accumulate across rebuilds.  Removal is per-entry and
-    # tolerant — on NFS a dying process leaves .nfs* ghosts that refuse to go.
+    # tolerant — on NFS a dying process leaves .nfs* ghosts that refuse to go
+    # and collide with nothing the bundler writes.
     for entry in readdir(outdir; join = true)
         try
             rm(entry; recursive = true, force = true)
         catch
         end
     end
+
     link = JuliaC.LinkRecipe(
         image_recipe = img,
         outname = joinpath(outdir, "lib" * prefix),
@@ -507,13 +516,14 @@ function _link(::Val{true}, img, prefix, outdir)
     JuliaC.bundle_products(
         JuliaC.BundleRecipe(link_recipe = link, output_dir = outdir, privatize = true),
     )
+
     libroot = Sys.iswindows() ? "bin" : "lib"
     libpath = joinpath(outdir, libroot, "lib" * prefix * "." * _DLEXT)
     isfile(libpath) || error("juliac produced no library at $libpath")
     return (; libpath, outdir, prefix)
 end
 
-# ── unbundled: one file, and it needs the Julia it was built against ─────────
+# ── unbundled: one file, linked against the installed Julia ─────────────────
 function _link(::Val{false}, img, prefix, outdir)
     # Not cleared: without a bundle each model is a single file, so a directory
     # may hold several and wiping it would delete a sibling.
