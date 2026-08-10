@@ -57,14 +57,12 @@ include("jacobian.jl")
 include("hessian.jl")
 include("nlp.jl")
 include("oracle.jl")
-include("deprecated.jl")
 include("utils.jl")
 include("tags.jl")
 include("two_stage.jl")
 
 export ExaModel,
     ExaCore,
-    LegacyExaCore,
     Expression,
     add_var,
     add_par,

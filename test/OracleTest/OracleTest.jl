@@ -801,43 +801,6 @@ function test_embed_oracle()
     end
 end
 
-function test_legacy_oracle_forwarding()
-    return @testset "LegacyExaCore oracle forwarding" begin
-        c = ExaCore(Float64)                                 # legacy mutable wrapper
-        x = variable(c, 2; start = [1.0, 2.0])
-        oracle = VectorNonlinearOracle(
-            nvar = 2, ncon = 1, nnzj = 2, nnzh = 0,
-            jac_rows = [1, 1], jac_cols = [1, 2],
-            lcon = [0.0], ucon = [0.0],
-            adapt = Val(true),
-            f! = (cv, xv) -> (cv[1] = xv[1] + xv[2]; nothing),
-            jac! = (vv, xv) -> (vv[1] = 1.0; vv[2] = 1.0; nothing),
-        )
-        constraint(c, oracle)
-        m = ExaModel(c)
-        @test m isa ExaModelWithOracle
-        g = zeros(1)
-        NLPModels.cons_nln!(m, [3.0, 4.0], g)
-        @test g[1] ≈ 7.0
-
-        # embed_oracle forwarder must return (core, z, oracle) to match the
-        # immutable signature and the rest of the LegacyExaCore add_* family.
-        c2 = ExaCore(Float64)
-        x2 = variable(c2, 2; start = [1.0, 2.0])
-        ret = embed_oracle(
-            c2, x2, 2;
-            f! = (y, xv) -> (y .= xv .^ 2; nothing),
-            jvp! = (Jv, xv, v) -> (Jv .= 2 .* xv .* v; nothing),
-            vjp! = (Jtv, xv, w) -> (Jtv .= 2 .* xv .* w; nothing),
-            adapt = Val(true),
-        )
-        @test ret isa Tuple && length(ret) == 3
-        @test ret[1] === c2                              # same legacy core, mutated in place
-        @test ret[2] isa ExaModels.Variable
-        @test ret[3] isa VectorNonlinearOracle
-    end
-end
-
 function runtests()
     return @testset "OracleTest" begin
         @testset "VectorNonlinearOracle type checks" begin
@@ -878,7 +841,6 @@ function runtests()
             test_add_eval()
             test_add_con_macro_oracle()
             test_embed_oracle()
-            test_legacy_oracle_forwarding()
         end
     end
 end
