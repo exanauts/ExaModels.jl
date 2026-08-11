@@ -30,6 +30,13 @@ jobs:
       - uses: julia-actions/cache@v3
       - uses: julia-actions/julia-buildpkg@latest
       - name: Run tests
+        env:
+          # juliac needs a C toolchain to link the AOT executable, and the
+          # hosted Windows image has no C runtime headers on the include path:
+          # every `juliac compiles ...` test dies with
+          # `julia/libsupport.h:8:10: fatal error: stdlib.h: No such file or
+          # directory`. Skip AOT there, as the self-hosted legs already do.
+          EXAMODELS_SKIP_AOT: ${{ matrix.os == 'windows-latest' && '1' || '' }}
         run: |
           julia --startup-file=no --color=yes --code-coverage=user --project=./test -e '
             using Pkg
