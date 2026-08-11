@@ -119,7 +119,7 @@ which case the library is installed on the CNLPModels search path
 
 ```julia
 compile_library("rosenrock", core, 1000)        # → \$CNLPMODELS_PATH/rosenrock/
-CNLPModel("rosenrock", 1000)                    # finds it, prefix defaults to the name
+CNLPModel("@rosenrock", 1000)                    # finds it, prefix defaults to the name
 ```
 
 The example values are given exactly as they would be to `ExaModel(core, ...)`,
