@@ -1,19 +1,8 @@
+# The pglib cases come from ExaPowerIO's lazy artifact, so they are fetched by the
+# artifact machinery on first use and cached in the depot from then on.
 function get_power_case(filename)
-    if !isfile(filename)
-        ff = joinpath(TMPDIR, filename)
-        if !isfile(ff)
-            @info "Downloading $filename"
-            Downloads.download(
-                "https://raw.githubusercontent.com/power-grid-lib/pglib-opf/dc6be4b2f85ca0e776952ec22cbd4c22396ea5a3/$filename",
-                joinpath(TMPDIR, filename),
-            )
-            return joinpath(TMPDIR, filename)
-        else
-            return ff
-        end
-    else
-        return filename
-    end
+    isfile(filename) && return filename
+    return joinpath(ExaPowerIO.get_path(:pglib), filename)
 end
 
 

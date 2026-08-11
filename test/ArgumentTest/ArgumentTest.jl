@@ -333,14 +333,45 @@ function runtests()
         @testset "an un-walkable field is reported, not silently kept" begin
             # `instantiate` is the identity on types it has no method for, so a
             # placeholder could otherwise survive into a model that looks built.
-            c = ExaModels.ExaCore(concrete = Val(true))
+            #
+            # The core must DECLARE `nargs = Val(1)` here, even though these
+            # tests use the bare `arg`.  On a core declaring `Val(0)` the arity
+            # check rejects the one-value call before `instantiate` ever runs,
+            # and this testset would pass without exercising the thing it is
+            # named after — the same ArgumentError, from the wrong guard.
+            c, _ = ExaModels.ExaCore(concrete = Val(true), nargs = Val(1))
             ExaModels.@add_var(c, xa, arg.N; start = 0.0)
             # Smuggle a placeholder into a slot nothing walks.
             bad = ExaModels.ExaCore(c; tag = Ref(arg.N))
+            @test bad.nargs === Val(1)          # so the arity guard passes it through
             @test_throws ArgumentError ExaModels.ExaModel(bad, (N = 2,))
             # ... and the check is what rejects it, not a downstream accident.
             @test ExaModels._mentions_arg(typeof(instantiate(bad, (N = 2,))))
             @test !ExaModels._mentions_arg(typeof(instantiate(c, (N = 2,))))
+        end
+
+        @testset "arity is checked against the arity the core declared" begin
+            c, N = ExaModels.ExaCore(concrete = Val(true), nargs = Val(1))
+            ExaModels.@add_var(c, xb, N; start = 0.0)
+            ExaModels.@add_obj(c, (xb[i] - 1.0)^2 for i in 1:N)
+            @test ExaModels.ExaModel(c, 4).meta.nvar == 4
+            # Surplus values were accepted in silence before the core carried
+            # its arity: nothing consumes them, so a transposed or duplicated
+            # argument built a different model without a word.
+            @test_throws ArgumentError ExaModels.ExaModel(c, 4, 9)
+            @test_throws ArgumentError ExaModels.ExaModel(c, 4, 9, 11)
+            # A core that declared NOTHING is deliberately not held to an
+            # arity: `Val(0)` records "did not say", not "has no
+            # placeholders", because the documented bare-`ArgSource()` style
+            # writes `arg.N` into a plain `ExaCore()`. Enforcing here would
+            # reject the stated use case.
+            plain = ExaModels.ExaCore(concrete = Val(true))
+            ExaModels.@add_var(plain, xc, 3; start = 0.0)
+            @test plain.nargs === Val(0)
+            @test ExaModels.ExaModel(plain).meta.nvar == 3
+            # Too few still reports a recipe rather than a BoundsError from
+            # somewhere inside the build.
+            @test_throws ArgumentError ExaModels.ExaModel(c)
         end
 
         @testset "per-iteration indexing of arg is rejected with a reason" begin
