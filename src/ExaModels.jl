@@ -22,7 +22,7 @@ Operations involving `Constant{T}` are simplified at model-construction time:
 `specialization.jl`).  Combined `Constant OP Constant` expressions are folded
 to a new `Constant` via the rules in `register.jl`.
 
-For more information, please visit https://github.com/exanauts/ExaModels.jl
+For more information, please visit https://github.com/madsuite-org/ExaModels.jl
 """
 module ExaModels
 
