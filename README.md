@@ -30,24 +30,9 @@ Because the pattern and its data travel separately, the repetitive structure is 
 - **Coloring-free sparse automatic differentiation.** Sparsity is analyzed once, on the pattern itself rather than on the assembled problem, and first- and second-order derivatives are assembled directly into partially compressed sparse COO storage, with no graph coloring and no runtime sparsity detection.
 - **Native GPU execution.** Every NLP function evaluation reduces to embarrassingly parallel loops over data points, implemented portably with [KernelAbstractions.jl](https://github.com/JuliaGPU/KernelAbstractions.jl). The same model runs on NVIDIA (CUDA), AMD (ROCm), Intel (oneAPI), and OpenCL devices, on Apple silicon via Metal (in Float32, as Metal provides no double precision), and on multi-threaded CPUs.
 - **Near-constant-time evaluation on GPUs.** Once the device supplies enough parallel threads, evaluation cost is set by the number of patterns rather than the number of data points. In our benchmarks, GPU execution evaluates sparse Hessians 76 times faster than single-threaded CPU evaluation on the largest Lukšan–Vlček instances, 30 times on COPS, and 7.3 times on PGLIB-OPF.
+- **Ahead-of-time compilation with JuliaC and ExaModelsC.** Because the model, including its derivative kernels, is fully encoded in Julia's type system, ExaModels.jl is compatible with [JuliaC.jl](https://github.com/JuliaLang/JuliaC.jl) (`juliac --trim=safe`). The `ExaModelsC` subpackage builds on this: `compile_library` turns a model into a self-contained shared library with a plain C interface and its own privatized Julia runtime, consumable from Julia via [CNLPModels.jl](https://github.com/MadNLP/CNLPModels.jl) and from Python, with no Julia installation, via [cnlpmodels](https://github.com/MadNLP/cnlpmodels-py).
 
 This is a deliberate trade relative to general algebraic modeling tools such as [JuMP](https://github.com/jump-dev/JuMP.jl) or [AMPL](https://ampl.com/): ExaModels.jl asks for the model equations in the structured iterator form above, and in exchange preserves the parallelizable structure end to end. Paired with a GPU-capable solver such as [MadNLP.jl](https://github.com/MadNLP/MadNLP.jl), the entire solution pipeline (model evaluation, derivatives, and the optimization itself) runs on the GPU.
-
-## Ahead-of-time compilation: ExaModelsC and JuliaC
-
-Because the model, including its specialized derivative kernels, is fully expressible in Julia's type system, ExaModels.jl is compatible with ahead-of-time compilation via [JuliaC.jl](https://github.com/JuliaLang/JuliaC.jl) (`juliac --trim=safe`). The `ExaModelsC` subpackage in this repository builds on that to compile a model into a **self-contained shared library** exposing a plain C interface:
-
-```julia
-using ExaModels, ExaModelsC
-
-c, N = ExaCore(nargs = Val(1))     # N is a size placeholder, resolved at load time
-@add_var(c, x, N; start = 1.0)
-@add_obj(c, (x[i] - 1)^2 for i in 1:N)
-
-compile_library("@rosen", c, 10)   # installs on the CNLPMODELS_PATH search path
-```
-
-The bundled library carries its own privatized Julia runtime, so Python and C callers need no Julia installation at all. Two companion packages consume the C interface: [CNLPModels.jl](https://github.com/MadNLP/CNLPModels.jl) loads the library back into Julia as an `NLPModels.AbstractNLPModel`, and [cnlpmodels](https://github.com/MadNLP/cnlpmodels-py) does the same for Python over ctypes and numpy. A model compiled from a recipe is instantiated per size at load time, `CNLPModel("@rosen", 1000)`; a model compiled with no placeholders needs nothing but the library path.
 
 ## Citation
 
