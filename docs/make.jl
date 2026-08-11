@@ -86,4 +86,4 @@ makedocs(
 )
 
 
-deploydocs(repo = "github.com/exanauts/ExaModels.jl.git"; push_preview = true)
+deploydocs(repo = "github.com/madsuite-org/ExaModels.jl.git"; push_preview = true)

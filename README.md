@@ -6,7 +6,7 @@
 
 | **License** | **Documentation** | **Build Status** | **Coverage** | **Citation** |
 |:-----------------:|:----------------:|:----------------:|:----------------:|:----------------:|
-| [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/exanauts/ExaModels.jl/blob/main/LICENSE) | [![doc](https://img.shields.io/badge/docs-stable-blue.svg)](https://exanauts.github.io/ExaModels.jl/stable) [![doc](https://img.shields.io/badge/docs-dev-blue.svg)](https://exanauts.github.io/ExaModels.jl/dev)  | [![build](https://github.com/exanauts/ExaModels.jl/actions/workflows/test.yml/badge.svg)](https://github.com/exanauts/ExaModels.jl/actions/workflows/test.yml) | [![codecov](https://codecov.io/gh/exanauts/ExaModels.jl/branch/main/graph/badge.svg)](https://codecov.io/gh/exanauts/ExaModels.jl) | [![arXiv](https://img.shields.io/badge/arXiv-2307.16830-b31b1b.svg)](https://arxiv.org/abs/2307.16830) |
+| [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/madsuite-org/ExaModels.jl/blob/main/LICENSE) | [![doc](https://img.shields.io/badge/docs-stable-blue.svg)](https://madsuite-org.github.io/ExaModels.jl/stable) [![doc](https://img.shields.io/badge/docs-dev-blue.svg)](https://madsuite-org.github.io/ExaModels.jl/dev)  | [![build](https://github.com/madsuite-org/ExaModels.jl/actions/workflows/test.yml/badge.svg)](https://github.com/madsuite-org/ExaModels.jl/actions/workflows/test.yml) | [![codecov](https://codecov.io/gh/madsuite-org/ExaModels.jl/branch/main/graph/badge.svg)](https://codecov.io/gh/madsuite-org/ExaModels.jl) | [![arXiv](https://img.shields.io/badge/arXiv-2307.16830-b31b1b.svg)](https://arxiv.org/abs/2307.16830) |
 
 ## Overview
 
@@ -51,5 +51,5 @@ If you use ExaModels.jl in your research, please cite:
 ```
 
 ## Supporting ExaModels.jl
-- Please report issues and feature requests via the [GitHub issue tracker](https://github.com/exanauts/ExaModels.jl/issues).
-- Questions are welcome at [GitHub discussion forum](https://github.com/exanauts/ExaModels.jl/discussions).
+- Please report issues and feature requests via the [GitHub issue tracker](https://github.com/madsuite-org/ExaModels.jl/issues).
+- Questions are welcome at [GitHub discussion forum](https://github.com/madsuite-org/ExaModels.jl/discussions).
