@@ -156,6 +156,7 @@ function compile_library(
     verbose::Bool = false,
 )
     _check_prefix(prefix)
+    core = _concretize(core)
     isempty(args) && throw(
         ArgumentError(
             "give one example value per placeholder, as you would to " *
@@ -185,6 +186,30 @@ function compile_library(
     verbose && @info "compile_library: generated app" appdir
 
     return _drive_juliac(appdir, prefix, out, trim, bundle, verbose)
+end
+
+
+# A core built with `concrete = Val(false)` accumulates its blocks in
+# `Vector{Any}` rather than in its own type. That is what makes model
+# construction cheap, and it is also what `juliac --trim=safe` cannot digest:
+# the model type is not statically known, so the call graph will not resolve.
+#
+# It does not have to be compiled in that form, though. The core travels into
+# the generated app as serialized DATA, and the blocks inside those vectors are
+# already concretely typed — only the container is erased. Rebuilding it with
+# tuple storage costs one splat per accumulator, happens once here in the
+# caller's process, and hands the generator exactly the artifact it gets from a
+# `Val(true)` core. So a user can build the model in the fast mode and still
+# compile it.
+function _concretize(core::ExaModels.ExaCore)
+    all(getfield(core, f) isa Tuple for f in (:var, :par, :obj, :cons)) && return core
+    return ExaModels.ExaCore(
+        core;
+        var = (core.var...,),
+        par = (core.par...,),
+        obj = (core.obj...,),
+        cons = (core.cons...,),
+    )
 end
 
 # ── Where the library goes ────────────────────────────────────────────────────
