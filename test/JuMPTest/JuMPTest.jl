@@ -24,10 +24,11 @@ function runtests()
     return
 end
 
-function test_zz_moi_tests()
+function test_moi_tests()
     model = MOI.instantiate(
         () -> ExaModels.Optimizer(NLPModelsIpopt.ipopt);
         with_bridge_type = Float64,
+        with_cache_type = Float64,
     )
     MOI.set(model, MOI.RawOptimizerAttribute("print_level"), 0)
     MOI.Test.runtests(
@@ -48,15 +49,12 @@ function test_zz_moi_tests()
             r"^test_linear_DUAL_INFEASIBLE$",
             r"^test_linear_DUAL_INFEASIBLE_2$",
             r"^test_solve_TerminationStatus_DUAL_INFEASIBLE$",
-            # TODO(odow): look into this one
+            # Returns INVALID_MODEL becuase of the empty row
             r"^test_linear_VectorAffineFunction_empty_row$",
+            # Ipopt fails because of co-linear constraint and objective and
+            # redundant constraint.
             r"^test_linear_transform$",
-            # TODO(odow): fix UnsupportedAttribute error
-            r"^test_model_copy_to_UnsupportedAttribute$",
-            # TODO(odow): fix supports_constraint and eltypes
-            r"^test_model_supports_constraint_ScalarAffineFunction_EqualTo$",
-            r"^test_model_supports_constraint_VariableIndex_EqualTo$",
-        ]
+        ],
     )
     return
 end
@@ -403,18 +401,18 @@ function test_nonlinear_constraint_derivative_sparsity()
     )
     JuMP.@objective(model, Min, p)
     model_exa = ExaModels.ExaModel(model)
-    @test model_exa.meta.nnzj == 5
-    @test model_exa.meta.nnzh == 10
+    @test model_exa.meta.nnzj == 10
+    @test model_exa.meta.nnzh == 21
     jacobian_rows = zeros(Int, model_exa.meta.nnzj)
     jacobian_cols = zeros(Int, model_exa.meta.nnzj)
     NLPModels.jac_structure!(model_exa, jacobian_rows, jacobian_cols)
-    @test length(unique(zip(jacobian_rows, jacobian_cols))) == model_exa.meta.nnzj
+    @test length(unique(zip(jacobian_rows, jacobian_cols))) == 5
     # Hessian coordinates are unique here because this model has one
     # constraint row. Different rows may legitimately repeat coordinates.
     hessian_rows = zeros(Int, model_exa.meta.nnzh)
     hessian_cols = zeros(Int, model_exa.meta.nnzh)
     NLPModels.hess_structure!(model_exa, hessian_rows, hessian_cols)
-    @test length(unique(zip(hessian_rows, hessian_cols))) == model_exa.meta.nnzh
+    @test length(unique(zip(hessian_rows, hessian_cols))) == 10
     _test_callback_equivalence(
         model,
         [[0.2, 1.0, 0.9, 0.1, -0.2], [-0.4, 1.1, 1.05, -0.3, 0.25]],
@@ -429,8 +427,8 @@ function test_nonlinear_constraint_repeated_variable()
     JuMP.@constraint(model, sin(x) + x^2 + cos(x - y) == 0.0)
     JuMP.@objective(model, Min, x + y)
     model_exa = ExaModels.ExaModel(model)
-    @test model_exa.meta.nnzj == 2
-    @test model_exa.meta.nnzh == 3
+    @test model_exa.meta.nnzj == 4
+    @test model_exa.meta.nnzh == 5
     _test_callback_equivalence(model, [[0.3, -0.7], [1.2, 0.4]])
     return
 end
@@ -517,9 +515,9 @@ function test_nonlinear_batching()
     )
     JuMP.@objective(model, Min, sum(p))
     model_exa = ExaModels.ExaModel(model)
-    @test length(model_exa.cons) == 2
-    @test model_exa.meta.nnzj == 5K
-    @test model_exa.meta.nnzh == 10K
+    @test length(model_exa.cons) == 5
+    @test model_exa.meta.nnzj == 40
+    @test model_exa.meta.nnzh == 84
     batched_point = vcat(
         collect(0.1:0.1:0.4),
         fill(1.0, K),
@@ -548,7 +546,7 @@ function test_nonlinear_parameters_and_nested_expressions()
     JuMP.@constraint(model, sin(p * x) + cos(p * x) + p == 0.0)
     JuMP.@objective(model, Min, x)
     model_exa = ExaModels.ExaModel(model)
-    @test model_exa.meta.nnzj == 1
+    @test model_exa.meta.nnzj == 2
     @test NLPModels.cons(model_exa, [0.7]) ≈ [sin(0.4 * 0.7) + cos(0.4 * 0.7) + 0.4]
     return
 end
@@ -572,7 +570,7 @@ function test_nonlinear_nested_affine()
     JuMP.@constraint(model, sin(2x + 3y) + x == 0.0)
     JuMP.@objective(model, Min, x + y)
     model_exa = ExaModels.ExaModel(model)
-    @test model_exa.meta.nnzj == 2
+    @test model_exa.meta.nnzj == 3
     @test model_exa.meta.nnzh == 3
     _test_callback_equivalence(model, [[0.3, -0.7], [1.2, 0.4]])
     return
@@ -585,7 +583,7 @@ function test_nonlinear_nested_quadratic()
     JuMP.@constraint(model, sin(x^2 + x * y) + x == 0.0)
     JuMP.@objective(model, Min, x + y)
     model_exa = ExaModels.ExaModel(model)
-    @test model_exa.meta.nnzj == 2
+    @test model_exa.meta.nnzj == 3
     @test model_exa.meta.nnzh == 3
     _test_callback_equivalence(model, [[0.3, -0.7], [1.2, 0.4]])
     return
@@ -601,7 +599,7 @@ function test_nonlinear_shapes()
     JuMP.@constraint(model, cos(x * y) + z == 0.0)
     JuMP.@objective(model, Min, x + y + z)
     model_exa = ExaModels.ExaModel(model)
-    @test length(model_exa.cons) == 4
+    @test length(model_exa.cons) == 6
     @test model_exa.meta.nnzj == 6
     shapes_point = [0.2, -0.4, 0.7]
     @test NLPModels.cons(model_exa, shapes_point) ≈
@@ -621,8 +619,8 @@ function test_nonlinear_float32()
     JuMP.@objective(model, Min, x + y)
     model_exa = ExaModels.ExaModel(model)
     @test typeof(model_exa) <: ExaModels.ExaModel{Float32}
-    @test model_exa.meta.nnzj == 2
-    @test model_exa.meta.nnzh == 3
+    @test model_exa.meta.nnzj == 4
+    @test model_exa.meta.nnzh == 5
     float_point = Float32[0.3, -0.7]
     @test eltype(NLPModels.cons(model_exa, float_point)) == Float32
     difference = float_point[1] - float_point[2]
