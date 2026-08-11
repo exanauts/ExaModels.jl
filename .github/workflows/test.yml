@@ -61,7 +61,7 @@ jobs:
         julia-version: ['1', 'lts']
         julia-arch: [x64]
         os: [ubuntu-latest]
-    runs-on: ['self-hosted', 'examodels']
+    runs-on: ['self-hosted', 'shin-compute']
     steps:
     - name: Checkout code
       uses: actions/checkout@v2
@@ -111,7 +111,7 @@ jobs:
         exclude:
           - julia-version: 'lts'
             backend: 'oneapi'
-    runs-on: ['self-hosted', 'gpu', '${{ matrix.backend }}', 'examodels']
+    runs-on: ['self-hosted', 'gpu', '${{ matrix.backend }}', 'shin-compute']
     continue-on-error: ${{ matrix.backend == 'oneapi' }}
     env:
       # oneAPI specific variables
@@ -173,7 +173,7 @@ jobs:
         julia-arch: [aarch64]
         os: [macos-latest]
         backend: ['metal']
-    runs-on: ['self-hosted', 'gpu', '${{ matrix.backend }}', 'examodels']
+    runs-on: ['self-hosted', 'gpu', '${{ matrix.backend }}']
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -206,7 +206,7 @@ jobs:
   bench-nothing:
     if: github.event_name == 'pull_request'
     needs: [github, cpu, gpu, metal]
-    runs-on: ['self-hosted', 'examodels']
+    runs-on: ['self-hosted', 'shin-compute']
     steps:
       - uses: actions/checkout@v4
       - uses: julia-actions/setup-julia@latest
@@ -231,7 +231,7 @@ jobs:
   bench-cuda:
     if: github.event_name == 'pull_request'
     needs: [github, cpu, gpu, metal]
-    runs-on: ['self-hosted', 'gpu', 'cuda', 'examodels']
+    runs-on: ['self-hosted', 'gpu', 'cuda', 'shin-compute']
     env:
       # opt out of MPS on the self-hosted runner
       CUDA_MPS_PIPE_DIRECTORY: /tmp/no-mps-${{ github.run_id }}
@@ -259,7 +259,7 @@ jobs:
   bench-amdgpu:
     if: github.event_name == 'pull_request'
     needs: [github, cpu, gpu, metal]
-    runs-on: ['self-hosted', 'gpu', 'amdgpu', 'examodels']
+    runs-on: ['self-hosted', 'gpu', 'amdgpu', 'shin-compute']
     steps:
       - uses: actions/checkout@v4
       - uses: julia-actions/setup-julia@latest
@@ -284,7 +284,7 @@ jobs:
   bench-oneapi:
     if: github.event_name == 'pull_request'
     needs: [github, cpu, gpu, metal]
-    runs-on: ['self-hosted', 'gpu', 'oneapi', 'examodels']
+    runs-on: ['self-hosted', 'gpu', 'oneapi', 'shin-compute']
     continue-on-error: true
     env:
       OverrideDefaultFP64Settings: '1'
@@ -351,9 +351,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - runner: '["self-hosted","Linux","examodels"]'
+          - runner: '["self-hosted","Linux","shin-compute"]'
             name: linux
-          - runner: '["self-hosted","macOS","examodels"]'
+          - runner: '["self-hosted","macOS"]'
             name: macos
     name: examodelsc (${{ matrix.name }})
     runs-on: ${{ fromJSON(matrix.runner) }}
