@@ -57,6 +57,7 @@ module ExaModelsC
 
 import ExaModels
 import JuliaC
+import Random
 import Serialization
 
 export compile_library
@@ -112,67 +113,87 @@ have 2 MB than 80.
 
 ## Where it goes
 
-## Where it goes
-
-`out` may be a directory path, or a bare **name** — no directory part — in
-which case the library is installed on the CNLPModels search path
-(`CNLPMODELS_PATH`), where both consumers find it by that name:
+`out` is `"@name"` to install on the CNLPModels search path
+(`CNLPMODELS_PATH`), where both consumers find it by that name — or any
+other string as a local path, exactly as written (`"rosen"` is `./rosen`,
+`"/path/to/rosen"` is the full path). The same convention the consumers
+apply to their string spec:
 
 ```julia
-compile_library("rosenrock", core, 1000)        # → \$CNLPMODELS_PATH/rosenrock/
-CNLPModel("rosenrock", 1000)                    # finds it, prefix defaults to the name
+compile_library("@rosenrock", core, 1000)       # → \$CNLPMODELS_PATH/rosenrock/
+CNLPModel("@rosenrock", 1000)                   # finds it, prefix defaults to the name
 ```
 
 The example values are given exactly as they would be to `ExaModel(core, ...)`,
 which is the point: compiling and instantiating a recipe should not be spelled
-two different ways.  `core` must be built against a single
+two different ways.  A recipe `core` must be built against a single
 [`ExaModels.ArgSource`](@ref) — `ExaCore(nargs = Val(1))` — since the scalar ABI
-carries one instantiation argument.  The example is
-example argument of the shape the library will be instantiated with.  The
-example is used twice — to pin the types `juliac` needs in order to trim, and to
-check that the core actually instantiates before spending minutes compiling it.
+carries one instantiation argument.  The example is used twice — to pin the
+types `juliac` needs in order to trim, and to check that the core actually
+instantiates before spending minutes compiling it.
 
-The library exports, for `prefix` `P`: `P_new(n) -> id` (a positive instance id;
-any number of instances may coexist), then id-first `P_nvar`, `P_ncon`,
-`P_nnzj`, `P_nnzh`, `P_meta`, `P_obj`, `P_grad`, `P_cons`, `P_jac_structure`,
-`P_jac`, `P_hess_structure`, `P_hess`.  Indices are 1-based; the Hessian is the
-lower triangle of `obj_weight * ∇²f + Σᵢ yᵢ ∇²cᵢ`; every function returns a
-`Cint` status, `0` on success, and none of them throws across the boundary.
+**No example values means a fixed model.**  A core built with no placeholders
+is a complete model, so `compile_library(out, core)` compiles it as-is:
+`P_new` keeps its one-integer C signature but ignores the integer, and
+`P_nargs()` reports `0` so a consumer handed only the library path knows that
+no instantiation data is required.  A core that *declared* placeholders
+(`nargs = Val(N)`, `N > 0`) is refused without examples.
 
-`P_new` takes a single integer, so this form applies when the example `arg` is
-an `Integer`, or a `NamedTuple` holding exactly one integer field — the
-"scalable model" case (`rosenbrock` at size `N`).  Structured instantiation
-(the schema + builder ABI, for data-defined models such as OPF) is not built
-yet; `compile_library` says so rather than emitting a library that would fail
-at load.
+The library exports, for `prefix` `P`: `P_nargs() -> 0 or 1` (how many
+instantiation arguments `P_new` consumes), `P_new(n) -> id` (a positive
+instance id; any number of instances may coexist), then id-first `P_nvar`,
+`P_ncon`, `P_nnzj`, `P_nnzh`, `P_meta`, `P_obj`, `P_grad`, `P_cons`,
+`P_jac_structure`, `P_jac`, `P_hess_structure`, `P_hess`.  Indices are 1-based;
+the Hessian is the lower triangle of `obj_weight * ∇²f + Σᵢ yᵢ ∇²cᵢ`; every
+function returns a `Cint` status, `0` on success, and none of them throws
+across the boundary.
+
+`P_new` takes a single integer, so the recipe form applies when the example
+`arg` is an `Integer`, or a `NamedTuple` holding exactly one integer field —
+the "scalable model" case (`rosenbrock` at size `N`).  Structured
+instantiation (the schema + builder ABI, for data-defined models such as OPF)
+is not built yet; `compile_library` says so rather than emitting a library
+that would fail at load.
 """
 function compile_library(
     out::AbstractString,
     core::ExaModels.ExaCore,
     args...;
-    prefix::AbstractString = basename(abspath(out)),
+    prefix::AbstractString = _default_out_prefix(out),
     trim::AbstractString = "safe",
     bundle::Bool = true,
     verbose::Bool = false,
 )
     _check_prefix(prefix)
     core = _concretize(core)
-    isempty(args) && throw(
-        ArgumentError(
-            "give one example value per placeholder, as you would to " *
-            "`ExaModel(core, ...)` — its types are what the compiler needs.",
-        ),
-    )
-    fields = _schema(args)
-    _is_scalar_new(fields) || throw(
-        ArgumentError(
-            "this recipe needs the schema + builder interface, which is not " *
-            "emitted yet — only a single integer placeholder (`<prefix>_new(n)`) " *
-            "is. Its schema would be: " * _schema_json(fields),
-        ),
-    )
-    arg = only(args)
-    field = nothing
+    if isempty(args)
+        # No examples means a FIXED model: the core has no placeholders and is
+        # compiled as-is. A core that declared placeholders cannot be meant —
+        # refuse it here with the arity it stated rather than letting the
+        # instantiation probe below fail on a bare recipe. (An UNDECLARED
+        # recipe — a bare `ArgSource()` written into a plain `ExaCore()` —
+        # still reaches the probe, which rejects it just as loudly.)
+        core.nargs isa Val{0} || throw(
+            ArgumentError(
+                "this core declared $(_nargs_count(core.nargs)) placeholder(s) " *
+                "— give one example value per placeholder, as you would to " *
+                "`ExaModel(core, ...)`; its types are what the compiler needs.",
+            ),
+        )
+        arg = nothing
+        field = FixedModel()
+    else
+        fields = _schema(args)
+        _is_scalar_new(fields) || throw(
+            ArgumentError(
+                "this recipe needs the schema + builder interface, which is not " *
+                "emitted yet — only a single integer placeholder (`<prefix>_new(n)`) " *
+                "is. Its schema would be: " * _schema_json(fields),
+            ),
+        )
+        arg = only(args)
+        field = nothing
+    end
     out = _resolve_out(out, bundle)
 
     # Instantiate here, in this process, before generating anything.  A core
@@ -206,28 +227,37 @@ _concretize(core::ExaModels.ExaCore) = ExaModels._concretize(core)
 
 # ── Where the library goes ────────────────────────────────────────────────────
 
-# A bare name — no directory part — is resolved against the CNLPModels search
-# path, so `compile_library(core, "rosenrock")` installs where
-# `CNLPModel("rosenrock")` and `cnlpmodels.CModel("rosenrock")` will look for
-# it.  No sigil is needed to say which is meant: a name is not a path.
+# `@name` installs on the CNLPModels search path, so
+# `compile_library("@rosenrock", core, ...)` lands where
+# `CNLPModel("@rosenrock")` and `cnlpmodels.CModel("@rosenrock")` will look
+# for it; any other string is a local path exactly as written — the same
+# convention the consumers apply to their string spec.
 #
 # Both layouts are ones the consumers already try: a bundle lands at
 # `<dir>/<name>/lib/lib<name>.<ext>`, a single file at `<dir>/lib<name>.<ext>`.
 function _resolve_out(out::AbstractString, bundle::Bool)
-    (isabspath(out) || !isempty(splitdir(out)[1])) && return abspath(out)
+    startswith(out, "@") || return abspath(out)
+    name = String(out[2:end])
+    isempty(name) && throw(ArgumentError("`@` names a library — give one, like `@rosenrock`"))
     dirs = filter(!isempty, split(get(ENV, "CNLPMODELS_PATH", ""), ':'))
     isempty(dirs) && throw(
         ArgumentError(
-            "`$out` has no directory part, so it is taken as a library name to " *
-            "install on the CNLPModels search path — but CNLPMODELS_PATH is " *
-            "not set. Set it, or pass a path such as `\"./$out\"`.",
+            "`$out` names a library to install on the CNLPModels search path — " *
+            "but CNLPMODELS_PATH is not set. Set it, or pass a path such as " *
+            "`\"./$name\"`.",
         ),
     )
     # A bundle gets a directory of its own — `<dir>/<name>/lib/lib<name>.<ext>`,
     # the consumers' second layout.  A single file goes straight into the
     # directory as `<dir>/lib<name>.<ext>`, their first.
-    return bundle ? joinpath(first(dirs), out) : first(dirs)
+    return bundle ? joinpath(first(dirs), name) : first(dirs)
 end
+
+# The default symbol prefix: the name for `@name`, the directory's own name
+# for a path. (`basename(abspath())` of an `@name` would keep the sigil,
+# which is not a C identifier.)
+_default_out_prefix(out::AbstractString) =
+    startswith(out, "@") ? String(out[2:end]) : basename(abspath(out))
 
 # ── Reading the example arguments ─────────────────────────────────────────────
 #
@@ -351,9 +381,25 @@ function _project_toml(modname::AbstractString, exadir::AbstractString)
     """
 end
 
-# How `rec_new(n)` turns its one integer into the argument the core expects.
+# A fixed model: the core carries no placeholders, so `<prefix>_new(n)`
+# ignores `n`. The C symbol keeps its one-integer signature anyway — every
+# consumer already speaks it, and a second ABI shape would buy nothing.
+struct FixedModel end
+
+@inline _nargs_count(::Val{N}) where {N} = N
+
+# How `rec_new(n)` turns its one integer into the argument the core expects —
+# or, for a fixed model, into the `nothing` that `ExaModel(core, nothing)`
+# treats as "no instance data".
 _arg_expr(::Nothing) = "Int(n)"
 _arg_expr(field::Symbol) = "(; $field = Int(n))"
+_arg_expr(::FixedModel) = "nothing"
+
+# What `<prefix>_nargs()` reports: how many instantiation arguments
+# `<prefix>_new` actually consumes. 0 is what lets a consumer handed only a
+# library path know that no `args` are required.
+_nargs_value(::FixedModel) = 0
+_nargs_value(::Union{Nothing, Symbol}) = 1
 
 function _module_source(modname::AbstractString, p::AbstractString, field)
     argexpr = _arg_expr(field)
@@ -377,6 +423,13 @@ function _module_source(modname::AbstractString, p::AbstractString, field)
     const MODELS = typeof(ExaModels.ExaModel(CORE, ARG0; check = Val(false)))[]
 
     @inline _valid(id::Cint) = 1 <= id <= length(MODELS)
+
+    # How many instantiation arguments `$(p)_new` consumes (0 = fixed model,
+    # `n` is ignored). Lets a consumer decide whether `args` are required
+    # before instantiating anything.
+    Base.@ccallable function $(p)_nargs()::Cint
+        return Cint($(_nargs_value(field)))
+    end
 
     Base.@ccallable function $(p)_new(n::Cint)::Cint
         try
@@ -601,9 +654,22 @@ function _link(::Val{true}, img, prefix, outdir)
         rpath = JuliaC.RPATH_BUNDLE,
     )
     JuliaC.link_products(link)
-    JuliaC.bundle_products(
-        JuliaC.BundleRecipe(link_recipe = link, output_dir = outdir, privatize = true),
-    )
+    # Privatization mangles the bundled runtime under a salt drawn from the
+    # task-local RNG — and two sequential `compile_library` calls in one
+    # process have been observed to draw the SAME salt (2026-08-11, rosen +
+    # fixed in one test run). Identically-salted bundles cannot coexist in a
+    # consumer: the dynamic loader satisfies the second library's NEEDED
+    # entries with the first's already-loaded runtime, whose thread-adoption
+    # guard then aborts the whole host process on the second library's first
+    # call. Distinctly-salted bundles coexist fine (verified). So the salt is
+    # forced unique here: bundling runs in its own task whose RNG is seeded
+    # from the OS entropy pool — the caller's RNG state is untouched.
+    fetch(Threads.@spawn begin
+        Random.seed!(rand(Random.RandomDevice(), UInt128))
+        JuliaC.bundle_products(
+            JuliaC.BundleRecipe(link_recipe = link, output_dir = outdir, privatize = true),
+        )
+    end)
 
     libroot = Sys.iswindows() ? "bin" : "lib"
     libpath = joinpath(outdir, libroot, "lib" * prefix * "." * _DLEXT)
