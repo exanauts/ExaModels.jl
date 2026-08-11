@@ -369,7 +369,9 @@ jobs:
       - uses: julia-actions/setup-julia@latest
         with:
           version: '1'
-      - uses: julia-actions/cache@v3
+      # No julia-actions/cache here: both legs are self-hosted with
+      # persistent per-runner depots, so a GitHub cache round-trip is pure
+      # overhead (and one gigabyte-scale save stalled the mac leg for 15 min).
       # No `setup-python` here: both legs are self-hosted, and that action
       # assumes the hosted layout — it tries to write to `/Users/runner`, which
       # on a self-hosted Mac does not exist (`mkdir: Permission denied`), and
