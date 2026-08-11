@@ -33,6 +33,22 @@ Because the pattern and its data travel separately, the repetitive structure is 
 
 This is a deliberate trade relative to general algebraic modeling tools such as [JuMP](https://github.com/jump-dev/JuMP.jl) or [AMPL](https://ampl.com/): ExaModels.jl asks for the model equations in the structured iterator form above, and in exchange preserves the parallelizable structure end to end. Paired with a GPU-capable solver such as [MadNLP.jl](https://github.com/MadNLP/MadNLP.jl), the entire solution pipeline (model evaluation, derivatives, and the optimization itself) runs on the GPU.
 
+## Ahead-of-time compilation: ExaModelsC and JuliaC
+
+Because the model, including its specialized derivative kernels, is fully expressible in Julia's type system, ExaModels.jl is compatible with ahead-of-time compilation via [JuliaC.jl](https://github.com/JuliaLang/JuliaC.jl) (`juliac --trim=safe`). The `ExaModelsC` subpackage in this repository builds on that to compile a model into a **self-contained shared library** exposing a plain C interface:
+
+```julia
+using ExaModels, ExaModelsC
+
+c, N = ExaCore(nargs = Val(1))     # N is a size placeholder, resolved at load time
+@add_var(c, x, N; start = 1.0)
+@add_obj(c, (x[i] - 1)^2 for i in 1:N)
+
+compile_library("@rosen", c, 10)   # installs on the CNLPMODELS_PATH search path
+```
+
+The bundled library carries its own privatized Julia runtime, so Python and C callers need no Julia installation at all. Two companion packages consume the C interface: [CNLPModels.jl](https://github.com/MadNLP/CNLPModels.jl) loads the library back into Julia as an `NLPModels.AbstractNLPModel`, and [cnlpmodels](https://github.com/MadNLP/cnlpmodels-py) does the same for Python over ctypes and numpy. A model compiled from a recipe is instantiated per size at load time, `CNLPModel("@rosen", 1000)`; a model compiled with no placeholders needs nothing but the library path.
+
 ## Citation
 
 If you use ExaModels.jl in your research, please cite:
