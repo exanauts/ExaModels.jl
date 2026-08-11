@@ -458,32 +458,27 @@ end
     )
 end
 
-# `concrete` chose between the immutable core and the deprecated mutable
-# wrapper. There is only the immutable one now, so `Val(true)` is accepted and
-# does nothing — that is the spelling every existing model and document uses,
-# and breaking all of them here would be gratuitous. `Val(false)` asked for the
-# core that no longer exists, so it says so rather than quietly handing back the
-# other one.
-@inline _concrete(::Nothing) = nothing
-@inline _concrete(::Val{true}) = nothing
-_concrete(::Val{false}) = throw(
-    ArgumentError(
-        "`concrete = Val(false)` selected the mutable `LegacyExaCore`, which has " *
-        "been removed. `ExaCore()` returns the immutable core — drop the keyword.",
-    ),
-)
+# `concrete` now selects how the core accumulates blocks. `Val(true)` (and the
+# default) keeps every block in the core's type, which is what `juliac
+# --trim=safe` needs. `Val(false)` accumulates into `Vector{Any}` instead: the
+# core's type stops changing on each `add_*`, so the builder compiles once
+# instead of once per block, at the cost of AOT compilability. Both modes
+# produce the same `ExaModel` and the same AD kernels.
 
 @inline function ExaCore(
     ::Type{T}; backend = nothing, concrete = nothing, nargs = Val(0), kwargs...,
 ) where {T<:AbstractFloat}
-    _concrete(concrete)
     return _with_args(
-        _exa_core_from_x0(convert_array(zeros(T, 0), backend), backend; kwargs...), nargs,
+        _exa_core_from_x0(
+            convert_array(zeros(T, 0), backend), backend;
+            var = _storage(concrete), par = _storage(concrete),
+            obj = _storage(concrete), cons = _storage(concrete), kwargs...,
+        ),
+        nargs,
     )
 end
 @inline function ExaCore(; backend = nothing, concrete = nothing, nargs = Val(0), kwargs...)
-    _concrete(concrete)
-    return ExaCore(default_T(backend); backend, nargs, kwargs...)
+    return ExaCore(default_T(backend); backend, concrete, nargs, kwargs...)
 end
 
 """
@@ -512,6 +507,25 @@ is known statically and destructuring stays inferable.
 # `eltype(x0)` — NOT the requested float type.  The two differ on backends that
 # promote (Metal turns Float64 into Float32), so the core's `T` is still taken
 # from the realised `x0` rather than from the caller's request.
+
+# --- accumulator storage -----------------------------------------------------
+# `_prep` appends a block to `var`/`par`/`obj`/`cons`; `_materialize` turns the
+# accumulator back into the concrete tuple `ExaModel` needs. Tuple storage puts
+# every block in the core's TYPE, so the type changes on each `add_*` and the
+# builder is recompiled for each one. `Vector{Any}` storage keeps the type
+# constant and defers the concrete tuple to a single `_materialize` call.
+@inline _prep(t::Tuple, x) = (x, t...)
+@inline _prep(v::Vector{Any}, x) = pushfirst!(copy(v), x)
+
+@inline _materialize(t::Tuple) = t
+@inline _materialize(v::Vector{Any}) = (v...,)
+
+# Storage selected by the `concrete` keyword. Called once per accumulator so
+# the four never alias the same vector.
+@inline _storage(::Nothing) = ()
+@inline _storage(::Val{true}) = ()
+@inline _storage(::Val{false}) = Any[]
+
 @inline _exa_core_from_x0(x0, backend; kwargs...) =
     _exa_core(eltype(x0); x0, backend, kwargs...)
 @inline ExaCore(c::C; kwargs...) where {T, C <: ExaCore{T}} = _exa_core(
@@ -713,10 +727,10 @@ function ExaModel(c::ExaCore{T, VT, B, S, V, P, O, C, R, Tuple{}, Tuple{}, Tuple
     _recipe_check(c)
     return ExaModel(
         c.name,
-        c.var,
-        c.par,
-        c.obj,
-        c.cons,
+        _materialize(c.var),
+        _materialize(c.par),
+        _materialize(c.obj),
+        _materialize(c.cons),
         c.θ,
         NLPModels.NLPModelMeta(
             c.nvar,
@@ -1022,7 +1036,7 @@ end
 
     v = Variable(ns, len, o, _val_name(name), tag)
 
-    (ExaCore(c; var = (v, c.var...), nvar=nvar, x0=x0, lvar=lvar, uvar=uvar, refs = add_refs(c.refs, name, v)), v)
+    (ExaCore(c; var = _prep(c.var, v), nvar=nvar, x0=x0, lvar=lvar, uvar=uvar, refs = add_refs(c.refs, name, v)), v)
 end
 
 @inline _val_name(::Val{N}) where {N} = N
@@ -1078,7 +1092,7 @@ end
     npar = c.npar + len
     θ = _append_slot(c.backend, c.θ, start, len)
     p = Parameter(ns, len, o, tag)
-    (ExaCore(c; par = (p, c.par...), θ=θ, npar=npar, refs = add_refs(c.refs, name, p)), p)
+    (ExaCore(c; par = _prep(c.par, p), θ=θ, npar=npar, refs = add_refs(c.refs, name, p)), p)
 end
 
 """
@@ -1333,7 +1347,7 @@ end
     nnzh = c.nnzh + nitr * f.o2step
 
     obj = Objective(f, convert_array(pars, c.backend))
-    (ExaCore(c; nobj=nobj, nnzg=nnzg, nnzh=nnzh, obj=(obj, c.obj...), refs = add_refs(c.refs, name, obj)), obj)
+    (ExaCore(c; nobj=nobj, nnzg=nnzg, nnzh=nnzh, obj=_prep(c.obj, obj), refs = add_refs(c.refs, name, obj)), obj)
 end
 
 
@@ -1462,7 +1476,7 @@ function _add_con(c, f, pars, dims, start, lcon, ucon, name, tag)
 
     con = Constraint(f, convert_array(pars, c.backend), o, dims, tag)
 
-    (ExaCore(c; ncon=ncon, nnzj=nnzj, nnzh=nnzh, y0=y0, lcon=lcon, ucon=ucon, cons=(con, c.cons...), refs = add_refs(c.refs, name, con)), con)
+    (ExaCore(c; ncon=ncon, nnzj=nnzj, nnzh=nnzh, y0=y0, lcon=lcon, ucon=ucon, cons=_prep(c.cons, con), refs = add_refs(c.refs, name, con)), con)
 end
 
 
@@ -1589,7 +1603,7 @@ function _add_con!(c, f, pars, dims, tag)
     nnzj = c.nnzj + nitr * f.o1step
     nnzh = c.nnzh + nitr * f.o2step
     con = ConstraintAugmentation(f, convert_array(pars, c.backend), oa, dims, tag)
-    (ExaCore(c; nconaug=nconaug, nnzj=nnzj, nnzh=nnzh, cons=(con, c.cons...)), con)
+    (ExaCore(c; nconaug=nconaug, nnzj=nnzj, nnzh=nnzh, cons=_prep(c.cons, con)), con)
 end
 
 # Helper to infer dimensions from iterator
