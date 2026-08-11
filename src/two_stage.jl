@@ -60,7 +60,7 @@ const TwoStageExaModel{T,VT,E,V,P,O,C,R} = ExaModel{T,VT,E,V,P,O,C,<:TwoStageExa
 
 
 """
-    TwoStageExaCore(nscen; backend = nothing, concrete = Val(false), kwargs...)
+    TwoStageExaCore(nscen; backend = nothing, kwargs...)
 
 Create an [`ExaCore`](@ref) for building two-stage stochastic programs with
 `nscen` scenarios.
@@ -77,10 +77,9 @@ c, v = add_var(c, EachScenario(), 2)         # 2 recourse variables per scenario
 model = ExaModel(c)
 ```
 """
-function TwoStageExaCore(ns::Integer; backend = nothing, concrete = Val(false), kwargs...)
+function TwoStageExaCore(ns::Integer; backend = nothing, kwargs...)
     return ExaCore(;
         backend,
-        concrete,
         tag = TwoStageExaModelTag(
             ns,
             convert_array(zeros(Int, 0), backend),

@@ -13,19 +13,24 @@ struct Compressor{I}
 end
 @inline (i::Compressor{I})(n) where {I} = @inbounds i.inner[n]
 
-struct SIMDFunction{F,C1,C2}
+# `o0`/`o1`/`o2` are running offsets taken from the core's counters, so they are
+# deferred when the core is built against `arg`; `o1step`/`o2step` come from the
+# expression graph's own sparsity and are always concrete.  The offset
+# parameters are appended, leaving `SIMDFunction{P}`-style dispatch (nlp.jl,
+# `offset0`) matching as before.
+struct SIMDFunction{F,C1,C2,O0,O1,O2}
     f::F
     comp1::C1
     comp2::C2
-    o0::Int
-    o1::Int
-    o2::Int
+    o0::O0
+    o1::O1
+    o2::O2
     o1step::Int
     o2step::Int
 end
 
-@inline (sf::SIMDFunction{F,C1,C2})(i, x, θ) where {F,C1,C2} = sf.f(i, x, θ)
-@inline (sf::SIMDFunction{F,C1,C2})(i, x, θ) where {F <: Real,C1,C2} = sf.f
+@inline (sf::SIMDFunction{F})(i, x, θ) where {F} = sf.f(i, x, θ)
+@inline (sf::SIMDFunction{F})(i, x, θ) where {F <: Real} = sf.f
 
 """
     SIMDFunction(gen::Base.Generator, o0 = 0, o1 = 0, o2 = 0)

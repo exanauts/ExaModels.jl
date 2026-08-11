@@ -46,6 +46,7 @@ import SolverCore
 import Printf
 
 include("templates.jl")
+include("argument.jl")
 include("graph.jl")
 include("register.jl")
 include("specialization.jl")
@@ -57,7 +58,6 @@ include("jacobian.jl")
 include("hessian.jl")
 include("nlp.jl")
 include("oracle.jl")
-include("deprecated.jl")
 include("utils.jl")
 include("tags.jl")
 include("two_stage.jl")
@@ -65,7 +65,6 @@ include("wrapper.jl")
 
 export ExaModel,
     ExaCore,
-    LegacyExaCore,
     Expression,
     add_var,
     add_par,
@@ -85,6 +84,8 @@ export ExaModel,
     multipliers_L,
     multipliers_U,
     Constant,
+    ArgSource,
+    instantiate,
     SumNode,
     ProdNode,
     exa_sum,
@@ -93,6 +94,8 @@ export ExaModel,
     @register_bivariate,
     VectorNonlinearOracle,
     OracleEvaluator,
+    objective,
+    constraint,
     ExaModelWithOracle,
     has_matfree_jac,
     has_matfree_hess,

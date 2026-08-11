@@ -30,6 +30,13 @@ jobs:
       - uses: julia-actions/cache@v3
       - uses: julia-actions/julia-buildpkg@latest
       - name: Run tests
+        env:
+          # juliac needs a C toolchain to link the AOT executable, and the
+          # hosted Windows image has no C runtime headers on the include path:
+          # every `juliac compiles ...` test dies with
+          # `julia/libsupport.h:8:10: fatal error: stdlib.h: No such file or
+          # directory`. Skip AOT there, as the self-hosted legs already do.
+          EXAMODELS_SKIP_AOT: ${{ matrix.os == 'windows-latest' && '1' || '' }}
         run: |
           julia --startup-file=no --color=yes --code-coverage=user --project=./test -e '
             using Pkg
@@ -49,7 +56,7 @@ jobs:
         julia-version: ['1', 'lts']
         julia-arch: [x64]
         os: [ubuntu-latest]
-    runs-on: ['self-hosted']
+    runs-on: ['self-hosted', 'examodels']
     steps:
     - name: Checkout code
       uses: actions/checkout@v2
@@ -83,11 +90,11 @@ jobs:
         julia-version: ['1', 'lts']
         julia-arch: [x64]
         os: [ubuntu-latest]
-        backend: ['cuda13', 'amdgpu', 'oneapi']
+        backend: ['cuda', 'amdgpu', 'oneapi']
         exclude:
           - julia-version: 'lts'
             backend: 'oneapi'
-    runs-on: ['self-hosted', 'gpu', '${{ matrix.backend }}']
+    runs-on: ['self-hosted', 'gpu', '${{ matrix.backend }}', 'examodels']
     continue-on-error: ${{ matrix.backend == 'oneapi' }}
     env:
       # oneAPI specific variables
@@ -114,7 +121,7 @@ jobs:
       run: |
         julia --startup-file=no --project=test -e 'using Pkg; Pkg.add("AMDGPU")'
     - name: Add CUDA.jl to test environment
-      if: matrix.backend == 'cuda13'
+      if: matrix.backend == 'cuda'
       run: |
         julia --startup-file=no --project=test -e 'using Pkg; Pkg.add("CUDA")'
     - name: Add oneAPI.jl to test environment
@@ -137,7 +144,7 @@ jobs:
         julia-arch: [aarch64]
         os: [macos-latest]
         backend: ['metal']
-    runs-on: ['self-hosted', 'gpu', '${{ matrix.backend }}']
+    runs-on: ['self-hosted', 'gpu', '${{ matrix.backend }}', 'examodels']
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -170,7 +177,7 @@ jobs:
   bench-nothing:
     if: github.event_name == 'pull_request'
     needs: [github, cpu, gpu, metal]
-    runs-on: ['self-hosted']
+    runs-on: ['self-hosted', 'examodels']
     steps:
       - uses: actions/checkout@v4
       - uses: julia-actions/setup-julia@latest
@@ -195,7 +202,7 @@ jobs:
   bench-cuda:
     if: github.event_name == 'pull_request'
     needs: [github, cpu, gpu, metal]
-    runs-on: ['self-hosted', 'gpu', 'cuda13']
+    runs-on: ['self-hosted', 'gpu', 'cuda', 'examodels']
     env:
       # opt out of MPS on the self-hosted runner
       CUDA_MPS_PIPE_DIRECTORY: /tmp/no-mps-${{ github.run_id }}
@@ -223,7 +230,7 @@ jobs:
   bench-amdgpu:
     if: github.event_name == 'pull_request'
     needs: [github, cpu, gpu, metal]
-    runs-on: ['self-hosted', 'gpu', 'amdgpu']
+    runs-on: ['self-hosted', 'gpu', 'amdgpu', 'examodels']
     steps:
       - uses: actions/checkout@v4
       - uses: julia-actions/setup-julia@latest
@@ -248,7 +255,7 @@ jobs:
   bench-oneapi:
     if: github.event_name == 'pull_request'
     needs: [github, cpu, gpu, metal]
-    runs-on: ['self-hosted', 'gpu', 'oneapi']
+    runs-on: ['self-hosted', 'gpu', 'oneapi', 'examodels']
     continue-on-error: true
     env:
       OverrideDefaultFP64Settings: '1'
@@ -304,3 +311,46 @@ jobs:
           path: |
             benchmark/comparison.txt
             benchmark/pr_number.txt
+
+  # ExaModelsC compiles a model into a native shared library with juliac, so it
+  # is platform-specific in a way the rest of the package is not. Not on GPU
+  # runners, where it is not expected to work yet, and not on Windows: juliac
+  # implements runtime privatization only for Linux and macOS, so a library
+  # compiled there cannot be loaded back into Julia (see `compile_library`).
+  examodelsc:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: '["self-hosted","Linux","examodels"]'
+            name: linux
+          - runner: '["self-hosted","macOS","examodels"]'
+            name: macos
+    name: examodelsc (${{ matrix.name }})
+    runs-on: ${{ fromJSON(matrix.runner) }}
+    steps:
+      - uses: actions/checkout@v4
+      # The Python consumer is an unrelated package and not a Julia dependency;
+      # the test finds it through CNLPMODELS_PY and skips the leg if absent.
+      - uses: actions/checkout@v4
+        with:
+          repository: MadNLP/cnlpmodels-py
+          ref: master
+          path: cnlpmodels-py
+      - uses: julia-actions/setup-julia@latest
+        with:
+          version: '1'
+      - uses: julia-actions/cache@v3
+      # No `setup-python` here: both legs are self-hosted, and that action
+      # assumes the hosted layout — it tries to write to `/Users/runner`, which
+      # on a self-hosted Mac does not exist (`mkdir: Permission denied`), and
+      # takes the job with it. The runners have their own Python; the test
+      # probes for one with numpy and skips that leg when it finds none.
+      - name: Run ExaModelsC tests
+        env:
+          CNLPMODELS_PY: ${{ github.workspace }}/cnlpmodels-py/src
+        run: |
+          julia --startup-file=no --color=yes --project=ExaModelsC/test -e '
+            using Pkg
+            Pkg.instantiate()
+            include("ExaModelsC/test/runtests.jl")'
