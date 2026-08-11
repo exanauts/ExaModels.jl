@@ -113,13 +113,15 @@ have 2 MB than 80.
 
 ## Where it goes
 
-`out` may be a directory path, or a bare **name** — no directory part — in
-which case the library is installed on the CNLPModels search path
-(`CNLPMODELS_PATH`), where both consumers find it by that name:
+`out` is `"@name"` to install on the CNLPModels search path
+(`CNLPMODELS_PATH`), where both consumers find it by that name — or any
+other string as a local path, exactly as written (`"rosen"` is `./rosen`,
+`"/path/to/rosen"` is the full path). The same convention the consumers
+apply to their string spec:
 
 ```julia
-compile_library("rosenrock", core, 1000)        # → \$CNLPMODELS_PATH/rosenrock/
-CNLPModel("@rosenrock", 1000)                    # finds it, prefix defaults to the name
+compile_library("@rosenrock", core, 1000)       # → \$CNLPMODELS_PATH/rosenrock/
+CNLPModel("@rosenrock", 1000)                   # finds it, prefix defaults to the name
 ```
 
 The example values are given exactly as they would be to `ExaModel(core, ...)`,
@@ -157,7 +159,7 @@ function compile_library(
     out::AbstractString,
     core::ExaModels.ExaCore,
     args...;
-    prefix::AbstractString = basename(abspath(out)),
+    prefix::AbstractString = _default_out_prefix(out),
     trim::AbstractString = "safe",
     bundle::Bool = true,
     verbose::Bool = false,
@@ -225,28 +227,37 @@ _concretize(core::ExaModels.ExaCore) = ExaModels._concretize(core)
 
 # ── Where the library goes ────────────────────────────────────────────────────
 
-# A bare name — no directory part — is resolved against the CNLPModels search
-# path, so `compile_library(core, "rosenrock")` installs where
-# `CNLPModel("rosenrock")` and `cnlpmodels.CModel("rosenrock")` will look for
-# it.  No sigil is needed to say which is meant: a name is not a path.
+# `@name` installs on the CNLPModels search path, so
+# `compile_library("@rosenrock", core, ...)` lands where
+# `CNLPModel("@rosenrock")` and `cnlpmodels.CModel("@rosenrock")` will look
+# for it; any other string is a local path exactly as written — the same
+# convention the consumers apply to their string spec.
 #
 # Both layouts are ones the consumers already try: a bundle lands at
 # `<dir>/<name>/lib/lib<name>.<ext>`, a single file at `<dir>/lib<name>.<ext>`.
 function _resolve_out(out::AbstractString, bundle::Bool)
-    (isabspath(out) || !isempty(splitdir(out)[1])) && return abspath(out)
+    startswith(out, "@") || return abspath(out)
+    name = String(out[2:end])
+    isempty(name) && throw(ArgumentError("`@` names a library — give one, like `@rosenrock`"))
     dirs = filter(!isempty, split(get(ENV, "CNLPMODELS_PATH", ""), ':'))
     isempty(dirs) && throw(
         ArgumentError(
-            "`$out` has no directory part, so it is taken as a library name to " *
-            "install on the CNLPModels search path — but CNLPMODELS_PATH is " *
-            "not set. Set it, or pass a path such as `\"./$out\"`.",
+            "`$out` names a library to install on the CNLPModels search path — " *
+            "but CNLPMODELS_PATH is not set. Set it, or pass a path such as " *
+            "`\"./$name\"`.",
         ),
     )
     # A bundle gets a directory of its own — `<dir>/<name>/lib/lib<name>.<ext>`,
     # the consumers' second layout.  A single file goes straight into the
     # directory as `<dir>/lib<name>.<ext>`, their first.
-    return bundle ? joinpath(first(dirs), out) : first(dirs)
+    return bundle ? joinpath(first(dirs), name) : first(dirs)
 end
+
+# The default symbol prefix: the name for `@name`, the directory's own name
+# for a path. (`basename(abspath())` of an `@name` would keep the sigil,
+# which is not a C identifier.)
+_default_out_prefix(out::AbstractString) =
+    startswith(out, "@") ? String(out[2:end]) : basename(abspath(out))
 
 # ── Reading the example arguments ─────────────────────────────────────────────
 #

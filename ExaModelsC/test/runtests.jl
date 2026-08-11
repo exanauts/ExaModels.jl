@@ -40,6 +40,23 @@ function runtests()
             @test_throws ArgumentError compile_library(OUT, c, 4; prefix = "2fast")
         end
 
+        @testset "out is @name on the search path, or a literal path" begin
+            # The same convention the consumers apply to their string spec:
+            # any string without the sigil is a local path, exactly as written.
+            @test ExaModelsC._resolve_out("rosen", true) == abspath("rosen")
+            @test ExaModelsC._resolve_out("./rosen", true) == abspath("./rosen")
+            withenv("CNLPMODELS_PATH" => nothing) do
+                @test_throws ArgumentError ExaModelsC._resolve_out("@rosen", true)
+            end
+            withenv("CNLPMODELS_PATH" => "/tmp/models") do
+                @test ExaModelsC._resolve_out("@rosen", true) == joinpath("/tmp/models", "rosen")
+                @test ExaModelsC._resolve_out("@rosen", false) == "/tmp/models"
+            end
+            # The default prefix keeps no sigil.
+            @test ExaModelsC._default_out_prefix("@rosen") == "rosen"
+            @test_throws ArgumentError ExaModelsC._resolve_out("@", true)
+        end
+
         # Compiling takes minutes, so the library is built once and every
         # behavioural test below reads that one artifact.
         r = compile_library(joinpath(OUT, "rosen"), build(), 4)
@@ -117,7 +134,13 @@ function runtests()
             @add_con(c, x[i] + x[i + 1] for i in 1:(n - 1); lcon = 3.0, ucon = Inf)
             ref = ExaModel(c)
 
-            f = compile_library(joinpath(OUT, "fixed"), c)
+            # Compiled through the `@name` spelling: installs on the search
+            # path, with the prefix defaulting to the name.
+            f = withenv("CNLPMODELS_PATH" => OUT) do
+                compile_library("@fixed", c)
+            end
+            @test f.outdir == joinpath(OUT, "fixed")
+            @test f.prefix == "fixed"
             @test isfile(f.libpath)
             flib = CNLPModels.load(f.libpath)
 
@@ -125,6 +148,11 @@ function runtests()
             @test ccall(
                 CNLPModels.Libdl.dlsym(flib.handle, Symbol(f.prefix, "_nargs")),
                 Cint, ()) == 0
+
+            # The whole chain with no instance data anywhere: CNLPModels
+            # consults `_nargs` and instantiates from nothing but the handle.
+            m3 = CNLPModels.CNLPModel(flib; prefix = f.prefix)
+            @test m3.meta.nvar == n
 
             # `_new` keeps its one-integer C signature and ignores the value:
             # any integer instantiates the same fixed model.
