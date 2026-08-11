@@ -1,7 +1,7 @@
 module NLPTest
 
 using ExaModels
-using Downloads, Test
+using ExaPowerIO, Test
 using NLPModels, NLPModelsJuMP, NLPModelsIpopt, NLPModelsTest
 using JuMP, PowerModels, MadNLP, Percival
 
@@ -222,8 +222,6 @@ function runtests()
 end
 
 function __init__()
-    global TMPDIR = tempname()
-    mkdir(TMPDIR)
     PowerModels.silence()
 end
 

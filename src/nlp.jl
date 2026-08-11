@@ -320,7 +320,7 @@ An ExaCore
 # `VT <: AbstractVector{T}` bound, and no field carries it on its own.
 struct ExaCore{T, VT, B, S, V, P, O, C, R, OR, SOR, EV,
                NV, NP, NC, NCA, NO, NZC, NZG, NZJ, NZH,
-               TH, LV, UV, Y0, LC, UC} <: AbstractExaCore{T, VT, B, S}
+               TH, LV, UV, Y0, LC, UC, NARGS} <: AbstractExaCore{T, VT, B, S}
     name::Symbol
     backend::B
     var::V
@@ -349,6 +349,13 @@ struct ExaCore{T, VT, B, S, V, P, O, C, R, OR, SOR, EV,
     oracles::OR                # Tuple of VectorNonlinearOracle
     scalar_oracles::SOR        # Tuple of ScalarNonlinearOracle
     evals::EV                  # Tuple of OracleEvaluator (augment pre-existing constraint rows)
+    # How many `ArgSource` placeholders this core was built against, as a
+    # `Val{N}`.  Zero-size, so it costs nothing to carry, and it puts the arity
+    # in the *type* — which is the point: whether a core is a recipe, and how
+    # many values instantiating it needs, both become dispatch rather than a
+    # scan over field values.  It is a declaration made at construction, not a
+    # proof about the contents; see `_assert_instantiated`.
+    nargs::NARGS
 end
 
 # Julia only auto-generates the fully-parameterized and the fully-inferred
@@ -383,14 +390,15 @@ end
     oracles::OR,
     scalar_oracles::SOR,
     evals::EV,
+    nargs::NARGS,
 ) where {T, VT, B, S, V, P, O, C, R, OR, SOR, EV,
-         NV, NP, NC, NCA, NO, NZC, NZG, NZJ, NZH, TH, LV, UV, Y0, LC, UC} =
+         NV, NP, NC, NCA, NO, NZC, NZG, NZJ, NZH, TH, LV, UV, Y0, LC, UC, NARGS} =
     ExaCore{T, VT, B, S, V, P, O, C, R, OR, SOR, EV,
-            NV, NP, NC, NCA, NO, NZC, NZG, NZJ, NZH, TH, LV, UV, Y0, LC, UC}(
+            NV, NP, NC, NCA, NO, NZC, NZG, NZJ, NZH, TH, LV, UV, Y0, LC, UC, NARGS}(
         name, backend, var, par, obj, cons,
         nvar, npar, ncon, nconaug, nobj, nnzc, nnzg, nnzj, nnzh,
         x0, θ, lvar, uvar, y0, lcon, ucon,
-        minimize, tag, refs, oracles, scalar_oracles, evals,
+        minimize, tag, refs, oracles, scalar_oracles, evals, nargs,
     )
 
 @inline function _exa_core(
@@ -424,6 +432,7 @@ end
         oracles = (),
         scalar_oracles = (),
         evals = (),
+        nargs = Val(0),
     ) where {T}
 
     return ExaCore{T}(
@@ -455,6 +464,7 @@ end
         oracles,
         scalar_oracles,
         evals,
+        nargs,
     )
 end
 
@@ -478,7 +488,8 @@ _concrete(::Val{false}) = throw(
 ) where {T<:AbstractFloat}
     _concrete(concrete)
     return _with_args(
-        _exa_core_from_x0(convert_array(zeros(T, 0), backend), backend; kwargs...), nargs,
+        _exa_core_from_x0(convert_array(zeros(T, 0), backend), backend; nargs, kwargs...),
+        nargs,
     )
 end
 @inline function ExaCore(; backend = nothing, concrete = nothing, nargs = Val(0), kwargs...)
@@ -559,6 +570,7 @@ function instantiate(c::ExaCore{T}, a...) where {T}
         instantiate(c.oracles, a...),
         instantiate(c.scalar_oracles, a...),
         instantiate(c.evals, a...),
+        Val(0),
     )
 end
 
@@ -769,24 +781,69 @@ julia> m.meta.nvar, m.meta.x0
 ```
 """
 function ExaModel(c::ExaCore, a, as...; check = Val(true), kwargs...)
+    _arity_check(c.nargs, Val(length(as) + 1))
     return ExaModel(_assert_instantiated(check, instantiate(c, a, as...)); kwargs...)
 end
+
+# One value per placeholder, checked against the arity the core recorded. Both
+# `Val`s are known statically, so a correct call compiles to nothing at all.
+#
+# Worth doing rather than leaving to the machinery: too FEW values reached
+# `instantiate(::ArgSource{K}, a...) = a[K]` and surfaced as a `BoundsError`
+# from somewhere inside the build, and too MANY were accepted in silence,
+# because nothing consumes the surplus. Arguments being positional, a
+# transposition is the mistake to expect, and one that adds an argument would
+# have built a different model without a word.
+#
+# `Val{0}` means the core did not DECLARE an arity — not that it has no
+# placeholders. `ArgSource()` is public and documented, so the stated use case
+# writes `arg.N` into a plain `ExaCore()`, which records `Val(0)` and is still a
+# genuine recipe. An undeclared core therefore keeps the old behaviour: build
+# it, and let `_assert_instantiated` judge the result. Only a core that said how
+# many values it wants is held to it.
+@inline _arity_check(::Val{0}, ::Val) = nothing
+@inline _arity_check(::Val{0}, ::Val{0}) = nothing     # not the ambiguity
+@inline _arity_check(::Val{N}, ::Val{N}) where {N} = nothing
+_arity_check(::Val{N}, ::Val{M}) where {N, M} = throw(
+    ArgumentError(
+        "this core was built against $N placeholder$(N == 1 ? "" : "s") but " *
+        "$M value$(M == 1 ? " was" : "s were") given. Supply one per " *
+        "placeholder, in the order `ExaCore` returned them.",
+    ),
+)
 ExaModel(c::ExaCore, ::Nothing; kwargs...) = ExaModel(c; kwargs...)
 
 # A core built against `ArgSource` placeholders is not a model yet.  Reaching
 # `NLPModelMeta` with a deferred `nvar` fails with a `MethodError` naming a
 # nested node type, which says nothing about the actual mistake.  The check is
 # by dispatch on a `Val`, so it costs an ordinary core nothing.
-@inline _reject_recipe(::Val{false}) = nothing
-_reject_recipe(::Val{true}) = throw(
+# The core records its own arity, so this is a dispatch on a type parameter
+# rather than a scan over ten field values — and `Val(0)` resolves to a method
+# that does nothing, which is what an ordinary core pays.
+# Same asymmetry: a declared arity answers by dispatch, and an undeclared core
+# falls back to scanning the slots a placeholder would have to reach. The scan
+# is resolved by `_anyarg`'s method table, so it is compile-time either way —
+# what the declaration buys is a definite answer where the scan can only see
+# what is directly in a field.
+@inline _reject_recipe(::Val{0}, c) = _reject_undeclared(
+    _anyarg(c.nvar, c.ncon, c.npar, c.x0, c.θ, c.lvar, c.uvar, c.y0, c.lcon, c.ucon),
+)
+_reject_recipe(::Val{N}, c) where {N} = throw(
+    ArgumentError(
+        "this core was built against $N `ArgSource` placeholder$(N == 1 ? "" : "s"), " *
+        "so it is a recipe rather than a model — supply one value per " *
+        "placeholder, in the order `ExaCore` returned them: `ExaModel(core, 1000)`.",
+    ),
+)
+@inline _reject_undeclared(::Val{false}) = nothing
+_reject_undeclared(::Val{true}) = throw(
     ArgumentError(
         "this core was built against `ArgSource` placeholders, so it is a " *
         "recipe rather than a model — supply one value per placeholder, in " *
         "the order `ExaCore` returned them: `ExaModel(core, 1000)`.",
     ),
 )
-@inline _recipe_check(c) =
-    _reject_recipe(_anyarg(c.nvar, c.ncon, c.npar, c.x0, c.θ, c.lvar, c.uvar, c.y0, c.lcon, c.ucon))
+@inline _recipe_check(c) = _reject_recipe(c.nargs, c)
 
 build_extension(c::ExaCore; kwargs...) = nothing
 
