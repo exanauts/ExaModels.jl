@@ -42,8 +42,6 @@ function runtests()
 
         # Compiling takes minutes, so the library is built once and every
         # behavioural test below reads that one artifact.
-        # Compiling takes minutes, so the library is built once and every
-        # behavioural test below reads that one artifact.
         r = compile_library(joinpath(OUT, "rosen"), build(), 4)
 
         @testset "the library exists and loads" begin
@@ -95,6 +93,53 @@ function runtests()
             # The second instantiation must not have disturbed the first.
             @test NLPModels.obj(m1, fill(1.0, 6)) ≈ 6.0
             @test NLPModels.obj(m2, fill(1.0, 11)) ≈ 11.0
+        end
+
+        @testset "the recipe library declares its arity" begin
+            @test ccall(
+                CNLPModels.Libdl.dlsym(lib.handle, Symbol(r.prefix, "_nargs")),
+                Cint, ()) == 1
+        end
+
+        @testset "a fixed core — no placeholders — compiles with no args" begin
+            # A declared-arity recipe without examples is refused up front,
+            # naming what is missing. Pinned to the guard's own message: the
+            # instantiation probe would also throw an ArgumentError, so a bare
+            # type match could not tell the guard from its backstop.
+            @test_throws "declared 1 placeholder" compile_library(OUT, build())
+
+            # A complete model, built in the default (non-concrete) mode and
+            # compiled without example values.
+            n = 7
+            c = ExaCore()
+            @add_var(c, x, n; start = 1.0)
+            @add_obj(c, (x[i] - 2.0)^2 for i in 1:n)
+            @add_con(c, x[i] + x[i + 1] for i in 1:(n - 1); lcon = 3.0, ucon = Inf)
+            ref = ExaModel(c)
+
+            f = compile_library(joinpath(OUT, "fixed"), c)
+            @test isfile(f.libpath)
+            flib = CNLPModels.load(f.libpath)
+
+            # The library says it consumes no instantiation arguments.
+            @test ccall(
+                CNLPModels.Libdl.dlsym(flib.handle, Symbol(f.prefix, "_nargs")),
+                Cint, ()) == 0
+
+            # `_new` keeps its one-integer C signature and ignores the value:
+            # any integer instantiates the same fixed model.
+            m = CNLPModels.CNLPModel(flib, 0; prefix = f.prefix)
+            @test m.meta.nvar == ref.meta.nvar == n
+            @test m.meta.ncon == ref.meta.ncon == n - 1
+            @test m.meta.x0 ≈ ref.meta.x0
+
+            x = collect(range(0.5, 3.0; length = n))
+            @test NLPModels.obj(m, x) ≈ NLPModels.obj(ref, x)
+            @test NLPModels.grad(m, x) ≈ NLPModels.grad(ref, x)
+            @test NLPModels.cons(m, x) ≈ NLPModels.cons(ref, x)
+
+            m2 = CNLPModels.CNLPModel(flib, 999; prefix = f.prefix)
+            @test m2.meta.nvar == n
         end
 
         @testset "bundle = false is a single file, for Python and C callers" begin
