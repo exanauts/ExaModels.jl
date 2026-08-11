@@ -13,7 +13,7 @@ open — and the compiled library resolves them per instance:
 ```julia
 using ExaModels, ExaModelsC
 
-c, N = ExaCore(concrete = Val(true), nargs = Val(1))
+c, N = ExaCore(nargs = Val(1))
 @add_var(c, x, N; start = 1.0)
 @add_obj(c, (x[i] - 1)^2 for i in 1:N)
 
@@ -156,6 +156,7 @@ function compile_library(
     verbose::Bool = false,
 )
     _check_prefix(prefix)
+    core = _concretize(core)
     isempty(args) && throw(
         ArgumentError(
             "give one example value per placeholder, as you would to " *
@@ -186,6 +187,22 @@ function compile_library(
 
     return _drive_juliac(appdir, prefix, out, trim, bundle, verbose)
 end
+
+
+# A core built in the default (non-concrete) mode accumulates its blocks in
+# `Vector{Any}` rather than in its own type. That is what makes model
+# construction cheap, and it is also what `juliac --trim=safe` cannot digest:
+# the model type is not statically known, so the call graph will not resolve.
+#
+# It does not have to be compiled in that form, though. The core travels into
+# the generated app as serialized DATA, and the blocks inside those vectors are
+# already concretely typed — only the container is erased. Rebuilding it with
+# tuple storage happens once here in the caller's process, and hands the
+# generator exactly the artifact it gets from a `Val(true)` core. So a user
+# can build the model in the default mode and still compile it. The rebuild
+# itself lives in ExaModels (`_concretize`), where the `ExaModel` entry points
+# use it for the same purpose.
+_concretize(core::ExaModels.ExaCore) = ExaModels._concretize(core)
 
 # ── Where the library goes ────────────────────────────────────────────────────
 

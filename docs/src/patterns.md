@@ -6,12 +6,12 @@ especially when writing model-building functions.
 
 ## How the Macros Work
 
-In ExaModels v0.10, `ExaCore` (created with `concrete = Val(true)`) is an
-**immutable** struct. Every model-building call --- `add_var`, `add_obj`,
-`add_con`, etc. --- returns a **new** core rather than modifying the old one:
+Since ExaModels v0.10, `ExaCore` is an **immutable** struct. Every
+model-building call --- `add_var`, `add_obj`, `add_con`, etc. --- returns a
+**new** core rather than modifying the old one:
 
 ```julia
-c = ExaCore(concrete = Val(true))
+c = ExaCore()
 c, x = add_var(c, 10)       # c is rebound to a new ExaCore
 c, _ = add_obj(c, x[i]^2 for i in 1:10)  # c is rebound again
 ```
@@ -20,7 +20,7 @@ The `@add_var`-family macros are thin wrappers that do the same thing
 behind the scenes --- they **rebind** the core variable in the calling scope:
 
 ```julia
-c = ExaCore(concrete = Val(true))
+c = ExaCore()
 @add_var(c, x, 10)          # expands to: c, x = add_var(c, 10)
 @add_obj(c, x[i]^2 for i in 1:10)  # expands to: c, _ = add_obj(c, ...)
 ```
@@ -39,7 +39,7 @@ accumulated model information:
 ```julia
 # WRONG --- the caller gets nothing useful
 function build_model_wrong()
-    c = ExaCore(concrete = Val(true))
+    c = ExaCore()
     @add_var(c, x, 10)
     @add_obj(c, x[i]^2 for i in 1:10)
     @add_con(c, x[i] + x[i+1] for i in 1:9)
@@ -53,7 +53,7 @@ at the end of the function:
 ```julia
 # CORRECT --- return the ExaModel (or core) to the caller
 function build_model()
-    c = ExaCore(concrete = Val(true))
+    c = ExaCore()
     @add_var(c, x, 10)
     @add_obj(c, x[i]^2 for i in 1:10)
     @add_con(c, x[i] + x[i+1] for i in 1:9)
@@ -78,7 +78,7 @@ function add_dynamics!(c, x, u, data)
 end
 
 function full_model()
-    c = ExaCore(concrete = Val(true))
+    c = ExaCore()
     @add_var(c, x, 11)
     @add_var(c, u, 10)
     c = add_dynamics!(c, x, u, data)   # rebind c with the returned core
