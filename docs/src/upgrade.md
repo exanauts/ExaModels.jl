@@ -26,23 +26,21 @@ functional style (`c, x = add_var(c, ...)`) or the macro style
 | `objective(c, ...)` | `add_obj(c, ...)` → returns `(c, obj)` | `@add_obj(c, f, ...)` |
 | `subexpr(c, ...)` | `add_expr(c, ...)` → returns `(c, expr)` | `@add_expr(c, s, ...)` |
 
-### 2. `ExaCore` and `LegacyExaCore`
+### 2. `ExaCore` is immutable
 
 In v0.9, `ExaCore` was a mutable struct that was modified in-place by each
 model-building call.
 
-In v0.10, `ExaCore` is an immutable struct.  For backward compatibility,
-`ExaCore()` (i.e. `concrete = Val(false)`, the default) returns a
-`LegacyExaCore` — a thin mutable wrapper that supports the deprecated mutating
-wrappers (`variable`, `parameter`, `objective`, `constraint`, `constraint!`,
-`subexpr`).  A deprecation warning is emitted at construction time to signal
-that this path will be removed in a future release.
+Since v0.10, `ExaCore` is an immutable struct: every model-building call
+returns a new core, and the old mutating wrappers (`variable`, `parameter`,
+`objective`, `constraint`, `constraint!`, `subexpr`) have been removed.
 
-Note that `LegacyExaCore` does **not** support the new functional `add_*` API.
-Migrate to `ExaCore(concrete = Val(true))` to use `add_var`, `add_obj`, etc.
-
-To obtain the bare immutable `ExaCore` — required for type-stable code and AOT
-compilation with `juliac` — pass `concrete = Val(true)`:
+The `concrete` keyword selects how the core accumulates blocks.  The default,
+`concrete = Val(false)`, uses type-erased storage: the core's type does not
+change as blocks are added, so model construction compiles once instead of
+once per block.  Pass `concrete = Val(true)` to keep every block in the
+core's type, which is required for AOT compilation with `juliac --trim=safe`.
+Both modes produce the same `ExaModel`:
 
 ```julia
 # v0.9
@@ -52,13 +50,13 @@ objective(c, x[i]^2 for i in 1:10)
 m = ExaModel(c)
 
 # v0.10 — functional style (recommended)
-c = ExaCore(concrete = Val(true))
+c = ExaCore()
 c, x = add_var(c, 10; lvar = 0.0)
 c, _  = add_obj(c, x[i]^2 for i in 1:10)
 m = ExaModel(c)
 
 # v0.10 — macro style (most concise)
-c = ExaCore(concrete = Val(true))
+c = ExaCore()
 @add_var(c, x, 10; lvar = 0.0)
 @add_obj(c, x[i]^2 for i in 1:10)
 m = ExaModel(c)
@@ -87,7 +85,7 @@ c = ExaCore()
 x = variable(c, ...)
 
 # New: functional pair destructuring, c rebound to updated immutable
-c = ExaCore(concrete = Val(true))
+c = ExaCore()
 c, x = add_var(c, ...)
 ```
 
@@ -111,7 +109,7 @@ m = ExaModel(c)
 using ExaModels
 
 n = 100
-c = ExaCore(concrete = Val(true))
+c = ExaCore()
 c, x = add_var(c, n; lvar = -1.0, uvar = 1.0, start = 0.0)
 c, θ = add_par(c, ones(n))
 c, s = add_expr(c, θ[i] * x[i]^2 for i in 1:n)
@@ -124,7 +122,7 @@ m = ExaModel(c)
 using ExaModels
 
 n = 100
-c = ExaCore(concrete = Val(true))
+c = ExaCore()
 @add_var(c, x, n; lvar = -1.0, uvar = 1.0, start = 0.0)
 @add_par(c, θ, ones(n))
 @add_expr(c, s, θ[i] * x[i]^2 for i in 1:n)

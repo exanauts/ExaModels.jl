@@ -1288,7 +1288,7 @@ Returns `(core, evaluator)`.
 ## Example
 
 ```julia
-core = ExaCore(concrete = Val(true))
+core = ExaCore()
 @add_var(core, x, 4)
 c = @add_con(core, 0.0 * x[i] for i in 1:4; lcon = 0.0, ucon = 0.0)
 
@@ -1414,7 +1414,7 @@ output `Variable`.
 ## Example
 
 ```julia
-core = ExaCore(concrete = Val(true))
+core = ExaCore()
 @add_var(core, x, 2; start = [1.0, 1.0])
 
 core, z, _ = embed_oracle(core, x, 1;

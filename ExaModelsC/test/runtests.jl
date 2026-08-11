@@ -12,8 +12,11 @@ import NLPModelsIpopt
 #
 # written exactly as it would be without `arg`, except that the size is left
 # open.  `build` is called twice below — once to compile, once to produce the
-# in-Julia reference the library is checked against.
-function build(cn = ExaCore(concrete = Val(true), nargs = Val(1)))
+# in-Julia reference the library is checked against.  The default core is the
+# default (non-concrete) mode on purpose: compiling from it is what proves
+# `_concretize` hands juliac the same artifact a `Val(true)` core produces
+# (the `Val(true)` compile path is covered by the main suite's app tests).
+function build(cn = ExaCore(nargs = Val(1)))
     c, N = cn
     @add_var(c, x, N; start = 1.0)
     @add_obj(c, (x[i] - 2.0)^2 for i in 1:N)
