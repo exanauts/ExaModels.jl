@@ -58,8 +58,11 @@ function runtests()
         end
 
         # Compiling takes minutes, so the library is built once and every
-        # behavioural test below reads that one artifact.
-        r = compile_library(joinpath(OUT, "rosen"), build(), 4)
+        # behavioural test below reads that one artifact.  Bundled explicitly:
+        # this is the bundle-path coverage (the default — unbundled — has its
+        # own testset below), and the bundle is the form CNLPModels.jl can
+        # load on every OS.
+        r = compile_library(joinpath(OUT, "rosen"), build(), 4; bundle = true)
 
         @testset "the library exists and loads" begin
             @test isfile(r.libpath)
@@ -135,9 +138,11 @@ function runtests()
             ref = ExaModel(c)
 
             # Compiled through the `@name` spelling: installs on the search
-            # path, with the prefix defaulting to the name.
+            # path, with the prefix defaulting to the name.  Bundled, so the
+            # in-Julia consumption below works on every OS — and a second
+            # bundle in one process is the salt-collision regression case.
             f = withenv("CNLPMODELS_PATH" => OUT) do
-                compile_library("@fixed", c)
+                compile_library("@fixed", c; bundle = true)
             end
             @test f.outdir == joinpath(OUT, "fixed")
             @test f.prefix == "fixed"
@@ -170,19 +175,44 @@ function runtests()
             @test m2.meta.nvar == n
         end
 
-        @testset "bundle = false is a single file, for Python and C callers" begin
-            # One ~2 MB library rather than an 80 MB directory, linked against
-            # the installed Julia.  This is the form to hand a Python or C
-            # caller; it cannot be loaded from Julia — see `compile_library`'s
-            # docstring for why — so it is checked structurally here and the
-            # Python leg below exercises the behaviour.
-            u = compile_library(joinpath(OUT, "flat"), build(), 4; bundle = false)
+        @testset "the default — unbundled — is a single file, loadable everywhere" begin
+            # No `bundle` argument: this is what `compile_library` emits by
+            # default — one ~2 MB library rather than an 80 MB directory,
+            # linked against the installed Julia.
+            u = compile_library(joinpath(OUT, "flat"), build(), 4)
             @test isfile(u.libpath)
             @test u.libpath == joinpath(
                 u.outdir, "lib" * u.prefix * "." * Base.BinaryPlatforms.platform_dlext())
             @test !isdir(joinpath(u.outdir, "lib", "julia"))     # not a bundle
             @test filesize(u.libpath) < 20_000_000
             @test filesize(u.libpath) < filesize(r.libpath) * 10 # far smaller than bundled
+
+            if Sys.islinux()
+                # In-process consumption: CNLPModels detects the standard
+                # libjulia NEEDED and provisions a load-time private runtime
+                # (loading this library as-is would abort the process, so
+                # this block passing IS the mechanism working). The bundled
+                # `rosen` runtime above is already resident: the two must
+                # coexist.
+                ulib = CNLPModels.load(u.libpath)
+                N = 17
+                um = CNLPModels.CNLPModel(ulib, N; prefix = u.prefix)
+                ref = ExaModel(build(), N)
+                x = collect(range(0.5, 3.0; length = N))
+                @test um.meta.nvar == ref.meta.nvar == N
+                @test NLPModels.obj(um, x) ≈ NLPModels.obj(ref, x)
+                @test NLPModels.grad(um, x) ≈ NLPModels.grad(ref, x)
+                @test NLPModels.cons(um, x) ≈ NLPModels.cons(ref, x)
+                res = NLPModelsIpopt.ipopt(um; print_level = 0)
+                @test res.solution ≈ fill(2.0, N) atol = 1e-5
+                # And the bundled library is still alive next to it.
+                @test NLPModels.obj(
+                    CNLPModels.CNLPModel(lib, 5; prefix = r.prefix),
+                    fill(1.0, 5)) ≈ 5.0
+            else
+                # The Python leg below is the consumer for this form here.
+                @info "in-process unbundled loading is Linux-only; skipped"
+            end
         end
 
         @testset "the Python consumer reads the same model" begin
@@ -207,17 +237,24 @@ function runtests()
                 ok && (py = cand; break)
             end
 
+            # Both forms go through the same script: the bundled library and
+            # the unbundled single file, which Python loads as-is.
+            flatlib = joinpath(
+                OUT, "flat", "libflat." * Base.BinaryPlatforms.platform_dlext())
+            pylibs = [(r.libpath, r.prefix)]
+            isfile(flatlib) && push!(pylibs, (flatlib, "flat"))
             if py === nothing || !isdir(pysrc)
                 @info "skipping the Python leg" python = py pysrc_exists = isdir(pysrc)
                 @test_skip false
             else
+                for (pylib, pyprefix) in pylibs
                 N = 12
                 outfile = joinpath(mktempdir(), "py.txt")
                 env = copy(ENV)
                 sep = Sys.iswindows() ? ";" : ":"     # PATH separator, not ':' everywhere
                 env["PYTHONPATH"] =
                     pysrc * (haskey(env, "PYTHONPATH") ? sep * env["PYTHONPATH"] : "")
-                run(setenv(`$py $script $(r.libpath) $(r.prefix) $N $outfile`, env))
+                run(setenv(`$py $script $(pylib) $(pyprefix) $N $outfile`, env))
 
                 vals = Dict{String,Vector{Float64}}()
                 for line in eachline(outfile)
@@ -251,6 +288,7 @@ function runtests()
                 @test Int.(vals["hess_rows"]) == hr
                 @test Int.(vals["hess_cols"]) == hc
                 @test vals["hess"] ≈ NLPModels.hess_coord(ref, x, y; obj_weight = 0.5)
+                end
             end
         end
 
