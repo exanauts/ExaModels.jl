@@ -59,6 +59,7 @@ import ExaModels
 import JuliaC
 import Random
 import Serialization
+import TOML
 
 export compile_library
 
@@ -349,6 +350,97 @@ function _check_prefix(prefix::AbstractString)
     return prefix
 end
 
+# ── The packages a core's own types come from ─────────────────────────────────
+#
+# A recipe defers more than sizes.  A starting point that varies with the index,
+# or the set a generator runs over when that set is computed from the size, is a
+# function the MODELLING library wrote, and it travels inside the serialized core
+# as a type that library owns.  Nothing is wrong with that — it is data, it
+# serializes, and `instantiate` runs it — but the generated app is a different
+# process, and it has to be able to name those types again.
+#
+# `Serialization` resolves a type's module through `Base.PkgId`, and only among
+# modules that are LOADED.  So the app has to do two things, and doing one is
+# not enough: depend on the package, and `import` it before deserializing.  With
+# the dependency present but no import, the deserialize fails with exactly the
+# same `KeyError` as with no dependency at all — which is why this is worth
+# stating rather than leaving to whoever reads the generated `Project.toml`.
+#
+# An EXTENSION is where a modelling library naturally writes these functions,
+# since they are the ones that use ExaModels.  An extension cannot be depended
+# on directly, so it is resolved to its parent package: the app imports the
+# parent, ExaModels is already imported, and Julia loads the extension itself.
+
+struct _Pkg
+    name::String
+    uuid::Base.UUID
+    dir::String
+end
+
+function _collect_modules!(mods::Set{Module}, seen::Base.IdSet{Any}, @nospecialize(T))
+    T in seen && return mods
+    push!(seen, T)
+    if T isa UnionAll
+        return _collect_modules!(mods, seen, T.body)
+    elseif T isa Union
+        _collect_modules!(mods, seen, T.a)
+        return _collect_modules!(mods, seen, T.b)
+    elseif T isa DataType
+        push!(mods, parentmodule(T))
+        for p in T.parameters
+            p isa Type && _collect_modules!(mods, seen, p)
+        end
+    end
+    return mods
+end
+
+# The package a module belongs to, or `nothing` for Base/Core/ExaModels, for
+# `Main`, and for anything else with no `Project.toml` behind it.  A module
+# whose entry point is not `<dir>/src/<Name>.jl` is an extension: its `pkgdir`
+# is already the parent's, so the parent's name and uuid are read from there.
+function _owning_package(m::Module)
+    (m === Base || m === Core || m === ExaModels) && return nothing
+    Base.moduleroot(m) === m || return nothing
+    id = Base.PkgId(m)
+    id.uuid === nothing && return nothing              # Main, and other non-packages
+    dir = pkgdir(m)
+    dir === nothing && return nothing
+    path = Base.locate_package(id)
+    if path !== nothing &&
+       normpath(path) == normpath(joinpath(dir, "src", id.name * ".jl"))
+        return _Pkg(id.name, id.uuid, abspath(dir))
+    end
+    # An extension — take the package it belongs to.
+    for base in ("JuliaProject.toml", "Project.toml")
+        proj = joinpath(dir, base)
+        isfile(proj) || continue
+        toml = TOML.parsefile(proj)
+        name = get(toml, "name", nothing)
+        uuid = get(toml, "uuid", nothing)
+        (name isa String && uuid isa String) || continue
+        return _Pkg(name, Base.UUID(uuid), abspath(dir))
+    end
+    return nothing
+end
+
+"""
+    _core_packages(core) -> Vector{_Pkg}
+
+Every package, other than ExaModels itself, that owns a type inside `core`.
+These become dependencies of the generated app *and* imports in its module, so
+that the serialized core can be read back there.
+"""
+function _core_packages(core)
+    mods = _collect_modules!(Set{Module}(), Base.IdSet{Any}(), typeof(core))
+    pkgs = _Pkg[]
+    for m in sort!(collect(mods); by = string)
+        p = _owning_package(m)
+        p === nothing && continue
+        any(q -> q.uuid == p.uuid, pkgs) || push!(pkgs, p)
+    end
+    return pkgs
+end
+
 # ── Generating the app package ────────────────────────────────────────────────
 
 function _generate_app(core, arg, field, prefix::AbstractString)
@@ -368,12 +460,22 @@ function _generate_app(core, arg, field, prefix::AbstractString)
     # instantiating, which silently breaks relative `path =` entries: they would
     # resolve against the copy's parent. Absolute from the start.
     exadir = abspath(joinpath(dirname(dirname(pathof(ExaModels)))))
-    write(joinpath(appdir, "Project.toml"), _project_toml(modname, exadir))
-    write(joinpath(srcdir, modname * ".jl"), _module_source(modname, prefix, field))
+    pkgs = _core_packages(core)
+    write(joinpath(appdir, "Project.toml"), _project_toml(modname, exadir, pkgs))
+    write(
+        joinpath(srcdir, modname * ".jl"),
+        _module_source(modname, prefix, field, pkgs),
+    )
     return appdir
 end
 
-function _project_toml(modname::AbstractString, exadir::AbstractString)
+_toml_path(dir::AbstractString) = replace(dir, '\\' => '/')
+
+function _project_toml(modname::AbstractString, exadir::AbstractString, pkgs = _Pkg[])
+    deps = join(("""$(p.name) = "$(p.uuid)"\n""" for p in pkgs))
+    # A path source rather than a version bound: the app must compile the same
+    # code that produced the core, not merely something compatible with it.
+    sources = join(("""$(p.name) = {path = "$(_toml_path(p.dir))"}\n""" for p in pkgs))
     return """
     name = "$modname"
     uuid = "$_GEN_UUID"
@@ -382,10 +484,10 @@ function _project_toml(modname::AbstractString, exadir::AbstractString)
     [deps]
     ExaModels = "1037b233-b668-4ce9-9b63-f9f681f55dd2"
     Serialization = "9e88b42a-f829-5b0c-bbe9-9e923198166b"
-
+    $deps
     [sources]
-    ExaModels = {path = "$(replace(exadir, '\\' => '/'))"}
-    """
+    ExaModels = {path = "$(_toml_path(exadir))"}
+    $sources"""
 end
 
 # A fixed model: the core carries no placeholders, so `<prefix>_new(n)`
@@ -408,14 +510,18 @@ _arg_expr(::FixedModel) = "nothing"
 _nargs_value(::FixedModel) = 0
 _nargs_value(::Union{Nothing, Symbol}) = 1
 
-function _module_source(modname::AbstractString, p::AbstractString, field)
+function _module_source(modname::AbstractString, p::AbstractString, field, pkgs = _Pkg[])
     argexpr = _arg_expr(field)
+    # Imported for their side effect on `Serialization`: a module has to be
+    # loaded before a type it owns can be resolved by `PkgId`, and the
+    # deserialize below is what needs them.  A dependency alone is not enough.
+    imports = join(("import $(p.name)\n" for p in pkgs))
     return """
     module $modname
 
     import ExaModels
     import Serialization
-
+    $imports
     # Deserialized at precompile time, so the core is baked into the package
     # image and no model-building code enters the compiled call graph.
     const CORE = Serialization.deserialize(joinpath(@__DIR__, "core.jls"))
