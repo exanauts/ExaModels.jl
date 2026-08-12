@@ -1,7 +1,7 @@
 """
     ExaModelsC
 
-Compile an [`ExaModels.ExaCore`](@ref) into a self-contained shared library that
+Compile an [`ExaModels.ExaCore`](@ref) into a shared library that
 exposes the model through the plain C interface consumed by
 [CNLPModels.jl](https://github.com/MadNLP/CNLPModels.jl) (and its Python twin
 `cnlpmodels`).
@@ -39,13 +39,13 @@ which is part of ExaModels:
 
 ```julia
 using CNLPModels, NLPModelsIpopt
-lib = CNLPModels.load("/opt/models/rosen/lib/librosen.so")
+lib = CNLPModels.load("/opt/models/rosen/librosen.so")
 ipopt(CNLPModel(lib, 1000; prefix = "rosen"))
 ```
 
 ```python
 import cnlpmodels
-lib = cnlpmodels.load("/opt/models/rosen/lib/librosen.so")
+lib = cnlpmodels.load("/opt/models/rosen/librosen.so")
 m = cnlpmodels.CModel(lib, 1000, prefix="rosen")
 ```
 
@@ -70,22 +70,24 @@ const _GEN_UUID = "b41c7e02-9f3d-4a58-8e6c-2d0f5a7c9b13"
 
 """
     compile_library(out, core, args...; prefix = basename(out), trim = "safe",
-                    bundle = true, verbose = false)
+                    bundle = false, verbose = false)
         -> (; libpath, outdir, prefix)
 
 Compile `core` into a shared library under `out`, and return the path to it.
 
 ## `bundle`
 
-`bundle = true` (the default) emits a directory carrying the library together
-with a **privatized** copy of the Julia runtime — around 80 MB, needing no Julia
-on the consumer's side.  `bundle = false` emits a single ~2 MB library linked
-against the Julia installation it was built with.
+`bundle = false` (the default) emits a single ~2 MB library linked against the
+Julia installation it was built with, which the consumer's machine must then
+have (same version, found through the library's recorded rpath or provided by
+the consumer).  `bundle = true` emits a directory carrying the library together
+with a **privatized** copy of the Julia runtime — around 80 MB, needing no
+Julia on the consumer's side.
 
-| consumer | `bundle = true` | `bundle = false` |
-|:---------|:----------------|:-----------------|
+| consumer | `bundle = false` (default) | `bundle = true` |
+|:---------|:---------------------------|:----------------|
 | Python (`cnlpmodels`), C | works | works |
-| **Julia (`CNLPModels.jl`)** | works | **aborts on the first call** |
+| Julia (`CNLPModels.jl`) | works on Linux; refused elsewhere | works |
 
 !!! warning "Windows"
     `juliac` implements runtime privatization for Linux and macOS only — on
@@ -106,11 +108,16 @@ runtime's* thread-local storage, so a privatized runtime — a distinct one, who
 against the installed Julia instead, or bundling without privatizing, both
 reproduce the abort; measured, not assumed.
 
-Fixing that properly means skipping the adoption when the thread is already a
-Julia thread, which is upstream in juliac's generated preamble.  Until then the
-privatized bundle is the only form `CNLPModels.jl` can load, which is why it is
-the default; pass `bundle = false` for a Python or C caller that would rather
-have 2 MB than 80.
+The two forms therefore differ only in *when* privatization happens.  A bundle
+carries its privatized runtime with it; an unbundled library gets one at load
+time — on Linux, `CNLPModels.load` detects the standard `libjulia` soname in
+its NEEDED entries and provisions a salted copy of the consumer's *installed*
+runtime (the same transformation JuliaC's bundler applies, replayed in
+scratch).  Python and C callers load either form as-is: there the calling
+thread is genuinely foreign and the library's own runtime initializes on the
+first call.  On macOS the load-time half is not implemented, so
+`CNLPModels.jl` needs the bundle there; it refuses the unbundled form with an
+explanation rather than aborting.
 
 ## Where it goes
 
@@ -162,7 +169,7 @@ function compile_library(
     args...;
     prefix::AbstractString = _default_out_prefix(out),
     trim::AbstractString = "safe",
-    bundle::Bool = true,
+    bundle::Bool = false,
     verbose::Bool = false,
 )
     _check_prefix(prefix)
