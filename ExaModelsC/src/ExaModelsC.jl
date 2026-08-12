@@ -1,7 +1,7 @@
 """
     ExaModelsC
 
-Compile an [`ExaModels.ExaCore`](@ref) into a self-contained shared library that
+Compile an [`ExaModels.ExaCore`](@ref) into a shared library that
 exposes the model through the plain C interface consumed by
 [CNLPModels.jl](https://github.com/MadNLP/CNLPModels.jl) (and its Python twin
 `cnlpmodels`).
@@ -39,13 +39,13 @@ which is part of ExaModels:
 
 ```julia
 using CNLPModels, NLPModelsIpopt
-lib = CNLPModels.load("/opt/models/rosen/lib/librosen.so")
+lib = CNLPModels.load("/opt/models/rosen/librosen.so")
 ipopt(CNLPModel(lib, 1000; prefix = "rosen"))
 ```
 
 ```python
 import cnlpmodels
-lib = cnlpmodels.load("/opt/models/rosen/lib/librosen.so")
+lib = cnlpmodels.load("/opt/models/rosen/librosen.so")
 m = cnlpmodels.CModel(lib, 1000, prefix="rosen")
 ```
 
@@ -69,24 +69,24 @@ const _GEN_UUID = "b41c7e02-9f3d-4a58-8e6c-2d0f5a7c9b13"
 
 """
     compile_library(out, core, args...; prefix = basename(out), trim = "safe",
-                    bundle = true, verbose = false)
+                    bundle = false, verbose = false)
         -> (; libpath, outdir, prefix)
 
 Compile `core` into a shared library under `out`, and return the path to it.
 
 ## `bundle`
 
-`bundle = true` (the default) emits a directory carrying the library together
-with a **privatized** copy of the Julia runtime — around 80 MB, needing no Julia
-on the consumer's side.  `bundle = false` emits a single ~2 MB library linked
-against the Julia installation it was built with, which the consumer's machine
-must then have (same version, found through the library's recorded rpath or
-provided by the consumer).
+`bundle = false` (the default) emits a single ~2 MB library linked against the
+Julia installation it was built with, which the consumer's machine must then
+have (same version, found through the library's recorded rpath or provided by
+the consumer).  `bundle = true` emits a directory carrying the library together
+with a **privatized** copy of the Julia runtime — around 80 MB, needing no
+Julia on the consumer's side.
 
-| consumer | `bundle = true` | `bundle = false` |
-|:---------|:----------------|:-----------------|
+| consumer | `bundle = false` (default) | `bundle = true` |
+|:---------|:---------------------------|:----------------|
 | Python (`cnlpmodels`), C | works | works |
-| Julia (`CNLPModels.jl`) | works | works on Linux; refused elsewhere |
+| Julia (`CNLPModels.jl`) | works on Linux; refused elsewhere | works |
 
 !!! warning "Windows"
     `juliac` implements runtime privatization for Linux and macOS only — on
@@ -168,7 +168,7 @@ function compile_library(
     args...;
     prefix::AbstractString = _default_out_prefix(out),
     trim::AbstractString = "safe",
-    bundle::Bool = true,
+    bundle::Bool = false,
     verbose::Bool = false,
 )
     _check_prefix(prefix)

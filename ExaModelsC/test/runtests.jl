@@ -58,8 +58,11 @@ function runtests()
         end
 
         # Compiling takes minutes, so the library is built once and every
-        # behavioural test below reads that one artifact.
-        r = compile_library(joinpath(OUT, "rosen"), build(), 4)
+        # behavioural test below reads that one artifact.  Bundled explicitly:
+        # this is the bundle-path coverage (the default — unbundled — has its
+        # own testset below), and the bundle is the form CNLPModels.jl can
+        # load on every OS.
+        r = compile_library(joinpath(OUT, "rosen"), build(), 4; bundle = true)
 
         @testset "the library exists and loads" begin
             @test isfile(r.libpath)
@@ -135,9 +138,11 @@ function runtests()
             ref = ExaModel(c)
 
             # Compiled through the `@name` spelling: installs on the search
-            # path, with the prefix defaulting to the name.
+            # path, with the prefix defaulting to the name.  Bundled, so the
+            # in-Julia consumption below works on every OS — and a second
+            # bundle in one process is the salt-collision regression case.
             f = withenv("CNLPMODELS_PATH" => OUT) do
-                compile_library("@fixed", c)
+                compile_library("@fixed", c; bundle = true)
             end
             @test f.outdir == joinpath(OUT, "fixed")
             @test f.prefix == "fixed"
@@ -170,10 +175,11 @@ function runtests()
             @test m2.meta.nvar == n
         end
 
-        @testset "bundle = false is a single file, loadable everywhere" begin
-            # One ~2 MB library rather than an 80 MB directory, linked against
-            # the installed Julia.
-            u = compile_library(joinpath(OUT, "flat"), build(), 4; bundle = false)
+        @testset "the default — unbundled — is a single file, loadable everywhere" begin
+            # No `bundle` argument: this is what `compile_library` emits by
+            # default — one ~2 MB library rather than an 80 MB directory,
+            # linked against the installed Julia.
+            u = compile_library(joinpath(OUT, "flat"), build(), 4)
             @test isfile(u.libpath)
             @test u.libpath == joinpath(
                 u.outdir, "lib" * u.prefix * "." * Base.BinaryPlatforms.platform_dlext())
