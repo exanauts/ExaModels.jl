@@ -79,12 +79,14 @@ Compile `core` into a shared library under `out`, and return the path to it.
 `bundle = true` (the default) emits a directory carrying the library together
 with a **privatized** copy of the Julia runtime — around 80 MB, needing no Julia
 on the consumer's side.  `bundle = false` emits a single ~2 MB library linked
-against the Julia installation it was built with.
+against the Julia installation it was built with, which the consumer's machine
+must then have (same version, found through the library's recorded rpath or
+provided by the consumer).
 
 | consumer | `bundle = true` | `bundle = false` |
 |:---------|:----------------|:-----------------|
 | Python (`cnlpmodels`), C | works | works |
-| **Julia (`CNLPModels.jl`)** | works | **aborts on the first call** |
+| Julia (`CNLPModels.jl`) | works | works on Linux; refused elsewhere |
 
 !!! warning "Windows"
     `juliac` implements runtime privatization for Linux and macOS only — on
@@ -105,11 +107,16 @@ runtime's* thread-local storage, so a privatized runtime — a distinct one, who
 against the installed Julia instead, or bundling without privatizing, both
 reproduce the abort; measured, not assumed.
 
-Fixing that properly means skipping the adoption when the thread is already a
-Julia thread, which is upstream in juliac's generated preamble.  Until then the
-privatized bundle is the only form `CNLPModels.jl` can load, which is why it is
-the default; pass `bundle = false` for a Python or C caller that would rather
-have 2 MB than 80.
+The two forms therefore differ only in *when* privatization happens.  A bundle
+carries its privatized runtime with it; an unbundled library gets one at load
+time — on Linux, `CNLPModels.load` detects the standard `libjulia` soname in
+its NEEDED entries and provisions a salted copy of the consumer's *installed*
+runtime (the same transformation JuliaC's bundler applies, replayed in
+scratch).  Python and C callers load either form as-is: there the calling
+thread is genuinely foreign and the library's own runtime initializes on the
+first call.  On macOS the load-time half is not implemented, so
+`CNLPModels.jl` needs the bundle there; it refuses the unbundled form with an
+explanation rather than aborting.
 
 ## Where it goes
 
