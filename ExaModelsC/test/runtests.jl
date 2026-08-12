@@ -2,6 +2,8 @@ module ExaModelsCTest
 
 using Test
 using ExaModels, ExaModelsC
+import Pkg
+import RecipeKernels
 import CNLPModels
 import NLPModels
 import NLPModelsIpopt
@@ -38,6 +40,85 @@ function runtests()
             # And a prefix that is not a C identifier is caught before juliac.
             @test_throws ArgumentError compile_library(OUT, c, 4; prefix = "lib-a")
             @test_throws ArgumentError compile_library(OUT, c, 4; prefix = "2fast")
+        end
+
+        @testset "a recipe's own package travels into the generated app" begin
+            # A modelling library's own function inside the core is the ordinary
+            # case, not an exotic one: a per-index start and a size-dependent
+            # index set both have to be deferred, and what gets deferred is that
+            # library's code.  The core then names a `RecipeKernels` type.
+            c, N = ExaCore(nargs = Val(1))
+            @add_var(c, x, N; start = Base.Generator(RecipeKernels.alternating, 1:N))
+            @add_obj(c, (x[i] - 2.0)^2 for i in 1:N)
+            @add_con(c, x[l+1] + x[l+2] for l in ExaModels.ArgNode1(RecipeKernels.offsets, N))
+
+            pkgs = ExaModelsC._core_packages(ExaModelsC._concretize(c))
+            @test length(pkgs) == 1
+            @test only(pkgs).name == "RecipeKernels"
+            @test isdir(only(pkgs).dir)
+
+            # A core with nothing but ExaModels in it must not drag anything in:
+            # the generated project has to stay exactly as it was for every model
+            # that does not need this.
+            plain, M = ExaCore(nargs = Val(1))
+            @add_var(plain, z, M; start = 1.0)
+            @add_obj(plain, (z[i] - 2.0)^2 for i in 1:M)
+            @test isempty(ExaModelsC._core_packages(ExaModelsC._concretize(plain)))
+
+            # Both halves are needed and neither alone is enough: a dependency
+            # the app never imports resolves no better than one it never had, so
+            # the generated files are checked for the dependency AND the import.
+            appdir = ExaModelsC._generate_app(
+                ExaModelsC._concretize(c), 8, nothing, "rk",
+            )
+            proj = read(joinpath(appdir, "Project.toml"), String)
+            src = read(joinpath(appdir, "src", "ExaLib_rk.jl"), String)
+            @test occursin("RecipeKernels = \"5c1e4a77", proj)
+            @test occursin("RecipeKernels = {path =", proj)
+            @test occursin("import RecipeKernels", src)
+
+            # And the property those two exist for: a *different* process, whose
+            # only knowledge of RecipeKernels is what the generated project says,
+            # can read the core back and build a model from it.  This is the step
+            # that failed before, with `KeyError: PkgId(... "RecipeKernels")`.
+            probe = joinpath(appdir, "probe.jl")
+            answer = joinpath(appdir, "answer.txt")
+            write(probe, """
+                import Pkg
+                Pkg.instantiate(; io = devnull)
+                import ExaModels, Serialization, RecipeKernels
+                core = Serialization.deserialize(joinpath(@__DIR__, "src", "core.jls"))
+                m = ExaModels.ExaModel(core, 12; check = Val(false))
+                write(
+                    joinpath(@__DIR__, "answer.txt"),
+                    string(m.meta.nvar, ",", m.meta.ncon, ",", m.meta.x0[1], ",", m.meta.x0[2]),
+                )
+                """)
+            # Keep the child's output: without it a failure here reads as a bare
+            # `false`, and the whole point of this assertion is the reason.
+            log = IOBuffer()
+            ran = success(pipeline(
+                `$(Base.julia_cmd()) --startup-file=no --project=$appdir $probe`;
+                stdout = log, stderr = log,
+            ))
+            ran || @error "generated app failed to load its core" output =
+                String(take!(log))
+            @test ran
+            @test isfile(answer) && read(answer, String) == "12,5,-1.2,1.0"
+
+            # An extension is the natural home for a recipe's ExaModels-facing
+            # parts, and a type it owns cannot be depended on by name — there is
+            # no `RecipeKernelsExaModels` to add to a project.  It has to resolve
+            # to the package that carries it, which the app then imports;
+            # ExaModels is already imported, so Julia loads the extension itself.
+            ext = Base.get_extension(RecipeKernels, :RecipeKernelsExaModels)
+            @test ext !== nothing
+            e, K = ExaCore(nargs = Val(1))
+            @add_var(e, w, K; start = Base.Generator(ext.ramp, 1:K))
+            @add_obj(e, (w[i] - 1.0)^2 for i in 1:K)
+            epkgs = ExaModelsC._core_packages(ExaModelsC._concretize(e))
+            @test length(epkgs) == 1
+            @test only(epkgs).name == "RecipeKernels"       # the parent, not the ext
         end
 
         @testset "out is @name on the search path, or a literal path" begin
