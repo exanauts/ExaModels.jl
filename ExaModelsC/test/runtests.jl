@@ -28,6 +28,11 @@ end
 
 const OUT = get(ENV, "EXAMODELSC_TEST_OUT", joinpath(tempdir(), "examodelsc_test"))
 
+# A NAMED function in Main, for the argfun guard test: Main is its own
+# moduleroot, so only the package-ownership check refuses it. Defined here so
+# the world has advanced by the time the guard's preceding probe calls it.
+Main.eval(:(script_argfun(n) = (Int(n),)))
+
 # A three-placeholder recipe — a bare size, a NamedTuple carrying a start and
 # a bound, and a table — the data-defined shape the builder ABI exists for.
 function sbuild()
@@ -491,6 +496,15 @@ function runtests()
                 OUT, c, 4; argfun = RecipeKernels.alternating)
             # Anonymous functions have no name for the library to call.
             @test_throws "named function" compile_library(OUT, c, 4; argfun = n -> (n,))
+            # A NAMED function in Main is its own moduleroot and used to pass
+            # the guard — but the generated app calls the function by name
+            # from another process, so nothing outside a package is reachable.
+            # Before the guard learned this, it surfaced as unresolved
+            # getglobal(Main, ...) verifier errors after minutes of juliac.
+            # (Defined at the top of this file: evaluating it here would leave
+            # it too new for the probe call that precedes the guard.)
+            @test_throws "defined in a script or the REPL" compile_library(
+                OUT, c, 4; argfun = Main.script_argfun)
             # The pair spelling: a Function in second position is the argfun —
             # nothing callable can ever be a model argument.
             co, fn, rest = ExaModelsC._core_and_args(:m, (c, RecipeKernels.doubled_args, 4))
