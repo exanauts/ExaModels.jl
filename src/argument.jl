@@ -209,10 +209,15 @@ true
 # (Julia's passthrough heuristic), and the `map` below then carries a dynamic
 # call that `juliac --trim=safe` cannot resolve. Harmless under the JIT,
 # load-bearing for AOT — same reason on the `ExaCore` method in nlp.jl.
-@inline instantiate(t::Tuple, a::Vararg{Any,N}) where {N} =
-    map(x -> instantiate(x, a...), t)
-@inline instantiate(t::NamedTuple, a::Vararg{Any,N}) where {N} =
-    map(x -> instantiate(x, a...), t)
+# EXPERIMENT (Ohm): unrolled as well as specialized. #308's `Vararg{Any,N}`
+# is necessary — without it the vararg is not specialized at all — but on a
+# core the size of an AC OPF's the `map` closure is still unresolved.
+@inline _instantiate_all(a::Tuple) = ()
+@inline _instantiate_all(a::Tuple, x, xs...) =
+    (instantiate(x, a...), _instantiate_all(a, xs...)...)
+@inline instantiate(t::Tuple, a::Vararg{Any,N}) where {N} = _instantiate_all(a, t...)
+@inline instantiate(t::NamedTuple{names}, a::Vararg{Any,N}) where {names,N} =
+    NamedTuple{names}(_instantiate_all(a, values(t)...))
 
 """
     _anyarg(xs...)
