@@ -16,7 +16,7 @@ recompiles, whereas a closure carries a gensym that is not.
 """
 module RecipeKernels
 
-export alternating, offsets, doubled_args, parsed_args
+export alternating, offsets, doubled_args, parsed_args, table2d, datant
 
 "Alternating starting point — the shape a per-index start generator takes."
 @inline alternating(i) = isodd(i) ? -1.2 : 1.0
@@ -35,5 +35,20 @@ doubled_args(n::Integer) = (2 * Int(n),)
 "The string-kind argument function: `P_new_str(s)` hands the string to it —
 standing in for a case-file path parsed on the far side of the boundary."
 parsed_args(s::AbstractString) = (parse(Int, s),)
+
+"A 2-D table of heterogeneous tuples over an open size — the COPS-shaped
+deferred data (a Matrix of (Int,Int,Int,F64,F64,F64) rows over `1:n × 1:3`)
+that exercises product iterators and per-element instantiate typing."
+table2d(n) = [(i, j, i + j, 0.5, 1.5, 2.5) for i in 1:n, j in 1:3]
+
+"A NamedTuple-returning data function — the shape a modelling library's
+`*_data(n)` takes, with fields PROJECTED out of the deferred call
+(`d.v_start` for starts, `d.tab` as an iterator): the projections are
+`ArgIndexed` nodes over the one `ArgNode1`, which is the structure the
+gasoil-class cores carry."
+datant(n) = (
+    v_start = fill(0.5, 3 * n),
+    tab = [(i, j, 0.5 + i) for i in 1:n, j in 1:3],
+)
 
 end # module

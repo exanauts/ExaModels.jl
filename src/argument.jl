@@ -211,15 +211,27 @@ true
 # load-bearing for AOT — same reason on the `ExaCore` method in nlp.jl.
 # Unrolled as well as specialized: `Vararg{Any,N}` is necessary — without it
 # the vararg is not specialized at all — but on a core the size of an AC
-# OPF's (measured: 6 variable blocks, 10 constraint blocks) the `map`
-# closure is still an unresolved call under `--trim=safe`. The recursion
-# gives each element a direct `instantiate` call; semantics are unchanged.
-@inline _instantiate_all(a::Tuple) = ()
-@inline _instantiate_all(a::Tuple, x, xs...) =
-    (instantiate(x, a...), _instantiate_all(a, xs...)...)
-@inline instantiate(t::Tuple, a::Vararg{Any,N}) where {N} = _instantiate_all(a, t...)
-@inline instantiate(t::NamedTuple{names}, a::Vararg{Any,N}) where {names,N} =
-    NamedTuple{names}(_instantiate_all(a, values(t)...))
+# OPF's the `map` closure is still an unresolved call under `--trim=safe`.
+# The recursion gives each element a direct `instantiate` call.
+#
+# THE PARAMETER ROLES ARE LOAD-BEARING, both of them. The ELEMENTS stay
+# structural (`t::Tuple`, recursed via `first`/`Base.tail`): splatting them
+# into a bare vararg (`_f(a, x, xs...)`) puts the heterogeneous element
+# types into a pass-through-only vararg, which Julia leaves unspecialized —
+# the per-element types are lost, and a core whose objectives project
+# fields out of a deferred data call (gasoil's shape) widens at the
+# instantiate boundary: 6 verifier errors, reproduced and bisected to this
+# hunk alone (6 → 0 on the swap, real COPS gasoil as the instrument). The
+# ARGUMENTS ride the specialized `Vararg{Any,N}`. Inverting either role
+# reintroduces the widening; the ExaModelsC suite's models are too small
+# and too homogeneous to see it — the COPS CI pin on this branch is the
+# regression gate for this class.
+@inline _instantiate_each(::Tuple{}, a::Vararg{Any,N}) where {N} = ()
+@inline _instantiate_each(t::Tuple, a::Vararg{Any,N}) where {N} =
+    (instantiate(first(t), a...), _instantiate_each(Base.tail(t), a...)...)
+@inline instantiate(t::Tuple, a::Vararg{Any,N}) where {N} = _instantiate_each(t, a...)
+@inline instantiate(t::NamedTuple{K}, a::Vararg{Any,N}) where {K, N} =
+    NamedTuple{K}(_instantiate_each(Tuple(t), a...))
 
 """
     _anyarg(xs...)
