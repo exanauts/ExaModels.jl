@@ -215,8 +215,9 @@ function compile_library(
     trim::AbstractString = "safe",
     bundle::Bool = false,
     verbose::Bool = false,
+    argfun = nothing,
 )
-    spec = _model_spec(prefix, core, args)
+    spec = _model_spec(prefix, core, argfun, args)
     r = _compile([spec], out, prefix, trim, bundle, verbose)
     # One model keeps the singular field it has always returned.
     return (; libpath = r.libpath, outdir = r.outdir, prefix = spec.prefix)
@@ -280,7 +281,11 @@ end
 # values. Anything else is named precisely here — the pair spelling is easy to
 # get subtly wrong, and a mistake that reached `_model_spec` would be reported
 # as though the core itself were at fault.
-_core_and_args(::Symbol, core::ExaModels.ExaCore) = (core, ())
+# A pair cannot carry keywords, so an argument function is positional: it goes
+# SECOND, `:name => (core, argfun, example)`. Unambiguous because nothing
+# callable can ever be a model argument — the C boundary carries numbers,
+# arrays and tables, never a function.
+_core_and_args(::Symbol, core::ExaModels.ExaCore) = (core, nothing, ())
 function _core_and_args(name::Symbol, value::Tuple)
     isempty(value) && throw(
         ArgumentError(
@@ -293,7 +298,11 @@ function _core_and_args(name::Symbol, value::Tuple)
             "`:$name` must begin with an `ExaCore` — got a $(typeof(first(value))).",
         ),
     )
-    return (first(value), Base.tail(value))
+    rest = Base.tail(value)
+    if !isempty(rest) && first(rest) isa Function
+        return (first(value), first(rest), Base.tail(rest))
+    end
+    return (first(value), nothing, rest)
 end
 _core_and_args(name::Symbol, value) = throw(
     ArgumentError(
@@ -321,9 +330,33 @@ end
 # The per-model validation both entry points share. Everything here is checked
 # BEFORE any code generation, so a bad model is reported in the caller's process
 # rather than as a compile error in a generated file nobody is looking at.
-function _model_spec(prefix::AbstractString, core::ExaModels.ExaCore, args::Tuple)
+function _model_spec(prefix::AbstractString, core::ExaModels.ExaCore, argfun, args::Tuple)
     _check_prefix(prefix)
     core = _concretize(core)
+    if argfun !== nothing
+        # `args` are the example arguments to the FUNCTION, not to the core:
+        # the library carries the function, calls it at run time, and
+        # instantiates from whatever it returns. That is what lets a
+        # data-defined model be compiled once and instantiated at any data
+        # without a table crossing the boundary.
+        isempty(args) && throw(
+            ArgumentError(
+                "`$prefix`: `argfun` was given, so the examples are the " *
+                "arguments to call it with — e.g. `:$prefix => (core, " *
+                "ac_opf_args, \"case14.m\")`.",
+            ),
+        )
+        kind = _argfun_kind(prefix, args)
+        arg = argfun(args...)
+        arg isa Tuple || throw(
+            ArgumentError(
+                "`$prefix`: `argfun` must return the argument TUPLE the core is " *
+                "instantiated with — what you would splat into " *
+                "`ExaModel(core, ...)`. Got a $(typeof(arg)); wrap it, as `(data,)`.",
+            ),
+        )
+        return ModelSpec(String(prefix), core, arg, UserArgs{kind}(_argfun_call(prefix, argfun), argfun))
+    end
     if isempty(args)
         # No examples means a FIXED model: the core has no placeholders and is
         # compiled as-is. A core that declared placeholders cannot be meant —
@@ -714,8 +747,10 @@ Every package, other than ExaModels itself, that owns a type inside `core`.
 These become dependencies of the generated app *and* imports in its module, so
 that the serialized core can be read back there.
 """
-function _core_packages(core)
-    mods = _collect_modules!(Set{Module}(), Base.IdSet{Any}(), typeof(core))
+_core_packages(core) = _core_packages_of(typeof(core))
+
+function _core_packages_of(@nospecialize(T))
+    mods = _collect_modules!(Set{Module}(), Base.IdSet{Any}(), T)
     pkgs = _Pkg[]
     for m in sort!(collect(mods); by = string)
         p = _owning_package(m)
@@ -772,7 +807,15 @@ function _generate_app(specs::Vector{ModelSpec}, libname::AbstractString)
     # them must be a dependency and an import of the one generated app.
     pkgs = _Pkg[]
     for s in specs
-        for p in _core_packages(s.core)
+        # The core's own packages, plus — for a model with an argument
+        # function — the package that owns the function. That one must be
+        # IMPORTED, not merely pinned: the generated module calls it by name,
+        # so pinning it as a dependency leaves `ExaModelsPower.opf_args` a
+        # global of unknown type and `--trim=safe` refuses the call.
+        srcs = s.field isa UserArgs ?
+            (_core_packages(s.core)..., _core_packages_of(typeof(_argfun_of(s)))...) :
+            _core_packages(s.core)
+        for p in srcs
             any(q -> q.uuid == p.uuid, pkgs) || push!(pkgs, p)
         end
     end
@@ -824,6 +867,82 @@ end
 # consumer already speaks it, and a second ABI shape would buy nothing.
 struct FixedModel end
 
+# A user-supplied argument function, carried into the library and called at run
+# time. `K` is the shape of the one value that crosses the C boundary — `:str`
+# for `<prefix>_new_str(const char *)`, `:int` for `<prefix>_new(n)` — and
+# `call` is the function spelled as source, `Pkg.fun`.
+#
+# This is the third instantiation surface, and it composes with the builder
+# rather than competing: the builder passes structured data ACROSS the
+# boundary, this keeps the data on the far side and passes a path. A caller
+# holding tables wants the builder; a caller holding a filename wants this.
+#
+# The function is emitted BY NAME rather than serialized. A name is what
+# `juliac --trim=safe` resolves statically; a deserialized function object
+# would be a runtime value, and the call through it would not be.
+struct UserArgs{K}
+    call::String
+    fun::Any
+end
+
+# The function itself, for the package walk. Stored alongside the spelling
+# rather than re-resolved from it: `Pkg.fun` is a string by then.
+_argfun_of(s::ModelSpec) = s.field.fun
+
+# Which C entry point instantiates a model. Emitted for EVERY model, so a
+# consumer routes on it rather than probing for symbols.
+_argkind_value(::FixedModel) = 0            # `_new(n)`, `n` ignored
+_argkind_value(::Union{Nothing, Symbol}) = 1  # `_new(n)`, n is the size
+_argkind_value(::UserArgs{:int}) = 1        # `_new(n)`, n goes to the function
+_argkind_value(::UserArgs{:str}) = 2        # `_new_str(const char *)`
+_argkind_value(::BuilderModel) = 3          # `_data_begin` / `_new_from_data`
+
+_nargs_value(::UserArgs) = 1
+
+# One argument, because the scalar ABI carries one — a function of several is a
+# function of a tuple the caller builds, and there is nowhere on the boundary
+# to put the rest.
+function _argfun_kind(prefix, args)
+    length(args) == 1 || throw(
+        ArgumentError(
+            "`$prefix`: `argfun` is called with exactly one argument across the " *
+            "C boundary — got $(length(args)). Give it one value (a case file " *
+            "path, a size) and derive the rest inside the function.",
+        ),
+    )
+    a = only(args)
+    a isa AbstractString && return :str
+    a isa Integer && return :int
+    throw(
+        ArgumentError(
+            "`$prefix`: the example argument for `argfun` is a $(typeof(a)); the " *
+            "C boundary carries one string or one 64-bit integer. Anything " *
+            "richer belongs INSIDE the function — that is what it is for.",
+        ),
+    )
+end
+
+# `argfun` spelled as source. It must be a named function a package owns: the
+# generated library names it, so an anonymous function or a closure has nothing
+# to name, and would also defeat the static resolution above.
+function _argfun_call(prefix, f)
+    m = parentmodule(f)
+    n = nameof(f)
+    ok = try
+        isdefined(m, n) && getfield(m, n) === f && Base.moduleroot(m) === m
+    catch
+        false
+    end
+    ok || throw(
+        ArgumentError(
+            "`$prefix`: `argfun` must be a named function defined by a package — " *
+            "the generated library calls it by name. Got $(repr(f)) in module " *
+            "$m; define it at the top level of your package and pass that.",
+        ),
+    )
+    return string(nameof(m), ".", n)
+end
+
 @inline _nargs_count(::Val{N}) where {N} = N
 
 # How `rec_new(n)` turns its one integer into the argument the core expects —
@@ -857,6 +976,8 @@ function _instantiation_source(p::AbstractString, field::Union{Nothing, Symbol, 
         return Cint($(_nargs_value(field)))
     end
 
+$(_argkind_source(p, field))
+
     Base.@ccallable function $(p)_new(n::Cint)::Cint
         try
             push!(MODELS_$p, ExaModels.ExaModel(CORE_$p, $argexpr; check = Val(false)))
@@ -881,6 +1002,64 @@ end
 function _setter_arms(fields, render)
     isempty(fields) && return ""
     return join((render(f) for f in fields), "") * "\n"
+end
+
+# `_argkind` is emitted for every model, whatever its surface: `_nargs` says
+# how many values are needed and cannot say what SHAPE they are, and a consumer
+# handed only a library path needs both. Routing on it beats probing for
+# symbols, which is what a consumer had to do before.
+_argkind_source(p::AbstractString, field) = """
+    # Which entry point instantiates this model: 0 fixed, 1 `$(p)_new(n)`,
+    # 2 `$(p)_new_str(const char *)`, 3 the `$(p)_data_begin` builder.
+    Base.@ccallable function $(p)_argkind()::Cint
+        return Cint($(_argkind_value(field)))
+    end
+"""
+
+# The argument-function surface. `unsafe_string` copies out of the caller's
+# buffer, so the library never holds a pointer it does not own.
+function _instantiation_source(p::AbstractString, u::UserArgs{:str})
+    return """
+    Base.@ccallable function $(p)_nargs()::Cint
+        return Cint(1)
+    end
+
+$(_argkind_source(p, u))
+    # This model instantiates from a string; `$(p)_new(n)` is not its entry
+    # point, so it returns the documented failure value rather than building
+    # something.
+    Base.@ccallable function $(p)_new(n::Cint)::Cint
+        return Cint(0)
+    end
+
+    Base.@ccallable function $(p)_new_str(s_ptr::Ptr{Cchar})::Cint
+        try
+            s = unsafe_string(s_ptr)
+            push!(MODELS_$p, ExaModels.ExaModel(CORE_$p, $(u.call)(s)...; check = Val(false)))
+            return Cint(length(MODELS_$p))
+        catch
+            return Cint(0)
+        end
+    end
+"""
+end
+
+function _instantiation_source(p::AbstractString, u::UserArgs{:int})
+    return """
+    Base.@ccallable function $(p)_nargs()::Cint
+        return Cint(1)
+    end
+
+$(_argkind_source(p, u))
+    Base.@ccallable function $(p)_new(n::Cint)::Cint
+        try
+            push!(MODELS_$p, ExaModels.ExaModel(CORE_$p, $(u.call)(Int(n))...; check = Val(false)))
+            return Cint(length(MODELS_$p))
+        catch
+            return Cint(0)
+        end
+    end
+"""
 end
 
 function _instantiation_source(p::AbstractString, bm::BuilderModel)
@@ -943,6 +1122,7 @@ function _instantiation_source(p::AbstractString, bm::BuilderModel)
     )
 
     return """
+$(_argkind_source(p, bm))
     # ── builder for `$p` (schema + typed setters, ABI v2) ────────────────────
 
     const SCHEMA_$p = Vector{UInt8}($(repr(json)))
@@ -1107,7 +1287,7 @@ function _model_source(s::ModelSpec)
     p = s.prefix
     # A builder spec's example is the whole tuple of values, splatted back the
     # way `ExaModel` takes them; the other forms carry a single value.
-    example = s.field isa BuilderModel ? "ARG0_$p..." : "ARG0_$p"
+    example = (s.field isa BuilderModel || s.field isa UserArgs) ? "ARG0_$p..." : "ARG0_$p"
     return """
     # ── model `$p` ───────────────────────────────────────────────────────────
 
