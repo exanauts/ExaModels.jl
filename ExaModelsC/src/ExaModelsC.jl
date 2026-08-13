@@ -217,7 +217,12 @@ return the argument TUPLE the core is instantiated with.  The example is
 
 Every model also exports `P_argkind() -> 0 | 1 | 2 | 3` (fixed, `P_new(n)`,
 `P_new_str`, builder), so a consumer routes on the declared shape instead
-of probing for symbols.
+of probing for symbols.  Kind 1 covers both n-is-the-size and
+n-goes-to-an-argument-function: the two are indistinguishable to a consumer
+**by design** — the call shape is identical, and what the library does with
+`n` is its own business.  `P_nargs` says how MANY values instantiation
+takes and cannot say what shape they are; `P_argkind` is the other half of
+that pair, and a consumer handed only a library path needs both.
 
 ## Several models in one library
 
