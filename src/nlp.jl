@@ -2120,6 +2120,15 @@ function multipliers(result::SolverCore.AbstractExecutionStats, y::Constraint)
 end
 
 _adapt_gen(gen) = Base.Generator(gen.f, collect(gen.iter))
+# A placeholder iterable resolves at instantiation, so what to do with it can
+# only be decided then. The unconditional deferred `collect` was wrong on the
+# GPU: `collect(::CuArray)` is a host Vector, so a converted argument was
+# silently pulled back to the CPU and the kernel met a non-bitstype — invisible
+# on the CPU, where `collect` of a Vector is just a copy.
+_maybe_collect(x) = collect(x)
+_maybe_collect(x::Union{AbstractArray, AbstractRange}) = x
+@inline _adapt_gen(gen::Base.Generator{I}) where {I<:AbstractArgNode} =
+    Base.Generator(gen.f, ArgCall(_maybe_collect, (gen.iter,)))
 # `for i in 1:nh, j in 1:nc` over symbolic ranges: `collect` on the product
 # needs `axes`, and `axes` needs concrete lengths, so it cannot run yet.  Defer
 # the collect itself — it happens at instantiation, on real ranges.
