@@ -58,7 +58,7 @@ end
 Base.show(io::IO, s::Expression) = _show_expression(io, s)
 function _show_expression(io::IO, s::Expression)
     expr = try
-        _expr_string(s.f(DataSource()))
+        _expr_string(s.f)
     catch
         "(?)"
     end
@@ -579,7 +579,9 @@ is known statically and destructuring stays inferable.
 # rather than re-derived: it is the float type the core was created with, and
 # instantiating changes sizes, never the element type.
 
-function instantiate(c::ExaCore{T}, a...) where {T}
+# `Vararg{Any,N}`: see the note on the `Tuple` method in argument.jl — forces
+# specialization so the field-by-field mapping stays static under `--trim`.
+function instantiate(c::ExaCore{T}, a::Vararg{Any,N}) where {T, N}
     return ExaCore{T}(
         c.name,
         c.backend,
@@ -613,24 +615,24 @@ function instantiate(c::ExaCore{T}, a...) where {T}
     )
 end
 
-instantiate(v::Variable, a...) =
+instantiate(v::Variable, a::Vararg{Any,N}) where {N} =
     Variable(instantiate(v.size, a...), instantiate(v.length, a...), instantiate(v.offset, a...),
              v.name, instantiate(v.tag, a...))
-instantiate(p::Parameter, a...) =
+instantiate(p::Parameter, a::Vararg{Any,N}) where {N} =
     Parameter(instantiate(p.size, a...), instantiate(p.length, a...), instantiate(p.offset, a...),
               instantiate(p.tag, a...))
-instantiate(e::Expression, a...) =
+instantiate(e::Expression, a::Vararg{Any,N}) where {N} =
     Expression(instantiate(e.size, a...), instantiate(e.length, a...), instantiate(e.f, a...),
                instantiate(e.iter, a...), instantiate(e.tag, a...))
-instantiate(o::Objective, a...) = Objective(instantiate(o.f, a...), instantiate(o.itr, a...))
-instantiate(c::Constraint, a...) =
+instantiate(o::Objective, a::Vararg{Any,N}) where {N} = Objective(instantiate(o.f, a...), instantiate(o.itr, a...))
+instantiate(c::Constraint, a::Vararg{Any,N}) where {N} =
     Constraint(instantiate(c.f, a...), instantiate(c.itr, a...), instantiate(c.offset, a...),
                instantiate(c.size, a...), instantiate(c.tag, a...))
-instantiate(c::ConstraintAugmentation, a...) =
+instantiate(c::ConstraintAugmentation, a::Vararg{Any,N}) where {N} =
     ConstraintAugmentation(instantiate(c.f, a...), instantiate(c.itr, a...),
                            instantiate(c.oa, a...), instantiate(c.dims, a...),
                            instantiate(c.tag, a...))
-instantiate(f::SIMDFunction, a...) =
+instantiate(f::SIMDFunction, a::Vararg{Any,N}) where {N} =
     SIMDFunction(instantiate(f.f, a...), f.comp1, f.comp2,
                  instantiate(f.o0, a...), instantiate(f.o1, a...), instantiate(f.o2, a...),
                  f.o1step, f.o2step)
@@ -924,24 +926,24 @@ end
 @inline function Base.getindex(s::Expression, i::I) where {I <: Integer}
     _bound_check(s.size, i)
     idx = i - _start(s.size[1]) + 1
-    return s.f(s.iter[idx])
+    return _reindex(s.f, s.iter[idx])
 end
 @inline function Base.getindex(s::Expression, i)
     # Symbolic index case - the symbolic index IS the iterator element
     # No adjustment needed; the index is used directly in expression building
-    return s.f(i)
+    return _reindex(s.f, i)
 end
 @inline function Base.getindex(s::Expression, is::Vararg{I, N}) where {I <: Integer, N}
     @assert(length(is) == length(s.size), "Expression index dimension error")
     _bound_check(s.size, is)
     idx = idxx(is .- (_start.(s.size) .- 1), _length.(s.size))
-    return s.f(s.iter[idx])
+    return _reindex(s.f, s.iter[idx])
 end
 @inline function Base.getindex(s::Expression, is...)
     # Symbolic indices case - the symbolic indices ARE the iterator elements
     # No adjustment needed; the indices are used directly in expression building
     @assert(length(is) == length(s.size), "Expression index dimension error")
-    return s.f(is)
+    return _reindex(s.f, is)
 end
 
 @inline function Base.getindex(p::P, i) where {P<:Parameter}
@@ -1048,11 +1050,11 @@ end
 
 # `start = (f(i) for i in 1:arg.N)` — the body is untouched (it runs per element
 # once the iterator is concrete); only what it iterates is deferred.
-@inline instantiate(g::Base.Generator, a...) = Base.Generator(g.f, instantiate(g.iter, a...))
+@inline instantiate(g::Base.Generator, a::Vararg{Any,N}) where {N} = Base.Generator(g.f, instantiate(g.iter, a...))
 
 # A product iterator is arg-dependent when any of the ranges it crosses is.
 @inline _anyarg(p::Base.Iterators.ProductIterator, xs...) = _anyarg(p.iterators..., xs...)
-@inline instantiate(p::Base.Iterators.ProductIterator, a...) =
+@inline instantiate(p::Base.Iterators.ProductIterator, a::Vararg{Any,N}) where {N} =
     Base.Iterators.product(instantiate(p.iterators, a...)...)
 
 # `append!` mutates its accumulator and returns it.  That is exactly right while
@@ -1744,7 +1746,9 @@ c, s = add_expr(c, x[i, k]^2 for (i, k) in itr)
     gen = _adapt_gen(gen)
     n = length(gen.iter)
 
-    ex = Expression(ns, n, gen.f, collect(gen.iter), tag)
+    # Store the body as a node, built once against a `DataSource`, rather than
+    # as the generator's closure — see `_reindex` in graph.jl.
+    ex = Expression(ns, n, gen.f(DataSource()), collect(gen.iter), tag)
     return (ExaCore(c; refs = add_refs(c.refs, name, ex)), ex)
 end
 
@@ -2116,6 +2120,15 @@ function multipliers(result::SolverCore.AbstractExecutionStats, y::Constraint)
 end
 
 _adapt_gen(gen) = Base.Generator(gen.f, collect(gen.iter))
+# A placeholder iterable resolves at instantiation, so what to do with it can
+# only be decided then. The unconditional deferred `collect` was wrong on the
+# GPU: `collect(::CuArray)` is a host Vector, so a converted argument was
+# silently pulled back to the CPU and the kernel met a non-bitstype — invisible
+# on the CPU, where `collect` of a Vector is just a copy.
+_maybe_collect(x) = collect(x)
+_maybe_collect(x::Union{AbstractArray, AbstractRange}) = x
+@inline _adapt_gen(gen::Base.Generator{I}) where {I<:AbstractArgNode} =
+    Base.Generator(gen.f, ArgCall(_maybe_collect, (gen.iter,)))
 # `for i in 1:nh, j in 1:nc` over symbolic ranges: `collect` on the product
 # needs `axes`, and `axes` needs concrete lengths, so it cannot run yet.  Defer
 # the collect itself — it happens at instantiation, on real ranges.

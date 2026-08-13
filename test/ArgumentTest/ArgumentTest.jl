@@ -396,6 +396,31 @@ function runtests()
             @test repr(1:arg.N) == "(1:arg.N)"
             @test repr(length(arg.v)) == "length(arg.v)"
         end
+
+        @testset "a converted iterable stays on its backend" begin
+            # The deferred collect in _adapt_gen must not migrate an argument
+            # back to the host: collect(::CuArray) is a Vector, so a recipe
+            # instantiated with device-converted arguments produced a model
+            # whose kernels met a non-bitstype host array. Invisible on the
+            # CPU, where collect of a Vector is just a copy — which is why
+            # this asserts RESIDENCE, not values.
+            for backend in Main.BACKENDS
+                backend === nothing && continue
+                c, d = ExaModels.ExaCore(nargs = Val(1))
+                ExaModels.@add_var(c, x, length(d.rows))
+                ExaModels.@add_obj(c, (x[r.i] - r.w)^2 for r in d.rows)
+                rows = [(i = i, w = Float64(i)) for i = 1:5]
+                dev = ExaModels.convert_array(rows, backend)
+                m = ExaModels.ExaModel(c, (; rows = dev); backend = backend)
+                @testset "$backend" begin
+                    # Residence via typeof equality. Only a device backend
+                    # discriminates — on CPU() the converted array IS a Vector,
+                    # so the pre-fix collect was a same-type copy there; the
+                    # CUDA leg is the one this test exists for.
+                    @test typeof(m.objs[1].itr) == typeof(dev)
+                end
+            end
+        end
     end
 end
 

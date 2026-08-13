@@ -4,6 +4,28 @@
 Test basic 1D subexpression creation and solving.
 Compares a model with subexpressions to an equivalent model without.
 """
+
+function test_subexpr_concrete_index_constant_term(backend)
+    # A standalone scalar term in the body (`i - 1`) plus a CONCRETE index
+    # into the expression: substitution then hands the stored `-` node two
+    # Real children. The node storage that replaced the body closure must
+    # fold that case eagerly, as the closure did — left as a node it has no
+    # evaluation method (the one-sided Real methods tie), and the failure
+    # surfaced at the ADJOINT call, so the gradient is the assertion here.
+    c = ExaCore(; backend = backend, concrete = Val(true))
+    @add_var(c, x, 4; start = [1.0, 2.0, 3.0, 4.0])
+    @add_expr(c, s, x[i] + (i - 1) for i in 1:4)
+    @add_obj(c, (s[2] + x[i])^2 for i in 1:4)
+    m = ExaModel(c)
+    x0 = Array(m.meta.x0)                      # host copy for reference math
+    want = sum((x0[2] + 1 + x0[i])^2 for i in 1:4)
+    @test NLPModels.obj(m, m.meta.x0) ≈ want
+    g = NLPModels.grad(m, m.meta.x0)
+    gwant = [2 * (x0[2] + 1 + x0[i]) for i in 1:4]
+    gwant[2] += sum(2 * (x0[2] + 1 + x0[i]) for i in 1:4)
+    @test Array(g) ≈ gwant
+end
+
 function test_subexpr_basic(backend)
     # Model WITHOUT subexpressions
     c1 = ExaCore(; backend = backend, concrete = Val(true))
@@ -449,6 +471,10 @@ function test_subexpr(backend)
 
     @testset "Subexpr reduced 0-based nested" begin
         test_subexpr_reduced_0based_nested(backend)
+    end
+
+    @testset "Subexpr concrete index with constant term" begin
+        test_subexpr_concrete_index_constant_term(backend)
     end
 
 end
