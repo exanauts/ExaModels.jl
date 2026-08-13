@@ -542,30 +542,30 @@ end
 # (`Constant`, `Null`, `VarSource`, `DataSource`, …) fall through to the generic
 # identity in argument.jl.
 
-@inline function instantiate(n::Var{I}, a...) where {I}
+@inline function instantiate(n::Var{I}, a::Vararg{Any,N}) where {I, N}
     i = instantiate(n.i, a...)
     return Var{typeof(i)}(i)
 end
-@inline function instantiate(n::ParameterNode{I}, a...) where {I}
+@inline function instantiate(n::ParameterNode{I}, a::Vararg{Any,N}) where {I, N}
     i = instantiate(n.i, a...)
     return ParameterNode{typeof(i)}(i)
 end
-@inline function instantiate(n::Node1{F,I}, a...) where {F,I}
+@inline function instantiate(n::Node1{F,I}, a::Vararg{Any,N}) where {F,I, N}
     i = instantiate(n.inner, a...)
     return Node1{F,typeof(i)}(i)
 end
-@inline function instantiate(n::Node2{F,I1,I2}, a...) where {F,I1,I2}
+@inline function instantiate(n::Node2{F,I1,I2}, a::Vararg{Any,N}) where {F,I1,I2, N}
     i1 = instantiate(n.inner1, a...)
     i2 = instantiate(n.inner2, a...)
     return Node2{F,typeof(i1),typeof(i2)}(i1, i2)
 end
-@inline instantiate(n::SumNode, a...) = SumNode(instantiate(n.inners, a...))
-@inline instantiate(n::ProdNode, a...) = ProdNode(instantiate(n.inners, a...))
+@inline instantiate(n::SumNode, a::Vararg{Any,N}) where {N} = SumNode(instantiate(n.inners, a...))
+@inline instantiate(n::ProdNode, a::Vararg{Any,N}) where {N} = ProdNode(instantiate(n.inners, a...))
 # `DataIndexed` overrides `getproperty` to keep building access paths, so its
 # own field has to be read with `getfield`.
-@inline instantiate(n::DataIndexed{I,J}, a...) where {I,J} =
+@inline instantiate(n::DataIndexed{I,J}, a::Vararg{Any,N}) where {I,J, N} =
     DataIndexed(instantiate(getfield(n, :inner), a...), J)
-@inline instantiate(p::Pair, a...) = instantiate(p.first, a...) => instantiate(p.second, a...)
+@inline instantiate(p::Pair, a::Vararg{Any,N}) where {N} = instantiate(p.first, a...) => instantiate(p.second, a...)
 # An `ArgLeaf` does not survive instantiation: it *becomes* the scalar, leaving
 # a graph indistinguishable from one built with concrete sizes.
-@inline instantiate(n::ArgLeaf, a...) = instantiate(getfield(n, :a), a...)
+@inline instantiate(n::ArgLeaf, a::Vararg{Any,N}) where {N} = instantiate(getfield(n, :a), a...)

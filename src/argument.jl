@@ -181,17 +181,17 @@ julia> ExaModels.instantiate(x, (nh = 2,)) === x     # identity, no arg dependen
 true
 ```
 """
-@inline instantiate(x, a...) = x
-@inline instantiate(::ArgSource{K}, a...) where {K} = a[K]
-@inline instantiate(n::ArgIndexed{I, J}, a...) where {I, J} =
+@inline instantiate(x, a::Vararg{Any,N}) where {N} = x
+@inline instantiate(::ArgSource{K}, a::Vararg{Any,N}) where {K, N} = a[K]
+@inline instantiate(n::ArgIndexed{I, J}, a::Vararg{Any,N}) where {I, J, N} =
     _arg_access(instantiate(getfield(n, :inner), a...), J)
-@inline instantiate(n::ArgNode1, a...) =
+@inline instantiate(n::ArgNode1, a::Vararg{Any,N}) where {N} =
     getfield(n, :f)(instantiate(getfield(n, :inner), a...))
-@inline instantiate(n::ArgNode2, a...) = getfield(n, :f)(
+@inline instantiate(n::ArgNode2, a::Vararg{Any,N}) where {N} = getfield(n, :f)(
     instantiate(getfield(n, :inner1), a...),
     instantiate(getfield(n, :inner2), a...),
 )
-@inline instantiate(n::ArgCall, a...) =
+@inline instantiate(n::ArgCall, a::Vararg{Any,N}) where {N} =
     getfield(n, :f)(map(x -> instantiate(x, a...), getfield(n, :args))...)
 
 @inline _arg_access(x, j::Symbol) = getproperty(x, j)
@@ -204,8 +204,15 @@ true
 # that looks fully instantiated and is not.  Mapping costs nothing observable:
 # an immutable tuple rebuilds `===` to itself, and each element is passed
 # through by identity when it has no dependency of its own.
-@inline instantiate(t::Tuple, a...) = map(x -> instantiate(x, a...), t)
-@inline instantiate(t::NamedTuple, a...) = map(x -> instantiate(x, a...), t)
+# `Vararg{Any,N}` forces specialization on the arguments' concrete types:
+# a vararg that is only splatted through is otherwise left unspecialized
+# (Julia's passthrough heuristic), and the `map` below then carries a dynamic
+# call that `juliac --trim=safe` cannot resolve. Harmless under the JIT,
+# load-bearing for AOT — same reason on the `ExaCore` method in nlp.jl.
+@inline instantiate(t::Tuple, a::Vararg{Any,N}) where {N} =
+    map(x -> instantiate(x, a...), t)
+@inline instantiate(t::NamedTuple, a::Vararg{Any,N}) where {N} =
+    map(x -> instantiate(x, a...), t)
 
 """
     _anyarg(xs...)

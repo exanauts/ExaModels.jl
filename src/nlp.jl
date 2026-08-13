@@ -579,7 +579,9 @@ is known statically and destructuring stays inferable.
 # rather than re-derived: it is the float type the core was created with, and
 # instantiating changes sizes, never the element type.
 
-function instantiate(c::ExaCore{T}, a...) where {T}
+# `Vararg{Any,N}`: see the note on the `Tuple` method in argument.jl — forces
+# specialization so the field-by-field mapping stays static under `--trim`.
+function instantiate(c::ExaCore{T}, a::Vararg{Any,N}) where {T, N}
     return ExaCore{T}(
         c.name,
         c.backend,
@@ -613,24 +615,24 @@ function instantiate(c::ExaCore{T}, a...) where {T}
     )
 end
 
-instantiate(v::Variable, a...) =
+instantiate(v::Variable, a::Vararg{Any,N}) where {N} =
     Variable(instantiate(v.size, a...), instantiate(v.length, a...), instantiate(v.offset, a...),
              v.name, instantiate(v.tag, a...))
-instantiate(p::Parameter, a...) =
+instantiate(p::Parameter, a::Vararg{Any,N}) where {N} =
     Parameter(instantiate(p.size, a...), instantiate(p.length, a...), instantiate(p.offset, a...),
               instantiate(p.tag, a...))
-instantiate(e::Expression, a...) =
+instantiate(e::Expression, a::Vararg{Any,N}) where {N} =
     Expression(instantiate(e.size, a...), instantiate(e.length, a...), instantiate(e.f, a...),
                instantiate(e.iter, a...), instantiate(e.tag, a...))
-instantiate(o::Objective, a...) = Objective(instantiate(o.f, a...), instantiate(o.itr, a...))
-instantiate(c::Constraint, a...) =
+instantiate(o::Objective, a::Vararg{Any,N}) where {N} = Objective(instantiate(o.f, a...), instantiate(o.itr, a...))
+instantiate(c::Constraint, a::Vararg{Any,N}) where {N} =
     Constraint(instantiate(c.f, a...), instantiate(c.itr, a...), instantiate(c.offset, a...),
                instantiate(c.size, a...), instantiate(c.tag, a...))
-instantiate(c::ConstraintAugmentation, a...) =
+instantiate(c::ConstraintAugmentation, a::Vararg{Any,N}) where {N} =
     ConstraintAugmentation(instantiate(c.f, a...), instantiate(c.itr, a...),
                            instantiate(c.oa, a...), instantiate(c.dims, a...),
                            instantiate(c.tag, a...))
-instantiate(f::SIMDFunction, a...) =
+instantiate(f::SIMDFunction, a::Vararg{Any,N}) where {N} =
     SIMDFunction(instantiate(f.f, a...), f.comp1, f.comp2,
                  instantiate(f.o0, a...), instantiate(f.o1, a...), instantiate(f.o2, a...),
                  f.o1step, f.o2step)
@@ -1048,11 +1050,11 @@ end
 
 # `start = (f(i) for i in 1:arg.N)` — the body is untouched (it runs per element
 # once the iterator is concrete); only what it iterates is deferred.
-@inline instantiate(g::Base.Generator, a...) = Base.Generator(g.f, instantiate(g.iter, a...))
+@inline instantiate(g::Base.Generator, a::Vararg{Any,N}) where {N} = Base.Generator(g.f, instantiate(g.iter, a...))
 
 # A product iterator is arg-dependent when any of the ranges it crosses is.
 @inline _anyarg(p::Base.Iterators.ProductIterator, xs...) = _anyarg(p.iterators..., xs...)
-@inline instantiate(p::Base.Iterators.ProductIterator, a...) =
+@inline instantiate(p::Base.Iterators.ProductIterator, a::Vararg{Any,N}) where {N} =
     Base.Iterators.product(instantiate(p.iterators, a...)...)
 
 # `append!` mutates its accumulator and returns it.  That is exactly right while
