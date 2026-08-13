@@ -229,6 +229,47 @@ struct Node2{F,I1,I2} <: AbstractNode
     inner2::I2
 end
 
+# ── Re-indexing a built subexpression ─────────────────────────────────────────
+#
+# `@add_expr` stores a body that is spliced in wherever it is referenced, so the
+# stored form has to be re-indexable.  A closure did that by being called again
+# with a new index; a node does it by substituting the `DataSource` it was built
+# against.
+#
+# Storing a node rather than a closure is what makes subexpressions usable in a
+# recipe.  A closure captures the `Variable`s it mentions, so when a size is a
+# placeholder the `ArgSource` ends up inside the closure's *type*, where
+# `instantiate` cannot reach it — and Julia emits no constructor for a closure,
+# so it cannot be rebuilt field-wise either.  Nodes have constructors and
+# dispatch, and the operation lives in the type parameter, so this walk is
+# static: no reflection, no `@generated`, nothing `--trim=safe` will refuse.
+@inline _reindex(::DataSource, i) = i
+@inline _reindex(n::DataIndexed{I, J}, i) where {I, J} =
+    _reindexed_access(_reindex(getfield(n, :inner), i), J)
+# Once the source has been replaced by a concrete element — an integer, or the
+# tuple a multi-dimensional or product-iterator generator destructures — the
+# lookup is no longer symbolic and has to be performed, not rebuilt.  Leaving it
+# as a `DataIndexed` around a raw tuple is what broke the multi-dim cases.
+@inline _reindexed_access(inner::AbstractNode, J) = DataIndexed(inner, J)
+@inline _reindexed_access(inner, J::Symbol) = getproperty(inner, J)
+@inline _reindexed_access(inner, J) = getindex(inner, J)
+@inline _reindex(n::Var, i) = Var(_reindex(getfield(n, :i), i))
+@inline _reindex(n::ParameterNode, i) = ParameterNode(_reindex(getfield(n, :i), i))
+@inline function _reindex(n::Node1{F}, i) where {F}
+    # Julia synthesises no partially-parameterised constructor, so the child
+    # types are given explicitly; they are known here, so this stays static.
+    inner = _reindex(getfield(n, :inner), i)
+    return Node1{F, typeof(inner)}(inner)
+end
+@inline function _reindex(n::Node2{F}, i) where {F}
+    a = _reindex(getfield(n, :inner1), i)
+    b = _reindex(getfield(n, :inner2), i)
+    return Node2{F, typeof(a), typeof(b)}(a, b)
+end
+# Leaves with no data dependence — constants, variable/parameter sources, plain
+# numbers — are their own re-indexing.
+@inline _reindex(x, i) = x
+
 struct FirstFixed{F}
     inner::F
 end

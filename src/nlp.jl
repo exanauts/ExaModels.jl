@@ -58,7 +58,7 @@ end
 Base.show(io::IO, s::Expression) = _show_expression(io, s)
 function _show_expression(io::IO, s::Expression)
     expr = try
-        _expr_string(s.f(DataSource()))
+        _expr_string(s.f)
     catch
         "(?)"
     end
@@ -926,24 +926,24 @@ end
 @inline function Base.getindex(s::Expression, i::I) where {I <: Integer}
     _bound_check(s.size, i)
     idx = i - _start(s.size[1]) + 1
-    return s.f(s.iter[idx])
+    return _reindex(s.f, s.iter[idx])
 end
 @inline function Base.getindex(s::Expression, i)
     # Symbolic index case - the symbolic index IS the iterator element
     # No adjustment needed; the index is used directly in expression building
-    return s.f(i)
+    return _reindex(s.f, i)
 end
 @inline function Base.getindex(s::Expression, is::Vararg{I, N}) where {I <: Integer, N}
     @assert(length(is) == length(s.size), "Expression index dimension error")
     _bound_check(s.size, is)
     idx = idxx(is .- (_start.(s.size) .- 1), _length.(s.size))
-    return s.f(s.iter[idx])
+    return _reindex(s.f, s.iter[idx])
 end
 @inline function Base.getindex(s::Expression, is...)
     # Symbolic indices case - the symbolic indices ARE the iterator elements
     # No adjustment needed; the indices are used directly in expression building
     @assert(length(is) == length(s.size), "Expression index dimension error")
-    return s.f(is)
+    return _reindex(s.f, is)
 end
 
 @inline function Base.getindex(p::P, i) where {P<:Parameter}
@@ -1746,7 +1746,9 @@ c, s = add_expr(c, x[i, k]^2 for (i, k) in itr)
     gen = _adapt_gen(gen)
     n = length(gen.iter)
 
-    ex = Expression(ns, n, gen.f, collect(gen.iter), tag)
+    # Store the body as a node, built once against a `DataSource`, rather than
+    # as the generator's closure — see `_reindex` in graph.jl.
+    ex = Expression(ns, n, gen.f(DataSource()), collect(gen.iter), tag)
     return (ExaCore(c; refs = add_refs(c.refs, name, ex)), ex)
 end
 
