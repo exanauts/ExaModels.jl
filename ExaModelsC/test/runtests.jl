@@ -87,7 +87,7 @@ function runtests()
             ntsrc = ExaModelsC._module_source("M", [s])
             @test occursin("(; N = Int(n))", ntsrc)
             @test occursin("nt_new(", ntsrc)
-            @test !occursin("nt_data_begin", ntsrc)
+            @test !occursin("function nt_data_begin", ntsrc)   # the comment may NAME it
 
             # Anything else flattens to the builder: bare values by position,
             # NamedTuple entries by key, and NO `P_new` — the surfaces are
@@ -98,7 +98,7 @@ function runtests()
             @test b.field isa ExaModelsC.BuilderModel
             @test [f.name for f in b.field.fields] == ["arg1", "v0", "lo", "arg3"]
             bsrc = ExaModelsC._module_source("M", [b])
-            @test !occursin("bs_new(", bsrc)
+            @test !occursin("function bs_new(", bsrc)   # `_argkind`'s comment names it
             for sym in (
                 "bs_schema", "bs_data_begin", "bs_set_scalar_i64",
                 "bs_set_scalar_f64", "bs_set_array_i64", "bs_set_array_f64",
@@ -475,16 +475,40 @@ function runtests()
             @test_throws MethodError compile_library(OUT, :a => (c, 4); prefix = "z")
         end
 
+        @testset "an argument function is checked before it is compiled" begin
+            c = build()
+            # Examples are the FUNCTION's arguments; none means nothing to pin.
+            @test_throws "the examples are the arguments" compile_library(
+                OUT, c; argfun = RecipeKernels.doubled_args)
+            # One value crosses the boundary; give the function one.
+            @test_throws "exactly one argument" compile_library(
+                OUT, c, 4, 5; argfun = RecipeKernels.doubled_args)
+            # A float is neither of the two shapes the boundary carries.
+            @test_throws "one string or one 64-bit integer" compile_library(
+                OUT, c, 1.5; argfun = RecipeKernels.doubled_args)
+            # The function must return the argument tuple the core takes.
+            @test_throws "must return the argument TUPLE" compile_library(
+                OUT, c, 4; argfun = RecipeKernels.alternating)
+            # Anonymous functions have no name for the library to call.
+            @test_throws "named function" compile_library(OUT, c, 4; argfun = n -> (n,))
+            # The pair spelling: a Function in second position is the argfun —
+            # nothing callable can ever be a model argument.
+            co, fn, rest = ExaModelsC._core_and_args(:m, (c, RecipeKernels.doubled_args, 4))
+            @test fn === RecipeKernels.doubled_args && rest == (4,)
+        end
+
         @testset "a structured model instantiates through the builder" begin
-            # One compile carries BOTH surfaces — the builder model and a
-            # one-knob model in one library: the surface is per prefix, not
-            # per file.
+            # One compile carries every surface — builder, one-knob, and both
+            # argument-function kinds — in one library: the surface is per
+            # prefix, not per file.
             sb = compile_library(
                 joinpath(OUT, "structs"),
                 :structm => (sbuild(), S_EXARGS...),
                 :knob => (build(), 4),
+                :dbl => (build(), RecipeKernels.doubled_args, 4),
+                :strd => (build(), RecipeKernels.parsed_args, "6"),
             )
-            @test sb.prefixes == ["structm", "knob"]
+            @test sb.prefixes == ["structm", "knob", "dbl", "strd"]
             slib = CNLPModels.load(sb.libpath)
 
             # The builder model exports no one-integer constructor; the knob
@@ -534,6 +558,23 @@ function runtests()
             @test NLPModels.obj(m, x) ≈ NLPModels.obj(ref, x)
             k = CNLPModels.CNLPModel(slib, 7; prefix = "knob")
             @test k.meta.nvar == 7
+
+            # The third surface: argument functions of both kinds, in the same
+            # library. `_argkind` declares every model's shape — 0 fixed,
+            # 1 `_new(n)`, 2 `_new_str`, 3 builder — so a consumer routes on
+            # it rather than probing symbols.
+            ak(s) = ccall(dl(Symbol(s, :_argkind)), Cint, ())
+            @test ak("knob") == 1 && ak("structm") == 3
+            @test ak("dbl") == 1 && ak("strd") == 2
+            # :int kind — `P_new(n)` hands n to the function (size 2n here).
+            dm = CNLPModels.CNLPModel(slib, 5; prefix = "dbl")
+            @test dm.meta.nvar == 10
+            # :str kind — `P_new_str` instantiates; `P_new` is not its entry
+            # point and returns the documented failure value.
+            sid = ccall(dl(:strd_new_str), Cint, (Cstring,), "6")
+            @test sid > 0
+            @test ccall(dl(:strd_nvar), Cint, (Cint,), sid) == 6
+            @test ccall(dl(:strd_new), Cint, (Cint,), 4) == 0
 
             # Wrong-arity and incomplete data are the consumer's errors, not
             # aborts: the library reports, the consumer explains.

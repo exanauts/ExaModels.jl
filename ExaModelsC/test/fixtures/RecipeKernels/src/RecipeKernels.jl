@@ -16,7 +16,7 @@ recompiles, whereas a closure carries a gensym that is not.
 """
 module RecipeKernels
 
-export alternating, offsets
+export alternating, offsets, doubled_args, parsed_args
 
 "Alternating starting point — the shape a per-index start generator takes."
 @inline alternating(i) = isodd(i) ? -1.2 : 1.0
@@ -24,5 +24,16 @@ export alternating, offsets
 "An index set computed from the size: a comprehension, so it has no symbolic
 form and has to run once the size is known."
 offsets(n) = [2 * div(i - 1, 2) for i in 1:2:max(n - 2, 0)]
+
+# Argument functions for the argfun surface: named, package-owned, returning
+# the argument TUPLE the core is instantiated with — the contract
+# `compile_library` requires so the generated library can call them by name.
+
+"The integer-kind argument function: `P_new(n)` hands `n` to it."
+doubled_args(n::Integer) = (2 * Int(n),)
+
+"The string-kind argument function: `P_new_str(s)` hands the string to it —
+standing in for a case-file path parsed on the far side of the boundary."
+parsed_args(s::AbstractString) = (parse(Int, s),)
 
 end # module

@@ -202,6 +202,23 @@ consumed the way it was written.  Builder examples must be `Int64`/`Float64`
 exactly (as scalars, `Vector`s, or table entries): the example's type IS the
 compiled storage's type.
 
+**An argument function** (`argfun = f`, or `:name => (core, f, example)` in
+the multi-model form — a function can never be a model argument, so second
+position is unambiguous) is the third surface: the library carries `f` and
+calls it at run time, so only `f`'s own argument crosses the boundary — one
+string (`P_new_str(const char *)`) or one integer (`P_new(n)`) — and the
+work that turns it into instantiation data happens inside the library.  It
+composes with the builder rather than competing: the builder passes
+structured data ACROSS the boundary, this keeps the data on the far side
+and passes a path.  `f` must be a named function a package owns — it is
+emitted by name, which is what `juliac` resolves statically — and it must
+return the argument TUPLE the core is instantiated with.  The example is
+`f`'s argument, and `f(example)` is probed before compiling.
+
+Every model also exports `P_argkind() -> 0 | 1 | 2 | 3` (fixed, `P_new(n)`,
+`P_new_str`, builder), so a consumer routes on the declared shape instead
+of probing for symbols.
+
 ## Several models in one library
 
 Give `:name => core` pairs instead of a single core to put more than one model
@@ -330,6 +347,11 @@ end
 # The per-model validation both entry points share. Everything here is checked
 # BEFORE any code generation, so a bad model is reported in the caller's process
 # rather than as a compile error in a generated file nobody is looking at.
+# The three-argument form: no argument function. Kept as the spelling for
+# every caller that has none, including the tests' hermetic probes.
+_model_spec(prefix::AbstractString, core::ExaModels.ExaCore, args::Tuple) =
+    _model_spec(prefix, core, nothing, args)
+
 function _model_spec(prefix::AbstractString, core::ExaModels.ExaCore, argfun, args::Tuple)
     _check_prefix(prefix)
     core = _concretize(core)

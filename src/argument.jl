@@ -209,9 +209,11 @@ true
 # (Julia's passthrough heuristic), and the `map` below then carries a dynamic
 # call that `juliac --trim=safe` cannot resolve. Harmless under the JIT,
 # load-bearing for AOT — same reason on the `ExaCore` method in nlp.jl.
-# EXPERIMENT (Ohm): unrolled as well as specialized. #308's `Vararg{Any,N}`
-# is necessary — without it the vararg is not specialized at all — but on a
-# core the size of an AC OPF's the `map` closure is still unresolved.
+# Unrolled as well as specialized: `Vararg{Any,N}` is necessary — without it
+# the vararg is not specialized at all — but on a core the size of an AC
+# OPF's (measured: 6 variable blocks, 10 constraint blocks) the `map`
+# closure is still an unresolved call under `--trim=safe`. The recursion
+# gives each element a direct `instantiate` call; semantics are unchanged.
 @inline _instantiate_all(a::Tuple) = ()
 @inline _instantiate_all(a::Tuple, x, xs...) =
     (instantiate(x, a...), _instantiate_all(a, xs...)...)
