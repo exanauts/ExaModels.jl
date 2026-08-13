@@ -259,11 +259,18 @@ end
     # Julia synthesises no partially-parameterised constructor, so the child
     # types are given explicitly; they are known here, so this stays static.
     inner = _reindex(getfield(n, :inner), i)
+    # A fully-concrete subterm is COMPUTED, not wrapped — the closure this
+    # storage replaces evaluated such terms eagerly, and a node with only
+    # Real children has no evaluation method (register.jl's one-sided Real
+    # methods tie for two: `s[2]` substituting into `i - 1` was ambiguous at
+    # the adjoint call). `F.instance` exists because ops are named functions.
+    inner isa Real && return F.instance(inner)
     return Node1{F, typeof(inner)}(inner)
 end
 @inline function _reindex(n::Node2{F}, i) where {F}
     a = _reindex(getfield(n, :inner1), i)
     b = _reindex(getfield(n, :inner2), i)
+    a isa Real && b isa Real && return F.instance(a, b)
     return Node2{F, typeof(a), typeof(b)}(a, b)
 end
 # Leaves with no data dependence — constants, variable/parameter sources, plain
