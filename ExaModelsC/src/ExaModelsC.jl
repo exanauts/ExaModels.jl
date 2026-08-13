@@ -734,9 +734,7 @@ function _collect_modules!(mods::Set{Module}, seen::Base.IdSet{Any}, @nospeciali
 end
 
 # The package a module belongs to, or `nothing` for Base/Core/ExaModels, for
-# `Main`, and for anything else with no `Project.toml` behind it.  A module
-# whose entry point is not `<dir>/src/<Name>.jl` is an extension: its `pkgdir`
-# is already the parent's, so the parent's name and uuid are read from there.
+# `Main`, and for anything else with no `Project.toml` behind it.
 function _owning_package(m::Module)
     (m === Base || m === Core || m === ExaModels) && return nothing
     Base.moduleroot(m) === m || return nothing
@@ -744,12 +742,11 @@ function _owning_package(m::Module)
     id.uuid === nothing && return nothing              # Main, and other non-packages
     dir = pkgdir(m)
     dir === nothing && return nothing
-    path = Base.locate_package(id)
-    if path !== nothing &&
-       normpath(path) == normpath(joinpath(dir, "src", id.name * ".jl"))
-        return _Pkg(id.name, id.uuid, abspath(dir))
-    end
-    # An extension — take the package it belongs to.
+    # Read the name and uuid from the project rather than from the module's own
+    # `PkgId`: for an extension those differ, and `pkgdir` is already the parent
+    # package's directory, so this one path covers both.  An extension cannot be
+    # depended on by name, and does not need to be — importing the parent loads
+    # it, since ExaModels is imported too.
     for base in ("JuliaProject.toml", "Project.toml")
         proj = joinpath(dir, base)
         isfile(proj) || continue
