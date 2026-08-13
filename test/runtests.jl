@@ -24,6 +24,7 @@ include("JuliaCTest/JuliaCTest.jl")
 include("TwoStageTest/TwoStageTest.jl")
 include("GetterSetterTest/GetterSetterTest.jl")
 include("PrettyPrintTest.jl")
+include("ConcreteModeTest.jl")
 # include("OptimalControlTest/OptimalControlTest.jl")
 include("OracleTest/OracleTest.jl")
 include("GenOptTest/GenOptTest.jl")
@@ -55,6 +56,9 @@ include("GenOptTest/GenOptTest.jl")
 
     @info "Running PrettyPrint Test"
     PrettyPrintTest.runtests()
+
+    @info "Running Concrete Mode Test"
+    ConcreteModeTest.runtests()
 
     # @info "Running OptimalControl Test"
     # OptimalControlTest.runtests()

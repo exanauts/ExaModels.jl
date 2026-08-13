@@ -266,15 +266,22 @@ end
 abstract type AbstractExaCore{T,VT,B,S} end
 
 """
-    ExaCore([array_eltype::Type; backend = nothing, minimize = true, name = :Generic])
+    ExaCore([array_eltype::Type; backend = nothing, concrete = Val(false), minimize = true, name = :Generic])
 
 Creates an intermediate data object `ExaCore`, which later can be used for creating an `ExaModel`
+
+By default (`concrete = Val(false)`) the core accumulates model blocks in
+type-erased storage, so its type does not change as blocks are added and the
+model can be built — and rebuilt — without recompiling at every step. Pass
+`concrete = Val(true)` to keep every block in the core's type instead, which
+is what AOT compilation (`juliac --trim=safe`) requires. Both modes produce
+the same `ExaModel`.
 
 ## Example
 ```jldoctest
 julia> using ExaModels
 
-julia> c = ExaCore(concrete = Val(true))
+julia> c = ExaCore()
 An ExaCore
 
   Float type: ...................... Float64
@@ -284,7 +291,7 @@ An ExaCore
   number of objective patterns: .... 0
   number of constraint patterns: ... 0
 
-julia> c = ExaCore(Float32; concrete = Val(true))
+julia> c = ExaCore(Float32)
 An ExaCore
 
   Float type: ...................... Float32
@@ -296,7 +303,7 @@ An ExaCore
 
 julia> using CUDA
 
-julia> c = ExaCore(Float32; backend = CUDABackend(), concrete = Val(true))
+julia> c = ExaCore(Float32; backend = CUDABackend())
 An ExaCore
 
   Float type: ...................... Float32
@@ -468,33 +475,29 @@ end
     )
 end
 
-# `concrete` chose between the immutable core and the deprecated mutable
-# wrapper. There is only the immutable one now, so `Val(true)` is accepted and
-# does nothing — that is the spelling every existing model and document uses,
-# and breaking all of them here would be gratuitous. `Val(false)` asked for the
-# core that no longer exists, so it says so rather than quietly handing back the
-# other one.
-@inline _concrete(::Nothing) = nothing
-@inline _concrete(::Val{true}) = nothing
-_concrete(::Val{false}) = throw(
-    ArgumentError(
-        "`concrete = Val(false)` selected the mutable `LegacyExaCore`, which has " *
-        "been removed. `ExaCore()` returns the immutable core — drop the keyword.",
-    ),
-)
+# `concrete` selects how the core accumulates blocks. `Val(false)` — the
+# default — accumulates into `Vector{Any}`: the core's type stops changing on
+# each `add_*`, so the builder compiles once instead of once per block and the
+# model can be rebuilt without recompiling in every step. `Val(true)` keeps
+# every block in the core's type instead, which is what `juliac --trim=safe`
+# needs. `ExaModel` concretizes a `Vector{Any}` core at entry (`_concretize`),
+# so both modes produce the same `ExaModel` and the same AD kernels.
 
 @inline function ExaCore(
     ::Type{T}; backend = nothing, concrete = nothing, nargs = Val(0), kwargs...,
 ) where {T<:AbstractFloat}
-    _concrete(concrete)
     return _with_args(
-        _exa_core_from_x0(convert_array(zeros(T, 0), backend), backend; nargs, kwargs...),
+        _exa_core_from_x0(
+            convert_array(zeros(T, 0), backend), backend;
+            nargs,
+            var = _storage(concrete), par = _storage(concrete),
+            obj = _storage(concrete), cons = _storage(concrete), kwargs...,
+        ),
         nargs,
     )
 end
 @inline function ExaCore(; backend = nothing, concrete = nothing, nargs = Val(0), kwargs...)
-    _concrete(concrete)
-    return ExaCore(default_T(backend); backend, nargs, kwargs...)
+    return ExaCore(default_T(backend); backend, concrete, nargs, kwargs...)
 end
 
 """
@@ -523,6 +526,42 @@ is known statically and destructuring stays inferable.
 # `eltype(x0)` — NOT the requested float type.  The two differ on backends that
 # promote (Metal turns Float64 into Float32), so the core's `T` is still taken
 # from the realised `x0` rather than from the caller's request.
+
+# --- accumulator storage -----------------------------------------------------
+# `_prep` appends a block to `var`/`par`/`obj`/`cons`; `_materialize` turns the
+# accumulator back into the concrete tuple `ExaModel` needs. Tuple storage puts
+# every block in the core's TYPE, so the type changes on each `add_*` and the
+# builder is recompiled for each one. `Vector{Any}` storage keeps the type
+# constant and defers the concrete tuple to a single `_materialize` call.
+@inline _prep(t::Tuple, x) = (x, t...)
+@inline _prep(v::Vector{Any}, x) = pushfirst!(copy(v), x)
+
+@inline _materialize(t::Tuple) = t
+@inline _materialize(v::Vector{Any}) = (v...,)
+
+# Storage selected by the `concrete` keyword. Called once per accumulator so
+# the four never alias the same vector.
+@inline _storage(::Nothing) = Any[]
+@inline _storage(::Val{true}) = ()
+@inline _storage(::Val{false}) = Any[]
+
+# Rebuild a `Vector{Any}`-storage core with tuple accumulators. The blocks
+# inside the vectors are already concretely typed — only the container is
+# erased — so this recovers a core indistinguishable from one built with
+# `concrete = Val(true)`. Every `ExaModel` entry point calls this first, so
+# downstream consumers (`build_extension`, the oracle build, `instantiate`)
+# only ever see tuple storage. Identity on a tuple core by dispatch, which
+# keeps the `Val(true)` path fully inferable for `juliac --trim=safe`.
+@inline _concretize(c::ExaCore) = _concretize(c, c.var, c.par, c.obj, c.cons)
+@inline _concretize(c::ExaCore, ::Tuple, ::Tuple, ::Tuple, ::Tuple) = c
+@inline _concretize(c::ExaCore, var, par, obj, cons) = ExaCore(
+    c;
+    var = _materialize(var),
+    par = _materialize(par),
+    obj = _materialize(obj),
+    cons = _materialize(cons),
+)
+
 @inline _exa_core_from_x0(x0, backend; kwargs...) =
     _exa_core(eltype(x0); x0, backend, kwargs...)
 @inline ExaCore(c::C; kwargs...) where {T, C <: ExaCore{T}} = _exa_core(
@@ -690,7 +729,7 @@ optimization solvers within `JuliaSmoothOptimizer` ecosystem, such as
 ```jldoctest
 julia> using ExaModels
 
-julia> c = ExaCore(concrete = Val(true));                           # create an ExaCore object
+julia> c = ExaCore();                           # create an ExaCore object
 
 julia> c, x = add_var(c, 1:10);               # create variables
 
@@ -723,6 +762,7 @@ julia> result = ipopt(m; print_level=0)    # solve the problem
 # No-oracle path: always returns ExaModel (type-stable for juliac --trim=safe).
 function ExaModel(c::ExaCore{T, VT, B, S, V, P, O, C, R, Tuple{}, Tuple{}, Tuple{}}; prod = false, kwargs...) where {T, VT, B, S, V, P, O, C, R}
     _recipe_check(c)
+    c = _concretize(c)
     return ExaModel(
         c.name,
         c.var,
@@ -753,7 +793,7 @@ end
 # Oracle path: always returns ExaModelWithOracle (type-stable for juliac --trim=safe).
 function ExaModel(c::ExaCore; prod = false, kwargs...)
     _recipe_check(c)
-    return _build_with_oracle(c; prod, kwargs...)
+    return _build_with_oracle(_concretize(c); prod, kwargs...)
 end
 
 """
@@ -770,7 +810,7 @@ a core with no argument dependency is built exactly as before.
 ```jldoctest
 julia> using ExaModels
 
-julia> c, N, v = ExaCore(concrete = Val(true), nargs = Val(2));
+julia> c, N, v = ExaCore(nargs = Val(2));
 
 julia> @add_var(c, x, N; start = v);
 
@@ -780,9 +820,12 @@ julia> m.meta.nvar, m.meta.x0
 (3, [1.0, 2.0, 3.0])
 ```
 """
+# Concretized before `instantiate`: the walk relies on block types, and
+# `_assert_instantiated` on the *core's* type — `Vector{Any}` storage would
+# hide leftover placeholders from both.
 function ExaModel(c::ExaCore, a, as...; check = Val(true), kwargs...)
     _arity_check(c.nargs, Val(length(as) + 1))
-    return ExaModel(_assert_instantiated(check, instantiate(c, a, as...)); kwargs...)
+    return ExaModel(_assert_instantiated(check, instantiate(_concretize(c), a, as...)); kwargs...)
 end
 
 # One value per placeholder, checked against the arity the core recorded. Both
@@ -1038,7 +1081,7 @@ Adds variables with dimensions specified by `dims` to `core`. `dims` can be eith
 ```jldoctest
 julia> using ExaModels
 
-julia> c = ExaCore(concrete = Val(true));
+julia> c = ExaCore();
 
 julia> c, x = add_var(c, 10; start = (sin(i) for i=1:10));
 
@@ -1079,7 +1122,7 @@ end
 
     v = Variable(ns, len, o, _val_name(name), tag)
 
-    (ExaCore(c; var = (v, c.var...), nvar=nvar, x0=x0, lvar=lvar, uvar=uvar, refs = add_refs(c.refs, name, v)), v)
+    (ExaCore(c; var = _prep(c.var, v), nvar=nvar, x0=x0, lvar=lvar, uvar=uvar, refs = add_refs(c.refs, name, v)), v)
 end
 
 @inline _val_name(::Val{N}) where {N} = N
@@ -1107,7 +1150,7 @@ is a convenience that uses `size(value)` as the dimensions.
 ```jldoctest
 julia> using ExaModels
 
-julia> c = ExaCore(concrete = Val(true));
+julia> c = ExaCore();
 
 julia> c, θ = add_par(c, ones(10));
 
@@ -1135,7 +1178,7 @@ end
     npar = c.npar + len
     θ = _append_slot(c.backend, c.θ, start, len)
     p = Parameter(ns, len, o, tag)
-    (ExaCore(c; par = (p, c.par...), θ=θ, npar=npar, refs = add_refs(c.refs, name, p)), p)
+    (ExaCore(c; par = _prep(c.par, p), θ=θ, npar=npar, refs = add_refs(c.refs, name, p)), p)
 end
 
 """
@@ -1147,7 +1190,7 @@ Updates the values of parameters in the core.
 ```jldoctest
 julia> using ExaModels
 
-julia> c = ExaCore(concrete = Val(true));
+julia> c = ExaCore();
 
 julia> c, p = add_par(c, ones(5));
 
@@ -1341,7 +1384,7 @@ Adds objective terms specified by a `generator` to `core`, and returns `(core, O
 ```julia
 julia> using ExaModels
 
-julia> c = ExaCore(concrete = Val(true));
+julia> c = ExaCore();
 
 julia> c, x = add_var(c, 10);
 
@@ -1390,7 +1433,7 @@ end
     nnzh = c.nnzh + nitr * f.o2step
 
     obj = Objective(f, convert_array(pars, c.backend))
-    (ExaCore(c; nobj=nobj, nnzg=nnzg, nnzh=nnzh, obj=(obj, c.obj...), refs = add_refs(c.refs, name, obj)), obj)
+    (ExaCore(c; nobj=nobj, nnzg=nnzg, nnzh=nnzh, obj=_prep(c.obj, obj), refs = add_refs(c.refs, name, obj)), obj)
 end
 
 
@@ -1422,7 +1465,7 @@ then use [`add_con!`](@ref) / [`@add_con!`](@ref) to accumulate terms afterwards
 ```julia
 julia> using ExaModels
 
-julia> c = ExaCore(concrete = Val(true));
+julia> c = ExaCore();
 
 julia> c, x = add_var(c, 10);
 
@@ -1442,7 +1485,7 @@ Empty constraint with augmentation:
 ```jldoctest
 julia> using ExaModels
 
-julia> c = ExaCore(concrete = Val(true));
+julia> c = ExaCore();
 
 julia> c, x = add_var(c, 10);
 
@@ -1519,7 +1562,7 @@ function _add_con(c, f, pars, dims, start, lcon, ucon, name, tag)
 
     con = Constraint(f, convert_array(pars, c.backend), o, dims, tag)
 
-    (ExaCore(c; ncon=ncon, nnzj=nnzj, nnzh=nnzh, y0=y0, lcon=lcon, ucon=ucon, cons=(con, c.cons...), refs = add_refs(c.refs, name, con)), con)
+    (ExaCore(c; ncon=ncon, nnzj=nnzj, nnzh=nnzh, y0=y0, lcon=lcon, ucon=ucon, cons=_prep(c.cons, con), refs = add_refs(c.refs, name, con)), con)
 end
 
 
@@ -1562,7 +1605,7 @@ Single-index augmentation — add `sin(x[i+1])` to constraint rows 4, 5, 6:
 ```julia
 julia> using ExaModels
 
-julia> c = ExaCore(concrete = Val(true));
+julia> c = ExaCore();
 
 julia> c, x = add_var(c, 10);
 
@@ -1609,7 +1652,7 @@ Equivalent to `add_con!(core, g, idx => expr for ... in itr)`.
 
 ## Example
 ```julia
-c = ExaCore(concrete = Val(true))
+c = ExaCore()
 c, x = add_var(c, 10)
 c, g = add_con(c, 9; lcon = -1.0, ucon = 1.0)
 c, _ = add_con!(c, g[i] += x[i] + x[i+1] for i = 1:9)
@@ -1646,7 +1689,7 @@ function _add_con!(c, f, pars, dims, tag)
     nnzj = c.nnzj + nitr * f.o1step
     nnzh = c.nnzh + nitr * f.o2step
     con = ConstraintAugmentation(f, convert_array(pars, c.backend), oa, dims, tag)
-    (ExaCore(c; nconaug=nconaug, nnzj=nnzj, nnzh=nnzh, cons=(con, c.cons...)), con)
+    (ExaCore(c; nconaug=nconaug, nnzj=nnzj, nnzh=nnzh, cons=_prep(c.cons, con)), con)
 end
 
 # Helper to infer dimensions from iterator
@@ -1670,7 +1713,7 @@ variables or constraints are added to the problem.
 ```julia
 julia> using ExaModels
 
-julia> c = ExaCore(concrete = Val(true));
+julia> c = ExaCore();
 
 julia> c, x = add_var(c, 10);
 
@@ -1688,7 +1731,7 @@ julia> c, _ = add_obj(c, s[i] + s[i+1] for i in 1:9);
 ## Multi-dimensional example
 
 ```julia
-c = ExaCore(concrete = Val(true))
+c = ExaCore()
 c, x = add_var(c, 1:N, 1:K)
 itr = [(i, k) for i in 1:N, k in 1:K]
 c, s = add_expr(c, x[i, k]^2 for (i, k) in itr)
@@ -1937,7 +1980,7 @@ obtained by solving the model. The returned array has the same shape as `x`.
 ```jldoctest
 julia> using ExaModels, NLPModelsIpopt
 
-julia> c = ExaCore(concrete = Val(true));
+julia> c = ExaCore();
 
 julia> c, x = add_var(c, 1:10; lvar = -1, uvar = 1);
 
@@ -1974,7 +2017,7 @@ magnitude measures how much the objective would improve if that bound were relax
 ```jldoctest
 julia> using ExaModels, NLPModelsIpopt
 
-julia> c = ExaCore(concrete = Val(true));
+julia> c = ExaCore();
 
 julia> c, x = add_var(c, 1:10; lvar = -1, uvar = 1);
 
@@ -2011,7 +2054,7 @@ magnitude measures how much the objective would improve if that bound were relax
 ```jldoctest
 julia> using ExaModels, NLPModelsIpopt
 
-julia> c = ExaCore(concrete = Val(true));
+julia> c = ExaCore();
 
 julia> c, x = add_var(c, 1:10; lvar = -1, uvar = 1);
 
@@ -2046,7 +2089,7 @@ Returns the multipliers for constraints `y` associated with `result`, obtained b
 ```jldoctest
 julia> using ExaModels, NLPModelsIpopt
 
-julia> c = ExaCore(concrete = Val(true));
+julia> c = ExaCore();
 
 julia> c, x = add_var(c, 1:10; lvar = -1, uvar = 1);
 
@@ -2117,7 +2160,7 @@ Accepts the same keyword arguments as [`add_var`](@ref).
 
 ## Example
 ```julia
-c = ExaCore(concrete = Val(true))
+c = ExaCore()
 @add_var(c, x, 10; lvar = -1, uvar = 1)  # x is now in scope; c.x also works
 @add_var(c, y, 1:5)                        # y is in scope; c.y also works
 ```
@@ -2168,7 +2211,7 @@ Macro interface for [`add_par`](@ref). Updates `core` in the calling scope.
 
 ## Example
 ```julia
-c = ExaCore(concrete = Val(true))
+c = ExaCore()
 @add_par(c, θ, ones(10))  # θ is now in scope; c.θ also works
 ```
 """
@@ -2217,7 +2260,7 @@ Macro interface for [`add_obj`](@ref). Updates `core` in the calling scope.
 
 ## Example
 ```julia
-c = ExaCore(concrete = Val(true))
+c = ExaCore()
 @add_var(c, x, 10)
 @add_obj(c, x[i]^2 for i in 1:10)
 ```
@@ -2269,7 +2312,7 @@ Accepts the same keyword arguments as [`add_con`](@ref) (`lcon`, `ucon`, `start`
 
 ## Example
 ```julia
-c = ExaCore(concrete = Val(true))
+c = ExaCore()
 @add_var(c, x, 10)
 @add_con(c, g, x[i] + x[i+1] for i in 1:9; lcon = -1, ucon = 1)  # g in scope; c.g also works
 ```
@@ -2327,7 +2370,7 @@ See [`add_con!`](@ref) for full semantics and usage notes.
 
 ## Example
 ```julia
-c = ExaCore(concrete = Val(true))
+c = ExaCore()
 @add_var(c, x, 10)
 @add_con(c, g, x[i] + x[i+1] for i in 1:9; lcon = -1, ucon = 1)
 
@@ -2408,7 +2451,7 @@ Macro interface for [`add_expr`](@ref). Updates `core` in the calling scope.
 
 ## Example
 ```julia
-c = ExaCore(concrete = Val(true))
+c = ExaCore()
 @add_var(c, x, 10)
 @add_expr(c, s, x[i]^2 for i in 1:10)    # s in scope; c.s also works
 @add_obj(c, s[i] + s[i+1] for i in 1:9)

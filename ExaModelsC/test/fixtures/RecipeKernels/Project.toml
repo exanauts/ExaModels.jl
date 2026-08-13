@@ -1,0 +1,12 @@
+name = "RecipeKernels"
+uuid = "5c1e4a77-3b0d-4f92-9c8a-1e7d6b0f3a24"
+version = "0.1.0"
+
+# An extension is where a modelling library naturally writes its recipe pieces —
+# they are the parts that use ExaModels.  A type owned by an extension has to
+# resolve to this package, since an extension cannot itself be depended on.
+[weakdeps]
+ExaModels = "1037b233-b668-4ce9-9b63-f9f681f55dd2"
+
+[extensions]
+RecipeKernelsExaModels = "ExaModels"

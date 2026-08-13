@@ -1,7 +1,7 @@
 """
     ExaModelsC
 
-Compile an [`ExaModels.ExaCore`](@ref) into a self-contained shared library that
+Compile an [`ExaModels.ExaCore`](@ref) into a shared library that
 exposes the model through the plain C interface consumed by
 [CNLPModels.jl](https://github.com/MadNLP/CNLPModels.jl) (and its Python twin
 `cnlpmodels`).
@@ -13,7 +13,7 @@ open — and the compiled library resolves them per instance:
 ```julia
 using ExaModels, ExaModelsC
 
-c, N = ExaCore(concrete = Val(true), nargs = Val(1))
+c, N = ExaCore(nargs = Val(1))
 @add_var(c, x, N; start = 1.0)
 @add_obj(c, (x[i] - 1)^2 for i in 1:N)
 
@@ -39,13 +39,13 @@ which is part of ExaModels:
 
 ```julia
 using CNLPModels, NLPModelsIpopt
-lib = CNLPModels.load("/opt/models/rosen/lib/librosen.so")
+lib = CNLPModels.load("/opt/models/rosen/librosen.so")
 ipopt(CNLPModel(lib, 1000; prefix = "rosen"))
 ```
 
 ```python
 import cnlpmodels
-lib = cnlpmodels.load("/opt/models/rosen/lib/librosen.so")
+lib = cnlpmodels.load("/opt/models/rosen/librosen.so")
 m = cnlpmodels.CModel(lib, 1000, prefix="rosen")
 ```
 
@@ -57,7 +57,9 @@ module ExaModelsC
 
 import ExaModels
 import JuliaC
+import Random
 import Serialization
+import TOML
 
 export compile_library
 
@@ -68,22 +70,24 @@ const _GEN_UUID = "b41c7e02-9f3d-4a58-8e6c-2d0f5a7c9b13"
 
 """
     compile_library(out, core, args...; prefix = basename(out), trim = "safe",
-                    bundle = true, verbose = false)
+                    bundle = false, verbose = false)
         -> (; libpath, outdir, prefix)
 
 Compile `core` into a shared library under `out`, and return the path to it.
 
 ## `bundle`
 
-`bundle = true` (the default) emits a directory carrying the library together
-with a **privatized** copy of the Julia runtime — around 80 MB, needing no Julia
-on the consumer's side.  `bundle = false` emits a single ~2 MB library linked
-against the Julia installation it was built with.
+`bundle = false` (the default) emits a single ~2 MB library linked against the
+Julia installation it was built with, which the consumer's machine must then
+have (same version, found through the library's recorded rpath or provided by
+the consumer).  `bundle = true` emits a directory carrying the library together
+with a **privatized** copy of the Julia runtime — around 80 MB, needing no
+Julia on the consumer's side.
 
-| consumer | `bundle = true` | `bundle = false` |
-|:---------|:----------------|:-----------------|
+| consumer | `bundle = false` (default) | `bundle = true` |
+|:---------|:---------------------------|:----------------|
 | Python (`cnlpmodels`), C | works | works |
-| **Julia (`CNLPModels.jl`)** | works | **aborts on the first call** |
+| Julia (`CNLPModels.jl`) | works on Linux; refused elsewhere | works |
 
 !!! warning "Windows"
     `juliac` implements runtime privatization for Linux and macOS only — on
@@ -104,74 +108,100 @@ runtime's* thread-local storage, so a privatized runtime — a distinct one, who
 against the installed Julia instead, or bundling without privatizing, both
 reproduce the abort; measured, not assumed.
 
-Fixing that properly means skipping the adoption when the thread is already a
-Julia thread, which is upstream in juliac's generated preamble.  Until then the
-privatized bundle is the only form `CNLPModels.jl` can load, which is why it is
-the default; pass `bundle = false` for a Python or C caller that would rather
-have 2 MB than 80.
+The two forms therefore differ only in *when* privatization happens.  A bundle
+carries its privatized runtime with it; an unbundled library gets one at load
+time — on Linux, `CNLPModels.load` detects the standard `libjulia` soname in
+its NEEDED entries and provisions a salted copy of the consumer's *installed*
+runtime (the same transformation JuliaC's bundler applies, replayed in
+scratch).  Python and C callers load either form as-is: there the calling
+thread is genuinely foreign and the library's own runtime initializes on the
+first call.  On macOS the load-time half is not implemented, so
+`CNLPModels.jl` needs the bundle there; it refuses the unbundled form with an
+explanation rather than aborting.
 
 ## Where it goes
 
-## Where it goes
-
-`out` may be a directory path, or a bare **name** — no directory part — in
-which case the library is installed on the CNLPModels search path
-(`CNLPMODELS_PATH`), where both consumers find it by that name:
+`out` is `"@name"` to install on the CNLPModels search path
+(`CNLPMODELS_PATH`), where both consumers find it by that name — or any
+other string as a local path, exactly as written (`"rosen"` is `./rosen`,
+`"/path/to/rosen"` is the full path). The same convention the consumers
+apply to their string spec:
 
 ```julia
-compile_library("rosenrock", core, 1000)        # → \$CNLPMODELS_PATH/rosenrock/
-CNLPModel("rosenrock", 1000)                    # finds it, prefix defaults to the name
+compile_library("@rosenrock", core, 1000)       # → \$CNLPMODELS_PATH/rosenrock/
+CNLPModel("@rosenrock", 1000)                   # finds it, prefix defaults to the name
 ```
 
 The example values are given exactly as they would be to `ExaModel(core, ...)`,
 which is the point: compiling and instantiating a recipe should not be spelled
-two different ways.  `core` must be built against a single
+two different ways.  A recipe `core` must be built against a single
 [`ExaModels.ArgSource`](@ref) — `ExaCore(nargs = Val(1))` — since the scalar ABI
-carries one instantiation argument.  The example is
-example argument of the shape the library will be instantiated with.  The
-example is used twice — to pin the types `juliac` needs in order to trim, and to
-check that the core actually instantiates before spending minutes compiling it.
+carries one instantiation argument.  The example is used twice — to pin the
+types `juliac` needs in order to trim, and to check that the core actually
+instantiates before spending minutes compiling it.
 
-The library exports, for `prefix` `P`: `P_new(n) -> id` (a positive instance id;
-any number of instances may coexist), then id-first `P_nvar`, `P_ncon`,
-`P_nnzj`, `P_nnzh`, `P_meta`, `P_obj`, `P_grad`, `P_cons`, `P_jac_structure`,
-`P_jac`, `P_hess_structure`, `P_hess`.  Indices are 1-based; the Hessian is the
-lower triangle of `obj_weight * ∇²f + Σᵢ yᵢ ∇²cᵢ`; every function returns a
-`Cint` status, `0` on success, and none of them throws across the boundary.
+**No example values means a fixed model.**  A core built with no placeholders
+is a complete model, so `compile_library(out, core)` compiles it as-is:
+`P_new` keeps its one-integer C signature but ignores the integer, and
+`P_nargs()` reports `0` so a consumer handed only the library path knows that
+no instantiation data is required.  A core that *declared* placeholders
+(`nargs = Val(N)`, `N > 0`) is refused without examples.
 
-`P_new` takes a single integer, so this form applies when the example `arg` is
-an `Integer`, or a `NamedTuple` holding exactly one integer field — the
-"scalable model" case (`rosenbrock` at size `N`).  Structured instantiation
-(the schema + builder ABI, for data-defined models such as OPF) is not built
-yet; `compile_library` says so rather than emitting a library that would fail
-at load.
+The library exports, for `prefix` `P`: `P_nargs() -> 0 or 1` (how many
+instantiation arguments `P_new` consumes), `P_new(n) -> id` (a positive
+instance id; any number of instances may coexist), then id-first `P_nvar`,
+`P_ncon`, `P_nnzj`, `P_nnzh`, `P_meta`, `P_obj`, `P_grad`, `P_cons`,
+`P_jac_structure`, `P_jac`, `P_hess_structure`, `P_hess`.  Indices are 1-based;
+the Hessian is the lower triangle of `obj_weight * ∇²f + Σᵢ yᵢ ∇²cᵢ`; every
+function returns a `Cint` status, `0` on success, and none of them throws
+across the boundary.
+
+`P_new` takes a single integer, so the recipe form applies when the example
+`arg` is an `Integer`, or a `NamedTuple` holding exactly one integer field —
+the "scalable model" case (`rosenbrock` at size `N`).  Structured
+instantiation (the schema + builder ABI, for data-defined models such as OPF)
+is not built yet; `compile_library` says so rather than emitting a library
+that would fail at load.
 """
 function compile_library(
     out::AbstractString,
     core::ExaModels.ExaCore,
     args...;
-    prefix::AbstractString = basename(abspath(out)),
+    prefix::AbstractString = _default_out_prefix(out),
     trim::AbstractString = "safe",
-    bundle::Bool = true,
+    bundle::Bool = false,
     verbose::Bool = false,
 )
     _check_prefix(prefix)
-    isempty(args) && throw(
-        ArgumentError(
-            "give one example value per placeholder, as you would to " *
-            "`ExaModel(core, ...)` — its types are what the compiler needs.",
-        ),
-    )
-    fields = _schema(args)
-    _is_scalar_new(fields) || throw(
-        ArgumentError(
-            "this recipe needs the schema + builder interface, which is not " *
-            "emitted yet — only a single integer placeholder (`<prefix>_new(n)`) " *
-            "is. Its schema would be: " * _schema_json(fields),
-        ),
-    )
-    arg = only(args)
-    field = nothing
+    core = _concretize(core)
+    if isempty(args)
+        # No examples means a FIXED model: the core has no placeholders and is
+        # compiled as-is. A core that declared placeholders cannot be meant —
+        # refuse it here with the arity it stated rather than letting the
+        # instantiation probe below fail on a bare recipe. (An UNDECLARED
+        # recipe — a bare `ArgSource()` written into a plain `ExaCore()` —
+        # still reaches the probe, which rejects it just as loudly.)
+        core.nargs isa Val{0} || throw(
+            ArgumentError(
+                "this core declared $(_nargs_count(core.nargs)) placeholder(s) " *
+                "— give one example value per placeholder, as you would to " *
+                "`ExaModel(core, ...)`; its types are what the compiler needs.",
+            ),
+        )
+        arg = nothing
+        field = FixedModel()
+    else
+        fields = _schema(args)
+        _is_scalar_new(fields) || throw(
+            ArgumentError(
+                "this recipe needs the schema + builder interface, which is not " *
+                "emitted yet — only a single integer placeholder (`<prefix>_new(n)`) " *
+                "is. Its schema would be: " * _schema_json(fields),
+            ),
+        )
+        arg = only(args)
+        field = nothing
+    end
     out = _resolve_out(out, bundle)
 
     # Instantiate here, in this process, before generating anything.  A core
@@ -187,30 +217,55 @@ function compile_library(
     return _drive_juliac(appdir, prefix, out, trim, bundle, verbose)
 end
 
+
+# A core built in the default (non-concrete) mode accumulates its blocks in
+# `Vector{Any}` rather than in its own type. That is what makes model
+# construction cheap, and it is also what `juliac --trim=safe` cannot digest:
+# the model type is not statically known, so the call graph will not resolve.
+#
+# It does not have to be compiled in that form, though. The core travels into
+# the generated app as serialized DATA, and the blocks inside those vectors are
+# already concretely typed — only the container is erased. Rebuilding it with
+# tuple storage happens once here in the caller's process, and hands the
+# generator exactly the artifact it gets from a `Val(true)` core. So a user
+# can build the model in the default mode and still compile it. The rebuild
+# itself lives in ExaModels (`_concretize`), where the `ExaModel` entry points
+# use it for the same purpose.
+_concretize(core::ExaModels.ExaCore) = ExaModels._concretize(core)
+
 # ── Where the library goes ────────────────────────────────────────────────────
 
-# A bare name — no directory part — is resolved against the CNLPModels search
-# path, so `compile_library(core, "rosenrock")` installs where
-# `CNLPModel("rosenrock")` and `cnlpmodels.CModel("rosenrock")` will look for
-# it.  No sigil is needed to say which is meant: a name is not a path.
+# `@name` installs on the CNLPModels search path, so
+# `compile_library("@rosenrock", core, ...)` lands where
+# `CNLPModel("@rosenrock")` and `cnlpmodels.CModel("@rosenrock")` will look
+# for it; any other string is a local path exactly as written — the same
+# convention the consumers apply to their string spec.
 #
 # Both layouts are ones the consumers already try: a bundle lands at
 # `<dir>/<name>/lib/lib<name>.<ext>`, a single file at `<dir>/lib<name>.<ext>`.
 function _resolve_out(out::AbstractString, bundle::Bool)
-    (isabspath(out) || !isempty(splitdir(out)[1])) && return abspath(out)
+    startswith(out, "@") || return abspath(out)
+    name = String(out[2:end])
+    isempty(name) && throw(ArgumentError("`@` names a library — give one, like `@rosenrock`"))
     dirs = filter(!isempty, split(get(ENV, "CNLPMODELS_PATH", ""), ':'))
     isempty(dirs) && throw(
         ArgumentError(
-            "`$out` has no directory part, so it is taken as a library name to " *
-            "install on the CNLPModels search path — but CNLPMODELS_PATH is " *
-            "not set. Set it, or pass a path such as `\"./$out\"`.",
+            "`$out` names a library to install on the CNLPModels search path — " *
+            "but CNLPMODELS_PATH is not set. Set it, or pass a path such as " *
+            "`\"./$name\"`.",
         ),
     )
     # A bundle gets a directory of its own — `<dir>/<name>/lib/lib<name>.<ext>`,
     # the consumers' second layout.  A single file goes straight into the
     # directory as `<dir>/lib<name>.<ext>`, their first.
-    return bundle ? joinpath(first(dirs), out) : first(dirs)
+    return bundle ? joinpath(first(dirs), name) : first(dirs)
 end
+
+# The default symbol prefix: the name for `@name`, the directory's own name
+# for a path. (`basename(abspath())` of an `@name` would keep the sigil,
+# which is not a C identifier.)
+_default_out_prefix(out::AbstractString) =
+    startswith(out, "@") ? String(out[2:end]) : basename(abspath(out))
 
 # ── Reading the example arguments ─────────────────────────────────────────────
 #
@@ -295,6 +350,97 @@ function _check_prefix(prefix::AbstractString)
     return prefix
 end
 
+# ── The packages a core's own types come from ─────────────────────────────────
+#
+# A recipe defers more than sizes.  A starting point that varies with the index,
+# or the set a generator runs over when that set is computed from the size, is a
+# function the MODELLING library wrote, and it travels inside the serialized core
+# as a type that library owns.  Nothing is wrong with that — it is data, it
+# serializes, and `instantiate` runs it — but the generated app is a different
+# process, and it has to be able to name those types again.
+#
+# `Serialization` resolves a type's module through `Base.PkgId`, and only among
+# modules that are LOADED.  So the app has to do two things, and doing one is
+# not enough: depend on the package, and `import` it before deserializing.  With
+# the dependency present but no import, the deserialize fails with exactly the
+# same `KeyError` as with no dependency at all — which is why this is worth
+# stating rather than leaving to whoever reads the generated `Project.toml`.
+#
+# An EXTENSION is where a modelling library naturally writes these functions,
+# since they are the ones that use ExaModels.  An extension cannot be depended
+# on directly, so it is resolved to its parent package: the app imports the
+# parent, ExaModels is already imported, and Julia loads the extension itself.
+
+struct _Pkg
+    name::String
+    uuid::Base.UUID
+    dir::String
+end
+
+function _collect_modules!(mods::Set{Module}, seen::Base.IdSet{Any}, @nospecialize(T))
+    T in seen && return mods
+    push!(seen, T)
+    if T isa UnionAll
+        return _collect_modules!(mods, seen, T.body)
+    elseif T isa Union
+        _collect_modules!(mods, seen, T.a)
+        return _collect_modules!(mods, seen, T.b)
+    elseif T isa DataType
+        push!(mods, parentmodule(T))
+        for p in T.parameters
+            p isa Type && _collect_modules!(mods, seen, p)
+        end
+    end
+    return mods
+end
+
+# The package a module belongs to, or `nothing` for Base/Core/ExaModels, for
+# `Main`, and for anything else with no `Project.toml` behind it.  A module
+# whose entry point is not `<dir>/src/<Name>.jl` is an extension: its `pkgdir`
+# is already the parent's, so the parent's name and uuid are read from there.
+function _owning_package(m::Module)
+    (m === Base || m === Core || m === ExaModels) && return nothing
+    Base.moduleroot(m) === m || return nothing
+    id = Base.PkgId(m)
+    id.uuid === nothing && return nothing              # Main, and other non-packages
+    dir = pkgdir(m)
+    dir === nothing && return nothing
+    path = Base.locate_package(id)
+    if path !== nothing &&
+       normpath(path) == normpath(joinpath(dir, "src", id.name * ".jl"))
+        return _Pkg(id.name, id.uuid, abspath(dir))
+    end
+    # An extension — take the package it belongs to.
+    for base in ("JuliaProject.toml", "Project.toml")
+        proj = joinpath(dir, base)
+        isfile(proj) || continue
+        toml = TOML.parsefile(proj)
+        name = get(toml, "name", nothing)
+        uuid = get(toml, "uuid", nothing)
+        (name isa String && uuid isa String) || continue
+        return _Pkg(name, Base.UUID(uuid), abspath(dir))
+    end
+    return nothing
+end
+
+"""
+    _core_packages(core) -> Vector{_Pkg}
+
+Every package, other than ExaModels itself, that owns a type inside `core`.
+These become dependencies of the generated app *and* imports in its module, so
+that the serialized core can be read back there.
+"""
+function _core_packages(core)
+    mods = _collect_modules!(Set{Module}(), Base.IdSet{Any}(), typeof(core))
+    pkgs = _Pkg[]
+    for m in sort!(collect(mods); by = string)
+        p = _owning_package(m)
+        p === nothing && continue
+        any(q -> q.uuid == p.uuid, pkgs) || push!(pkgs, p)
+    end
+    return pkgs
+end
+
 # ── Generating the app package ────────────────────────────────────────────────
 
 function _generate_app(core, arg, field, prefix::AbstractString)
@@ -314,12 +460,22 @@ function _generate_app(core, arg, field, prefix::AbstractString)
     # instantiating, which silently breaks relative `path =` entries: they would
     # resolve against the copy's parent. Absolute from the start.
     exadir = abspath(joinpath(dirname(dirname(pathof(ExaModels)))))
-    write(joinpath(appdir, "Project.toml"), _project_toml(modname, exadir))
-    write(joinpath(srcdir, modname * ".jl"), _module_source(modname, prefix, field))
+    pkgs = _core_packages(core)
+    write(joinpath(appdir, "Project.toml"), _project_toml(modname, exadir, pkgs))
+    write(
+        joinpath(srcdir, modname * ".jl"),
+        _module_source(modname, prefix, field, pkgs),
+    )
     return appdir
 end
 
-function _project_toml(modname::AbstractString, exadir::AbstractString)
+_toml_path(dir::AbstractString) = replace(dir, '\\' => '/')
+
+function _project_toml(modname::AbstractString, exadir::AbstractString, pkgs = _Pkg[])
+    deps = join(("""$(p.name) = "$(p.uuid)"\n""" for p in pkgs))
+    # A path source rather than a version bound: the app must compile the same
+    # code that produced the core, not merely something compatible with it.
+    sources = join(("""$(p.name) = {path = "$(_toml_path(p.dir))"}\n""" for p in pkgs))
     return """
     name = "$modname"
     uuid = "$_GEN_UUID"
@@ -328,24 +484,44 @@ function _project_toml(modname::AbstractString, exadir::AbstractString)
     [deps]
     ExaModels = "1037b233-b668-4ce9-9b63-f9f681f55dd2"
     Serialization = "9e88b42a-f829-5b0c-bbe9-9e923198166b"
-
+    $deps
     [sources]
-    ExaModels = {path = "$(replace(exadir, '\\' => '/'))"}
-    """
+    ExaModels = {path = "$(_toml_path(exadir))"}
+    $sources"""
 end
 
-# How `rec_new(n)` turns its one integer into the argument the core expects.
+# A fixed model: the core carries no placeholders, so `<prefix>_new(n)`
+# ignores `n`. The C symbol keeps its one-integer signature anyway — every
+# consumer already speaks it, and a second ABI shape would buy nothing.
+struct FixedModel end
+
+@inline _nargs_count(::Val{N}) where {N} = N
+
+# How `rec_new(n)` turns its one integer into the argument the core expects —
+# or, for a fixed model, into the `nothing` that `ExaModel(core, nothing)`
+# treats as "no instance data".
 _arg_expr(::Nothing) = "Int(n)"
 _arg_expr(field::Symbol) = "(; $field = Int(n))"
+_arg_expr(::FixedModel) = "nothing"
 
-function _module_source(modname::AbstractString, p::AbstractString, field)
+# What `<prefix>_nargs()` reports: how many instantiation arguments
+# `<prefix>_new` actually consumes. 0 is what lets a consumer handed only a
+# library path know that no `args` are required.
+_nargs_value(::FixedModel) = 0
+_nargs_value(::Union{Nothing, Symbol}) = 1
+
+function _module_source(modname::AbstractString, p::AbstractString, field, pkgs = _Pkg[])
     argexpr = _arg_expr(field)
+    # Imported for their side effect on `Serialization`: a module has to be
+    # loaded before a type it owns can be resolved by `PkgId`, and the
+    # deserialize below is what needs them.  A dependency alone is not enough.
+    imports = join(("import $(p.name)\n" for p in pkgs))
     return """
     module $modname
 
     import ExaModels
     import Serialization
-
+    $imports
     # Deserialized at precompile time, so the core is baked into the package
     # image and no model-building code enters the compiled call graph.
     const CORE = Serialization.deserialize(joinpath(@__DIR__, "core.jls"))
@@ -360,6 +536,13 @@ function _module_source(modname::AbstractString, p::AbstractString, field)
     const MODELS = typeof(ExaModels.ExaModel(CORE, ARG0; check = Val(false)))[]
 
     @inline _valid(id::Cint) = 1 <= id <= length(MODELS)
+
+    # How many instantiation arguments `$(p)_new` consumes (0 = fixed model,
+    # `n` is ignored). Lets a consumer decide whether `args` are required
+    # before instantiating anything.
+    Base.@ccallable function $(p)_nargs()::Cint
+        return Cint($(_nargs_value(field)))
+    end
 
     Base.@ccallable function $(p)_new(n::Cint)::Cint
         try
@@ -584,9 +767,22 @@ function _link(::Val{true}, img, prefix, outdir)
         rpath = JuliaC.RPATH_BUNDLE,
     )
     JuliaC.link_products(link)
-    JuliaC.bundle_products(
-        JuliaC.BundleRecipe(link_recipe = link, output_dir = outdir, privatize = true),
-    )
+    # Privatization mangles the bundled runtime under a salt drawn from the
+    # task-local RNG — and two sequential `compile_library` calls in one
+    # process have been observed to draw the SAME salt (2026-08-11, rosen +
+    # fixed in one test run). Identically-salted bundles cannot coexist in a
+    # consumer: the dynamic loader satisfies the second library's NEEDED
+    # entries with the first's already-loaded runtime, whose thread-adoption
+    # guard then aborts the whole host process on the second library's first
+    # call. Distinctly-salted bundles coexist fine (verified). So the salt is
+    # forced unique here: bundling runs in its own task whose RNG is seeded
+    # from the OS entropy pool — the caller's RNG state is untouched.
+    fetch(Threads.@spawn begin
+        Random.seed!(rand(Random.RandomDevice(), UInt128))
+        JuliaC.bundle_products(
+            JuliaC.BundleRecipe(link_recipe = link, output_dir = outdir, privatize = true),
+        )
+    end)
 
     libroot = Sys.iswindows() ? "bin" : "lib"
     libpath = joinpath(outdir, libroot, "lib" * prefix * "." * _DLEXT)

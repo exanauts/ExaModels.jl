@@ -2,6 +2,8 @@ module ExaModelsCTest
 
 using Test
 using ExaModels, ExaModelsC
+import Pkg
+import RecipeKernels
 import CNLPModels
 import NLPModels
 import NLPModelsIpopt
@@ -12,8 +14,11 @@ import NLPModelsIpopt
 #
 # written exactly as it would be without `arg`, except that the size is left
 # open.  `build` is called twice below — once to compile, once to produce the
-# in-Julia reference the library is checked against.
-function build(cn = ExaCore(concrete = Val(true), nargs = Val(1)))
+# in-Julia reference the library is checked against.  The default core is the
+# default (non-concrete) mode on purpose: compiling from it is what proves
+# `_concretize` hands juliac the same artifact a `Val(true)` core produces
+# (the `Val(true)` compile path is covered by the main suite's app tests).
+function build(cn = ExaCore(nargs = Val(1)))
     c, N = cn
     @add_var(c, x, N; start = 1.0)
     @add_obj(c, (x[i] - 2.0)^2 for i in 1:N)
@@ -37,11 +42,108 @@ function runtests()
             @test_throws ArgumentError compile_library(OUT, c, 4; prefix = "2fast")
         end
 
+        @testset "a recipe's own package travels into the generated app" begin
+            # A modelling library's own function inside the core is the ordinary
+            # case, not an exotic one: a per-index start and a size-dependent
+            # index set both have to be deferred, and what gets deferred is that
+            # library's code.  The core then names a `RecipeKernels` type.
+            c, N = ExaCore(nargs = Val(1))
+            @add_var(c, x, N; start = Base.Generator(RecipeKernels.alternating, 1:N))
+            @add_obj(c, (x[i] - 2.0)^2 for i in 1:N)
+            @add_con(c, x[l+1] + x[l+2] for l in ExaModels.ArgNode1(RecipeKernels.offsets, N))
+
+            pkgs = ExaModelsC._core_packages(ExaModelsC._concretize(c))
+            @test length(pkgs) == 1
+            @test only(pkgs).name == "RecipeKernels"
+            @test isdir(only(pkgs).dir)
+
+            # A core with nothing but ExaModels in it must not drag anything in:
+            # the generated project has to stay exactly as it was for every model
+            # that does not need this.
+            plain, M = ExaCore(nargs = Val(1))
+            @add_var(plain, z, M; start = 1.0)
+            @add_obj(plain, (z[i] - 2.0)^2 for i in 1:M)
+            @test isempty(ExaModelsC._core_packages(ExaModelsC._concretize(plain)))
+
+            # Both halves are needed and neither alone is enough: a dependency
+            # the app never imports resolves no better than one it never had, so
+            # the generated files are checked for the dependency AND the import.
+            appdir = ExaModelsC._generate_app(
+                ExaModelsC._concretize(c), 8, nothing, "rk",
+            )
+            proj = read(joinpath(appdir, "Project.toml"), String)
+            src = read(joinpath(appdir, "src", "ExaLib_rk.jl"), String)
+            @test occursin("RecipeKernels = \"5c1e4a77", proj)
+            @test occursin("RecipeKernels = {path =", proj)
+            @test occursin("import RecipeKernels", src)
+
+            # And the property those two exist for: a *different* process, whose
+            # only knowledge of RecipeKernels is what the generated project says,
+            # can read the core back and build a model from it.  This is the step
+            # that failed before, with `KeyError: PkgId(... "RecipeKernels")`.
+            probe = joinpath(appdir, "probe.jl")
+            answer = joinpath(appdir, "answer.txt")
+            write(probe, """
+                import Pkg
+                Pkg.instantiate(; io = devnull)
+                import ExaModels, Serialization, RecipeKernels
+                core = Serialization.deserialize(joinpath(@__DIR__, "src", "core.jls"))
+                m = ExaModels.ExaModel(core, 12; check = Val(false))
+                write(
+                    joinpath(@__DIR__, "answer.txt"),
+                    string(m.meta.nvar, ",", m.meta.ncon, ",", m.meta.x0[1], ",", m.meta.x0[2]),
+                )
+                """)
+            # Keep the child's output: without it a failure here reads as a bare
+            # `false`, and the whole point of this assertion is the reason.
+            log = IOBuffer()
+            ran = success(pipeline(
+                `$(Base.julia_cmd()) --startup-file=no --project=$appdir $probe`;
+                stdout = log, stderr = log,
+            ))
+            ran || @error "generated app failed to load its core" output =
+                String(take!(log))
+            @test ran
+            @test isfile(answer) && read(answer, String) == "12,5,-1.2,1.0"
+
+            # An extension is the natural home for a recipe's ExaModels-facing
+            # parts, and a type it owns cannot be depended on by name — there is
+            # no `RecipeKernelsExaModels` to add to a project.  It has to resolve
+            # to the package that carries it, which the app then imports;
+            # ExaModels is already imported, so Julia loads the extension itself.
+            ext = Base.get_extension(RecipeKernels, :RecipeKernelsExaModels)
+            @test ext !== nothing
+            e, K = ExaCore(nargs = Val(1))
+            @add_var(e, w, K; start = Base.Generator(ext.ramp, 1:K))
+            @add_obj(e, (w[i] - 1.0)^2 for i in 1:K)
+            epkgs = ExaModelsC._core_packages(ExaModelsC._concretize(e))
+            @test length(epkgs) == 1
+            @test only(epkgs).name == "RecipeKernels"       # the parent, not the ext
+        end
+
+        @testset "out is @name on the search path, or a literal path" begin
+            # The same convention the consumers apply to their string spec:
+            # any string without the sigil is a local path, exactly as written.
+            @test ExaModelsC._resolve_out("rosen", true) == abspath("rosen")
+            @test ExaModelsC._resolve_out("./rosen", true) == abspath("./rosen")
+            withenv("CNLPMODELS_PATH" => nothing) do
+                @test_throws ArgumentError ExaModelsC._resolve_out("@rosen", true)
+            end
+            withenv("CNLPMODELS_PATH" => "/tmp/models") do
+                @test ExaModelsC._resolve_out("@rosen", true) == joinpath("/tmp/models", "rosen")
+                @test ExaModelsC._resolve_out("@rosen", false) == "/tmp/models"
+            end
+            # The default prefix keeps no sigil.
+            @test ExaModelsC._default_out_prefix("@rosen") == "rosen"
+            @test_throws ArgumentError ExaModelsC._resolve_out("@", true)
+        end
+
         # Compiling takes minutes, so the library is built once and every
-        # behavioural test below reads that one artifact.
-        # Compiling takes minutes, so the library is built once and every
-        # behavioural test below reads that one artifact.
-        r = compile_library(joinpath(OUT, "rosen"), build(), 4)
+        # behavioural test below reads that one artifact.  Bundled explicitly:
+        # this is the bundle-path coverage (the default — unbundled — has its
+        # own testset below), and the bundle is the form CNLPModels.jl can
+        # load on every OS.
+        r = compile_library(joinpath(OUT, "rosen"), build(), 4; bundle = true)
 
         @testset "the library exists and loads" begin
             @test isfile(r.libpath)
@@ -94,19 +196,104 @@ function runtests()
             @test NLPModels.obj(m2, fill(1.0, 11)) ≈ 11.0
         end
 
-        @testset "bundle = false is a single file, for Python and C callers" begin
-            # One ~2 MB library rather than an 80 MB directory, linked against
-            # the installed Julia.  This is the form to hand a Python or C
-            # caller; it cannot be loaded from Julia — see `compile_library`'s
-            # docstring for why — so it is checked structurally here and the
-            # Python leg below exercises the behaviour.
-            u = compile_library(joinpath(OUT, "flat"), build(), 4; bundle = false)
+        @testset "the recipe library declares its arity" begin
+            @test ccall(
+                CNLPModels.Libdl.dlsym(lib.handle, Symbol(r.prefix, "_nargs")),
+                Cint, ()) == 1
+        end
+
+        @testset "a fixed core — no placeholders — compiles with no args" begin
+            # A declared-arity recipe without examples is refused up front,
+            # naming what is missing. Pinned to the guard's own message: the
+            # instantiation probe would also throw an ArgumentError, so a bare
+            # type match could not tell the guard from its backstop.
+            @test_throws "declared 1 placeholder" compile_library(OUT, build())
+
+            # A complete model, built in the default (non-concrete) mode and
+            # compiled without example values.
+            n = 7
+            c = ExaCore()
+            @add_var(c, x, n; start = 1.0)
+            @add_obj(c, (x[i] - 2.0)^2 for i in 1:n)
+            @add_con(c, x[i] + x[i + 1] for i in 1:(n - 1); lcon = 3.0, ucon = Inf)
+            ref = ExaModel(c)
+
+            # Compiled through the `@name` spelling: installs on the search
+            # path, with the prefix defaulting to the name.  Bundled, so the
+            # in-Julia consumption below works on every OS — and a second
+            # bundle in one process is the salt-collision regression case.
+            f = withenv("CNLPMODELS_PATH" => OUT) do
+                compile_library("@fixed", c; bundle = true)
+            end
+            @test f.outdir == joinpath(OUT, "fixed")
+            @test f.prefix == "fixed"
+            @test isfile(f.libpath)
+            flib = CNLPModels.load(f.libpath)
+
+            # The library says it consumes no instantiation arguments.
+            @test ccall(
+                CNLPModels.Libdl.dlsym(flib.handle, Symbol(f.prefix, "_nargs")),
+                Cint, ()) == 0
+
+            # The whole chain with no instance data anywhere: CNLPModels
+            # consults `_nargs` and instantiates from nothing but the handle.
+            m3 = CNLPModels.CNLPModel(flib; prefix = f.prefix)
+            @test m3.meta.nvar == n
+
+            # `_new` keeps its one-integer C signature and ignores the value:
+            # any integer instantiates the same fixed model.
+            m = CNLPModels.CNLPModel(flib, 0; prefix = f.prefix)
+            @test m.meta.nvar == ref.meta.nvar == n
+            @test m.meta.ncon == ref.meta.ncon == n - 1
+            @test m.meta.x0 ≈ ref.meta.x0
+
+            x = collect(range(0.5, 3.0; length = n))
+            @test NLPModels.obj(m, x) ≈ NLPModels.obj(ref, x)
+            @test NLPModels.grad(m, x) ≈ NLPModels.grad(ref, x)
+            @test NLPModels.cons(m, x) ≈ NLPModels.cons(ref, x)
+
+            m2 = CNLPModels.CNLPModel(flib, 999; prefix = f.prefix)
+            @test m2.meta.nvar == n
+        end
+
+        @testset "the default — unbundled — is a single file, loadable everywhere" begin
+            # No `bundle` argument: this is what `compile_library` emits by
+            # default — one ~2 MB library rather than an 80 MB directory,
+            # linked against the installed Julia.
+            u = compile_library(joinpath(OUT, "flat"), build(), 4)
             @test isfile(u.libpath)
             @test u.libpath == joinpath(
                 u.outdir, "lib" * u.prefix * "." * Base.BinaryPlatforms.platform_dlext())
             @test !isdir(joinpath(u.outdir, "lib", "julia"))     # not a bundle
             @test filesize(u.libpath) < 20_000_000
             @test filesize(u.libpath) < filesize(r.libpath) * 10 # far smaller than bundled
+
+            if Sys.islinux()
+                # In-process consumption: CNLPModels detects the standard
+                # libjulia NEEDED and provisions a load-time private runtime
+                # (loading this library as-is would abort the process, so
+                # this block passing IS the mechanism working). The bundled
+                # `rosen` runtime above is already resident: the two must
+                # coexist.
+                ulib = CNLPModels.load(u.libpath)
+                N = 17
+                um = CNLPModels.CNLPModel(ulib, N; prefix = u.prefix)
+                ref = ExaModel(build(), N)
+                x = collect(range(0.5, 3.0; length = N))
+                @test um.meta.nvar == ref.meta.nvar == N
+                @test NLPModels.obj(um, x) ≈ NLPModels.obj(ref, x)
+                @test NLPModels.grad(um, x) ≈ NLPModels.grad(ref, x)
+                @test NLPModels.cons(um, x) ≈ NLPModels.cons(ref, x)
+                res = NLPModelsIpopt.ipopt(um; print_level = 0)
+                @test res.solution ≈ fill(2.0, N) atol = 1e-5
+                # And the bundled library is still alive next to it.
+                @test NLPModels.obj(
+                    CNLPModels.CNLPModel(lib, 5; prefix = r.prefix),
+                    fill(1.0, 5)) ≈ 5.0
+            else
+                # The Python leg below is the consumer for this form here.
+                @info "in-process unbundled loading is Linux-only; skipped"
+            end
         end
 
         @testset "the Python consumer reads the same model" begin
@@ -131,17 +318,24 @@ function runtests()
                 ok && (py = cand; break)
             end
 
+            # Both forms go through the same script: the bundled library and
+            # the unbundled single file, which Python loads as-is.
+            flatlib = joinpath(
+                OUT, "flat", "libflat." * Base.BinaryPlatforms.platform_dlext())
+            pylibs = [(r.libpath, r.prefix)]
+            isfile(flatlib) && push!(pylibs, (flatlib, "flat"))
             if py === nothing || !isdir(pysrc)
                 @info "skipping the Python leg" python = py pysrc_exists = isdir(pysrc)
                 @test_skip false
             else
+                for (pylib, pyprefix) in pylibs
                 N = 12
                 outfile = joinpath(mktempdir(), "py.txt")
                 env = copy(ENV)
                 sep = Sys.iswindows() ? ";" : ":"     # PATH separator, not ':' everywhere
                 env["PYTHONPATH"] =
                     pysrc * (haskey(env, "PYTHONPATH") ? sep * env["PYTHONPATH"] : "")
-                run(setenv(`$py $script $(r.libpath) $(r.prefix) $N $outfile`, env))
+                run(setenv(`$py $script $(pylib) $(pyprefix) $N $outfile`, env))
 
                 vals = Dict{String,Vector{Float64}}()
                 for line in eachline(outfile)
@@ -175,6 +369,7 @@ function runtests()
                 @test Int.(vals["hess_rows"]) == hr
                 @test Int.(vals["hess_cols"]) == hc
                 @test vals["hess"] ≈ NLPModels.hess_coord(ref, x, y; obj_weight = 0.5)
+                end
             end
         end
 
