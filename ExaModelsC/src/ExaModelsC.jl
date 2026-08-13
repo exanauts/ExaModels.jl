@@ -175,22 +175,31 @@ is a complete model, so `compile_library(out, core)` compiles it as-is:
 no instantiation data is required.  A core that *declared* placeholders
 (`nargs = Val(N)`, `N > 0`) is refused without examples.
 
-The library exports, for `prefix` `P`: `P_nargs() -> 0 or 1` (how many
-instantiation arguments `P_new` consumes), `P_new(n) -> id` (a positive
-instance id; any number of instances may coexist), then id-first `P_nvar`,
-`P_ncon`, `P_nnzj`, `P_nnzh`, `P_meta`, `P_obj`, `P_grad`, `P_cons`,
-`P_jac_structure`, `P_jac`, `P_hess_structure`, `P_hess`.  Indices are 1-based;
-the Hessian is the lower triangle of `obj_weight * ∇²f + Σᵢ yᵢ ∇²cᵢ`; every
-function returns a `Cint` status, `0` on success, and none of them throws
-across the boundary.
+The library exports, for `prefix` `P`, one of two **instantiation surfaces**,
+then the shared evaluators — id-first `P_nvar`, `P_ncon`, `P_nnzj`, `P_nnzh`,
+`P_meta`, `P_obj`, `P_grad`, `P_cons`, `P_jac_structure`, `P_jac`,
+`P_hess_structure`, `P_hess`.  Indices are 1-based; the Hessian is the lower
+triangle of `obj_weight * ∇²f + Σᵢ yᵢ ∇²cᵢ`; every function returns a `Cint`
+status, `0` on success, and none of them throws across the boundary.
 
-`P_new` takes a single integer, so the recipe form applies when the example
-`arg` is an `Integer` — the "scalable model" case (`rosenbrock` at size `N`).
-Structured instantiation (the schema + builder ABI, for data-defined models
-such as OPF) is not built yet; `compile_library` says so rather than emitting
-a library that would fail at load, and prints the schema the model would
-need.  That is the only surface, so several example values, a float, an array,
-a table, or a `NamedTuple` are all refused for now.
+**One integer** (`rosenbrock` at size `N` — a bare `Integer` example, or a
+`NamedTuple` holding exactly one): `P_new(n) -> id` (a positive instance id;
+any number of instances may coexist), and `P_nargs() -> 0 or 1` saying whether
+`n` is consumed or ignored (0 is the fixed-model case).
+
+**Anything else** — several example values, floats, arrays, tables (vectors
+of NamedTuples), or NamedTuples of these, exactly as `ExaModel` takes them —
+gets the schema + builder ABI instead of `P_new`: `P_schema` publishes a JSON
+description of the fields, and `P_data_begin` / `P_set_scalar_{i64,f64}` /
+`P_set_array_{i64,f64}` / `P_set_col_{i64,f64}` / `P_data_ready` /
+`P_new_from_data -> id` take the values by field name and reassemble the
+`ExaModel` arguments.  A `NamedTuple` example flattens into one schema field
+per entry, named by its key; bare values are named `arg1`, `arg2`, ... by
+position.  Both consumers already speak this surface, binding one value per
+field positionally — `CNLPModel(lib, 3, lo, v)` — so a compiled model is
+consumed the way it was written.  Builder examples must be `Int64`/`Float64`
+exactly (as scalars, `Vector`s, or table entries): the example's type IS the
+compiled storage's type.
 
 ## Several models in one library
 
@@ -244,9 +253,10 @@ one model, so `prefix =` has no meaning here and is not accepted — the model
 names supply the prefixes. Every other keyword behaves as in the single-model
 form.
 
-Each model is subject to the same restriction as the single-model form: one
-integer example value, or none for a fixed model. The schema + builder surface
-(several arguments, arrays, tables) is not emitted yet, for any model.
+Each model gets whichever instantiation surface its examples call for, exactly
+as in the single-model form: `P_new(n)` for one integer, the schema + builder
+ABI for anything else, per prefix — the surfaces coexist freely in one
+library.
 """
 function compile_library(
     out::AbstractString,
@@ -330,15 +340,18 @@ function _model_spec(prefix::AbstractString, core::ExaModels.ExaCore, args::Tupl
         )
         return ModelSpec(String(prefix), core, nothing, FixedModel())
     end
-    fields = _schema(args)
-    _is_scalar_new(fields) || throw(
-        ArgumentError(
-            "`$prefix`: this recipe needs the schema + builder interface, which is " *
-            "not emitted yet — only a single integer placeholder " *
-            "(`$(prefix)_new(n)`) is. Its schema would be: " * _schema_json(fields),
-        ),
-    )
-    return ModelSpec(String(prefix), core, only(args), nothing)
+    bm = _builder_model(args)
+    # One integer placeholder — bare, or a one-key NamedTuple — keeps the
+    # `P_new(n)` fast path: one C call, no builder.  The two surfaces are
+    # disjoint on purpose: a library exports `P_new` exactly when its schema
+    # is a single integer scalar, which is what lets a consumer route a lone
+    # integer without guessing.
+    if _is_scalar_new(bm.fields)
+        spec = only(bm.argspec)
+        field = spec isa String ? nothing : first(only(spec))
+        return ModelSpec(String(prefix), core, only(args), field)
+    end
+    return ModelSpec(String(prefix), core, args, bm)
 end
 
 # The shared back half: probe every model, generate one app carrying all of
@@ -354,7 +367,24 @@ function _compile(specs::Vector{ModelSpec}, out, libname, trim, bundle, verbose)
     # the failure is far cheaper to read now than after a juliac run — the more
     # so with several models, where one bad core would waste the whole compile.
     for s in specs
-        probe = ExaModels.ExaModel(s.core, s.arg)
+        # A builder spec carries its examples as a tuple, one per placeholder;
+        # the other forms carry a single value (or `nothing` for a fixed core).
+        probe = try
+            s.arg isa Tuple ? ExaModels.ExaModel(s.core, s.arg...) :
+            ExaModels.ExaModel(s.core, s.arg)
+        catch err
+            # A shape mismatch between the examples and how the core reads its
+            # placeholders (a NamedTuple where a bare size is expected, a
+            # missing key, ...) surfaces here — as the caller's error, before
+            # minutes are spent compiling.
+            throw(
+                ArgumentError(
+                    "`$(s.prefix)`: the example values do not instantiate this " *
+                    "core — `ExaModel(core, example...)` failed with: " *
+                    sprint(showerror, err),
+                ),
+            )
+        end
         verbose && @info "compile_library: core instantiates" prefix = s.prefix nvar =
             probe.meta.nvar ncon = probe.meta.ncon
     end
@@ -418,11 +448,13 @@ _default_out_prefix(out::AbstractString) =
 
 # ── Reading the example arguments ─────────────────────────────────────────────
 #
-# The schema is derived from the example values' TYPES, one field per
-# placeholder.  Placeholders are positional, so the fields are named `arg1`,
-# `arg2`, ... — and a consumer binds its own arguments positionally against
-# that field order, `CNLPModel(lib, arg1, arg2, ...)`, the same spelling the
-# example values are given in here.
+# The schema is derived from the example values' TYPES.  A bare number or
+# vector is one field, named `arg1`, `arg2`, ... by position; a NamedTuple
+# example — the shape `ExaModel` takes for a source carrying several values —
+# flattens into one field per entry, named by its key.  A consumer binds its
+# own values positionally against the flat field order,
+# `CNLPModel(lib, v1, v2, ...)`, and the library reassembles the NamedTuples
+# before instantiating.
 
 struct Field
     name::String
@@ -483,6 +515,108 @@ end
 # `P_new(n)` stays as the fast path: one integer placeholder needs no builder.
 _is_scalar_new(fields) =
     length(fields) == 1 && fields[1].kind == "scalar" && fields[1].type == "i64"
+
+# Everything else gets the schema + builder surface (ABI v2): the consumer
+# opens a builder, sets each field by name, and `P_new_from_data` reassembles
+# the `ExaModel` arguments exactly as the example values were given here.
+# `argspec` records that mapping — one entry per `ExaModel` positional
+# argument:
+#
+#   a `String`                      — a bare value, stored under that field
+#   a `Vector{Pair{Symbol,String}}` — a NamedTuple, one (key => field) per entry
+struct BuilderModel
+    fields::Vector{Field}
+    argspec::Vector{Union{String, Vector{Pair{Symbol,String}}}}
+end
+
+# Builder storage is GENERATED from the example types, and the model vector's
+# element type is fixed by instantiating the example at precompile time — so
+# the example must BE the type the builder will reconstruct: Int64/Float64
+# exactly, as scalars, `Vector`s, or vectors of NamedTuples of them.  A looser
+# example (`Int32`, a range, `Real[]`) would compile a MODELS vector the
+# reconstruction cannot feed, and the mismatch would surface only inside the
+# compiled library; refused here instead.
+_check_exact(name, v::Union{Int64, Float64, Vector{Int64}, Vector{Float64}}) = v
+function _check_exact(name, v::Vector{T}) where {T <: NamedTuple}
+    (isconcretetype(T) && all(t -> t <: Union{Int64, Float64}, fieldtypes(T))) ||
+        _exact_err(name, v)
+    return v
+end
+_check_exact(name, v) = _exact_err(name, v)
+_exact_err(name, v) = throw(
+    ArgumentError(
+        "`$name`: builder examples must be Int64/Float64 values — as scalars, " *
+        "as Vector{Int64}/Vector{Float64}, or as a Vector of NamedTuples of " *
+        "them (a table); got $(typeof(v)). The storage the library compiles " *
+        "is exactly the example's type.",
+    ),
+)
+
+function _builder_model(args)
+    fields = Field[]
+    argspec = Union{String, Vector{Pair{Symbol,String}}}[]
+    seen = Set{String}()
+    claim = function (name, where_)
+        name in seen && throw(
+            ArgumentError(
+                "two schema fields would both be named `$name` (the second from " *
+                "$where_) — field names come from NamedTuple keys and `argN` " *
+                "positions, and must be distinct across all placeholders; " *
+                "rename one.",
+            ),
+        )
+        push!(seen, name)
+        return name
+    end
+    for (i, a) in enumerate(args)
+        if a isa NamedTuple
+            entries = Pair{Symbol,String}[]
+            for k in keys(a)
+                name = claim(String(k), "argument $i")
+                push!(fields, _field(name, _check_exact(name, getfield(a, k))))
+                push!(entries, k => name)
+            end
+            push!(argspec, entries)
+        else
+            name = claim("arg$i", "argument $i")
+            push!(fields, _field(name, _check_exact(name, a)))
+            push!(argspec, name)
+        end
+    end
+    # Tables flatten further, into one storage slot per column — those names
+    # must be distinct too, and a table needs at least one column to have an
+    # element type at all.
+    slots = String[]
+    for f in fields
+        f.kind == "table" && isempty(f.columns) && throw(
+            ArgumentError(
+                "`$(f.name)`: the example table has no columns — give " *
+                "NamedTuples with at least one entry.",
+            ),
+        )
+        append!(slots, (s for (s, _, _) in _slots(f)))
+    end
+    allunique(slots) || throw(
+        ArgumentError(
+            "field and table-column names collide once flattened to storage " *
+            "slots ($(join(slots, ", "))) — rename one of the duplicates.",
+        ),
+    )
+    return BuilderModel(fields, argspec)
+end
+
+# The flat storage behind a builder: (slot identifier, storage type, zero
+# value), one slot per scalar/array field and per table column.  Each slot
+# also carries a `<slot>_set::Bool` beside it in the generated struct.
+function _slots(f::Field)
+    jt(t) = t == "i64" ? "Int64" : "Float64"
+    jz(t) = t == "i64" ? "0" : "0.0"
+    jvt(t) = t == "i64" ? "Vector{Int64}" : "Vector{Float64}"
+    jvz(t) = t == "i64" ? "Int64[]" : "Float64[]"
+    f.kind == "scalar" && return [(f.name, jt(f.type), jz(f.type))]
+    f.kind == "array" && return [(f.name, jvt(f.type), jvz(f.type))]
+    return [("$(f.name)_$(c.first)", jvt(c.second), jvz(c.second)) for c in f.columns]
+end
 
 # The prefix becomes a C symbol and a Julia identifier in generated source, so
 # it has to be one. Checked here rather than discovered as a syntax error in a
@@ -672,6 +806,249 @@ _arg_expr(::FixedModel) = "nothing"
 _nargs_value(::FixedModel) = 0
 _nargs_value(::Union{Nothing, Symbol}) = 1
 
+# ── Generating one model's instantiation surface ─────────────────────────────
+#
+# A fixed or one-integer model gets `P_nargs` + `P_new(n)`.  Everything else
+# gets the schema + builder surface (ABI v2) and NO `P_new` — the consumers
+# rely on that disjointness to route a lone integer.  All storage is
+# concretely typed from the example values, so `--trim=safe` sees no dynamic
+# containers.
+
+function _instantiation_source(p::AbstractString, field::Union{Nothing, Symbol, FixedModel})
+    argexpr = _arg_expr(field)
+    return """
+    # How many instantiation arguments `$(p)_new` consumes (0 = fixed model,
+    # `n` is ignored). Lets a consumer decide whether `args` are required
+    # before instantiating anything.
+    Base.@ccallable function $(p)_nargs()::Cint
+        return Cint($(_nargs_value(field)))
+    end
+
+    Base.@ccallable function $(p)_new(n::Cint)::Cint
+        try
+            push!(MODELS_$p, ExaModels.ExaModel(CORE_$p, $argexpr; check = Val(false)))
+            return Cint(length(MODELS_$p))
+        catch
+            return Cint(0)          # 0 is the failure value for _new
+        end
+    end
+"""
+end
+
+# How a slot is read back out of a builder when the model is instantiated: a
+# table reassembles into the example's row type, column by column.
+function _slot_expr(f::Field)
+    f.kind == "table" || return "B.$(f.name)"
+    row = join(("$(c.first) = B.$(f.name)_$(c.first)[_k]" for c in f.columns), ", ")
+    return "[(; $row) for _k in eachindex(B.$(f.name)_$(first(f.columns).first))]"
+end
+
+# One `if` arm per field a setter can legitimately name; a name that matches
+# no arm is status 1, the caller's error, not ours.
+function _setter_arms(fields, render)
+    isempty(fields) && return ""
+    return join((render(f) for f in fields), "") * "\n"
+end
+
+function _instantiation_source(p::AbstractString, bm::BuilderModel)
+    fields = bm.fields
+    byname = Dict(f.name => f for f in fields)
+    slots = [sl for f in fields for sl in _slots(f)]
+    json = _schema_json(fields)
+
+    decls = join(("        $s::$t\n        $(s)_set::Bool\n" for (s, t, _) in slots))
+    zeros = join(("$z, false" for (_, _, z) in slots), ", ")
+    flags = join(("B.$(s)_set" for (s, _, _) in slots), " && ")
+
+    scalar(f) = """
+            if f == $(repr(f.name))
+                B.$(f.name) = v
+                B.$(f.name)_set = true
+                return Cint(0)
+            end
+    """
+    array(f) = """
+            if f == $(repr(f.name))
+                B.$(f.name) = copy(unsafe_wrap(Array, v, Int(len)))
+                B.$(f.name)_set = true
+                return Cint(0)
+            end
+    """
+    col(f, c) = """
+            if t == $(repr(f.name)) && c == $(repr(c.first))
+                B.$(f.name)_$(c.first) = copy(unsafe_wrap(Array, v, Int(len)))
+                B.$(f.name)_$(c.first)_set = true
+                return Cint(0)
+            end
+    """
+    pick(kind, type) = [f for f in fields if f.kind == kind && f.type == type]
+    cols(type) = [
+        (f, c) for f in fields if f.kind == "table" for c in f.columns if c.second == type
+    ]
+
+    # Table columns must agree in length before rows can be reassembled.
+    samelen = join(
+        (
+            "        (" *
+            join(
+                ("length(B.$(f.name)_$(c.first)) == length(B.$(f.name)_$(first(f.columns).first))"
+                 for c in f.columns[2:end]),
+                " && ",
+            ) *
+            ") || return Cint(0)\n"
+            for f in fields if f.kind == "table" && length(f.columns) > 1
+        ),
+    )
+
+    asm = join(
+        (
+            spec isa String ? _slot_expr(byname[spec]) :
+            "(; " * join(("$(k) = $(_slot_expr(byname[n]))" for (k, n) in spec), ", ") * ")"
+            for spec in bm.argspec
+        ),
+        ",\n                ",
+    )
+
+    return """
+    # ── builder for `$p` (schema + typed setters, ABI v2) ────────────────────
+
+    const SCHEMA_$p = Vector{UInt8}($(repr(json)))
+
+    # Returns the schema's byte length; copies what fits in `cap`.
+    Base.@ccallable function $(p)_schema(buf::Ptr{UInt8}, cap::Cint)::Cint
+        n = length(SCHEMA_$p)
+        k = min(Int(cap), n)
+        if k > 0 && buf != Ptr{UInt8}(0)
+            GC.@preserve SCHEMA_$p unsafe_copyto!(buf, pointer(SCHEMA_$p), k)
+        end
+        return Cint(n)
+    end
+
+    # One concretely-typed slot per scalar/array field and per table column;
+    # the `_set` flags are what make completeness checkable without sentinels.
+    mutable struct Builder_$p
+$decls    end
+    Builder_$p() = Builder_$p($zeros)
+    const BUILDERS_$p = Builder_$p[]
+
+    @inline _bvalid_$p(b::Cint) = 1 <= b <= length(BUILDERS_$p)
+
+    Base.@ccallable function $(p)_data_begin()::Cint
+        try
+            push!(BUILDERS_$p, Builder_$p())
+            return Cint(length(BUILDERS_$p))
+        catch
+            return Cint(0)
+        end
+    end
+
+    Base.@ccallable function $(p)_set_scalar_i64(b::Cint, field::Ptr{UInt8}, v::Clonglong)::Cint
+        _bvalid_$p(b) || return Cint(1)
+        try
+            f = unsafe_string(field)
+            B = BUILDERS_$p[Int(b)]
+$(_setter_arms(pick("scalar", "i64"), scalar))            return Cint(1)
+        catch
+            return Cint(2)
+        end
+    end
+
+    Base.@ccallable function $(p)_set_scalar_f64(b::Cint, field::Ptr{UInt8}, v::Cdouble)::Cint
+        _bvalid_$p(b) || return Cint(1)
+        try
+            f = unsafe_string(field)
+            B = BUILDERS_$p[Int(b)]
+$(_setter_arms(pick("scalar", "f64"), scalar))            return Cint(1)
+        catch
+            return Cint(2)
+        end
+    end
+
+    Base.@ccallable function $(p)_set_array_i64(
+        b::Cint, field::Ptr{UInt8}, v::Ptr{Clonglong}, len::Cint,
+    )::Cint
+        _bvalid_$p(b) || return Cint(1)
+        try
+            f = unsafe_string(field)
+            B = BUILDERS_$p[Int(b)]
+$(_setter_arms(pick("array", "i64"), array))            return Cint(1)
+        catch
+            return Cint(2)
+        end
+    end
+
+    Base.@ccallable function $(p)_set_array_f64(
+        b::Cint, field::Ptr{UInt8}, v::Ptr{Cdouble}, len::Cint,
+    )::Cint
+        _bvalid_$p(b) || return Cint(1)
+        try
+            f = unsafe_string(field)
+            B = BUILDERS_$p[Int(b)]
+$(_setter_arms(pick("array", "f64"), array))            return Cint(1)
+        catch
+            return Cint(2)
+        end
+    end
+
+    Base.@ccallable function $(p)_set_col_i64(
+        b::Cint, table::Ptr{UInt8}, column::Ptr{UInt8}, v::Ptr{Clonglong}, len::Cint,
+    )::Cint
+        _bvalid_$p(b) || return Cint(1)
+        try
+            t = unsafe_string(table)
+            c = unsafe_string(column)
+            B = BUILDERS_$p[Int(b)]
+$(_setter_arms(cols("i64"), fc -> col(fc...)))            return Cint(1)
+        catch
+            return Cint(2)
+        end
+    end
+
+    Base.@ccallable function $(p)_set_col_f64(
+        b::Cint, table::Ptr{UInt8}, column::Ptr{UInt8}, v::Ptr{Cdouble}, len::Cint,
+    )::Cint
+        _bvalid_$p(b) || return Cint(1)
+        try
+            t = unsafe_string(table)
+            c = unsafe_string(column)
+            B = BUILDERS_$p[Int(b)]
+$(_setter_arms(cols("f64"), fc -> col(fc...)))            return Cint(1)
+        catch
+            return Cint(2)
+        end
+    end
+
+    # 1 iff every field is set and every table's columns agree in length.
+    Base.@ccallable function $(p)_data_ready(b::Cint)::Cint
+        _bvalid_$p(b) || return Cint(0)
+        B = BUILDERS_$p[Int(b)]
+        ($flags) || return Cint(0)
+$samelen        return Cint(1)
+    end
+
+    Base.@ccallable function $(p)_new_from_data(b::Cint)::Cint
+        $(p)_data_ready(b) == Cint(1) || return Cint(0)
+        try
+            B = BUILDERS_$p[Int(b)]
+            push!(MODELS_$p, ExaModels.ExaModel(
+                CORE_$p,
+                $asm;
+                check = Val(false),
+            ))
+            return Cint(length(MODELS_$p))
+        catch
+            return Cint(0)
+        end
+    end
+
+    # Informative — there is no `$(p)_new` here; the consumers bind one value
+    # per schema field, positionally, and instantiate through the builder.
+    Base.@ccallable function $(p)_nargs()::Cint
+        return Cint($(length(fields)))
+    end
+"""
+end
+
 function _module_source(modname::AbstractString, specs::Vector{ModelSpec}, pkgs = _Pkg[])
     # Imported for their side effect on `Serialization`: a module has to be
     # loaded before a type it owns can be resolved by `PkgId`, and the
@@ -695,7 +1072,9 @@ end
 # `add_ccallables` picks up all of them regardless of how many there are.
 function _model_source(s::ModelSpec)
     p = s.prefix
-    argexpr = _arg_expr(s.field)
+    # A builder spec's example is the whole tuple of values, splatted back the
+    # way `ExaModel` takes them; the other forms carry a single value.
+    example = s.field isa BuilderModel ? "ARG0_$p..." : "ARG0_$p"
     return """
     # ── model `$p` ───────────────────────────────────────────────────────────
 
@@ -710,26 +1089,11 @@ function _model_source(s::ModelSpec)
     # placeholder-leak guard, which walks types reflectively and is not
     # trimmable — the check already ran, on this exact core, in the process
     # that called `compile_library`.
-    const MODELS_$p = typeof(ExaModels.ExaModel(CORE_$p, ARG0_$p; check = Val(false)))[]
+    const MODELS_$p = typeof(ExaModels.ExaModel(CORE_$p, $example; check = Val(false)))[]
 
     @inline _valid_$p(id::Cint) = 1 <= id <= length(MODELS_$p)
 
-    # How many instantiation arguments `$(p)_new` consumes (0 = fixed model,
-    # `n` is ignored). Lets a consumer decide whether `args` are required
-    # before instantiating anything.
-    Base.@ccallable function $(p)_nargs()::Cint
-        return Cint($(_nargs_value(s.field)))
-    end
-
-    Base.@ccallable function $(p)_new(n::Cint)::Cint
-        try
-            push!(MODELS_$p, ExaModels.ExaModel(CORE_$p, $argexpr; check = Val(false)))
-            return Cint(length(MODELS_$p))
-        catch
-            return Cint(0)          # 0 is the failure value for _new
-        end
-    end
-
+$(_instantiation_source(p, s.field))
     Base.@ccallable function $(p)_nvar(id::Cint)::Cint
         _valid_$p(id) || return Cint(-1)
         return Cint(MODELS_$p[Int(id)].meta.nvar)

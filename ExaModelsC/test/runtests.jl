@@ -28,18 +28,85 @@ end
 
 const OUT = get(ENV, "EXAMODELSC_TEST_OUT", joinpath(tempdir(), "examodelsc_test"))
 
+# A three-placeholder recipe — a bare size, a NamedTuple carrying a start and
+# a bound, and a table — the data-defined shape the builder ABI exists for.
+function sbuild()
+    c, sz, dat, tab = ExaCore(nargs = Val(3))
+    @add_var(c, x, sz; start = dat.v0, lvar = dat.lo)
+    @add_obj(c, t.w * (x[t.i] - t.s)^2 for t in tab)
+    @add_con(c, x[i] + x[i+1] for i in 1:(sz - 1); lcon = -100.0, ucon = 100.0)
+    return c
+end
+
+# The example values `sbuild` is compiled against, and the instantiation data
+# the compile never sees (different size, different rows).
+const S_EXTAB = [(i = 1, w = 2.0, s = 1.0), (i = 3, w = 1.0, s = 0.5)]
+const S_EXARGS = (4, (v0 = fill(0.5, 4), lo = fill(-10.0, 4)), S_EXTAB)
+const S_N = 6
+const S_V0 = collect(range(0.1, 0.6; length = S_N))
+const S_LO = fill(-5.0, S_N)
+const S_TAB = [(i = 2, w = 1.5, s = 2.0), (i = 5, w = 3.0, s = -1.0), (i = 6, w = 0.5, s = 0.0)]
+
 function runtests()
     @testset "ExaModelsC" begin
 
         @testset "the example arg is read, not guessed" begin
             c = build()
-            # A shape `P_new(n)` cannot carry must be refused up front, with a
-            # reason — not discovered as a missing symbol at load time.
+            # `build`'s core reads its one placeholder as a bare size, so a
+            # NamedTuple example cannot instantiate it — refused up front by
+            # the probe, with a reason, not discovered inside juliac.
             @test_throws ArgumentError compile_library(OUT, c, (N = 4, v = [1.0]))
             @test_throws ArgumentError compile_library(OUT, c, (x = 1.5,))
             # And a prefix that is not a C identifier is caught before juliac.
             @test_throws ArgumentError compile_library(OUT, c, 4; prefix = "lib-a")
             @test_throws ArgumentError compile_library(OUT, c, 4; prefix = "2fast")
+        end
+
+        @testset "builder examples are read, not guessed" begin
+            c = build()
+            # Types that cannot cross the boundary stay refused with the
+            # builder there.
+            @test_throws ArgumentError compile_library(OUT, c, "c")
+            @test_throws ArgumentError compile_library(OUT, c, 4, "c", [1.0, 2.0])
+            # Builder storage is the example's type EXACTLY — looser numeric
+            # types are named here, not discovered inside the compiled library.
+            @test_throws "Int64/Float64" compile_library(OUT, c, Int32(4), [1.0])
+            @test_throws "Int64/Float64" compile_library(OUT, c, 4, Float32[1.0])
+            @test_throws "Int64/Float64" compile_library(OUT, c, 4, 1:3)
+            # Flattened field names must be distinct across all placeholders.
+            @test_throws "both be named" compile_library(OUT, c, (n = 1,), (n = 2.0,))
+            # An empty example, and rows with no columns, carry no types.
+            @test_throws ArgumentError compile_library(OUT, c, [1.0], Float64[])
+            @test_throws "no columns" compile_library(OUT, c, [1.0], [(;), (;)])
+
+            # A one-key integer NamedTuple keeps the `P_new(n)` fast path —
+            # the generated constructor rebuilds the key.
+            cnt, _ = ExaCore(nargs = Val(1))
+            s = ExaModelsC._model_spec("nt", cnt, ((N = 4,),))
+            @test s.field === :N
+            ntsrc = ExaModelsC._module_source("M", [s])
+            @test occursin("(; N = Int(n))", ntsrc)
+            @test occursin("nt_new(", ntsrc)
+            @test !occursin("nt_data_begin", ntsrc)
+
+            # Anything else flattens to the builder: bare values by position,
+            # NamedTuple entries by key, and NO `P_new` — the surfaces are
+            # disjoint, which is how a consumer routes a lone integer.
+            b = ExaModelsC._model_spec(
+                "bs", cnt, (4, (v0 = [1.0], lo = [2.0]), [(i = 1, w = 0.5)]),
+            )
+            @test b.field isa ExaModelsC.BuilderModel
+            @test [f.name for f in b.field.fields] == ["arg1", "v0", "lo", "arg3"]
+            bsrc = ExaModelsC._module_source("M", [b])
+            @test !occursin("bs_new(", bsrc)
+            for sym in (
+                "bs_schema", "bs_data_begin", "bs_set_scalar_i64",
+                "bs_set_scalar_f64", "bs_set_array_i64", "bs_set_array_f64",
+                "bs_set_col_i64", "bs_set_col_f64", "bs_data_ready",
+                "bs_new_from_data", "bs_nargs",
+            )
+                @test occursin(sym, bsrc)
+            end
         end
 
         @testset "a recipe's own package travels into the generated app" begin
@@ -380,14 +447,88 @@ function runtests()
             @test_throws "both named `a`" compile_library(OUT, :a => (c, 4), :a => (c, 5))
             @test_throws "must be a C identifier" compile_library(
                 OUT, Symbol("2bad") => (c, 4))
-            # The per-model restrictions are the single-model ones, and the
-            # message names which model is at fault.
-            @test_throws "`b`: this recipe needs the schema" compile_library(
+            # The per-model checks are the single-model ones, and the message
+            # names which model is at fault: two bare integers flatten to a
+            # perfectly valid two-field schema, but this core declared ONE
+            # placeholder, so the probe refuses before juliac spends minutes.
+            @test_throws "`b`: the example values do not instantiate" compile_library(
                 OUT, :a => (c, 4), :b => (c, 4, 5))
             @test_throws "`b`: this core declared 1 placeholder" compile_library(
                 OUT, :a => (c, 4), :b => c)
             # `prefix =` has no meaning when the names supply the prefixes.
             @test_throws MethodError compile_library(OUT, :a => (c, 4); prefix = "z")
+        end
+
+        @testset "a structured model instantiates through the builder" begin
+            # One compile carries BOTH surfaces — the builder model and a
+            # one-knob model in one library: the surface is per prefix, not
+            # per file.
+            sb = compile_library(
+                joinpath(OUT, "structs"),
+                :structm => (sbuild(), S_EXARGS...),
+                :knob => (build(), 4),
+            )
+            @test sb.prefixes == ["structm", "knob"]
+            slib = CNLPModels.load(sb.libpath)
+
+            # The builder model exports no one-integer constructor; the knob
+            # model exports no builder. Disjoint, as the consumers assume.
+            dl(s) = CNLPModels.Libdl.dlsym(slib.handle, s; throw_error = false)
+            @test dl(:structm_new) === nothing
+            @test dl(:structm_data_begin) !== nothing
+            @test dl(:knob_new) !== nothing
+            @test dl(:knob_data_begin) === nothing
+            @test ccall(dl(:structm_nargs), Cint, ()) == 4
+
+            # The published schema is the flattened example: bare values by
+            # position, NamedTuple entries by key, the table with its columns.
+            sj = CNLPModels.schema_json(slib; prefix = "structm")
+            for needle in (
+                "\"arg1\"", "\"v0\"", "\"lo\"",
+                """{"name":"arg3","kind":"table","columns":[{"name":"i","type":"i64"},{"name":"w","type":"f64"},{"name":"s","type":"f64"}]}""",
+            )
+                @test occursin(needle, sj)
+            end
+
+            # Instantiated at a size and data the compile never saw, through
+            # the consumer's positional spelling — one value per schema field.
+            m = CNLPModels.CNLPModel(slib, S_N, S_V0, S_LO, S_TAB; prefix = "structm")
+            ref = ExaModel(sbuild(), S_N, (v0 = S_V0, lo = S_LO), S_TAB)
+
+            @test m.meta.nvar == ref.meta.nvar == S_N
+            @test m.meta.ncon == ref.meta.ncon == S_N - 1
+            @test m.meta.x0 ≈ ref.meta.x0
+            @test m.meta.lvar ≈ ref.meta.lvar
+
+            x = collect(range(0.5, 3.0; length = S_N))
+            y = collect(range(-1.0, 1.0; length = S_N - 1))
+            @test NLPModels.obj(m, x) ≈ NLPModels.obj(ref, x)
+            @test NLPModels.grad(m, x) ≈ NLPModels.grad(ref, x)
+            @test NLPModels.cons(m, x) ≈ NLPModels.cons(ref, x)
+            @test NLPModels.jac_coord(m, x) ≈ NLPModels.jac_coord(ref, x)
+            @test NLPModels.hess_coord(m, x, y; obj_weight = 0.5) ≈
+                  NLPModels.hess_coord(ref, x, y; obj_weight = 0.5)
+
+            # A second builder instance and the sibling knob model, with the
+            # first instance undisturbed.
+            m2 = CNLPModels.CNLPModel(
+                slib, 4, fill(0.5, 4), fill(-10.0, 4), S_EXTAB; prefix = "structm",
+            )
+            @test m2.meta.nvar == 4
+            @test NLPModels.obj(m, x) ≈ NLPModels.obj(ref, x)
+            k = CNLPModels.CNLPModel(slib, 7; prefix = "knob")
+            @test k.meta.nvar == 7
+
+            # Wrong-arity and incomplete data are the consumer's errors, not
+            # aborts: the library reports, the consumer explains.
+            @test_throws ErrorException CNLPModels.CNLPModel(
+                slib, S_N, S_V0; prefix = "structm")
+
+            # And a solve through the builder-instantiated model.
+            res = NLPModelsIpopt.ipopt(m; print_level = 0)
+            refres = NLPModelsIpopt.ipopt(ref; print_level = 0)
+            @test res.status == refres.status
+            @test res.objective ≈ refres.objective atol = 1e-6
         end
 
         @testset "the Python consumer reads the same model" begin
@@ -464,6 +605,54 @@ function runtests()
                 @test Int.(vals["hess_cols"]) == hc
                 @test vals["hess"] ≈ NLPModels.hess_coord(ref, x, y; obj_weight = 0.5)
                 end
+            end
+        end
+
+        @testset "the Python consumer drives the builder" begin
+            # Same probing as the leg above; additionally needs the structured
+            # library the builder testset compiled.
+            pysrc = get(
+                ENV, "CNLPMODELS_PY",
+                joinpath(homedir(), "git", "pkg", "cnlpmodels-py", "src"),
+            )
+            py = nothing
+            for cand in ("python3", "python")
+                ok = try
+                    success(pipeline(`$cand -c "import numpy"`; stdout = devnull, stderr = devnull))
+                catch
+                    false
+                end
+                ok && (py = cand; break)
+            end
+            slibpath = joinpath(
+                OUT, "structs", "libstructs." * Base.BinaryPlatforms.platform_dlext(),
+            )
+            if py === nothing || !isdir(pysrc) || !isfile(slibpath)
+                @info "skipping the Python builder leg" python = py lib = isfile(slibpath)
+                @test_skip false
+            else
+                script = joinpath(@__DIR__, "builder_check.py")
+                outfile = joinpath(mktempdir(), "py.txt")
+                env = copy(ENV)
+                sep = Sys.iswindows() ? ";" : ":"
+                env["PYTHONPATH"] =
+                    pysrc * (haskey(env, "PYTHONPATH") ? sep * env["PYTHONPATH"] : "")
+                run(setenv(`$py $script $slibpath structm $S_N $outfile`, env))
+
+                vals = Dict{String,Vector{Float64}}()
+                for line in eachline(outfile)
+                    parts = split(line)
+                    vals[parts[1]] = parse.(Float64, parts[2:end])
+                end
+                # The script's inputs mirror S_V0/S_LO/S_TAB — the reference
+                # is the same in-Julia model the in-process leg checked.
+                ref = ExaModel(sbuild(), S_N, (v0 = S_V0, lo = S_LO), S_TAB)
+                x = collect(range(0.5, 3.0; length = S_N))
+                @test only(vals["nvar"]) == ref.meta.nvar
+                @test only(vals["ncon"]) == ref.meta.ncon
+                @test only(vals["obj"]) ≈ NLPModels.obj(ref, x)
+                @test vals["grad"] ≈ NLPModels.grad(ref, x)
+                @test vals["cons"] ≈ NLPModels.cons(ref, x)
             end
         end
 
