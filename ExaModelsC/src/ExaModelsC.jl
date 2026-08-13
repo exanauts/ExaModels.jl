@@ -76,6 +76,7 @@ module ExaModelsC
 
 import ExaModels
 import JuliaC
+import Pkg
 import Random
 import Serialization
 import TOML
@@ -724,6 +725,28 @@ function _core_packages(core)
     return pkgs
 end
 
+"""
+    _developed_packages() -> Vector{_Pkg}
+
+Every package tracked by path in the caller's active environment, other than
+ExaModels itself (always carried separately). These become `[sources]` entries
+in the generated app so it compiles the same code the caller is running —
+without them, transitive dependencies resolve from the registry, and the app
+can silently compile DIFFERENT code than the process that produced the core
+(the build succeeds; the only trace is a path inside a stack frame).
+"""
+function _developed_packages()
+    out = _Pkg[]
+    for (uuid, info) in Pkg.dependencies()
+        info.is_tracking_path || continue
+        info.name == "ExaModels" && continue
+        src = info.source
+        src === nothing && continue
+        push!(out, _Pkg(info.name, uuid, abspath(src)))
+    end
+    return sort!(out; by = p -> p.name)
+end
+
 # ── Generating the app package ────────────────────────────────────────────────
 
 function _generate_app(specs::Vector{ModelSpec}, libname::AbstractString)
@@ -753,7 +776,14 @@ function _generate_app(specs::Vector{ModelSpec}, libname::AbstractString)
             any(q -> q.uuid == p.uuid, pkgs) || push!(pkgs, p)
         end
     end
-    write(joinpath(appdir, "Project.toml"), _project_toml(modname, exadir, pkgs))
+    # Every package the caller is DEVELOPING joins as a dependency and a path
+    # source, but NOT as an import: resolution needs the pin (measured — a
+    # verified `[deps]` + `[sources]` entry tracks the path with no import
+    # anywhere), while only the deserialization of a core's own types needs
+    # the import. Importing everything a caller happens to be developing
+    # would drag unrelated packages into every app's compile.
+    dev = [q for q in _developed_packages() if !any(r -> r.uuid == q.uuid, pkgs)]
+    write(joinpath(appdir, "Project.toml"), _project_toml(modname, exadir, pkgs, dev))
     write(joinpath(srcdir, modname * ".jl"), _module_source(modname, specs, pkgs))
     return appdir
 end
@@ -767,11 +797,14 @@ _toml_path(dir::AbstractString) = replace(dir, '\\' => '/')
 # by `_check_prefix`, and the sanitizing is a no-op.
 _modname(libname::AbstractString) = "ExaLib_" * replace(libname, r"[^A-Za-z0-9_]" => "_")
 
-function _project_toml(modname::AbstractString, exadir::AbstractString, pkgs = _Pkg[])
-    deps = join(("""$(p.name) = "$(p.uuid)"\n""" for p in pkgs))
+function _project_toml(
+    modname::AbstractString, exadir::AbstractString, pkgs = _Pkg[], dev = _Pkg[],
+)
+    both = vcat(pkgs, dev)
+    deps = join(("""$(p.name) = "$(p.uuid)"\n""" for p in both))
     # A path source rather than a version bound: the app must compile the same
     # code that produced the core, not merely something compatible with it.
-    sources = join(("""$(p.name) = {path = "$(_toml_path(p.dir))"}\n""" for p in pkgs))
+    sources = join(("""$(p.name) = {path = "$(_toml_path(p.dir))"}\n""" for p in both))
     return """
     name = "$modname"
     uuid = "$_GEN_UUID"

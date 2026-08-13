@@ -132,6 +132,22 @@ function runtests()
             @add_obj(plain, (z[i] - 2.0)^2 for i in 1:M)
             @test isempty(ExaModelsC._core_packages(ExaModelsC._concretize(plain)))
 
+            # A package the CALLER is developing — RecipeKernels is path-
+            # tracked in this test environment — is pinned in the generated
+            # project as a dependency + path source even when no core
+            # references it, so the app compiles the code the caller is
+            # actually running rather than the registry copy. It is NOT
+            # imported: only a core's own packages need that.
+            @test any(p -> p.name == "RecipeKernels", ExaModelsC._developed_packages())
+            pdir = ExaModelsC._generate_app(
+                [ExaModelsC._model_spec("pl", ExaModelsC._concretize(plain), (4,))],
+                "pl",
+            )
+            pproj = read(joinpath(pdir, "Project.toml"), String)
+            psrc = read(joinpath(pdir, "src", "ExaLib_pl.jl"), String)
+            @test occursin("RecipeKernels = {path =", pproj)
+            @test !occursin("import RecipeKernels", psrc)
+
             # Both halves are needed and neither alone is enough: a dependency
             # the app never imports resolves no better than one it never had, so
             # the generated files are checked for the dependency AND the import.
