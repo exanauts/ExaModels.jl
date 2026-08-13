@@ -69,7 +69,7 @@ function runtests()
             # the app never imports resolves no better than one it never had, so
             # the generated files are checked for the dependency AND the import.
             appdir = ExaModelsC._generate_app(
-                ExaModelsC._concretize(c), 8, nothing, "rk",
+                [ExaModelsC._model_spec("rk", ExaModelsC._concretize(c), (8,))], "rk",
             )
             proj = read(joinpath(appdir, "Project.toml"), String)
             src = read(joinpath(appdir, "src", "ExaLib_rk.jl"), String)
@@ -87,7 +87,7 @@ function runtests()
                 import Pkg
                 Pkg.instantiate(; io = devnull)
                 import ExaModels, Serialization, RecipeKernels
-                core = Serialization.deserialize(joinpath(@__DIR__, "src", "core.jls"))
+                core = Serialization.deserialize(joinpath(@__DIR__, "src", "core_rk.jls"))
                 m = ExaModels.ExaModel(core, 12; check = Val(false))
                 write(
                     joinpath(@__DIR__, "answer.txt"),
@@ -294,6 +294,100 @@ function runtests()
                 # The Python leg below is the consumer for this form here.
                 @info "in-process unbundled loading is Linux-only; skipped"
             end
+        end
+
+        @testset "several models in one library" begin
+            # One library carrying three models: the same recipe under two
+            # names — so the two are known to be genuinely separate, not one
+            # model aliased twice — and a fixed model taking no instantiation
+            # data at all.  Compiling takes minutes, so this is the suite's
+            # only multi-model build.
+            n = 5
+            fc = ExaCore()
+            @add_var(fc, z, n; start = 1.0)
+            @add_obj(fc, (z[i] - 4.0)^2 for i in 1:n)
+            fref = ExaModel(fc)
+
+            g = compile_library(
+                joinpath(OUT, "grid"),
+                :sized => (build(), 4),
+                :other => (build(), 6),
+                :flat => fc,
+            )
+
+            @test g.prefixes == ["sized", "other", "flat"]
+            @test isfile(g.libpath)
+            # The FILE is named after `out`, not after any one model. This is
+            # what separates one multi-model library from three single-model
+            # ones, and it is what a consumer resolves `@grid` against.
+            @test basename(g.libpath) ==
+                  "libgrid." * Base.BinaryPlatforms.platform_dlext()
+
+            glib = CNLPModels.load(g.libpath)
+
+            # Each model declares its own arity, out of the one library.
+            @test ccall(
+                CNLPModels.Libdl.dlsym(glib.handle, :sized_nargs), Cint, ()) == 1
+            @test ccall(
+                CNLPModels.Libdl.dlsym(glib.handle, :other_nargs), Cint, ()) == 1
+            @test ccall(
+                CNLPModels.Libdl.dlsym(glib.handle, :flat_nargs), Cint, ()) == 0
+
+            # Instances of three different models, from one library, at once —
+            # and at sizes neither compile saw (the examples were 4 and 6).
+            a = CNLPModels.CNLPModel(glib, 9; prefix = "sized")
+            b = CNLPModels.CNLPModel(glib, 13; prefix = "other")
+            c = CNLPModels.CNLPModel(glib; prefix = "flat")
+            @test a.meta.nvar == 9
+            @test b.meta.nvar == 13
+            @test c.meta.nvar == n
+
+            # Separate instance tables, not one shared counter: each model's
+            # first instance is id 1.  Sharing a table would number these
+            # 1, 2, 3, so this is what actually distinguishes the two designs.
+            @test a.id == b.id == c.id == 1
+
+            # And no model's instantiation disturbed another's.
+            @test NLPModels.obj(a, fill(1.0, 9)) ≈ 9.0
+            @test NLPModels.obj(b, fill(1.0, 13)) ≈ 13.0
+            @test NLPModels.obj(c, fill(1.0, n)) ≈ NLPModels.obj(fref, fill(1.0, n))
+
+            # Each still evaluates as its own core, against an in-Julia
+            # reference — the derivatives too, not just the sizes.
+            aref = ExaModel(build(), 9)
+            x = collect(range(0.5, 3.0; length = 9))
+            y = collect(range(-1.0, 1.0; length = 8))
+            @test NLPModels.obj(a, x) ≈ NLPModels.obj(aref, x)
+            @test NLPModels.grad(a, x) ≈ NLPModels.grad(aref, x)
+            @test NLPModels.cons(a, x) ≈ NLPModels.cons(aref, x)
+            @test NLPModels.jac_coord(a, x) ≈ NLPModels.jac_coord(aref, x)
+            @test NLPModels.hess_coord(a, x, y; obj_weight = 0.5) ≈
+                  NLPModels.hess_coord(aref, x, y; obj_weight = 0.5)
+
+            # The consumer's own spelling for this selection is
+            # `CNLPModel(glib, :sized, 9)` — the same prefix, named as a
+            # symbol; it is exercised in CNLPModels' own suite.
+        end
+
+        @testset "a multi-model library is checked before it is compiled" begin
+            # Every one of these is refused in this process, before any code is
+            # generated and long before juliac runs.
+            c = build()
+            @test_throws ArgumentError compile_library(OUT)          # no models
+            @test_throws "is not a model" compile_library(OUT, :a => 5)
+            @test_throws "names no core" compile_library(OUT, :a => ())
+            @test_throws "must begin with an `ExaCore`" compile_library(OUT, :a => (4, c))
+            @test_throws "both named `a`" compile_library(OUT, :a => (c, 4), :a => (c, 5))
+            @test_throws "must be a C identifier" compile_library(
+                OUT, Symbol("2bad") => (c, 4))
+            # The per-model restrictions are the single-model ones, and the
+            # message names which model is at fault.
+            @test_throws "`b`: this recipe needs the schema" compile_library(
+                OUT, :a => (c, 4), :b => (c, 4, 5))
+            @test_throws "`b`: this core declared 1 placeholder" compile_library(
+                OUT, :a => (c, 4), :b => c)
+            # `prefix =` has no meaning when the names supply the prefixes.
+            @test_throws MethodError compile_library(OUT, :a => (c, 4); prefix = "z")
         end
 
         @testset "the Python consumer reads the same model" begin

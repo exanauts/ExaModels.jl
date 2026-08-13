@@ -52,6 +52,25 @@ m = cnlpmodels.CModel(lib, 1000, prefix="rosen")
 Both consumers default `prefix` to `"rec"` when handed a library handle, while
 `compile_library` defaults it to the output directory's name — pass it
 explicitly unless those coincide.  The test suite exercises both.
+
+## Several models in one library
+
+A library can carry more than one model, each under its own symbol prefix.
+Name them, and the consumers select by the same name:
+
+```julia
+compile_library("@grid", :acopf => (ac_core, 100), :dcopf => (dc_core, 100))
+```
+```julia
+CNLPModel("@grid", :acopf, 100)                  # Julia
+```
+```python
+cnlpmodels.CModel("grid", 100, prefix="acopf")   # Python — a bare name, no sigil
+```
+
+They share the library file and, in a bundle, its one privatized ~80 MB Julia
+runtime — which is the reason to co-package a family of models rather than emit
+a library each.
 """
 module ExaModelsC
 
@@ -67,6 +86,15 @@ export compile_library
 # its own environment, never registered.  A constant UUID is therefore safe and
 # saves a UUIDs dependency.
 const _GEN_UUID = "b41c7e02-9f3d-4a58-8e6c-2d0f5a7c9b13"
+
+# One model's compiled form: its prefix, its concretized core, the example value
+# whose types `juliac` needs, and how `<prefix>_new(n)` rebuilds it (`field`).
+struct ModelSpec
+    prefix::String
+    core::Any
+    arg::Any
+    field::Any
+end
 
 """
     compile_library(out, core, args...; prefix = basename(out), trim = "safe",
@@ -157,11 +185,17 @@ function returns a `Cint` status, `0` on success, and none of them throws
 across the boundary.
 
 `P_new` takes a single integer, so the recipe form applies when the example
-`arg` is an `Integer`, or a `NamedTuple` holding exactly one integer field —
-the "scalable model" case (`rosenbrock` at size `N`).  Structured
-instantiation (the schema + builder ABI, for data-defined models such as OPF)
-is not built yet; `compile_library` says so rather than emitting a library
-that would fail at load.
+`arg` is an `Integer` — the "scalable model" case (`rosenbrock` at size `N`).
+Structured instantiation (the schema + builder ABI, for data-defined models
+such as OPF) is not built yet; `compile_library` says so rather than emitting
+a library that would fail at load, and prints the schema the model would
+need.  That is the only surface, so several example values, a float, an array,
+a table, or a `NamedTuple` are all refused for now.
+
+## Several models in one library
+
+Give `:name => core` pairs instead of a single core to put more than one model
+in the library — see the method below.
 """
 function compile_library(
     out::AbstractString,
@@ -172,6 +206,111 @@ function compile_library(
     bundle::Bool = false,
     verbose::Bool = false,
 )
+    spec = _model_spec(prefix, core, args)
+    r = _compile([spec], out, prefix, trim, bundle, verbose)
+    # One model keeps the singular field it has always returned.
+    return (; libpath = r.libpath, outdir = r.outdir, prefix = spec.prefix)
+end
+
+"""
+    compile_library(out, :name1 => (core1, args1...), :name2 => core2, ...;
+                    trim = "safe", bundle = true, verbose = false)
+        -> (; libpath, outdir, prefixes)
+
+Compile **several models into one shared library**, each under its own symbol
+prefix — the same names the consumer selects with, `CNLPModel(lib, :name1,
+args...)`.
+
+Each model is a pair: the name, then either a bare `core` (a fixed model,
+taking no instantiation data) or a tuple `(core, args...)` giving the example
+values exactly as `ExaModel(core, ...)` would take them.
+
+```julia
+compile_library("@grid",
+    :acopf => (ac_core, 100),      # acopf_new(n) inside libgrid.so
+    :dcopf => (dc_core, 100),      # dcopf_new(n) in the same library
+    :fixed => small_core,          # fixed_nargs() == 0
+)
+CNLPModel("@grid", :acopf, 100)    # the consumer's spelling
+```
+
+The models share one library file and, in a bundle, one privatized ~80 MB Julia
+runtime — which is the reason to co-package them rather than emit one library
+each. They are otherwise independent: separate cores, separate instance tables,
+separate ids.
+
+The library FILE is named after `out` (`@grid` → `libgrid.so`), not after any
+one model, so `prefix =` has no meaning here and is not accepted — the model
+names supply the prefixes. Every other keyword behaves as in the single-model
+form.
+
+Each model is subject to the same restriction as the single-model form: one
+integer example value, or none for a fixed model. The schema + builder surface
+(several arguments, arrays, tables) is not emitted yet, for any model.
+"""
+function compile_library(
+    out::AbstractString,
+    models::Pair{Symbol}...;
+    trim::AbstractString = "safe",
+    bundle::Bool = false,
+    verbose::Bool = false,
+)
+    isempty(models) && throw(ArgumentError("give at least one `:name => core` model"))
+    specs = ModelSpec[
+        _model_spec(String(name), _core_and_args(name, value)...) for (name, value) in models
+    ]
+    _check_distinct(specs)
+    # The FILE is named after `out`; the models are named by their symbols.
+    r = _compile(specs, out, _default_out_prefix(out), trim, bundle, verbose)
+    return (; libpath = r.libpath, outdir = r.outdir, prefixes = [s.prefix for s in specs])
+end
+
+# `:name => core` is a fixed model; `:name => (core, args...)` carries example
+# values. Anything else is named precisely here — the pair spelling is easy to
+# get subtly wrong, and a mistake that reached `_model_spec` would be reported
+# as though the core itself were at fault.
+_core_and_args(::Symbol, core::ExaModels.ExaCore) = (core, ())
+function _core_and_args(name::Symbol, value::Tuple)
+    isempty(value) && throw(
+        ArgumentError(
+            "`:$name => ()` names no core — give `:$name => core` for a fixed " *
+            "model, or `:$name => (core, args...)`.",
+        ),
+    )
+    first(value) isa ExaModels.ExaCore || throw(
+        ArgumentError(
+            "`:$name` must begin with an `ExaCore` — got a $(typeof(first(value))).",
+        ),
+    )
+    return (first(value), Base.tail(value))
+end
+_core_and_args(name::Symbol, value) = throw(
+    ArgumentError(
+        "`:$name => $(typeof(value))` is not a model — give `:$name => core`, or " *
+        "`:$name => (core, args...)` with the example values `ExaModel` takes.",
+    ),
+)
+
+# Two models under one prefix would emit duplicate `@ccallable` names, which
+# juliac reports as a redefinition inside a generated file. Caught here instead.
+function _check_distinct(specs::Vector{ModelSpec})
+    seen = Set{String}()
+    for s in specs
+        s.prefix in seen && throw(
+            ArgumentError(
+                "two models are both named `$(s.prefix)` — one library cannot " *
+                "carry the same symbol prefix twice.",
+            ),
+        )
+        push!(seen, s.prefix)
+    end
+    return specs
+end
+
+# The per-model validation both entry points share. Everything here is checked
+# BEFORE any code generation, so a bad model is reported in the caller's process
+# rather than as a compile error in a generated file nobody is looking at.
+function _model_spec(prefix::AbstractString, core::ExaModels.ExaCore, args::Tuple)
     _check_prefix(prefix)
     core = _concretize(core)
     if isempty(args)
@@ -183,38 +322,48 @@ function compile_library(
         # still reaches the probe, which rejects it just as loudly.)
         core.nargs isa Val{0} || throw(
             ArgumentError(
-                "this core declared $(_nargs_count(core.nargs)) placeholder(s) " *
-                "— give one example value per placeholder, as you would to " *
-                "`ExaModel(core, ...)`; its types are what the compiler needs.",
+                "`$prefix`: this core declared $(_nargs_count(core.nargs)) " *
+                "placeholder(s) — give one example value per placeholder, as you " *
+                "would to `ExaModel(core, ...)`; its types are what the compiler " *
+                "needs.",
             ),
         )
-        arg = nothing
-        field = FixedModel()
-    else
-        fields = _schema(args)
-        _is_scalar_new(fields) || throw(
-            ArgumentError(
-                "this recipe needs the schema + builder interface, which is not " *
-                "emitted yet — only a single integer placeholder (`<prefix>_new(n)`) " *
-                "is. Its schema would be: " * _schema_json(fields),
-            ),
-        )
-        arg = only(args)
-        field = nothing
+        return ModelSpec(String(prefix), core, nothing, FixedModel())
     end
-    out = _resolve_out(out, bundle)
+    fields = _schema(args)
+    _is_scalar_new(fields) || throw(
+        ArgumentError(
+            "`$prefix`: this recipe needs the schema + builder interface, which is " *
+            "not emitted yet — only a single integer placeholder " *
+            "(`$(prefix)_new(n)`) is. Its schema would be: " * _schema_json(fields),
+        ),
+    )
+    return ModelSpec(String(prefix), core, only(args), nothing)
+end
+
+# The shared back half: probe every model, generate one app carrying all of
+# them, compile once. `libname` names the library FILE (`lib<libname>.<ext>`) —
+# the library's identity to a consumer resolving an `@name` or a bundle
+# directory, and distinct from the models' prefixes as soon as there is more
+# than one model.
+function _compile(specs::Vector{ModelSpec}, out, libname, trim, bundle, verbose)
+    outdir = _resolve_out(out, bundle)
 
     # Instantiate here, in this process, before generating anything.  A core
     # that cannot be instantiated produces a library that cannot be loaded, and
-    # the failure is far cheaper to read now than after a juliac run.
-    probe = ExaModels.ExaModel(core, arg)
-    verbose && @info "compile_library: core instantiates" nvar = probe.meta.nvar ncon =
-        probe.meta.ncon prefix
+    # the failure is far cheaper to read now than after a juliac run — the more
+    # so with several models, where one bad core would waste the whole compile.
+    for s in specs
+        probe = ExaModels.ExaModel(s.core, s.arg)
+        verbose && @info "compile_library: core instantiates" prefix = s.prefix nvar =
+            probe.meta.nvar ncon = probe.meta.ncon
+    end
 
-    appdir = _generate_app(core, arg, field, prefix)
-    verbose && @info "compile_library: generated app" appdir
+    appdir = _generate_app(specs, libname)
+    verbose &&
+        @info "compile_library: generated app" appdir models = [s.prefix for s in specs]
 
-    return _drive_juliac(appdir, prefix, out, trim, bundle, verbose)
+    return _drive_juliac(appdir, libname, outdir, trim, bundle, verbose)
 end
 
 
@@ -443,33 +592,46 @@ end
 
 # ── Generating the app package ────────────────────────────────────────────────
 
-function _generate_app(core, arg, field, prefix::AbstractString)
+function _generate_app(specs::Vector{ModelSpec}, libname::AbstractString)
     appdir = mktempdir(; prefix = "examodelsc_")
-    modname = "ExaLib_" * prefix
+    modname = _modname(libname)
     srcdir = joinpath(appdir, "src")
     mkpath(srcdir)
 
-    # The core and the example travel as data.  A core built against `arg` is
-    # plain data — trees of `Node1`/`Node2`/`Var` structs, arrays, tuples — with
-    # no closures in the evaluated path, which is what makes this possible at
-    # all.
-    Serialization.serialize(joinpath(srcdir, "core.jls"), core)
-    Serialization.serialize(joinpath(srcdir, "arg.jls"), arg)
+    # Each core and example travels as data, under its own model's name so any
+    # number of them can share one app.  A core built against `arg` is plain
+    # data — trees of `Node1`/`Node2`/`Var` structs, arrays, tuples — with no
+    # closures in the evaluated path, which is what makes this possible at all.
+    for s in specs
+        Serialization.serialize(joinpath(srcdir, "core_$(s.prefix).jls"), s.core)
+        Serialization.serialize(joinpath(srcdir, "arg_$(s.prefix).jls"), s.arg)
+    end
 
     # JuliaC copies the app into a fresh temporary directory before
     # instantiating, which silently breaks relative `path =` entries: they would
     # resolve against the copy's parent. Absolute from the start.
     exadir = abspath(joinpath(dirname(dirname(pathof(ExaModels)))))
-    pkgs = _core_packages(core)
+    # The union across every core: a package that owns a type inside ANY of
+    # them must be a dependency and an import of the one generated app.
+    pkgs = _Pkg[]
+    for s in specs
+        for p in _core_packages(s.core)
+            any(q -> q.uuid == p.uuid, pkgs) || push!(pkgs, p)
+        end
+    end
     write(joinpath(appdir, "Project.toml"), _project_toml(modname, exadir, pkgs))
-    write(
-        joinpath(srcdir, modname * ".jl"),
-        _module_source(modname, prefix, field, pkgs),
-    )
+    write(joinpath(srcdir, modname * ".jl"), _module_source(modname, specs, pkgs))
     return appdir
 end
 
 _toml_path(dir::AbstractString) = replace(dir, '\\' => '/')
+
+# The generated MODULE name must be a Julia identifier. The library FILE name
+# need not be — a consumer resolves `libmy-lib.so` out of a `my-lib/` bundle
+# quite happily — so the module name is sanitized here rather than the file
+# name being restricted. For a single model this is the prefix, already checked
+# by `_check_prefix`, and the sanitizing is a no-op.
+_modname(libname::AbstractString) = "ExaLib_" * replace(libname, r"[^A-Za-z0-9_]" => "_")
 
 function _project_toml(modname::AbstractString, exadir::AbstractString, pkgs = _Pkg[])
     deps = join(("""$(p.name) = "$(p.uuid)"\n""" for p in pkgs))
@@ -510,8 +672,7 @@ _arg_expr(::FixedModel) = "nothing"
 _nargs_value(::FixedModel) = 0
 _nargs_value(::Union{Nothing, Symbol}) = 1
 
-function _module_source(modname::AbstractString, p::AbstractString, field, pkgs = _Pkg[])
-    argexpr = _arg_expr(field)
+function _module_source(modname::AbstractString, specs::Vector{ModelSpec}, pkgs = _Pkg[])
     # Imported for their side effect on `Serialization`: a module has to be
     # loaded before a type it owns can be resolved by `PkgId`, and the
     # deserialize below is what needs them.  A dependency alone is not enough.
@@ -522,10 +683,26 @@ function _module_source(modname::AbstractString, p::AbstractString, field, pkgs 
     import ExaModels
     import Serialization
     $imports
+    $(join((_model_source(s) for s in specs), "\n"))
+    end # module $modname
+    """
+end
+
+# One model's share of the generated module. Every piece of per-model state
+# carries the prefix in its name, which is what lets any number of models
+# coexist in the one module: separate cores, separate instance tables,
+# separate ids. The entry points are `Base.@ccallable`, and juliac's
+# `add_ccallables` picks up all of them regardless of how many there are.
+function _model_source(s::ModelSpec)
+    p = s.prefix
+    argexpr = _arg_expr(s.field)
+    return """
+    # ── model `$p` ───────────────────────────────────────────────────────────
+
     # Deserialized at precompile time, so the core is baked into the package
     # image and no model-building code enters the compiled call graph.
-    const CORE = Serialization.deserialize(joinpath(@__DIR__, "core.jls"))
-    const ARG0 = Serialization.deserialize(joinpath(@__DIR__, "arg.jls"))
+    const CORE_$p = Serialization.deserialize(joinpath(@__DIR__, "core_$p.jls"))
+    const ARG0_$p = Serialization.deserialize(joinpath(@__DIR__, "arg_$p.jls"))
 
     # Building one model at precompile time fixes the concrete instance type.
     # Every runtime instantiation differs only in sizes, so they all land in
@@ -533,44 +710,44 @@ function _module_source(modname::AbstractString, p::AbstractString, field, pkgs 
     # placeholder-leak guard, which walks types reflectively and is not
     # trimmable — the check already ran, on this exact core, in the process
     # that called `compile_library`.
-    const MODELS = typeof(ExaModels.ExaModel(CORE, ARG0; check = Val(false)))[]
+    const MODELS_$p = typeof(ExaModels.ExaModel(CORE_$p, ARG0_$p; check = Val(false)))[]
 
-    @inline _valid(id::Cint) = 1 <= id <= length(MODELS)
+    @inline _valid_$p(id::Cint) = 1 <= id <= length(MODELS_$p)
 
     # How many instantiation arguments `$(p)_new` consumes (0 = fixed model,
     # `n` is ignored). Lets a consumer decide whether `args` are required
     # before instantiating anything.
     Base.@ccallable function $(p)_nargs()::Cint
-        return Cint($(_nargs_value(field)))
+        return Cint($(_nargs_value(s.field)))
     end
 
     Base.@ccallable function $(p)_new(n::Cint)::Cint
         try
-            push!(MODELS, ExaModels.ExaModel(CORE, $argexpr; check = Val(false)))
-            return Cint(length(MODELS))
+            push!(MODELS_$p, ExaModels.ExaModel(CORE_$p, $argexpr; check = Val(false)))
+            return Cint(length(MODELS_$p))
         catch
             return Cint(0)          # 0 is the failure value for _new
         end
     end
 
     Base.@ccallable function $(p)_nvar(id::Cint)::Cint
-        _valid(id) || return Cint(-1)
-        return Cint(MODELS[Int(id)].meta.nvar)
+        _valid_$p(id) || return Cint(-1)
+        return Cint(MODELS_$p[Int(id)].meta.nvar)
     end
 
     Base.@ccallable function $(p)_ncon(id::Cint)::Cint
-        _valid(id) || return Cint(-1)
-        return Cint(MODELS[Int(id)].meta.ncon)
+        _valid_$p(id) || return Cint(-1)
+        return Cint(MODELS_$p[Int(id)].meta.ncon)
     end
 
     Base.@ccallable function $(p)_nnzj(id::Cint)::Cint
-        _valid(id) || return Cint(-1)
-        return Cint(MODELS[Int(id)].meta.nnzj)
+        _valid_$p(id) || return Cint(-1)
+        return Cint(MODELS_$p[Int(id)].meta.nnzj)
     end
 
     Base.@ccallable function $(p)_nnzh(id::Cint)::Cint
-        _valid(id) || return Cint(-1)
-        return Cint(MODELS[Int(id)].meta.nnzh)
+        _valid_$p(id) || return Cint(-1)
+        return Cint(MODELS_$p[Int(id)].meta.nnzh)
     end
 
     Base.@ccallable function $(p)_meta(
@@ -581,9 +758,9 @@ function _module_source(modname::AbstractString, p::AbstractString, field, pkgs 
         lcon::Ptr{Cdouble},
         ucon::Ptr{Cdouble},
     )::Cint
-        _valid(id) || return Cint(1)
+        _valid_$p(id) || return Cint(1)
         try
-            m = MODELS[Int(id)]
+            m = MODELS_$p[Int(id)]
             n = m.meta.nvar
             k = m.meta.ncon
             copyto!(unsafe_wrap(Array, x0, n), m.meta.x0)
@@ -600,9 +777,9 @@ function _module_source(modname::AbstractString, p::AbstractString, field, pkgs 
     end
 
     Base.@ccallable function $(p)_obj(id::Cint, x::Ptr{Cdouble}, out::Ptr{Cdouble})::Cint
-        _valid(id) || return Cint(1)
+        _valid_$p(id) || return Cint(1)
         try
-            m = MODELS[Int(id)]
+            m = MODELS_$p[Int(id)]
             unsafe_store!(out, ExaModels.obj(m, unsafe_wrap(Array, x, m.meta.nvar)))
             return Cint(0)
         catch
@@ -611,9 +788,9 @@ function _module_source(modname::AbstractString, p::AbstractString, field, pkgs 
     end
 
     Base.@ccallable function $(p)_grad(id::Cint, x::Ptr{Cdouble}, g::Ptr{Cdouble})::Cint
-        _valid(id) || return Cint(1)
+        _valid_$p(id) || return Cint(1)
         try
-            m = MODELS[Int(id)]
+            m = MODELS_$p[Int(id)]
             n = m.meta.nvar
             ExaModels.grad!(m, unsafe_wrap(Array, x, n), unsafe_wrap(Array, g, n))
             return Cint(0)
@@ -623,9 +800,9 @@ function _module_source(modname::AbstractString, p::AbstractString, field, pkgs 
     end
 
     Base.@ccallable function $(p)_cons(id::Cint, x::Ptr{Cdouble}, c::Ptr{Cdouble})::Cint
-        _valid(id) || return Cint(1)
+        _valid_$p(id) || return Cint(1)
         try
-            m = MODELS[Int(id)]
+            m = MODELS_$p[Int(id)]
             k = m.meta.ncon
             k == 0 && return Cint(0)
             ExaModels.cons_nln!(
@@ -644,9 +821,9 @@ function _module_source(modname::AbstractString, p::AbstractString, field, pkgs 
         rows::Ptr{Cint},
         cols::Ptr{Cint},
     )::Cint
-        _valid(id) || return Cint(1)
+        _valid_$p(id) || return Cint(1)
         try
-            m = MODELS[Int(id)]
+            m = MODELS_$p[Int(id)]
             nz = m.meta.nnzj
             nz == 0 && return Cint(0)
             ExaModels.jac_structure!(
@@ -661,9 +838,9 @@ function _module_source(modname::AbstractString, p::AbstractString, field, pkgs 
     end
 
     Base.@ccallable function $(p)_jac(id::Cint, x::Ptr{Cdouble}, vals::Ptr{Cdouble})::Cint
-        _valid(id) || return Cint(1)
+        _valid_$p(id) || return Cint(1)
         try
-            m = MODELS[Int(id)]
+            m = MODELS_$p[Int(id)]
             nz = m.meta.nnzj
             nz == 0 && return Cint(0)
             ExaModels.jac_coord!(
@@ -682,9 +859,9 @@ function _module_source(modname::AbstractString, p::AbstractString, field, pkgs 
         rows::Ptr{Cint},
         cols::Ptr{Cint},
     )::Cint
-        _valid(id) || return Cint(1)
+        _valid_$p(id) || return Cint(1)
         try
-            m = MODELS[Int(id)]
+            m = MODELS_$p[Int(id)]
             nz = m.meta.nnzh
             nz == 0 && return Cint(0)
             ExaModels.hess_structure!(
@@ -705,9 +882,9 @@ function _module_source(modname::AbstractString, p::AbstractString, field, pkgs 
         obj_weight::Cdouble,
         vals::Ptr{Cdouble},
     )::Cint
-        _valid(id) || return Cint(1)
+        _valid_$p(id) || return Cint(1)
         try
-            m = MODELS[Int(id)]
+            m = MODELS_$p[Int(id)]
             nz = m.meta.nnzh
             nz == 0 && return Cint(0)
             ExaModels.hess_coord!(
@@ -723,13 +900,12 @@ function _module_source(modname::AbstractString, p::AbstractString, field, pkgs 
         end
     end
 
-    end # module $modname
     """
 end
 
 # ── Driving juliac ────────────────────────────────────────────────────────────
 
-function _drive_juliac(appdir, prefix, out, trim, bundle, verbose)
+function _drive_juliac(appdir, libname, out, trim, bundle, verbose)
     outdir = abspath(out)
     mkpath(outdir)
 
@@ -742,13 +918,13 @@ function _drive_juliac(appdir, prefix, out, trim, bundle, verbose)
         verbose = verbose,
     )
     JuliaC.compile_products(img)
-    return _link(Val(bundle), img, prefix, outdir)
+    return _link(Val(bundle), img, libname, outdir)
 end
 
 const _DLEXT = Base.BinaryPlatforms.platform_dlext()
 
 # ── bundled: carries a privatized runtime; loadable from anything ────────────
-function _link(::Val{true}, img, prefix, outdir)
+function _link(::Val{true}, img, libname, outdir)
     # The bundle owns its directory: the bundler refuses to overwrite an
     # existing one, and privatized runtime files carry randomized names that
     # would otherwise accumulate across rebuilds.  Removal is per-entry and
@@ -763,7 +939,7 @@ function _link(::Val{true}, img, prefix, outdir)
 
     link = JuliaC.LinkRecipe(
         image_recipe = img,
-        outname = joinpath(outdir, "lib" * prefix),
+        outname = joinpath(outdir, "lib" * libname),
         rpath = JuliaC.RPATH_BUNDLE,
     )
     JuliaC.link_products(link)
@@ -785,16 +961,16 @@ function _link(::Val{true}, img, prefix, outdir)
     end)
 
     libroot = Sys.iswindows() ? "bin" : "lib"
-    libpath = joinpath(outdir, libroot, "lib" * prefix * "." * _DLEXT)
+    libpath = joinpath(outdir, libroot, "lib" * libname * "." * _DLEXT)
     isfile(libpath) || error("juliac produced no library at $libpath")
-    return (; libpath, outdir, prefix)
+    return (; libpath, outdir, libname)
 end
 
 # ── unbundled: one file, linked against the installed Julia ─────────────────
-function _link(::Val{false}, img, prefix, outdir)
+function _link(::Val{false}, img, libname, outdir)
     # Not cleared: without a bundle each model is a single file, so a directory
     # may hold several and wiping it would delete a sibling.
-    libpath = joinpath(outdir, "lib" * prefix * "." * _DLEXT)
+    libpath = joinpath(outdir, "lib" * libname * "." * _DLEXT)
     link = JuliaC.LinkRecipe(
         image_recipe = img,
         outname = splitext(libpath)[1],
@@ -802,7 +978,7 @@ function _link(::Val{false}, img, prefix, outdir)
     )
     JuliaC.link_products(link)
     isfile(libpath) || error("juliac produced no library at $libpath")
-    return (; libpath, outdir, prefix)
+    return (; libpath, outdir, libname)
 end
 
 end # module ExaModelsC
