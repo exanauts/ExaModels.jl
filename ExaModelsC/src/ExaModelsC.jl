@@ -951,15 +951,18 @@ function _argfun_call(prefix, f)
     m = parentmodule(f)
     n = nameof(f)
     ok = try
-        isdefined(m, n) && getfield(m, n) === f && Base.moduleroot(m) === m
+        isdefined(m, n) && getfield(m, n) === f && Base.moduleroot(m) === m &&
+            _owning_package(m) !== nothing
     catch
         false
     end
     ok || throw(
         ArgumentError(
             "`$prefix`: `argfun` must be a named function defined by a package — " *
-            "the generated library calls it by name. Got $(repr(f)) in module " *
-            "$m; define it at the top level of your package and pass that.",
+            "the generated library calls it by name, from another process, so a " *
+            "function defined in a script or the REPL cannot be reached. Got " *
+            "$(repr(f)) in module $m; define it at the top level of a package " *
+            "and pass that.",
         ),
     )
     return string(nameof(m), ".", n)
