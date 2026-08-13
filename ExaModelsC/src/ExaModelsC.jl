@@ -952,19 +952,28 @@ end
 function _argfun_call(prefix, f)
     m = parentmodule(f)
     n = nameof(f)
-    ok = try
-        isdefined(m, n) && getfield(m, n) === f && Base.moduleroot(m) === m &&
-            _owning_package(m) !== nothing
+    own = try
+        (isdefined(m, n) && getfield(m, n) === f && Base.moduleroot(m) === m) ?
+            _owning_package(m) : nothing
     catch
-        false
+        nothing
     end
+    # The owning package's name matching the module's own is what separates
+    # "defined by a package" from "defined by its EXTENSION".  An extension
+    # passes every root-module test — an extension is its own moduleroot, and
+    # `_owning_package` deliberately maps it to its parent — but the generated
+    # app imports only packages, so a call spelled `SomePkgExt.f` names a
+    # module the app never has.  Without this check that surfaces as an
+    # UndefVarError inside generated code, minutes into juliac.
+    ok = own !== nothing && own.name == string(nameof(m))
     ok || throw(
         ArgumentError(
-            "`$prefix`: `argfun` must be a named function defined by a package — " *
-            "the generated library calls it by name, from another process, so a " *
-            "function defined in a script or the REPL cannot be reached. Got " *
-            "$(repr(f)) in module $m; define it at the top level of a package " *
-            "and pass that.",
+            "`$prefix`: `argfun` must be a named function defined at the top " *
+            "level of a PACKAGE — the generated library calls it by name, from " *
+            "another process, so a function defined in a script, the REPL, or " *
+            "a package extension cannot be reached. Got $(repr(f)) in module " *
+            "$m; define it in the package itself (for an extension, move it " *
+            "to the parent package) and pass that.",
         ),
     )
     return string(nameof(m), ".", n)

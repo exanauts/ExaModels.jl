@@ -503,8 +503,19 @@ function runtests()
             # getglobal(Main, ...) verifier errors after minutes of juliac.
             # (Defined at the top of this file: evaluating it here would leave
             # it too new for the probe call that precedes the guard.)
-            @test_throws "defined in a script or the REPL" compile_library(
+            @test_throws "defined in a script" compile_library(
                 OUT, c, 4; argfun = Main.script_argfun)
+
+            # An EXTENSION-owned function passes every root-module predicate —
+            # an extension is its own moduleroot, and `_owning_package` maps it
+            # to its parent — but the generated app imports only packages, so
+            # `RecipeKernelsExaModels.exttables` would be an UndefVarError
+            # inside generated code.  The guard must refuse it up front, with
+            # the move-to-the-parent advice.
+            ext = Base.get_extension(RecipeKernels, :RecipeKernelsExaModels)
+            @test ext !== nothing
+            @test_throws "package extension" compile_library(
+                OUT, c, 4; argfun = ext.exttables)
             # The pair spelling: a Function in second position is the argfun —
             # nothing callable can ever be a model argument.
             co, fn, rest = ExaModelsC._core_and_args(:m, (c, RecipeKernels.doubled_args, 4))
