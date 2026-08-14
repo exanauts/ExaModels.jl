@@ -35,7 +35,7 @@
 
 # What that pathway gives you:
 
-# 1. the recipe, compiled once by `ExaModelsC` into a self-contained shared
+# 1. the recipe, compiled once by `ExaModelsCompiler` into a self-contained shared
 #    library, with the data left open;
 # 2. a plain C interface on that library, so the caller needs no Julia;
 # 3. consumption through
@@ -142,13 +142,13 @@ m = ExaModel(chain, 6, chain_pairs(6), 1 / 7)
 # ## Compiling a recipe into a shared library
 
 # Because a recipe is a complete model with its data factored out, it can be
-# compiled ahead of time. `ExaModelsC`, a subdirectory package of this
+# compiled ahead of time. `ExaModelsCompiler`, a subdirectory package of this
 # repository, does that with
 # [JuliaC](https://github.com/JuliaLang/juliac.jl), producing a self-contained
 # `.so` that exposes the model over a plain C interface:
 
 # ```julia
-# using ExaModels, ExaModelsC
+# using ExaModels, ExaModelsCompiler
 #
 # compile_library(recipe, "/opt/models/rosen";
 #                 arg = (N = 10, x0 = zeros(10)))
@@ -203,7 +203,7 @@ m = ExaModel(chain, 6, chain_pairs(6), 1 / 7)
 #     handle, while `compile_library` defaults it to the output directory's
 #     name. Pass `prefix` explicitly unless the two happen to agree.
 
-# `ExaModelsC` currently emits the scalar instantiation ABI, so the example
+# `ExaModelsCompiler` currently emits the scalar instantiation ABI, so the example
 # `arg` must be an `Integer` or a `NamedTuple` holding exactly one integer
 # field. An example of any other shape is refused with an explanation rather
 # than compiled into a library that would fail to load.
