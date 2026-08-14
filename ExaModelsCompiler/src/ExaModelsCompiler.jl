@@ -1898,6 +1898,13 @@ end
 Filter `:name => spec` model pairs for [`compile_all`](@ref): keep `only` (all
 of them when `nothing`), drop `exclude`. Names may be symbols or strings.
 
+Two shapes to get right, both misread on first contact: `models` is the
+assembled **pairs**, not a vector of names — so a provider builds every
+recipe and filters afterwards, which is the right trade (recipes are cheap,
+compiles are not) — and a provider forwarding its own keywords defaults
+`exclude = ()`, not `nothing`, however naturally the latter reads beside
+`only = nothing`.
+
 Refuses a name that is not in `models` rather than silently compiling less than
 asked for — a typo in `only` would otherwise produce a library quietly missing
 a model.
