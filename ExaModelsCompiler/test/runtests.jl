@@ -1,7 +1,7 @@
-module ExaModelsCTest
+module ExaModelsCompilerTest
 
 using Test
-using ExaModels, ExaModelsC
+using ExaModels, ExaModelsCompiler
 import Pkg
 import RecipeKernels
 import CNLPModels
@@ -26,12 +26,24 @@ function build(cn = ExaCore(nargs = Val(1)))
     return c
 end
 
-const OUT = get(ENV, "EXAMODELSC_TEST_OUT", joinpath(tempdir(), "examodelsc_test"))
+const OUT = get(ENV, "EXAMODELSCOMPILER_TEST_OUT", joinpath(tempdir(), "examodelscompiler_test"))
 
 # A NAMED function in Main, for the argfun guard test: Main is its own
 # moduleroot, so only the package-ownership check refuses it. Defined here so
 # the world has advanced by the time the guard's preceding probe calls it.
 Main.eval(:(script_argfun(n) = (Int(n),)))
+
+# A recipe whose blocks are all NAMED — a variable, a parameter and a
+# constraint — so the compiled library has a layout to publish and live
+# parameter state to read and write.
+function pbuild()
+    c, N = ExaCore(nargs = Val(1))
+    @add_var(c, y, N, 2; start = 0.5)
+    @add_par(c, w, 3; value = 1.0)
+    @add_con(c, link, y[i, 1] + y[i, 2] for i in 1:N; lcon = 0.0, ucon = 4.0)
+    @add_obj(c, w[1] * (y[i, j] - 2.0)^2 for i in 1:N, j in 1:2)
+    return c
+end
 
 # A three-placeholder recipe — a bare size, a NamedTuple carrying a start and
 # a bound, and a table — the data-defined shape the builder ABI exists for.
@@ -53,7 +65,7 @@ const S_LO = fill(-5.0, S_N)
 const S_TAB = [(i = 2, w = 1.5, s = 2.0), (i = 5, w = 3.0, s = -1.0), (i = 6, w = 0.5, s = 0.0)]
 
 function runtests()
-    @testset "ExaModelsC" begin
+    @testset "ExaModelsCompiler" begin
 
         @testset "the example arg is read, not guessed" begin
             c = build()
@@ -87,9 +99,9 @@ function runtests()
             # A one-key integer NamedTuple keeps the `P_new(n)` fast path —
             # the generated constructor rebuilds the key.
             cnt, _ = ExaCore(nargs = Val(1))
-            s = ExaModelsC._model_spec("nt", cnt, ((N = 4,),))
+            s = ExaModelsCompiler._model_spec("nt", cnt, ((N = 4,),))
             @test s.field === :N
-            ntsrc = ExaModelsC._module_source("M", [s])
+            ntsrc = ExaModelsCompiler._module_source("M", [s])
             @test occursin("(; N = Int(n))", ntsrc)
             @test occursin("nt_new(", ntsrc)
             @test !occursin("function nt_data_begin", ntsrc)   # the comment may NAME it
@@ -97,12 +109,12 @@ function runtests()
             # Anything else flattens to the builder: bare values by position,
             # NamedTuple entries by key, and NO `P_new` — the surfaces are
             # disjoint, which is how a consumer routes a lone integer.
-            b = ExaModelsC._model_spec(
+            b = ExaModelsCompiler._model_spec(
                 "bs", cnt, (4, (v0 = [1.0], lo = [2.0]), [(i = 1, w = 0.5)]),
             )
-            @test b.field isa ExaModelsC.BuilderModel
+            @test b.field isa ExaModelsCompiler.BuilderModel
             @test [f.name for f in b.field.fields] == ["arg1", "v0", "lo", "arg3"]
-            bsrc = ExaModelsC._module_source("M", [b])
+            bsrc = ExaModelsCompiler._module_source("M", [b])
             @test !occursin("function bs_new(", bsrc)   # `_argkind`'s comment names it
             for sym in (
                 "bs_schema", "bs_data_begin", "bs_set_scalar_i64",
@@ -124,7 +136,7 @@ function runtests()
             @add_obj(c, (x[i] - 2.0)^2 for i in 1:N)
             @add_con(c, x[l+1] + x[l+2] for l in ExaModels.ArgNode1(RecipeKernels.offsets, N))
 
-            pkgs = ExaModelsC._core_packages(ExaModelsC._concretize(c))
+            pkgs = ExaModelsCompiler._core_packages(ExaModelsCompiler._concretize(c))
             @test length(pkgs) == 1
             @test only(pkgs).name == "RecipeKernels"
             @test isdir(only(pkgs).dir)
@@ -135,7 +147,7 @@ function runtests()
             plain, M = ExaCore(nargs = Val(1))
             @add_var(plain, z, M; start = 1.0)
             @add_obj(plain, (z[i] - 2.0)^2 for i in 1:M)
-            @test isempty(ExaModelsC._core_packages(ExaModelsC._concretize(plain)))
+            @test isempty(ExaModelsCompiler._core_packages(ExaModelsCompiler._concretize(plain)))
 
             # A package the CALLER is developing — RecipeKernels is path-
             # tracked in this test environment — is pinned in the generated
@@ -143,9 +155,9 @@ function runtests()
             # references it, so the app compiles the code the caller is
             # actually running rather than the registry copy. It is NOT
             # imported: only a core's own packages need that.
-            @test any(p -> p.name == "RecipeKernels", ExaModelsC._developed_packages())
-            pdir = ExaModelsC._generate_app(
-                [ExaModelsC._model_spec("pl", ExaModelsC._concretize(plain), (4,))],
+            @test any(p -> p.name == "RecipeKernels", ExaModelsCompiler._developed_packages())
+            pdir = ExaModelsCompiler._generate_app(
+                [ExaModelsCompiler._model_spec("pl", ExaModelsCompiler._concretize(plain), (4,))],
                 "pl",
             )
             pproj = read(joinpath(pdir, "Project.toml"), String)
@@ -156,8 +168,8 @@ function runtests()
             # Both halves are needed and neither alone is enough: a dependency
             # the app never imports resolves no better than one it never had, so
             # the generated files are checked for the dependency AND the import.
-            appdir = ExaModelsC._generate_app(
-                [ExaModelsC._model_spec("rk", ExaModelsC._concretize(c), (8,))], "rk",
+            appdir = ExaModelsCompiler._generate_app(
+                [ExaModelsCompiler._model_spec("rk", ExaModelsCompiler._concretize(c), (8,))], "rk",
             )
             proj = read(joinpath(appdir, "Project.toml"), String)
             src = read(joinpath(appdir, "src", "ExaLib_rk.jl"), String)
@@ -204,7 +216,7 @@ function runtests()
             e, K = ExaCore(nargs = Val(1))
             @add_var(e, w, K; start = Base.Generator(ext.ramp, 1:K))
             @add_obj(e, (w[i] - 1.0)^2 for i in 1:K)
-            epkgs = ExaModelsC._core_packages(ExaModelsC._concretize(e))
+            epkgs = ExaModelsCompiler._core_packages(ExaModelsCompiler._concretize(e))
             @test length(epkgs) == 1
             @test only(epkgs).name == "RecipeKernels"       # the parent, not the ext
         end
@@ -212,18 +224,18 @@ function runtests()
         @testset "out is @name on the search path, or a literal path" begin
             # The same convention the consumers apply to their string spec:
             # any string without the sigil is a local path, exactly as written.
-            @test ExaModelsC._resolve_out("rosen", true) == abspath("rosen")
-            @test ExaModelsC._resolve_out("./rosen", true) == abspath("./rosen")
+            @test ExaModelsCompiler._resolve_out("rosen", true) == abspath("rosen")
+            @test ExaModelsCompiler._resolve_out("./rosen", true) == abspath("./rosen")
             withenv("CNLPMODELS_PATH" => nothing) do
-                @test_throws ArgumentError ExaModelsC._resolve_out("@rosen", true)
+                @test_throws ArgumentError ExaModelsCompiler._resolve_out("@rosen", true)
             end
             withenv("CNLPMODELS_PATH" => "/tmp/models") do
-                @test ExaModelsC._resolve_out("@rosen", true) == joinpath("/tmp/models", "rosen")
-                @test ExaModelsC._resolve_out("@rosen", false) == "/tmp/models"
+                @test ExaModelsCompiler._resolve_out("@rosen", true) == joinpath("/tmp/models", "rosen")
+                @test ExaModelsCompiler._resolve_out("@rosen", false) == "/tmp/models"
             end
             # The default prefix keeps no sigil.
-            @test ExaModelsC._default_out_prefix("@rosen") == "rosen"
-            @test_throws ArgumentError ExaModelsC._resolve_out("@", true)
+            @test ExaModelsCompiler._default_out_prefix("@rosen") == "rosen"
+            @test_throws ArgumentError ExaModelsCompiler._resolve_out("@", true)
         end
 
         # Compiling takes minutes, so the library is built once and every
@@ -518,7 +530,7 @@ function runtests()
                 OUT, c, 4; argfun = ext.exttables)
             # The pair spelling: a Function in second position is the argfun —
             # nothing callable can ever be a model argument.
-            co, fn, rest = ExaModelsC._core_and_args(:m, (c, RecipeKernels.doubled_args, 4))
+            co, fn, rest = ExaModelsCompiler._core_and_args(:m, (c, RecipeKernels.doubled_args, 4))
             @test fn === RecipeKernels.doubled_args && rest == (4,)
         end
 
@@ -532,8 +544,9 @@ function runtests()
                 :knob => (build(), 4),
                 :dbl => (build(), RecipeKernels.doubled_args, 4),
                 :strd => (build(), RecipeKernels.parsed_args, "6"),
+                :lay => (pbuild(), 3),
             )
-            @test sb.prefixes == ["structm", "knob", "dbl", "strd"]
+            @test sb.prefixes == ["structm", "knob", "dbl", "strd", "lay"]
             slib = CNLPModels.load(sb.libpath)
 
             # The builder model exports no one-integer constructor; the knob
@@ -600,6 +613,73 @@ function runtests()
             @test sid > 0
             @test ccall(dl(:strd_nvar), Cint, (Cint,), sid) == 6
             @test ccall(dl(:strd_new), Cint, (Cint,), 4) == 0
+
+            # ── the layout surface: named blocks, addressable from a
+            # library alone ─────────────────────────────────────────────────
+            # `pbuild` names a variable, a parameter and a constraint; the
+            # library publishes each one's kind, offset, length and dims, at
+            # the size THIS instance was built at (3 here, not the example's).
+            lid = ccall(dl(:lay_new), Cint, (Cint,), 3)
+            @test lid > 0
+            @test ccall(dl(:lay_nblocks), Cint, (Cint,), lid) == 3
+
+            function block(k)
+                out = zeros(Cint, 8)
+                @test ccall(dl(:lay_block), Cint, (Cint, Cint, Ptr{Cint}), lid, Cint(k), out) == 0
+                nb = zeros(UInt8, 64)
+                n = ccall(dl(:lay_block_name), Cint,
+                          (Cint, Cint, Ptr{UInt8}, Cint), lid, Cint(k), nb, Cint(64))
+                (name = String(nb[1:n]), kind = out[1], offset = out[2],
+                 len = out[3], dims = out[5:(4 + out[4])])
+            end
+            bs = [block(k) for k in 0:2]
+            @test [b.name for b in bs] == ["y", "w", "link"]
+            @test [b.kind for b in bs] == [0, 2, 1]        # var, par, con
+            # The variable is 3x2 at this instance — dims, not just a length,
+            # so a consumer can reshape a solution slice the way ExaModels does.
+            @test bs[1].dims == [3, 2] && bs[1].len == 6 && bs[1].offset == 0
+            @test bs[2].len == 3                            # parameter w
+            @test bs[3].len == 3 && bs[3].dims == [3]       # constraint link
+            # A second instance at another size reports ITS layout, which is
+            # what makes this instance state rather than library state.
+            lid2 = ccall(dl(:lay_new), Cint, (Cint,), 5)
+            @test block(0).len == 6                          # first, undisturbed
+            out2 = zeros(Cint, 8)
+            ccall(dl(:lay_block), Cint, (Cint, Cint, Ptr{Cint}), lid2, Cint(0), out2)
+            @test out2[3] == 10 && out2[5:6] == Cint[5, 2]
+
+            # Parameters are live state: read them back, write them, and see
+            # the WRITE REACH EVALUATION — the objective is w[1]*(y-2)^2 over
+            # 6 entries, so at y = 0 it is 24 w[1]. Checking the value rather
+            # than just the round-trip is what distinguishes a parameter that
+            # is state from one baked in at compile time.
+            objat(id, x) = (o = Ref{Cdouble}(0.0);
+                @test ccall(dl(:lay_obj), Cint, (Cint, Ptr{Cdouble}, Ptr{Cdouble}),
+                            id, x, o) == 0; o[])
+            y0 = zeros(Cdouble, 6)
+            vals = zeros(Cdouble, 3)
+            @test ccall(dl(:lay_get_value), Cint,
+                        (Cint, Cint, Ptr{Cdouble}, Cint), lid, Cint(1), vals, Cint(3)) == 0
+            @test vals == [1.0, 1.0, 1.0]
+            @test objat(lid, y0) ≈ 24.0
+            @test ccall(dl(:lay_set_value), Cint, (Cint, Cint, Ptr{Cdouble}, Cint),
+                        lid, Cint(1), [2.0, 3.0, 4.0], Cint(3)) == 0
+            @test ccall(dl(:lay_get_value), Cint,
+                        (Cint, Cint, Ptr{Cdouble}, Cint), lid, Cint(1), vals, Cint(3)) == 0
+            @test vals == [2.0, 3.0, 4.0]
+            @test objat(lid, y0) ≈ 48.0                     # w[1] = 2 now
+            # And the OTHER instance is untouched. Parameter state is per
+            # instance because a model copies the core's θ when it is built
+            # (ExaModels' `ExaModel` constructor): without that copy every
+            # instance of a compiled recipe would share one parameter vector,
+            # since `instantiate` passes a placeholder-free container through
+            # by identity. This assertion is what would catch losing it.
+            @test objat(lid2, zeros(Cdouble, 10)) ≈ 40.0    # 10 entries, w[1] = 1
+            # A non-parameter block and a wrong length are refused, not aborts.
+            @test ccall(dl(:lay_set_value), Cint, (Cint, Cint, Ptr{Cdouble}, Cint),
+                        lid, Cint(0), [1.0], Cint(1)) == 1          # `y` is a variable
+            @test ccall(dl(:lay_set_value), Cint, (Cint, Cint, Ptr{Cdouble}, Cint),
+                        lid, Cint(1), [1.0], Cint(1)) == 3          # wrong length
 
             # Wrong-arity and incomplete data are the consumer's errors, not
             # aborts: the library reports, the consumer explains.
@@ -759,4 +839,4 @@ end
 
 end # module
 
-ExaModelsCTest.runtests()
+ExaModelsCompilerTest.runtests()

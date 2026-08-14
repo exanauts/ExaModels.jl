@@ -1,4 +1,4 @@
-"""Evaluate a compiled ExaModelsC library through the Python consumer.
+"""Evaluate a compiled ExaModelsCompiler library through the Python consumer.
 
 Loads the shared library with `cnlpmodels` (https://github.com/MadNLP/cnlpmodels-py)
 and writes its readings to a text file for the Julia side to compare against
