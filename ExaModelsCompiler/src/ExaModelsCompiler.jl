@@ -215,13 +215,13 @@ emitted by name, which is what `juliac` resolves statically — and it must
 return the argument TUPLE the core is instantiated with.  The example is
 `f`'s argument, and `f(example)` is probed before compiling.
 
-Every model also exports `P_argkind() -> 0 | 1 | 2 | 3` (fixed, `P_new(n)`,
+Every model also exports `P_argtype() -> 0 | 1 | 2 | 3` (fixed, `P_new(n)`,
 `P_new_str`, builder), so a consumer routes on the declared shape instead
 of probing for symbols.  Kind 1 covers both n-is-the-size and
 n-goes-to-an-argument-function: the two are indistinguishable to a consumer
 **by design** — the call shape is identical, and what the library does with
 `n` is its own business.  `P_nargs` says how MANY values instantiation
-takes and cannot say what shape they are; `P_argkind` is the other half of
+takes and cannot say what shape they are; `P_argtype` is the other half of
 that pair, and a consumer handed only a library path needs both.
 
 ## Several models in one library
@@ -915,11 +915,30 @@ _argfun_of(s::ModelSpec) = s.field.fun
 
 # Which C entry point instantiates a model. Emitted for EVERY model, so a
 # consumer routes on it rather than probing for symbols.
-_argkind_value(::FixedModel) = 0            # `_new(n)`, `n` ignored
-_argkind_value(::Union{Nothing, Symbol}) = 1  # `_new(n)`, n is the size
-_argkind_value(::UserArgs{:int}) = 1        # `_new(n)`, n goes to the function
-_argkind_value(::UserArgs{:str}) = 2        # `_new_str(const char *)`
-_argkind_value(::BuilderModel) = 3          # `_data_begin` / `_new_from_data`
+# What a model instantiates FROM, as a signature a consumer can read and act
+# on: the types of the values its entry point takes, in order, with an optional
+# description after a `|`. A fixed model takes nothing; a scalable one takes an
+# integer; an argument-function model takes the one value the function does;
+# a structured one takes its schema's fields.
+#
+# The signature also says WHICH entry point, without probing for symbols: no
+# values means `P_new(n)` with `n` ignored, a lone `string` means `P_new_str`,
+# a lone `int` means `P_new(n)`, and anything else means the builder — because
+# a single integer is never emitted as a builder (it takes the fast path).
+_argtype_value(::FixedModel) = ""
+_argtype_value(::Union{Nothing, Symbol}) = "int|size"
+_argtype_value(::UserArgs{:int}) = "int|argument to the model's own function"
+_argtype_value(::UserArgs{:str}) = "string|argument to the model's own function"
+_argtype_value(bm::BuilderModel) = join((_field_type(f) for f in bm.fields), ",")
+
+# One field as a type: `int`, `f64`, `Vector{int}`, or a table's columns.
+function _field_type(f::Field)
+    f.kind == "scalar" && return _jtype(f.type) * "|" * f.name
+    f.kind == "array" && return "Vector{" * _jtype(f.type) * "}|" * f.name
+    cols = join((c.first * "::" * _jtype(c.second) for c in f.columns), " ")
+    return "Table{" * cols * "}|" * f.name
+end
+_jtype(t) = t == "i64" ? "int" : "f64"
 
 _nargs_value(::UserArgs) = 1
 
@@ -1012,7 +1031,7 @@ function _instantiation_source(p::AbstractString, field::Union{Nothing, Symbol, 
         return Cint($(_nargs_value(field)))
     end
 
-$(_argkind_source(p, field))
+$(_argtype_source(p, field))
 
     Base.@ccallable function $(p)_new(n::Cint)::Cint
         try
@@ -1040,15 +1059,24 @@ function _setter_arms(fields, render)
     return join((render(f) for f in fields), "") * "\n"
 end
 
-# `_argkind` is emitted for every model, whatever its surface: `_nargs` says
+# `_argtype` is emitted for every model, whatever its surface: `_nargs` says
 # how many values are needed and cannot say what SHAPE they are, and a consumer
 # handed only a library path needs both. Routing on it beats probing for
 # symbols, which is what a consumer had to do before.
-_argkind_source(p::AbstractString, field) = """
-    # Which entry point instantiates this model: 0 fixed, 1 `$(p)_new(n)`,
-    # 2 `$(p)_new_str(const char *)`, 3 the `$(p)_data_begin` builder.
-    Base.@ccallable function $(p)_argkind()::Cint
-        return Cint($(_argkind_value(field)))
+# `P_argtype` publishes the signature; same copy-out convention as the other
+# strings — returns the needed byte length, copies what fits in `cap`.
+_argtype_source(p::AbstractString, field) = """
+    # What this model instantiates from: comma-separated types, each
+    # optionally `type|description`. Empty means it takes nothing.
+    const ARGTYPE_$p = Vector{UInt8}($(repr(_argtype_value(field))))
+
+    Base.@ccallable function $(p)_argtype(buf::Ptr{UInt8}, cap::Cint)::Cint
+        n = length(ARGTYPE_$p)
+        k = min(Int(cap), n)
+        if k > 0 && buf != Ptr{UInt8}(0)
+            GC.@preserve ARGTYPE_$p unsafe_copyto!(buf, pointer(ARGTYPE_$p), k)
+        end
+        return Cint(n)
     end
 """
 
@@ -1060,7 +1088,7 @@ function _instantiation_source(p::AbstractString, u::UserArgs{:str})
         return Cint(1)
     end
 
-$(_argkind_source(p, u))
+$(_argtype_source(p, u))
     # This model instantiates from a string; `$(p)_new(n)` is not its entry
     # point, so it returns the documented failure value rather than building
     # something.
@@ -1086,7 +1114,7 @@ function _instantiation_source(p::AbstractString, u::UserArgs{:int})
         return Cint(1)
     end
 
-$(_argkind_source(p, u))
+$(_argtype_source(p, u))
     Base.@ccallable function $(p)_new(n::Cint)::Cint
         try
             push!(MODELS_$p, ExaModels.ExaModel(CORE_$p, $(u.call)(Int(n))...; check = Val(false)))
@@ -1158,7 +1186,7 @@ function _instantiation_source(p::AbstractString, bm::BuilderModel)
     )
 
     return """
-$(_argkind_source(p, bm))
+$(_argtype_source(p, bm))
     # ── builder for `$p` (schema + typed setters) ────────────────────────────
 
     const SCHEMA_$p = Vector{UInt8}($(repr(json)))
@@ -1310,8 +1338,49 @@ function _module_source(modname::AbstractString, specs::Vector{ModelSpec}, pkgs 
     import Serialization
     $imports
     $(join((_model_source(s) for s in specs), "\n"))
+$(_catalog_source(specs))
     end # module $modname
     """
+end
+
+# What the library carries, asked of the library rather than of a model: a
+# consumer handed only a path has no prefix to start from, and every other
+# entry point needs one. These two are the exception — fixed names, no prefix —
+# and they are what makes a library self-describing.
+function _catalog_source(specs::Vector{ModelSpec})
+    names = join((
+        """    const MODELNAME_$(i) = Vector{UInt8}($(repr(s.prefix)))\n"""
+        for (i, s) in enumerate(specs)
+    ))
+    arms = join((
+        """
+        if k == Cint($(i - 1))
+            b = MODELNAME_$(i)
+            n = length(b)
+            m = min(Int(cap), n)
+            if m > 0 && buf != Ptr{UInt8}(0)
+                GC.@preserve b unsafe_copyto!(buf, pointer(b), m)
+            end
+            return Cint(n)
+        end
+"""
+        for (i, _) in enumerate(specs)
+    ))
+    return """
+    # ── what this library carries ────────────────────────────────────────────
+$names
+    # How many models are in this library. Fixed name: a consumer asks this
+    # before it knows any prefix.
+    Base.@ccallable function cnlp_nmodels()::Cint
+        return Cint($(length(specs)))
+    end
+
+    # The k-th model's symbol prefix, by the copy-out convention the other
+    # name accessors use: returns the needed byte length, copies what fits.
+    Base.@ccallable function cnlp_model_name(k::Cint, buf::Ptr{UInt8}, cap::Cint)::Cint
+$arms        return Cint(-1)
+    end
+"""
 end
 
 # One model's share of the generated module. Every piece of per-model state

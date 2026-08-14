@@ -120,7 +120,7 @@ function runtests()
             @test b.field isa ExaModelsCompiler.BuilderModel
             @test [f.name for f in b.field.fields] == ["arg1", "v0", "lo", "arg3"]
             bsrc = ExaModelsCompiler._module_source("M", [b])
-            @test !occursin("function bs_new(", bsrc)   # `_argkind`'s comment names it
+            @test !occursin("function bs_new(", bsrc)   # `_argtype`'s comment names it
             for sym in (
                 "bs_schema", "bs_data_begin", "bs_set_scalar_i64",
                 "bs_set_scalar_f64", "bs_set_array_i64", "bs_set_array_f64",
@@ -617,12 +617,28 @@ function runtests()
             @test k.meta.nvar == 7
 
             # The third surface: argument functions of both kinds, in the same
-            # library. `_argkind` declares every model's shape — 0 fixed,
-            # 1 `_new(n)`, 2 `_new_str`, 3 builder — so a consumer routes on
-            # it rather than probing symbols.
-            ak(s) = ccall(dl(Symbol(s, :_argkind)), Cint, ())
-            @test ak("knob") == 1 && ak("structm") == 3
-            @test ak("dbl") == 1 && ak("strd") == 2
+            # library. `_argtype` publishes what each model instantiates FROM,
+            # as a signature — so a consumer learns how to call a model it has
+            # never seen, instead of probing for symbols and guessing.
+            function ak(s)
+                fp = dl(Symbol(s, :_argtype))
+                n = ccall(fp, Cint, (Ptr{UInt8}, Cint), C_NULL, Cint(0))
+                b = Vector{UInt8}(undef, Int(n))
+                ccall(fp, Cint, (Ptr{UInt8}, Cint), b, n)
+                String(b)
+            end
+            @test ak("knob") == "int|size"
+            @test ak("dbl") == "int|argument to the model's own function"
+            @test ak("strd") == "string|argument to the model's own function"
+            # A structured model reports every field, with its name after the
+            # type — the same information the schema carries, in the form a
+            # caller needs to write the call.
+            @test ak("structm") ==
+                  "int|arg1,Vector{f64}|v0,Vector{f64}|lo,Table{i::int w::f64 s::f64}|arg3"
+            # Every model answers, including the ones with no builder schema:
+            # that is the point of publishing types rather than a schema only
+            # structured models have.
+            @test ak("lay") == "int|size"
             # :int kind — `P_new(n)` hands n to the function (size 2n here).
             dm = CNLPModels.CNLPModel(slib, 5; prefix = "dbl")
             @test dm.meta.nvar == 10
