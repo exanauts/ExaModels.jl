@@ -46,6 +46,11 @@ function pbuild()
     @add_var(c, y, N, 2; start = 0.5)
     @add_par(c, w, 3; value = 1.0)
     @add_con(c, link, y[i, 1] + y[i, 2] for i in 1:N; lcon = 0.0, ucon = 4.0)
+    # A DATA-axis constraint — iterating a collection of points, catmix's
+    # shape — so the compiled layout query is exercised on the axis kind
+    # that once returned status 2 for six of COPS's seventeen models.
+    @add_con(c, dax, y[t[1], 1] - t[2] for t in [(1, 0.5), (2, 1.5)], j in 1:2;
+             lcon = -10.0, ucon = 10.0)
     @add_obj(c, w[1] * (y[i, j] - 2.0)^2 for i in 1:N, j in 1:2)
     return c
 end
@@ -673,7 +678,7 @@ function runtests()
             # the size THIS instance was built at (3 here, not the example's).
             lid = ccall(dl(:lay_new), Cint, (Cint,), 3)
             @test lid > 0
-            @test ccall(dl(:lay_nblocks), Cint, (Cint,), lid) == 3
+            @test ccall(dl(:lay_nblocks), Cint, (Cint,), lid) == 4
 
             function block(k)
                 out = zeros(Cint, 8)
@@ -684,9 +689,12 @@ function runtests()
                 (name = String(nb[1:n]), kind = out[1], offset = out[2],
                  len = out[3], dims = out[5:(4 + out[4])])
             end
-            bs = [block(k) for k in 0:2]
-            @test [b.name for b in bs] == ["y", "w", "link"]
-            @test [b.kind for b in bs] == [0, 2, 1]        # var, par, con
+            bs = [block(k) for k in 0:3]
+            @test [b.name for b in bs] == ["y", "w", "link", "dax"]
+            @test [b.kind for b in bs] == [0, 2, 1, 1]     # var, par, con, con
+            # The data axis reports by its length: dims (2, 2), and at THIS
+            # instance's size regardless of N.
+            @test bs[4].dims == [2, 2] && bs[4].len == 4
             # The variable is 3x2 at this instance — dims, not just a length,
             # so a consumer can reshape a solution slice the way ExaModels does.
             @test bs[1].dims == [3, 2] && bs[1].len == 6 && bs[1].offset == 0

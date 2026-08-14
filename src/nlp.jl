@@ -1037,6 +1037,13 @@ end
 @inline _total(n, ns...) = _length(n) * _total(ns...)
 @inline _length(n::Int) = n
 @inline _length(n::UnitRange) = length(n)
+# A DATA axis: a constraint or objective may iterate a collection of data
+# points (`for (i, tau) in nodes`), and that collection is then one axis of
+# the block's size field. Its extent is its length, like a range's — without
+# this method, `size`/`total`/`multipliers` on such a block threw a
+# MethodError, so a compiled library's layout query failed (status 2) for
+# every model with a data-driven axis: six of COPS's seventeen.
+@inline _length(n::AbstractArray) = length(n)
 @inline size(ns) = _size(ns...)
 @inline _size() = ()
 @inline _size(n, ns...) = (_length(n), _size(ns...)...)
