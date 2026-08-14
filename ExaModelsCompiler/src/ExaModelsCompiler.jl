@@ -81,7 +81,7 @@ import Random
 import Serialization
 import TOML
 
-export compile_library
+export compile_library, compile_all
 
 # The generated app package is a throwaway: a fresh temporary directory with
 # its own environment, never registered.  A constant UUID is therefore safe and
@@ -1739,6 +1739,113 @@ function _link(::Val{false}, img, libname, outdir)
     JuliaC.link_products(link)
     isfile(libpath) || error("juliac produced no library at $libpath")
     return (; libpath, outdir, libname)
+end
+
+# ── Compiling everything a package provides ──────────────────────────────────
+
+"""
+    compile_all(SomePackage; path = "@name", only = nothing, exclude = (), kwargs...)
+    compile_all(Val(SomePackage); ...)
+
+Compile every model a package provides into **one** shared library.
+
+Call it with the package itself; a package that ships models implements the
+`Val` form for itself, so it decides how its models are assembled — sizes, argument functions, element type — while the verb
+and its keywords mean the same thing everywhere:
+
+  - `path` — where the library goes, as [`compile_library`](@ref) takes it
+    (`"@cops"` installs on the `CNLPMODELS_PATH`); each package picks its own
+    default name.
+  - `only` / `exclude` — model names to keep or drop; see [`select`](@ref).
+  - everything else is forwarded to `compile_library` (`bundle`, `trim`, …).
+
+One library rather than one per model: sizes are deferred, so the models share
+a runtime and one compile amortises across all of them, and a consumer selects
+with `CNLPModel(lib, :bearing, n)`.
+
+## Implementing it
+
+Put it in a package extension, so providing models costs no dependency on this
+package — `ExaModelsCompiler` pulls in a compiler toolchain, and a package of
+models should not:
+
+```julia
+# Project.toml
+[weakdeps]
+ExaModelsCompiler = "3d1e9a26-5b74-4f0c-9a2b-7c8f4e11d3a7"
+
+[extensions]
+COPSBenchmarkExaModelsCompilerExt = "ExaModelsCompiler"
+```
+
+```julia
+# ext/COPSBenchmarkExaModelsCompilerExt.jl
+module COPSBenchmarkExaModelsCompilerExt
+
+import COPSBenchmark, ExaModelsCompiler
+using ExaModelsCompiler: compile_library, select
+
+function ExaModelsCompiler.compile_all(
+    ::Val{COPSBenchmark}; path = "@cops", only = nothing, exclude = (), kwargs...,
+)
+    b = COPSBenchmark.ExaModelsBackend()
+    models = [
+        :bearing => (COPSBenchmark.bearing_recipe(b), COPSBenchmark.bearing_args(b, 50, 50)...),
+        :chain   => (COPSBenchmark.chain_recipe(b),   COPSBenchmark.chain_args(b, 800)...),
+        # ...
+    ]
+    return compile_library(path, select(models; only, exclude)...; kwargs...)
+end
+
+end
+```
+
+A model taking an argument function is spelled as it is for `compile_library` —
+`:acopf => (core, opf_args, "case14.m")` — so a package whose models are
+data-defined compiles to a library that parses a case file itself.
+"""
+function compile_all end
+
+# The spelling a caller uses: name the package, not a `Val` of it. Providers
+# implement the `Val` method — one uniform handle, no per-package type to look
+# up — and this forwards to it.
+compile_all(m::Module; kwargs...) = compile_all(Val(m); kwargs...)
+
+# Reached when the package has no method — either it provides no models, or its
+# extension is not loaded because this package was not in scope when it was.
+function compile_all(::Val{M}; kwargs...) where {M}
+    throw(ArgumentError(
+        "$M does not implement `compile_all`. A package that provides models " *
+        "implements it in an ExaModelsCompiler extension — see the " *
+        "`compile_all` docstring for the shape. If $M does implement it, load " *
+        "both packages before calling: the extension only comes up once " *
+        "ExaModelsCompiler is in scope."))
+end
+
+"""
+    select(models; only = nothing, exclude = ())
+
+Filter `:name => spec` model pairs for [`compile_all`](@ref): keep `only` (all
+of them when `nothing`), drop `exclude`. Names may be symbols or strings.
+
+Refuses a name that is not in `models` rather than silently compiling less than
+asked for — a typo in `only` would otherwise produce a library quietly missing
+a model.
+"""
+function select(models; only = nothing, exclude = ())
+    have = Set(first.(models))
+    _sym(x) = x isa Symbol ? x : Symbol(x)
+    for name in Iterators.flatten((only === nothing ? () : only, exclude))
+        _sym(name) in have || throw(ArgumentError(
+            "no model named `$(_sym(name))`; this package provides " *
+            "$(sort(collect(have)))"))
+    end
+    keep = only === nothing ? have : Set(_sym.(only))
+    setdiff!(keep, Set(_sym.(exclude)))
+    out = [p for p in models if first(p) in keep]
+    isempty(out) && throw(ArgumentError(
+        "`only`/`exclude` selected no models out of $(sort(collect(have)))"))
+    return out
 end
 
 end # module ExaModelsCompiler
