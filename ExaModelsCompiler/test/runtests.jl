@@ -567,6 +567,11 @@ function runtests()
             )
             @test sb.prefixes == ["structm", "knob", "dbl", "strd", "lay"]
             slib = CNLPModels.load(sb.libpath)
+            # The library ANNOUNCES what it carries — the catalogue read back
+            # through the consumer, from the compiled artifact itself, so a
+            # caller holding only this path discovers all five by name.
+            @test CNLPModels.available_models(slib) ==
+                  [:structm, :knob, :dbl, :strd, :lay]
 
             # The builder model exports no one-integer constructor; the knob
             # model exports no builder. Disjoint, as the consumers assume.
