@@ -1815,7 +1815,7 @@ end
 # ── Compiling everything a package provides ──────────────────────────────────
 
 """
-    compile_all(SomePackage; path = "@name", kwargs...)
+    compile_all(SomePackage; path = "@name", only = nothing, exclude = (), kwargs...)
     compile_all(Val(SomePackage); ...)
 
 Compile every model a package provides into **one** shared library.
@@ -1853,16 +1853,18 @@ COPSBenchmarkExaModelsCompilerExt = "ExaModelsCompiler"
 module COPSBenchmarkExaModelsCompilerExt
 
 import COPSBenchmark, ExaModelsCompiler
-using ExaModelsCompiler: compile_library
+using ExaModelsCompiler: compile_library, select
 
-function ExaModelsCompiler.compile_all(::Val{COPSBenchmark}; path = "@cops", kwargs...)
+function ExaModelsCompiler.compile_all(
+    ::Val{COPSBenchmark}; path = "@cops", only = nothing, exclude = (), kwargs...,
+)
     b = COPSBenchmark.ExaModelsBackend()
     models = [
         :bearing => (COPSBenchmark.bearing_recipe(b), COPSBenchmark.bearing_args(b, 50, 50)...),
         :chain   => (COPSBenchmark.chain_recipe(b),   COPSBenchmark.chain_args(b, 800)...),
         # ...
     ]
-    return compile_library(path, models...; kwargs...)
+    return compile_library(path, select(models; only, exclude)...; kwargs...)
 end
 
 end
@@ -1888,6 +1890,32 @@ function compile_all(::Val{M}; kwargs...) where {M}
         "`compile_all` docstring for the shape. If $M does implement it, load " *
         "both packages before calling: the extension only comes up once " *
         "ExaModelsCompiler is in scope."))
+end
+
+"""
+    select(models; only = nothing, exclude = ())
+
+Filter `:name => spec` model pairs for [`compile_all`](@ref): keep `only` (all
+of them when `nothing`), drop `exclude`. Names may be symbols or strings.
+
+Refuses a name that is not in `models` rather than silently compiling less than
+asked for — a typo in `only` would otherwise produce a library quietly missing
+a model.
+"""
+function select(models; only = nothing, exclude = ())
+    have = Set(first.(models))
+    _sym(x) = x isa Symbol ? x : Symbol(x)
+    for name in Iterators.flatten((only === nothing ? () : only, exclude))
+        _sym(name) in have || throw(ArgumentError(
+            "no model named `$(_sym(name))`; this package provides " *
+            "$(sort(collect(have)))"))
+    end
+    keep = only === nothing ? have : Set(_sym.(only))
+    setdiff!(keep, Set(_sym.(exclude)))
+    out = [p for p in models if first(p) in keep]
+    isempty(out) && throw(ArgumentError(
+        "`only`/`exclude` selected no models out of $(sort(collect(have)))"))
+    return out
 end
 
 end # module ExaModelsCompiler
