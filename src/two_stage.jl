@@ -411,5 +411,8 @@ export EachScenario, SecondStageVariable,
        FirstStageTag, SecondStageTag,
        FirstStageConstraintTag, SecondStageConstraintTag,
        TwoStageExaCore, TwoStageExaModel,
-       get_nscen, get_var_scen, get_con_scen,
-       get_value, set_value!
+       # `get_value` / `set_value!` are exported by ExaModels itself (nlp.jl);
+       # the two-stage methods are additional scenario-indexed methods of the
+       # same functions, not a separate pair.
+       get_nscen, get_var_scen, get_con_scen
+

@@ -753,7 +753,7 @@ function _build_with_oracle(c::ExaCore; kwargs...)
     return ExaModelWithOracle(
         c.obj,
         c.cons,
-        c.θ,
+        copy(c.θ),   # each model owns its parameters — see nlp.jl
         meta,
         NLPModels.Counters(),
         build_extension(c; kwargs...),

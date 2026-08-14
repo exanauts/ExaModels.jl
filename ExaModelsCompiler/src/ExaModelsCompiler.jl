@@ -1,5 +1,5 @@
 """
-    ExaModelsC
+    ExaModelsCompiler
 
 Compile an [`ExaModels.ExaCore`](@ref) into a shared library that
 exposes the model through the plain C interface consumed by
@@ -11,7 +11,7 @@ The core is the compile-time artifact.  It is built once against
 open — and the compiled library resolves them per instance:
 
 ```julia
-using ExaModels, ExaModelsC
+using ExaModels, ExaModelsCompiler
 
 c, N = ExaCore(nargs = Val(1))
 @add_var(c, x, N; start = 1.0)
@@ -72,7 +72,7 @@ They share the library file and, in a bundle, its one privatized ~80 MB Julia
 runtime — which is the reason to co-package a family of models rather than emit
 a library each.
 """
-module ExaModelsC
+module ExaModelsCompiler
 
 import ExaModels
 import JuliaC
@@ -570,14 +570,14 @@ function _schema_json(fields::Vector{Field})
         "]}" :
         """{"name":"$(f.name)","kind":"$(f.kind)","type":"$(f.type)"}"""
     end
-    return """{"abi":2,"fields":[""" * join(parts, ",") * "]}"
+    return """{"fields":[""" * join(parts, ",") * "]}"
 end
 
 # `P_new(n)` stays as the fast path: one integer placeholder needs no builder.
 _is_scalar_new(fields) =
     length(fields) == 1 && fields[1].kind == "scalar" && fields[1].type == "i64"
 
-# Everything else gets the schema + builder surface (ABI v2): the consumer
+# Everything else gets the schema + builder surface: the consumer
 # opens a builder, sets each field by name, and `P_new_from_data` reassembles
 # the `ExaModel` arguments exactly as the example values were given here.
 # `argspec` records that mapping — one entry per `ExaModel` positional
@@ -809,7 +809,7 @@ end
 # ── Generating the app package ────────────────────────────────────────────────
 
 function _generate_app(specs::Vector{ModelSpec}, libname::AbstractString)
-    appdir = mktempdir(; prefix = "examodelsc_")
+    appdir = mktempdir(; prefix = "examodelscompiler_")
     modname = _modname(libname)
     srcdir = joinpath(appdir, "src")
     mkpath(srcdir)
@@ -997,7 +997,7 @@ _nargs_value(::Union{Nothing, Symbol}) = 1
 # ── Generating one model's instantiation surface ─────────────────────────────
 #
 # A fixed or one-integer model gets `P_nargs` + `P_new(n)`.  Everything else
-# gets the schema + builder surface (ABI v2) and NO `P_new` — the consumers
+# gets the schema + builder surface and NO `P_new` — the consumers
 # rely on that disjointness to route a lone integer.  All storage is
 # concretely typed from the example values, so `--trim=safe` sees no dynamic
 # containers.
@@ -1159,7 +1159,7 @@ function _instantiation_source(p::AbstractString, bm::BuilderModel)
 
     return """
 $(_argkind_source(p, bm))
-    # ── builder for `$p` (schema + typed setters, ABI v2) ────────────────────
+    # ── builder for `$p` (schema + typed setters) ────────────────────────────
 
     const SCHEMA_$p = Vector{UInt8}($(repr(json)))
 
@@ -1319,6 +1319,152 @@ end
 # coexist in the one module: separate cores, separate instance tables,
 # separate ids. The entry points are `Base.@ccallable`, and juliac's
 # `add_ccallables` picks up all of them regardless of how many there are.
+# ── Publishing a model's named blocks ────────────────────────────────────────
+#
+# `@add_var(c, x, ...)` registers `x` in the core's `refs`, and a consumer that
+# only has a compiled library has no other way to know which slice of the
+# solution `x` occupies.  These accessors publish that: for each named
+# variable, constraint and parameter block, its kind, offset, length and dims.
+#
+# The layout is INSTANCE state, not library state — a recipe instantiated at
+# another size reports that size's offsets — which is why every accessor takes
+# an id.  Names are compile-time literals; only they need the copy-out
+# convention, so the numbers stay numeric and nothing formats a string inside
+# the compiled library.
+_block_kind(::ExaModels.AbstractVariable) = 0
+_block_kind(::ExaModels.AbstractConstraint) = 1
+_block_kind(::ExaModels.AbstractParameter) = 2
+_block_kind(_) = -1
+
+# Named blocks worth publishing, in `refs` order: variables, constraints and
+# parameters.  Objectives and subexpressions are named too, but they index no
+# solution vector, so a consumer has nothing to address them with.
+_layout_blocks(core) =
+    [(k, _block_kind(getfield(core.refs, k))) for k in keys(core.refs) if
+     _block_kind(getfield(core.refs, k)) >= 0]
+
+function _layout_source(p::AbstractString, core)
+    blocks = _layout_blocks(core)
+    n = length(blocks)
+
+    names = join((
+        """    const BNAME_$(p)_$(i) = Vector{UInt8}($(repr(String(k))))\n"""
+        for (i, (k, _)) in enumerate(blocks)
+    ))
+
+    name_arms = join((
+        """
+        if k == Cint($(i - 1))
+            b = BNAME_$(p)_$(i)
+            n = length(b)
+            m = min(Int(cap), n)
+            if m > 0 && buf != Ptr{UInt8}(0)
+                GC.@preserve b unsafe_copyto!(buf, pointer(b), m)
+            end
+            return Cint(n)
+        end
+"""
+        for (i, (k, _)) in enumerate(blocks)
+    ))
+
+    block_arms = join((
+        """
+        if k == Cint($(i - 1))
+            b = m.refs.$(k)
+            dims = ExaModels.size(getfield(b, :size))
+            unsafe_store!(out, Cint($(kind)), 1)
+            unsafe_store!(out, Cint(getfield(b, :offset)), 2)
+            unsafe_store!(out, Cint(ExaModels.total(getfield(b, :size))), 3)
+            unsafe_store!(out, Cint(length(dims)), 4)
+            for j in 1:length(dims)
+                unsafe_store!(out, Cint(dims[j]), 4 + j)
+            end
+            return Cint(0)
+        end
+"""
+        for (i, (k, kind)) in enumerate(blocks)
+    ))
+
+    par_arms = join((
+        """
+        if k == Cint($(i - 1))
+            b = m.refs.$(k)
+            o = getfield(b, :offset)
+            n = ExaModels.total(getfield(b, :size))
+            Int(len) == n || return Cint(3)
+            return _value_$(p)_rw(m, o, n, vals, get)
+        end
+"""
+        for (i, (k, kind)) in enumerate(blocks) if kind == 2
+    ))
+
+    return """
+    # ── named blocks of `$p` ─────────────────────────────────────────────────
+$names
+    # How many named blocks this model publishes.
+    Base.@ccallable function $(p)_nblocks(id::Cint)::Cint
+        _valid_$p(id) || return Cint(-1)
+        return Cint($n)
+    end
+
+    # The block's name, by the copy-out convention `$(p)_schema` uses:
+    # returns the needed byte length, copies what fits in `cap`.
+    Base.@ccallable function $(p)_block_name(id::Cint, k::Cint, buf::Ptr{UInt8}, cap::Cint)::Cint
+        _valid_$p(id) || return Cint(-1)
+$name_arms        return Cint(-1)
+    end
+
+    # `out` receives [kind, offset, length, ndims, dims...] — kind 0 = variable,
+    # 1 = constraint, 2 = parameter; offset is 0-based, as `solution` expects.
+    # A caller sizes `out` from `ndims` after a first call, or allocates
+    # generously: no model has more dimensions than it has blocks.
+    Base.@ccallable function $(p)_block(id::Cint, k::Cint, out::Ptr{Cint})::Cint
+        _valid_$p(id) || return Cint(1)
+        try
+            m = MODELS_$p[Int(id)]
+$block_arms            return Cint(1)
+        catch
+            return Cint(2)
+        end
+    end
+
+    # Parameters are live model state: `θ` is read and written in place, so a
+    # consumer can re-solve at new parameter values without rebuilding.
+    @inline function _value_$(p)_rw(m, o::Int, n::Int, vals::Ptr{Cdouble}, get::Bool)
+        w = unsafe_wrap(Array, vals, n)
+        if get
+            copyto!(w, view(m.θ, (o + 1):(o + n)))
+        else
+            copyto!(view(m.θ, (o + 1):(o + n)), w)
+        end
+        return Cint(0)
+    end
+
+    @inline function _value_$(p)_at(id::Cint, k::Cint, vals::Ptr{Cdouble}, len::Cint, get::Bool)
+        _valid_$p(id) || return Cint(1)
+        try
+            m = MODELS_$p[Int(id)]
+$par_arms            return Cint(1)
+        catch
+            return Cint(2)
+        end
+    end
+
+    # `get_value` / `set_value`, matching ExaModels' two-stage parameter
+    # vocabulary. Status 0 on success, 1 for a bad id or a block that is not
+    # a parameter, 3 for a length that disagrees with the block. Unlike
+    # ExaModels' `get_value`, this copies out rather than returning a view:
+    # the storage lives in the library's address space, not the caller's.
+    Base.@ccallable function $(p)_get_value(id::Cint, k::Cint, vals::Ptr{Cdouble}, len::Cint)::Cint
+        return _value_$(p)_at(id, k, vals, len, true)
+    end
+
+    Base.@ccallable function $(p)_set_value(id::Cint, k::Cint, vals::Ptr{Cdouble}, len::Cint)::Cint
+        return _value_$(p)_at(id, k, vals, len, false)
+    end
+"""
+end
+
 function _model_source(s::ModelSpec)
     p = s.prefix
     # A builder spec's example is the whole tuple of values, splatted back the
@@ -1343,6 +1489,7 @@ function _model_source(s::ModelSpec)
     @inline _valid_$p(id::Cint) = 1 <= id <= length(MODELS_$p)
 
 $(_instantiation_source(p, s.field))
+$(_layout_source(p, s.core))
     Base.@ccallable function $(p)_nvar(id::Cint)::Cint
         _valid_$p(id) || return Cint(-1)
         return Cint(MODELS_$p[Int(id)].meta.nvar)
@@ -1594,4 +1741,4 @@ function _link(::Val{false}, img, libname, outdir)
     return (; libpath, outdir, libname)
 end
 
-end # module ExaModelsC
+end # module ExaModelsCompiler

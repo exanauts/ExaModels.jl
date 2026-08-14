@@ -18,7 +18,7 @@
 # placeholders *is* the separation that compilation requires: what stays in the
 # core becomes code, what goes into the arguments crosses the boundary as data.
 # A recipe that builds and instantiates is on the compilation pathway, and the
-# author never reasons about trimming.  `ExaModelsC` takes it from there —
+# author never reasons about trimming.  `ExaModelsCompiler` takes it from there —
 # shared library, C ABI, consumed by CNLPModels.jl or cnlpmodels.
 #
 # The same mechanism happens to make one core reusable at any size, which is
@@ -223,7 +223,7 @@ true
 # instantiate boundary: 6 verifier errors, reproduced and bisected to this
 # hunk alone (6 → 0 on the swap, real COPS gasoil as the instrument). The
 # ARGUMENTS ride the specialized `Vararg{Any,N}`. Inverting either role
-# reintroduces the widening; the ExaModelsC suite's models are too small
+# reintroduces the widening; the ExaModelsCompiler suite's models are too small
 # and too homogeneous to see it — the COPS CI pin on this branch is the
 # regression gate for this class.
 @inline _instantiate_each(::Tuple{}, a::Vararg{Any,N}) where {N} = ()

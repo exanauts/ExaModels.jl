@@ -341,12 +341,12 @@ jobs:
             benchmark/comparison.txt
             benchmark/pr_number.txt
 
-  # ExaModelsC compiles a model into a native shared library with juliac, so it
+  # ExaModelsCompiler compiles a model into a native shared library with juliac, so it
   # is platform-specific in a way the rest of the package is not. Not on GPU
   # runners, where it is not expected to work yet, and not on Windows: juliac
   # implements runtime privatization only for Linux and macOS, so a library
   # compiled there cannot be loaded back into Julia (see `compile_library`).
-  examodelsc:
+  examodelscompiler:
     strategy:
       fail-fast: false
       matrix:
@@ -355,7 +355,7 @@ jobs:
             name: linux
           - runner: '["self-hosted","macOS"]'
             name: macos
-    name: examodelsc (${{ matrix.name }})
+    name: examodelscompiler (${{ matrix.name }})
     runs-on: ${{ fromJSON(matrix.runner) }}
     steps:
       - uses: actions/checkout@v4
@@ -377,20 +377,20 @@ jobs:
       # on a self-hosted Mac does not exist (`mkdir: Permission denied`), and
       # takes the job with it. The runners have their own Python; the test
       # probes for one with numpy and skips that leg when it finds none.
-      - name: Run ExaModelsC tests
+      - name: Run ExaModelsCompiler tests
         env:
           CNLPMODELS_PY: ${{ github.workspace }}/cnlpmodels-py/src
-        # The linux leg is instrumented so ExaModelsC/src reaches the coverage
+        # The linux leg is instrumented so ExaModelsCompiler/src reaches the coverage
         # report; the mac leg runs the same tests uninstrumented.
         run: |
-          julia --startup-file=no --color=yes ${{ matrix.name == 'linux' && '--code-coverage=user' || '' }} --project=ExaModelsC/test -e '
+          julia --startup-file=no --color=yes ${{ matrix.name == 'linux' && '--code-coverage=user' || '' }} --project=ExaModelsCompiler/test -e '
             using Pkg
             Pkg.instantiate()
-            include("ExaModelsC/test/runtests.jl")'
+            include("ExaModelsCompiler/test/runtests.jl")'
       - uses: julia-actions/julia-processcoverage@v1
         if: matrix.name == 'linux'
         with:
-          directories: ExaModelsC/src
+          directories: ExaModelsCompiler/src
       - uses: codecov/codecov-action@v5
         if: matrix.name == 'linux'
         with:
