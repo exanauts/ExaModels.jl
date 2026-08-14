@@ -1,10 +1,12 @@
 """
     ExaModelsCompiler
 
-Compile an [`ExaModels.ExaCore`](@ref) into a shared library that
-exposes the model through the plain C interface consumed by
-[CNLPModels.jl](https://github.com/MadNLP/CNLPModels.jl) (and its Python twin
-`cnlpmodels`).
+Compile an [`ExaModels.ExaCore`](@ref) into a shared library implementing
+**cnlp ABI v0.1** — the plain C interface specified by
+[`cnlp.h` in madsuite-org/cnlp-abi](https://github.com/madsuite-org/cnlp-abi/blob/v0.1/cnlp.h)
+and consumed by
+[CNLPModels.jl](https://github.com/madsuite-org/CNLPModels.jl) (and its Python
+twin `cnlpmodels`).
 
 The core is the compile-time artifact.  It is built once against
 [`ExaModels.ArgSource`](@ref) placeholders — sizes, starting points and bounds left
@@ -30,10 +32,10 @@ statically, so the example fixes what `N` *is* (an `Int`) while leaving what it
 The C interface is the one implemented by two companion packages, neither of
 which is part of ExaModels:
 
-  - [CNLPModels.jl](https://github.com/MadNLP/CNLPModels.jl) — loads the library
+  - [CNLPModels.jl](https://github.com/madsuite-org/CNLPModels.jl) — loads the library
     as an `NLPModels.AbstractNLPModel`, so any JuliaSmoothOptimizers-compatible
     solver can solve it.
-  - [cnlpmodels](https://github.com/MadNLP/cnlpmodels-py) — the same consumer
+  - [cnlpmodels](https://github.com/madsuite-org/cnlpmodels-py) — the same consumer
     for Python, over ctypes and numpy, needing no Julia runtime on the caller's
     side.
 
