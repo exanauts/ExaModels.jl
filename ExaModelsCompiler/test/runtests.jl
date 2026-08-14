@@ -33,6 +33,11 @@ const OUT = get(ENV, "EXAMODELSCOMPILER_TEST_OUT", joinpath(tempdir(), "examodel
 # the world has advanced by the time the guard's preceding probe calls it.
 Main.eval(:(script_argfun(n) = (Int(n),)))
 
+# A stand-in provider for the `compile_all` template: a package implements the
+# `Val` form, and this stands where that method would be. Defined here so the
+# world has advanced by the time the testset calls it.
+ExaModelsCompiler.compile_all(::Val{Main}; path = "x", kwargs...) = (path, :fromval)
+
 # A recipe whose blocks are all NAMED — a variable, a parameter and a
 # constraint — so the compiled library has a layout to publish and live
 # parameter state to read and write.
@@ -490,6 +495,31 @@ function runtests()
                 OUT, :a => (c, 4), :b => c)
             # `prefix =` has no meaning when the names supply the prefixes.
             @test_throws MethodError compile_library(OUT, :a => (c, 4); prefix = "z")
+        end
+
+        @testset "compile_all is a template packages implement" begin
+            # A package that has not implemented it says so, and says where it
+            # would go — the likely cause is an extension that is not loaded.
+            @test_throws "does not implement `compile_all`" ExaModelsCompiler.compile_all(
+                Val(Base); path = "/tmp/nope")
+            # A package implements the `Val` form; callers name the package
+            # and the wrapper forwards. (The stand-in method is defined at the
+            # top of this file: a method defined inside the testset would be
+            # too new for a call in the same scope to see.)
+            @test ExaModelsCompiler.compile_all(Val(Main); path = "y") == ("y", :fromval)
+            @test ExaModelsCompiler.compile_all(Main; path = "y") == ("y", :fromval)
+
+            # `select` is the shared half: the same `only`/`exclude` contract
+            # for every provider, and a typo is refused rather than quietly
+            # compiling a library with a model missing.
+            models = [:a => (1,), :b => (2,), :c => (3,)]
+            @test first.(ExaModelsCompiler.select(models)) == [:a, :b, :c]
+            @test first.(ExaModelsCompiler.select(models; only = [:c, :a])) == [:a, :c]
+            @test first.(ExaModelsCompiler.select(models; exclude = ["b"])) == [:a, :c]
+            @test first.(ExaModelsCompiler.select(models; only = [:a, :b], exclude = [:a])) == [:b]
+            @test_throws "no model named `d`" ExaModelsCompiler.select(models; only = [:d])
+            @test_throws "no model named `d`" ExaModelsCompiler.select(models; exclude = [:d])
+            @test_throws "selected no models" ExaModelsCompiler.select(models; only = [:a], exclude = [:a])
         end
 
         @testset "an argument function is checked before it is compiled" begin
