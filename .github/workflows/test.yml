@@ -9,8 +9,6 @@ permissions:
   contents: read
   issues: write
   pull-requests: write
-  # codecov-action authenticates its uploads over OIDC
-  id-token: write
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -53,7 +51,13 @@ jobs:
         if: matrix.julia-version == '1' && matrix.os == 'ubuntu-latest'
         with:
           files: lcov.info
-          use_oidc: true
+          # Each job covers a different slice of src; flag the uploads so
+          # Codecov merges the partial reports for a commit instead of
+          # treating each as a replacement. Token, not OIDC: OIDC uploads
+          # broke on the org transfer ("Repository not found") while
+          # token-authenticated uploads kept working.
+          flags: github
+          token: ${{ secrets.CODECOV_TOKEN }}
 
   cpu:
     strategy:
@@ -99,7 +103,8 @@ jobs:
       if: matrix.julia-version == '1'
       with:
         files: lcov.info
-        use_oidc: true
+        flags: cpu
+        token: ${{ secrets.CODECOV_TOKEN }}
 
   gpu:
     strategy:
@@ -164,7 +169,8 @@ jobs:
       if: matrix.julia-version == '1' && matrix.backend == 'cuda'
       with:
         files: lcov.info
-        use_oidc: true
+        flags: gpu-${{ matrix.backend }}
+        token: ${{ secrets.CODECOV_TOKEN }}
 
   metal:
     strategy:
@@ -395,4 +401,5 @@ jobs:
         if: matrix.name == 'linux'
         with:
           files: lcov.info
-          use_oidc: true
+          flags: examodelscompiler
+          token: ${{ secrets.CODECOV_TOKEN }}
