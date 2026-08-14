@@ -509,6 +509,18 @@ function runtests()
             @test ExaModelsCompiler.compile_all(Val(Main); path = "y") == ("y", :fromval)
             @test ExaModelsCompiler.compile_all(Main; path = "y") == ("y", :fromval)
 
+            # `select` is the shared half: the same `only`/`exclude` contract
+            # for every provider, and a typo is refused rather than quietly
+            # compiling a library with a model missing.
+            models = [:a => (1,), :b => (2,), :c => (3,)]
+            @test first.(ExaModelsCompiler.select(models)) == [:a, :b, :c]
+            @test first.(ExaModelsCompiler.select(models; only = [:c, :a])) == [:a, :c]
+            @test first.(ExaModelsCompiler.select(models; exclude = ["b"])) == [:a, :c]
+            @test first.(ExaModelsCompiler.select(models; only = [:a, :b], exclude = [:a])) == [:b]
+            @test_throws "no model named `d`" ExaModelsCompiler.select(models; only = [:d])
+            @test_throws "no model named `d`" ExaModelsCompiler.select(models; exclude = [:d])
+            @test_throws "selected no models" ExaModelsCompiler.select(models; only = [:a], exclude = [:a])
+
         end
 
         @testset "an argument function is checked before it is compiled" begin
