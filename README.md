@@ -34,6 +34,24 @@ Because the pattern and its data travel separately, the repetitive structure is 
 
 This is a deliberate trade relative to general algebraic modeling tools such as [JuMP](https://github.com/jump-dev/JuMP.jl) or [AMPL](https://ampl.com/): ExaModels.jl asks for the model equations in the structured iterator form above, and in exchange preserves the parallelizable structure end to end. Paired with a GPU-capable solver such as [MadNLP.jl](https://github.com/MadNLP/MadNLP.jl), the entire solution pipeline (model evaluation, derivatives, and the optimization itself) runs on the GPU.
 
+## Modeling libraries built on ExaModels.jl
+
+If you are planning to implement a modeling library with ExaModels.jl, these
+three are maintained as stylistic guidelines as much as model collections —
+consistent recipe/args/model structure, package extensions for each backend,
+`compile_all` support, and test suites that compare every model against a
+reference implementation:
+
+- [ExaModelsPower.jl](https://github.com/madsuite-org/ExaModelsPower.jl) —
+  AC/DC optimal power flow, multi-period and security-constrained variants,
+  instantiated from matpower case files.
+- [COPSBenchmark.jl](https://github.com/madsuite-org/COPSBenchmark.jl) — the
+  COPS test set (optimal control, parameter estimation, shape optimization),
+  seventeen models with sizes left open.
+- [LuksanVlcekBenchmark.jl](https://github.com/madsuite-org/LuksanVlcekBenchmark.jl)
+  — the Lukšan–Vlček unconstrained/sparse test problems, the simplest of the
+  three and the natural place to start reading.
+
 ## Citation
 
 If you use ExaModels.jl in your research, please cite:
