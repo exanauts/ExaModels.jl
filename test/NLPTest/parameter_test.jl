@@ -349,7 +349,10 @@ function test_parametric_vs_nonparametric(backend)
             m_param, c_param, (_, θ_param), _ =
                 exa_luksan_vlcek_parametric(backend, 3, M = 2, use_parameters = true)
             new_params = [75.0, 1.5, 4.0, 3.0, 6.0, 5.0, 2.0]
-            set_value!(c_param, θ_param, new_params)
+            # After the model is built, its parameters are ITS state: a model
+            # copies the core's θ when it is built, so setting values on the
+            # core would leave this model on the values it was built with.
+            set_value!(m_param, θ_param, new_params)
             m_nonparam, _, _, _ = exa_luksan_vlcek_parametric(
                 backend,
                 3,
