@@ -125,6 +125,24 @@ function test_add_par_dims(backend)
         @test g_vals ≈ [1.0, 5.0, 9.0]
     end
 
+    @testset "data-axis block sizes" begin
+        # A constraint may iterate a DATA collection (`for (i, tau) in nodes`),
+        # which then forms one axis of its block's size field. `size`/`total`
+        # must treat that axis like a range's — by its length — or every
+        # accessor downstream (multipliers, a compiled library's layout
+        # query) throws a MethodError. Six of COPS's seventeen models carry
+        # such an axis; catmix's collocation nodes found this.
+        c = ExaCore(; backend, concrete = Val(true))
+        c, x = add_var(c, 4; start = 1.0)
+        nodes = [(1, 0.5), (2, 1.5), (3, 2.5)]
+        c, s = add_con(c, x[t[1]] - t[2] for t in nodes, j in 1:2;
+                       lcon = -10.0, ucon = 10.0, name = Val(:dax))
+        m = ExaModel(c)
+        b = get_cons(m, :dax)
+        @test ExaModels.size(b.size) == (3, 2)
+        @test ExaModels.total(b.size) == 6
+    end
+
     @testset "set_value! with range-sized parameter" begin
         c = ExaCore(; backend, concrete = Val(true))
         c, θ = add_par(c, 2:4; value = ones(3))
