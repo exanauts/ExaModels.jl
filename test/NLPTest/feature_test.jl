@@ -141,6 +141,18 @@ function test_add_par_dims(backend)
         b = get_cons(m, :dax)
         @test ExaModels.size(b.size) == (3, 2)
         @test ExaModels.total(b.size) == 6
+        # A ZIP axis measures the same way — steering's boundary conditions,
+        # `for (i, v) in zip(2:4, angles)`, were the second iterator type to
+        # arrive as a swallowed status 2; the rule is now general (an axis is
+        # measured by its length) rather than per-type.
+        c2 = ExaCore(; backend, concrete = Val(true))
+        c2, y = add_var(c2, 6; start = 0.0)
+        c2, z = add_con(c2, y[i] - v for (i, v) in zip(2:4, [5.0, 45.0, 0.0]);
+                        lcon = 0.0, ucon = 0.0, name = Val(:zax))
+        m2 = ExaModel(c2)
+        b2 = get_cons(m2, :zax)
+        @test ExaModels.size(b2.size) == (3,)
+        @test ExaModels.total(b2.size) == 3
     end
 
     @testset "set_value! with range-sized parameter" begin

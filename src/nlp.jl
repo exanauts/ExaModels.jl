@@ -1035,15 +1035,15 @@ end
 @inline total(ns) = _total(ns...)
 @inline _total() = 1
 @inline _total(n, ns...) = _length(n) * _total(ns...)
-@inline _length(n::Int) = n
-@inline _length(n::UnitRange) = length(n)
-# A DATA axis: a constraint or objective may iterate a collection of data
-# points (`for (i, tau) in nodes`), and that collection is then one axis of
-# the block's size field. Its extent is its length, like a range's — without
-# this method, `size`/`total`/`multipliers` on such a block threw a
-# MethodError, so a compiled library's layout query failed (status 2) for
-# every model with a data-driven axis: six of COPS's seventeen.
-@inline _length(n::AbstractArray) = length(n)
+@inline _length(n::Integer) = Int(n)
+# Every other axis is measured by its LENGTH, whatever iterates it: a range,
+# a collection of data points (`for (i, tau) in nodes` — catmix's collocation
+# table), a zipped pair (`for (i, v) in zip(2:4, angles)` — steering's
+# boundary conditions). A number is the count itself (above), and a symbolic
+# node defers (below); everything else answers `length`. Enumerating iterator
+# types here was the losing game: each new model brought the next one, each
+# time as a swallowed status 2 in a compiled library's layout query.
+@inline _length(n) = length(n)
 @inline size(ns) = _size(ns...)
 @inline _size() = ()
 @inline _size(n, ns...) = (_length(n), _size(ns...)...)
