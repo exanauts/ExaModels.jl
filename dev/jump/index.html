@@ -23,11 +23,11 @@ em = ExaModel(jm; backend = CUDABackend())</code></pre><pre><code class="nohighl
          low/upp: ⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅ 0              low/upp: ⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅ 0     
            fixed: ⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅ 0                fixed: ████████████████████ 8     
           infeas: ⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅ 0               infeas: ⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅ 0     
-            nnzh: (-212.73% sparsity)   172             linear: ⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅ 0     
+            nnzh: (-81.82% sparsity)   100             linear: ⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅ 0     
                                                     nonlinear: ████████████████████ 8     
-                                                         nnzj: (  0.00% sparsity)   80    
+                                                         nnzj: ( 30.00% sparsity)   56    
                                                      lin_nnzj: (------% sparsity)         
-                                                     nln_nnzj: (  0.00% sparsity)   80    
+                                                     nln_nnzj: ( 30.00% sparsity)   56    
 
 </code></pre><p>Here, note that only scalar objective/constraints created via <code>@constraint</code> and <code>@objective</code> API are supported. Older syntax like <code>@NLconstraint</code> and <code>@NLobjective</code> are not supported. We can solve the model using any of the solvers supported by ExaModels. For example, we can use MadNLP. Note that <code>CUDSS</code> must be loaded alongside <code>MadNLPGPU</code>: it is the default linear solver for GPU sparse models and it triggers MadNLPGPU&#39;s CUDA extension, which provides the GPU KKT machinery.</p><pre><code class="language-julia hljs">using MadNLPGPU, CUDSS
 
@@ -37,8 +37,8 @@ using MadNLP, MadNLPGPU, CUDSS
 set_optimizer(jm, () -&gt; ExaModels.Optimizer(MadNLP.madnlp, CUDABackend()))
 optimize!(jm)</code></pre><pre><code class="nohighlight hljs">This is [34mMad[31mN[32mL[35mP[0m version v0.10.1, running with cuDSS v0.8.0
 
-Number of nonzeros in constraint Jacobian............:       80
-Number of nonzeros in Lagrangian Hessian.............:      172
+Number of nonzeros in constraint Jacobian............:       56
+Number of nonzeros in Lagrangian Hessian.............:      100
 
 Total number of variables............................:       10
                      variables with only lower bounds:        0
@@ -63,11 +63,11 @@ iter    objective    inf_pr   inf_du inf_compl lg(mu) lg(rg) alpha_pr ir ls
 Number of Iterations....: 7
 
                                    (scaled)                 (unscaled)
-Objective...............:   7.8690682927808842e-01    6.2323020878824611e+00
-Dual infeasibility......:   1.9831098458933383e-06    1.5706229979475241e-05
-Constraint violation....:   5.3643185135869229e-11    5.3643185135869229e-11
-Complementarity.........:   1.1122043961247867e-05    8.8086588173083111e-05
-Overall NLP error.......:   8.8086588173083111e-05    8.8086588173083111e-05
+Objective...............:   7.8690682927808719e-01    6.2323020878824513e+00
+Dual infeasibility......:   1.9831097457512215e-06    1.5706229186349676e-05
+Constraint violation....:   5.3644633338592335e-11    5.3644633338592335e-11
+Complementarity.........:   1.1122043961253367e-05    8.8086588173126682e-05
+Overall NLP error.......:   8.8086588173126682e-05    8.8086588173126682e-05
 
 Number of objective function evaluations              = 8
 Number of objective gradient evaluations              = 8
@@ -77,11 +77,11 @@ Number of Lagrangian Hessian evaluations              = 7
 Number of KKT factorizations                          = 7
 Number of KKT backsolves                              = 7
 
-Total wall secs in initialization                     =  1.188 s
+Total wall secs in initialization                     =  1.284 s
 Total wall secs in linear solver                      =  unavailable
-Total wall secs in NLP function evaluations           =  0.005 s
+Total wall secs in NLP function evaluations           =  0.009 s
 Total wall secs in solver (w/o init./fun./lin. alg.)  =  unavailable
-Total wall secs                                       =  8.417 s
+Total wall secs                                       =  8.856 s
 
 [32mEXIT: Optimal Solution Found (tol = 1.0e-04).[0m
-</code></pre><p>Again, only scalar objective/constraints created via <code>@constraint</code> and <code>@objective</code> API are supported. Older syntax like <code>@NLconstraint</code> and <code>@NLobjective</code> are not supported.</p><hr/><p><em>This page was generated using <a href="https://github.com/fredrikekre/Literate.jl">Literate.jl</a>.</em></p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../oracle/">« Oracle Constraints</a><a class="docs-footer-nextpage" href="../core/">API Manual »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.17.0 on <span class="colophon-date" title="Friday 14 August 2026 16:50">Friday 14 August 2026</span>. Using Julia version 1.12.6.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
+</code></pre><p>Again, only scalar objective/constraints created via <code>@constraint</code> and <code>@objective</code> API are supported. Older syntax like <code>@NLconstraint</code> and <code>@NLobjective</code> are not supported.</p><hr/><p><em>This page was generated using <a href="https://github.com/fredrikekre/Literate.jl">Literate.jl</a>.</em></p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../oracle/">« Oracle Constraints</a><a class="docs-footer-nextpage" href="../core/">API Manual »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.17.0 on <span class="colophon-date" title="Saturday 15 August 2026 17:20">Saturday 15 August 2026</span>. Using Julia version 1.12.7.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
