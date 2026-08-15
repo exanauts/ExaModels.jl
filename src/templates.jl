@@ -36,5 +36,8 @@ end
 # to avoid type privacy
 sort!(array; kwargs...) = Base.sort!(array; kwargs...)
 
-# MOI
-function Optimizer end
+# Placeholder for ExaModels.Optimizer
+global Optimizer
+
+# Placeholder for ExaModels.SIMDMode
+global SIMDMode
