@@ -1,769 +1,717 @@
 module ExaModelsMOI
 
-import ExaModels: ExaModels, NLPModels, SolverCore
+import ExaModels
+import MathOptInterface as MOI
 
-import MathOptInterface
-const MOI = MathOptInterface
-const MOIU = MathOptInterface.Utilities
-const MOIB = MathOptInterface.Bridges
+function __init__()
+    setglobal!(ExaModels, :Optimizer, Optimizer)
+    return
+end
 
-const SUPPORTED_FUNC_TYPE{T} = Union{
-    MOI.ScalarAffineFunction{T},
-    MOI.ScalarQuadraticFunction{T},
-    MOI.ScalarNonlinearFunction,
-}
-const SUPPORTED_FUNC_TYPE_WITH_VAR{T} = Union{SUPPORTED_FUNC_TYPE{T},MOI.VariableIndex}
-const SUPPORTED_FUNC_SET_TYPE{T} =
-    Union{MOI.GreaterThan{T},MOI.LessThan{T},MOI.EqualTo{T},MOI.Interval{T}}
-const SUPPORTED_VAR_SET_TYPE{T} =
-    Union{MOI.GreaterThan{T},MOI.LessThan{T},MOI.EqualTo{T},MOI.Parameter{T}}
-const PARAMETER_INDEX_THRESHOLD = Int64(4_611_686_018_427_387_904) # div(typemax(Int64),2)+1
-"""
-    Abstract data structure for storing expression tree and data arrays
-"""
-abstract type AbstractBin end
+const PARAMETER_INDEX_THRESHOLD = div(typemax(Int64), 2) + 1
 
 """
-    struct Bin{E,P,I} <: AbstractBin
+    struct Bin{E,P}
+        head::E
+        data::Vector{P}
+    end
 
-This linked list with `inner` represents a sum of expressions `∑_{i in data} head(i)`
-It is a linked list and not a `Vector` as each `head` may have a different type.
-We append new ones at the beginning because `Bin` is non-mutable and
-its fields are concretely typed.
+This struct represents `head(d) for d in data`
+
+`head` will be one of two things:
+
+ 1) `DataIndexed() => e`: this means that the generator is a constraint
+    augmentation. It maps the row index to an expression. The `e` is a symbolic
+    function. This de-duplicates structural constraints, so two constraints with
+    the same symbolic form will get automatically added as elements to the
+    vector `data`.
+
+ 2) `e::ExaModels.AbstractNode`: this means that the generator is part of a
+    summation. This is used for the objective function.
 """
-struct Bin{E,P,I} <: AbstractBin
+struct Bin{E,P}
     head::E
-    data::P
-    inner::I
+    data::Vector{P}
 end
 
-struct BinNull <: AbstractBin end
+"""
+    update_bin!(bin::Vector{Bin}, head, data)
 
-function update_bin!(bin, e, p)
-    if _update_bin!(bin, e, p) # if update succeeded, return the original bin
-        return bin
-    else # if update has failed, return a new bin
-        return Bin(e, [p], bin)
+This function loops thorugh the list of `bin` looking for a matching `head`. If
+found, it updates the bin in place. Othersise, it appends a new bin.
+"""
+function update_bin!(
+    bins::Vector{Bin},
+    head::Union{
+        ExaModels.AbstractNode,
+        Pair{<:ExaModels.AbstractNode,<:ExaModels.AbstractNode},
+    },
+    data::Tuple,
+)
+    for bin in bins
+        if _update_bin!(bin, head, data)
+            return
+        end
     end
+    push!(bins, Bin(head, [data]))
+    return bins
 end
-function _update_bin!(bin::Bin{E,P,I}, e, p) where {E,P,I}
-    if e == bin.head && p isa eltype(bin.data)
-        push!(bin.data, p)
+
+# The types match for `head(data)` to be appended to this bin. We check if the
+# head's match with `==`, otherwise we recurse to the next bin.
+function _update_bin!(bin::Bin{E,P}, head::E, data::P) where {E,P}
+    if head == bin.head
+        push!(bin.data, data)
         return true
-    else
-        return _update_bin!(bin.inner, e, p)
     end
-end
-function _update_bin!(::BinNull, e, p)
     return false
 end
 
-function check_supported(T, moim)
-    con_types = MOI.get(moim, MOI.ListOfConstraintTypesPresent())
-    for (F, S) in con_types
-        !(F <: SUPPORTED_FUNC_TYPE_WITH_VAR) && error("Unsupported function type $F.")
-        if F <: MOI.VariableIndex
-            !(S <: SUPPORTED_VAR_SET_TYPE) &&
-                error("Unsupported variable index constraint $F in $S")
-        else
-            !(S <: SUPPORTED_FUNC_SET_TYPE) && error("Unsupported set type $S")
-        end
-    end
+# The head does not match. We can't update this bin in-place.
+_update_bin!(::Bin, ::Any, ::Any) = false
 
-    obj_type = MOI.get(moim, MOI.ObjectiveFunctionType())
-    !(obj_type <: SUPPORTED_FUNC_TYPE_WITH_VAR) &&
-        error("Unsupported objective function type $obj_type.")
-
-    obj_sense = MOI.get(moim, MOI.ObjectiveSense())
-    !(obj_sense in (MOI.MIN_SENSE, MOI.MAX_SENSE)) &&
-        error("Unsupported objective sense $obj_sense.")
-    return obj_sense === MOI.MIN_SENSE
+# A method for the objective function. First convert the MOI function `f` into
+# an `ExaModels.AbstractNode`, then add that.
+function update_bin!(bins::Vector{Bin}, f)
+    head, data = _exafy(f, (), nothing)
+    return update_bin!(bins, head, data)
 end
 
+# A method for adding to a constraint. First convert the MOI function `f` into
+# an `ExaModels.AbstractNode`, then add that.
+function update_bin!(bins::Vector{Bin}, (row, f)::Pair{Int,F}) where {F}
+    head, data = _exafy(f, (), nothing)
+    e = ExaModels.DataIndexed(ExaModels.DataSource(), length(data) + 1)
+    return update_bin!(bins, e => head, (data..., row))
+end
+
+# This is a type that lets us dispatch on the difference between `row => expr`
+# and `expr`.
+abstract type AbstractBin end
+
+# This is an `expr`. It gets added to the objective.
+struct ObjectiveBin <:AbstractBin end
+
+# Things are passed through unchanged.
+(::ObjectiveBin)(f) = f
+
+# Except objective constants are passed as `Null`.
+(::ObjectiveBin)(f::Real) = ExaModels.Null(f)
+
+# This is a `row => expr`. We keep the row in a closure.
+struct ConstraintBin <: AbstractBin
+    row::Int
+end
+
+# When passing, we convert to a pair.
+(bin::ConstraintBin)(f) = bin.row => f
+
+# VariableIndices are handled directly.
+function update_bin!(
+    bins::Vector{Bin},
+    fn::AbstractBin,
+    f::Union{Real,MOI.VariableIndex},
+)
+    return update_bin!(bins, fn(f))
+end
+
+# Add the additive terms separately, instead of creating a single +(args...)
+# expression.
+function update_bin!(
+    bins::Vector{Bin},
+    fn::AbstractBin,
+    f::MOI.ScalarAffineFunction,
+)
+    for term in f.terms
+        update_bin!(bins, fn(term))
+    end
+    if !iszero(f.constant)
+        update_bin!(bins, fn(f.constant))
+    end
+    return bins
+end
+
+# Add the additive terms separately, instead of creating a single +(args...)
+# expression.
+function update_bin!(
+    bins::Vector{Bin},
+    fn::AbstractBin,
+    f::MOI.ScalarQuadraticFunction,
+)
+    for term in f.affine_terms
+        update_bin!(bins, fn(term))
+    end
+    for term in f.quadratic_terms
+        update_bin!(bins, fn(term))
+    end
+    if !iszero(f.constant)
+        update_bin!(bins, fn(f.constant))
+    end
+    return bins
+end
+
+_is_zero(x::Real) = iszero(x)
+
+_is_zero(::Any) = false
+
+function update_bin!(
+    bins::Vector{Bin},
+    fn::AbstractBin,
+    f::MOI.ScalarNonlinearFunction,
+)
+    if f.head == :- && length(f.args) == 2
+        # Optimization: :(x - y) -> :(+(x, -y))
+        # This allows additive terms in the left-hand side to be added
+        # separately. This is a common case in JuMP because
+        # `@constraint(model, lhs <= rhs)` normalizes to `lhs - rhs <= 0`.
+        update_bin!(bins, fn, f.args[1])
+        if !_is_zero(f.args[2])
+            rhs = MOI.Utilities.operate(-, Float64, f.args[2])
+            update_bin!(bins, fn(rhs))
+        end
+        return bins
+    elseif f.head != :+
+        return update_bin!(bins, fn(f))
+    end
+    # Optimization: if the expression is a `:+`, add the child arguments as
+    # separate terms. This keeps the size of the expressions small for ExaModels.
+    constant = 0.0
+    for arg in f.args
+        if arg isa MOI.ScalarAffineFunction
+            for term in arg.terms
+                update_bin!(bins, fn(term))
+            end
+            constant += arg.constant
+        elseif arg isa MOI.ScalarQuadraticFunction
+            for term in arg.affine_terms
+                update_bin!(bins, fn(term))
+            end
+            for term in arg.quadratic_terms
+                update_bin!(bins, fn(term))
+            end
+            constant += arg.constant
+        else
+            # This is NOT fn(arg) here because we want to be able to lift any
+            # nested `+(+(args...), args....)`.
+            update_bin!(bins, fn, arg)
+        end
+    end
+    if !iszero(constant)
+        update_bin!(bins, fn(constant))
+    end
+    return bins
+end
+
+# _exafy
+
+# This method is used for objective constants.
+_exafy(f::ExaModels.Null, data::Tuple, ::Any) = f, data
+
+# This method is used when a constant appears in a function.
+function _exafy(f::Real, data::Tuple, ::Any)
+    e = ExaModels.DataIndexed(ExaModels.DataSource(), length(data) + 1)
+    return e, (data..., f)
+end
+
+function _exafy(
+    f::MOI.VariableIndex,
+    data::Tuple,
+    var_to_data::Union{Nothing,Dict{Int,Int}},
+)
+    if f.value > PARAMETER_INDEX_THRESHOLD
+        e = ExaModels.DataIndexed(ExaModels.DataSource(), length(data) + 1)
+        idx = f.value - PARAMETER_INDEX_THRESHOLD
+        return ExaModels.ParameterNode(e), (data..., idx)
+    end
+    if var_to_data !== nothing
+        # An optimization: the variable `f` may already appear in the tuple
+        # `data`. If so, we want to re-use the slot instead of appending a new
+        # element to `data`. (ExaModels could be clever here and check for
+        # duplicates.)
+        #
+        # We don't have this optimization for ParameterNode's because the main
+        # problem with duplicates are they they show up as duplicated elements
+        # in the Jacobian and Hessian.
+        if (pidx = get(var_to_data, f.value, nothing)) !== nothing
+            p_cache = ExaModels.DataIndexed(ExaModels.DataSource(), pidx)
+            return ExaModels.Var(p_cache), data
+        end
+        var_to_data[f.value] = length(data) + 1
+    end
+    e = ExaModels.DataIndexed(ExaModels.DataSource(), length(data) + 1)
+    return ExaModels.Var(e), (data..., f.value)
+end
+
+function _exafy(
+    f::MOI.ScalarAffineTerm,
+    data::Tuple,
+    var_to_data::Union{Nothing,Dict{Int,Int}},
+)
+    x_head, data = _exafy(f.variable, data, var_to_data)
+    c_head, data = _exafy(f.coefficient, data, var_to_data)
+    return c_head * x_head, data
+end
+
+# This method is used when a ScalarAffineFunction appears inside a
+# ScalarNonlinearFunction. For that reason we don't do anything clever with the
+# additive terms.
+function _exafy(
+    f::MOI.ScalarAffineFunction,
+    data::Tuple,
+    var_to_data::Union{Nothing,Dict{Int,Int}},
+)
+    head, data = _exafy(f.constant, data, var_to_data)
+    if !isempty(f.terms)
+        y = sum(begin
+            c1, data = _exafy(term, data, var_to_data)
+            c1
+        end for term in f.terms)
+        head += y
+    end
+    return head, data
+end
+
+function _exafy(
+    f::MOI.ScalarQuadraticTerm,
+    data::Tuple,
+    var_to_data::Union{Nothing,Dict{Int,Int}},
+)
+    if f.variable_1 == f.variable_2
+        x_head, data = _exafy(f.variable_1, data, var_to_data)
+        c_head, data = _exafy(f.coefficient / 2, data, var_to_data)
+        return c_head * abs2(x_head), data
+    end
+    x1_head, data = _exafy(f.variable_1, data, var_to_data)
+    x2_head, data = _exafy(f.variable_2, data, var_to_data)
+    c_head, data = _exafy(f.coefficient, data, var_to_data)
+    return c_head * x1_head * x2_head, data
+end
+
+# This method is used when a ScalarQuadraticFunction appears inside a
+# ScalarNonlinearFunction. For that reason we don't do anything clever with the
+# additive terms.
+function _exafy(
+    f::MOI.ScalarQuadraticFunction,
+    data::Tuple,
+    var_to_data::Union{Nothing,Dict{Int,Int}},
+)
+    head, data = _exafy(f.constant, data, var_to_data)
+    if !isempty(f.affine_terms)
+        head += sum(begin
+            c1, data = _exafy(term, data, var_to_data)
+            c1
+        end for term in f.affine_terms)
+    end
+    if !isempty(f.quadratic_terms)
+        head += sum(begin
+            c1, data = _exafy(term, data, var_to_data)
+            c1
+        end for term in f.quadratic_terms)
+    end
+    return head, data
+end
+
+function _exafy(f::MOI.ScalarNonlinearFunction, data::Tuple, ::Nothing)
+    # Replace the incoming `var_to_data === nothing` with a dictionary that maps
+    # the variable index with the element in `data`. This is used when there are
+    # repeated variable indices in `f`. See `_exafy(::VariableIndex, args...)`.
+    return _exafy(f, data, Dict{Int,Int}())
+end
+
+function _exafy(
+    f::MOI.ScalarNonlinearFunction,
+    data::Tuple,
+    var_to_data::Dict{Int,Int},
+)
+    # This assumes that we support only the default functions in `MOI.Nonlinear`
+    op = getfield(MOI.Nonlinear, f.head)
+    if length(f.args) == 1
+        # A special case when there is one argument.
+        arg, data = _exafy(only(f.args), data, var_to_data)
+        return op(arg), data
+    elseif length(f.args) == 2
+        # A special case when there are two arguments
+        arg1, data = _exafy(f.args[1], data, var_to_data)
+        arg2, data = _exafy(f.args[2], data, var_to_data)
+        return op(arg1, arg2), data
+    end
+    args = ()
+    for arg in f.args
+        head, data = _exafy(arg, data, var_to_data)
+        args = (args..., head)
+    end
+    return op(args...), data
+end
+
+"""
+    ExaModels.ExaModel(
+        src::MOI.ModelLike;
+        backend = nothing,
+        prod::Bool = false,
+        T = ExaModels.default_T(backend),
+    )
+
+Convert `src` to an `ExaModel`.
+"""
 function ExaModels.ExaModel(
-    moim::MOI.ModelLike;
+    src::MOI.ModelLike;
     backend = nothing,
     prod = false,
     T = ExaModels.default_T(backend),
-    )
-
-    c, _ = to_exacore(moim; backend = backend, T = T)
-    return ExaModels.ExaModel(c; prod = prod)
+)
+    dest = Optimizer{T}(nothing; backend)
+    MOI.copy_to(dest, src)
+    c = to_exacore(dest, backend)
+    return ExaModels.ExaModel(c; prod)
 end
 
-function to_exacore(moim::MOI.ModelLike; backend = nothing, T = Float64)
-    minimize = check_supported(T, moim)
+# Now comes the MOI interface
 
-    c = ExaModels.ExaCore(T; backend = backend, minimize = minimize, concrete = Val(true))
+"""
+    ExaModels.Optimizer(solver, backend = nothing)
 
-    c, var_to_idx = copy_variables!(c, moim, T)
-    c, con_to_idx = copy_constraints!(c, moim, var_to_idx, T)
-    c = copy_objective!(c, moim, var_to_idx)
+Create a new ExaModels.Optimizer object.
 
-    return c, (var_to_idx, con_to_idx)
-end
+## Examples
 
-function fill_variable_bounds!(moim, lvar, uvar, var_to_idx, T)
-    for ci in
-        MOI.get(moim, MOI.ListOfConstraintIndices{MOI.VariableIndex,MOI.GreaterThan{T}}())
-        vi = MOI.get(moim, MOI.ConstraintFunction(), ci)
-        lvar[var_to_idx[vi]] = MOI.get(moim, MOI.ConstraintSet(), ci).lower
-    end
-    for ci in
-        MOI.get(moim, MOI.ListOfConstraintIndices{MOI.VariableIndex,MOI.LessThan{T}}())
-        vi = MOI.get(moim, MOI.ConstraintFunction(), ci)
-        uvar[var_to_idx[vi]] = MOI.get(moim, MOI.ConstraintSet(), ci).upper
-    end
-    for ci in MOI.get(moim, MOI.ListOfConstraintIndices{MOI.VariableIndex,MOI.EqualTo{T}}())
-        vi = MOI.get(moim, MOI.ConstraintFunction(), ci)
-        fixed_val = MOI.get(moim, MOI.ConstraintSet(), ci).value
-        lvar[var_to_idx[vi]] = fixed_val
-        uvar[var_to_idx[vi]] = fixed_val
-    end
-end
+```julia-repl
+julia> import ExaModels, NLPModelsIpopt, KernelAbstractions
 
-function fill_variable_start!(moim, x0, param_vis)
-    var_to_idx = Dict{MOI.VariableIndex,Int}()
-    i = 0
-    for vi in MOI.get(moim, MOI.ListOfVariableIndices())
-        vi ∈ param_vis && continue
-        i += 1
-        var_to_idx[vi] = i
-        start = if MOI.supports(moim, MOI.VariablePrimalStart(), typeof(vi))
-            MOI.get(moim, MOI.VariablePrimalStart(), vi)
-        else
-            nothing
-        end
-        isnothing(start) && continue
-        x0[i] = start
-    end
-    return var_to_idx
-end
+julia> optimizer = () -> ExaModels.Optimizer(NLPModelsIpopt.ipopt);
 
-function _get_parameters(moim::MOI.ModelLike, T)
-    cis = MOI.get(moim, MOI.ListOfConstraintIndices{MOI.VariableIndex,MOI.Parameter{T}}())
-    parameters = Vector{Tuple{MOI.VariableIndex,MOI.Parameter{T}}}()
-    for ci in cis
-        vi = MOI.get(moim, MOI.ConstraintFunction(), ci)
-        set = MOI.get(moim, MOI.ConstraintSet(), ci)
-        push!(parameters, (vi, set))
-    end
-    sort!(parameters, by = x -> x[1].value)
-    return parameters
-end
-
-
-function copy_variables!(c, moim, T)
-    nvarpar = MOI.get(moim, MOI.NumberOfVariables())
-    parameters = _get_parameters(moim, T)
-    npar = length(parameters)
-    nvar = nvarpar - npar
-
-    x0 = zeros(T, nvar)
-    var_to_idx = fill_variable_start!(moim, x0, first.(parameters))
-
-    lvar = fill(T(-Inf), nvar)
-    uvar = fill(T(Inf), nvar)
-    fill_variable_bounds!(moim, lvar, uvar, var_to_idx, T)
-
-    c, _ = ExaModels.add_var(c, nvar; start = x0, lvar = lvar, uvar = uvar)
-
-    varpar_to_idx = Dict()
-    for (vi, i) in var_to_idx
-        varpar_to_idx[vi] = (type = :variable, idx = i)
-    end
-
-    if npar > 0
-        p0 = zeros(T, npar)
-        for (i, (vi, set)) in enumerate(parameters)
-            p0[i] = T(set.value)
-            varpar_to_idx[vi] = (type = :parameter, idx = i)
-        end
-        c, _ = ExaModels.add_par(c, p0)
-    end
-
-    return c, varpar_to_idx
-end
-
-function copy_objective!(c, moim, var_to_idx)
-    obj_type = MOI.get(moim, MOI.ObjectiveFunctionType())
-
-    bin = BinNull()
-    bin = exafy_obj(MOI.get(moim, MOI.ObjectiveFunction{obj_type}()), bin, var_to_idx)
-
-    return build_objective!(c, bin)
-end
-
-function copy_constraints!(c, moim, var_to_idx, T)
-    bin = BinNull()
-    offset = 0
-    lcon = zeros(T, 0)
-    ucon = zeros(T, 0)
-    y0 = zeros(T, 0)
-    con_to_idx = Dict{MOI.ConstraintIndex,Int}()
-
-    con_types = MOI.get(moim, MOI.ListOfConstraintTypesPresent())
-    for (F, S) in con_types
-        cis = MOI.get(moim, MOI.ListOfConstraintIndices{F,S}())
-        if F <: MOI.VariableIndex
-            for ci in cis
-                vi = MOI.get(moim, MOI.ConstraintFunction(), ci)
-                vartype, var_idx = var_to_idx[vi]
-                if vartype === :variable
-                    con_to_idx[ci] = var_idx
-                end
-            end
-            continue
-        end
-        bin, offset =
-            exafy_con(moim, cis, bin, offset, lcon, ucon, y0, var_to_idx, con_to_idx)
-    end
-    c, cons = ExaModels.add_con(c, offset; start = y0, lcon = lcon, ucon = ucon)
-    c = build_constraint!(c, cons, bin)
-
-    return c, con_to_idx
-end
-
-function _exafy_con(
-    i,
-    c::C,
-    bin,
-    var_to_idx,
-    con_to_idx;
-    pos = true,
-) where {C<:MOI.ScalarAffineFunction}
-    for mm in c.terms
-        e, p = _exafy(mm, var_to_idx)
-        e = pos ? e : -e
-        bin = update_bin!(
-            bin,
-            ExaModels.DataIndexed(ExaModels.DataSource(), length(p) + 1) => e,
-            (p..., con_to_idx[i]),
-        ) # augment data with constraint index
-    end
-    bin = update_bin!(bin, ExaModels.Null(c.constant), (1,))
-    return bin
-end
-function _exafy_con(
-    i,
-    c::C,
-    bin,
-    var_to_idx,
-    con_to_idx;
-    pos = true,
-) where {C<:MOI.ScalarQuadraticFunction}
-    for mm in c.affine_terms
-        e, p = _exafy(mm, var_to_idx)
-        e = pos ? e : -e
-        bin = update_bin!(
-            bin,
-            ExaModels.DataIndexed(ExaModels.DataSource(), length(p) + 1) => e,
-            (p..., con_to_idx[i]),
-        ) # augment data with constraint index
-    end
-    for mm in c.quadratic_terms
-        e, p = _exafy(mm, var_to_idx)
-        e = pos ? e : -e
-        bin = update_bin!(
-            bin,
-            ExaModels.DataIndexed(ExaModels.DataSource(), length(p) + 1) => e,
-            (p..., con_to_idx[i]),
-        ) # augment data with constraint index
-    end
-    bin = update_bin!(bin, ExaModels.Null(c.constant), (1,))
-    return bin
-end
-function _exafy_con(
-    i,
-    c::C,
-    bin,
-    var_to_idx,
-    con_to_idx;
-    pos = true,
-) where {C<:MOI.ScalarNonlinearFunction}
-    if c.head == :+
-        for mm in c.args
-            bin = _exafy_con(i, mm, bin, var_to_idx, con_to_idx)
-        end
-        # elseif c.head == :-
-        #     bin, offset = _exafy_con(i, c.args[1], bin, offset)
-        #     bin, offset = _exafy_con(i, c.args[2], bin, offset; pos = false)
-    else
-        e, p = _exafy(c, var_to_idx)
-        e = pos ? e : -e
-        bin = update_bin!(
-            bin,
-            ExaModels.DataIndexed(ExaModels.DataSource(), length(p) + 1) => e,
-            (p..., con_to_idx[i]),
-        ) # augment data with constraint index
-    end
-    return bin
-end
-function _exafy_con(i, c::C, bin, var_to_idx, con_to_idx; pos = true) where {C<:Real}
-    e =
-        pos ? ExaModels.DataIndexed(ExaModels.DataSource(), 1) :
-        -ExaModels.DataIndexed(ExaModels.DataSource(), 1)
-    bin = update_bin!(
-        bin,
-        ExaModels.DataIndexed(ExaModels.DataSource(), 2) => 0 * ExaModels.Var(1) + e,
-        (c, con_to_idx[i]),
-    )
-
-    return bin
-end
-
-function exafy_con(
-    moim,
-    cons::V,
-    bin,
-    offset,
-    lcon,
-    ucon,
-    y0,
-    var_to_idx,
-    con_to_idx,
-) where {V<:Vector{<:MOI.ConstraintIndex}}
-    l = length(cons)
-
-    resize!(lcon, offset + l)
-    resize!(ucon, offset + l)
-    resize!(y0, offset + l)
-    for (i, ci) in enumerate(cons)
-        func = MOI.get(moim, MOI.ConstraintFunction(), ci)
-        set = MOI.get(moim, MOI.ConstraintSet(), ci)
-        con_to_idx[ci] = offset + i
-        start = if MOI.supports(
-            moim, MOI.ConstraintPrimalStart(), typeof(ci)
-        )
-            MOI.get(moim, MOI.ConstraintPrimalStart(), ci)
-        else
-            nothing
-        end
-        _exafy_con_update_start(ci, start, y0, con_to_idx)
-        _exafy_con_update_vector(ci, set, lcon, ucon, con_to_idx)
-        bin = _exafy_con(ci, func, bin, var_to_idx, con_to_idx)
-    end
-    return bin, (offset += l)
-end
-
-function _exafy_con_update_start(i, start, y0, con_to_idx)
-    y0[con_to_idx[i]] = start
-end
-
-function _exafy_con_update_start(i, ::Nothing, y0, con_to_idx)
-    y0[con_to_idx[i]] = zero(eltype(y0))
-end
-
-function _exafy_con_update_vector(i, e::MOI.Interval{T}, lcon, ucon, con_to_idx) where {T}
-    lcon[con_to_idx[i]] = e.lower
-    ucon[con_to_idx[i]] = e.upper
-end
-
-function _exafy_con_update_vector(i, e::MOI.LessThan{T}, lcon, ucon, con_to_idx) where {T}
-    lcon[con_to_idx[i]] = -Inf
-    ucon[con_to_idx[i]] = e.upper
-end
-
-function _exafy_con_update_vector(
-    i,
-    e::MOI.GreaterThan{T},
-    lcon,
-    ucon,
-    con_to_idx,
-) where {T}
-    ucon[con_to_idx[i]] = Inf
-    lcon[con_to_idx[i]] = e.lower
-end
-
-function _exafy_con_update_vector(i, e::MOI.EqualTo{T}, lcon, ucon, con_to_idx) where {T}
-    lcon[con_to_idx[i]] = e.value
-    ucon[con_to_idx[i]] = e.value
-end
-
-
-function build_constraint!(c, cons, bin)
-    c = build_constraint!(c, cons, bin.inner)
-    c, _ = ExaModels.add_con!(c, cons, Base.Generator(_ -> bin.head, bin.data))
-    return c
-end
-
-function build_constraint!(c, cons, ::BinNull)
-    return c
-end
-
-function build_objective!(c, bin)
-    c = build_objective!(c, bin.inner)
-    c, _ = ExaModels.add_obj(c, bin.head, bin.data)
-    return c
-end
-
-function build_objective!(c, ::BinNull)
-    return c
-end
-
-function exafy_obj(o::Nothing, bin, var_to_idx)
-    return bin
-end
-
-function exafy_obj(o::MOI.VariableIndex, bin, var_to_idx)
-    e, p = _exafy(o, var_to_idx)
-    return update_bin!(bin, e, p)
-end
-
-function exafy_obj(o::MOI.ScalarQuadraticFunction{T}, bin, var_to_idx) where {T}
-    for m in o.affine_terms
-        e, p = _exafy(m, var_to_idx)
-        bin = update_bin!(bin, e, p)
-    end
-    for m in o.quadratic_terms
-        e, p = _exafy(m, var_to_idx)
-        bin = update_bin!(bin, e, p)
-    end
-
-    return update_bin!(bin, ExaModels.Null(o.constant), (1,))
-end
-
-function exafy_obj(o::MOI.ScalarAffineFunction{T}, bin, var_to_idx) where {T}
-    for m in o.terms
-        e, p = _exafy(m, var_to_idx)
-        bin = update_bin!(bin, e, p)
-    end
-
-    return update_bin!(bin, ExaModels.Null(o.constant), (1,))
-end
-
-function exafy_obj(o::MOI.ScalarNonlinearFunction, bin, var_to_idx)
-    constant = 0.0
-    if o.head == :+
-        for m in o.args
-            if m isa MOI.ScalarAffineFunction
-                for mm in m.terms
-                    e, p = _exafy(mm, var_to_idx)
-                    bin = update_bin!(bin, e, p)
-                end
-            elseif m isa MOI.ScalarQuadraticFunction
-                for mm in m.affine_terms
-                    e, p = _exafy(mm, var_to_idx)
-                    bin = update_bin!(bin, e, p)
-                end
-                for mm in m.quadratic_terms
-                    e, p = _exafy(mm, var_to_idx)
-                    bin = update_bin!(bin, e, p)
-                end
-                constant += m.constant
-            else
-                e, p = _exafy(m, var_to_idx)
-                bin = update_bin!(bin, e, p)
-            end
-        end
-    else
-        e, p = _exafy(o, var_to_idx)
-        bin = update_bin!(bin, e, p)
-    end
-
-    return update_bin!(bin, ExaModels.Null(constant), (1,)) # TODO see if this can be empty tuple
-end
-
-function _exafy(v::MOI.VariableIndex, var_to_idx, p = ())
-    i = ExaModels.DataIndexed(ExaModels.DataSource(), length(p) + 1)
-    vartype, idx = var_to_idx[v]
-    if vartype === :variable
-        return ExaModels.Var(i), (p..., idx)
-    elseif vartype === :parameter
-        return ExaModels.ParameterNode(i), (p..., idx)
-    else
-        error("Unknown variable type: $vartype")
-    end
-end
-
-function _exafy(i::R, var_to_idx, p) where {R<:Real}
-    return ExaModels.DataIndexed(ExaModels.DataSource(), length(p) + 1), (p..., i)
-end
-
-function _exafy(e::MOI.ScalarNonlinearFunction, var_to_idx, p = ())
-    return op(e.head)((begin
-        c, p = _exafy(e, var_to_idx, p)
-        c
-    end for e in e.args)...), p
-end
-
-function _exafy(e::MOI.ScalarAffineFunction{T}, var_to_idx, p = ()) where {T}
-    ec = if !isempty(e.terms)
-        sum(begin
-            c1, p = _exafy(term, var_to_idx, p)
-            c1
-        end for term in e.terms) +
-            ExaModels.DataIndexed(ExaModels.DataSource(), length(p) + 1)
-    else
-        ExaModels.DataIndexed(ExaModels.DataSource(), length(p) + 1)
-    end
-
-    return ec, (p..., e.constant)
-end
-
-function _exafy(e::MOI.ScalarAffineTerm{T}, var_to_idx, p = ()) where {T}
-    c1, p = _exafy(e.variable, var_to_idx, p)
-    return *(c1, ExaModels.DataIndexed(ExaModels.DataSource(), length(p) + 1)),
-    (p..., e.coefficient)
-end
-
-function _exafy(e::MOI.ScalarQuadraticFunction{T}, var_to_idx, p = ()) where {T}
-    t = ExaModels.DataIndexed(ExaModels.DataSource(), length(p) + 1)
-    p = (p..., e.constant)
-
-    if !isempty(e.affine_terms)
-        t += sum(begin
-            c1, p = _exafy(term, var_to_idx, p)
-            c1
-        end for term in e.affine_terms)
-    end
-
-    if !isempty(e.quadratic_terms)
-        t += sum(begin
-            c1, p = _exafy(term, var_to_idx, p)
-            c1
-        end for term in e.quadratic_terms)
-    end
-
-    return t, p
-end
-
-function _exafy(e::MOI.ScalarQuadraticTerm{T}, var_to_idx, p = ()) where {T}
-
-    if e.variable_1 == e.variable_2
-        v, p = _exafy(e.variable_1, var_to_idx, p)
-        return ExaModels.DataIndexed(ExaModels.DataSource(), length(p) + 1) * abs2(v),
-        (p..., e.coefficient / 2) # it seems that MOI assumes this by default
-    else
-        v1, p = _exafy(e.variable_1, var_to_idx, p)
-        v2, p = _exafy(e.variable_2, var_to_idx, p)
-        return ExaModels.DataIndexed(ExaModels.DataSource(), length(p) + 1) * v1 * v2,
-        (p..., e.coefficient)
-    end
-end
-
-# eval can be a performance killer -- we want to explicitly include symbols for frequently used operations.
-function op(s::Symbol)
-    # uni/multi
-    if s === :+
-        return +
-    elseif s === :-
-        return -
-        # multi
-    elseif s === :*
-        return *
-    elseif s === :^
-        return ^
-    elseif s === :/
-        return /
-        # uni
-    elseif s === :abs
-        return abs
-    elseif s === :sign
-        error("sign not supported")
-    elseif s === :sqrt
-        return sqrt
-    elseif s === :cbrt
-        return cbrt
-    elseif s === :abs2
-        return abs2
-    elseif s === :inv
-        return inv
-    elseif s === :log
-        return log
-    elseif s === :log10
-        return log10
-    elseif s === :log2
-        return log2
-    elseif s === :log1p
-        return log1p
-    elseif s === :exp
-        return exp
-    elseif s === :exp2
-        return exp2
-    elseif s === :expm1
-        error("expm1 not supported")
-        # trig
-    elseif s === :sin
-        return sin
-    elseif s === :cos
-        return cos
-    elseif s === :tan
-        return tan
-    elseif s === :sec
-        return sec
-    elseif s === :csc
-        return csc
-    elseif s === :cot
-        return cot
-    elseif s === :sind
-        return sind
-    elseif s === :cosd
-        return cosd
-    elseif s === :tand
-        return tand
-    elseif s === :secd
-        return secd
-    elseif s === :cscd
-        return cscd
-    elseif s === :cotd
-        return cotd
-    elseif s === :asin
-        return asin
-    elseif s === :acos
-        return acos
-    elseif s === :atan
-        return atan
-    elseif s === :asec
-        error("asec not supported")
-    elseif s === :acsc
-        error("acsc not supported")
-    elseif s === :acot
-        return acot
-    elseif s === :asind
-        error("asind not supported")
-    elseif s === :acosd
-        error("acosd not supported")
-    elseif s === :atand
-        return atand
-    elseif s === :asecd
-        error("aced not supported")
-    elseif s === :acscd
-        error("acscd not supported")
-    elseif s === :acotd
-        return acotd
-    elseif s === :sinh
-        return sinh
-    elseif s === :cosh
-        return cosh
-    elseif s === :tanh
-        return tanh
-    elseif s === :sech
-        return sech
-    elseif s === :csch
-        return csch
-    elseif s === :coth
-        return coth
-    elseif s === :asinh
-        return asinh
-    elseif s === :acosh
-        return acosh
-    elseif s === :atanh
-        return atanh
-    elseif s === :asech
-        error("asech not supported")
-    elseif s === :acsch
-        error("acsch not supported")
-    elseif s === :acoth
-        return acoth
-        # special (commented will use `eval` which would succeed if SpecialFunctions is loaded)
-    elseif s === :deg2rad
-        error("deg2rad not supported")
-    elseif s === :rad2deg
-        error("rad2deg not supported")
-        # elseif s === :erf          error("erf not supported")
-        # elseif s === :erfinv       error("erfinv not supported")
-        # elseif s === :erfc         error("erfc not supported")
-        # elseif s === :erfcinv      error("erfcinv not supported")
-        # elseif s === :erfi         error("erfi not supported")
-        # elseif s === :gamma        error("gamma not supported")
-    elseif s === :lgamma
-        error("lgamma not supported")
-        # elseif s === :digamma      error("digamma not supported")
-        # elseif s === :invdigamma   error("invdigamma not supported")
-        # elseif s === :trigamma     error("trigamma not supported")
-        # elseif s === :airyai       error("airyai not supported")
-        # elseif s === :airybi       error("airybi not supported")
-        # elseif s === :airyaiprime  error("airyaiprime not supported")
-        # elseif s === :airybiprime  error("airybiprime not supported")
-        # elseif s === :besselj0     error("besselj0 not supported")
-        # elseif s === :besselj1     error("besselj1 not supported")
-        # elseif s === :bessely0     error("bessely0 not supported")
-        # elseif s === :bessely1     error("bessely1 not supported")
-        # elseif s === :erfcx        error("erfcx not supported")
-        # elseif s === :dawson       error("dawson not supported")
-
-        # not in MOI
-    elseif s === :exp10
-        return exp10
-    elseif s === :beta
-        return beta
-    elseif s === :logbeta
-        return logbeta
-    else
-        return eval(s)
-    end
-end
-
-
-# struct EmptyOptimizer{B}
-#     backend::B
-# end
-mutable struct Optimizer{B,S} <: MOI.AbstractOptimizer
-    solver::S
-    backend::B
-    model::Union{Nothing,ExaModels.ExaModel}
+julia> optimizer = () -> ExaModels.Optimizer(NLPModelsIpopt.ipopt, KernelAbstractions.CPU());
+```
+"""
+mutable struct Optimizer{T} <: MOI.AbstractOptimizer
+    solver::Any
+    backend::Any
     result::Any
     solve_time::Float64
     options::Dict{Symbol,Any}
+    # Problem cache
+    sense::MOI.OptimizationSense
+    lvar::Vector{T}
+    uvar::Vector{T}
+    startvar::Vector{T}
+    pstart::Vector{T}
+    lcon::Vector{T}
+    ucon::Vector{T}
+    objs::Vector{Bin}
+    cons::Vector{Bin}
+
+    function Optimizer{T}(solver, backend = nothing; kwargs...) where {T}
+        return new(
+            solver,
+            backend,
+            nothing,
+            0.0,
+            Dict{Symbol,Any}(kwargs...),
+            # Problem cache
+            MOI.FEASIBILITY_SENSE,
+            T[],
+            T[],
+            T[],
+            T[],
+            T[],
+            T[],
+            Bin[],
+            Bin[],
+        )
+    end
 end
 
-MOI.is_empty(model::Optimizer) = isnothing(model.model)
-
-function MOI.supports_constraint(
-    ::Optimizer,
-    ::Type{<:SUPPORTED_FUNC_TYPE},
-    ::Type{<:SUPPORTED_FUNC_SET_TYPE},
-)
-    return true
-end
-function MOI.supports_constraint(
-    ::Optimizer,
-    ::Type{MOI.VariableIndex},
-    ::Type{<:SUPPORTED_VAR_SET_TYPE},
-)
-    return true
-end
-function MOI.supports(::Optimizer, ::MOI.ObjectiveSense)
-    return true
-end
-function MOI.supports(::Optimizer, ::MOI.ObjectiveFunction{<:SUPPORTED_FUNC_TYPE_WITH_VAR})
-    return true
-end
-function MOI.supports(::Optimizer, ::MOI.VariablePrimalStart, ::Type{MOI.VariableIndex})
-    return true
-end
-
-function ExaModels.Optimizer(solver, backend = nothing; kwargs...)
-    return Optimizer(solver, backend, nothing, nothing, 0.0, Dict{Symbol,Any}(kwargs...))
+function Optimizer(solver, backend = nothing; kwargs...)
+    T = ExaModels.default_T(backend)
+    return Optimizer{T}(solver, backend; kwargs...)
 end
 
 function MOI.empty!(model::ExaModelsMOI.Optimizer)
-    model.model = nothing
+    model.result = nothing
+    model.solve_time = 0.0
+    model.sense = MOI.FEASIBILITY_SENSE
+    empty!(model.lvar)
+    empty!(model.uvar)
+    empty!(model.startvar)
+    empty!(model.pstart)
+    empty!(model.lcon)
+    empty!(model.ucon)
+    empty!(model.cons)
+    empty!(model.objs)
+    return
 end
+
+function MOI.is_empty(model::Optimizer)
+    return isempty(model.lvar) &&
+           isempty(model.pstart) &&
+           isempty(model.cons) &&
+           isempty(model.objs)
+end
+
+# MOI.ObjectiveSense
+
+MOI.supports(::Optimizer, ::MOI.ObjectiveSense) = true
+
+MOI.get(model::Optimizer, ::MOI.ObjectiveSense) = model.sense
+
+function MOI.set(
+    model::Optimizer,
+    ::MOI.ObjectiveSense,
+    sense::MOI.OptimizationSense,
+)
+    model.sense = sense
+    if sense == MOI.FEASIBILITY_SENSE
+        empty!(model.objs)
+    end
+    return
+end
+
+# MOI.ObjectiveFunction
+
+function MOI.supports(
+    ::Optimizer{T},
+    ::MOI.ObjectiveFunction{F},
+) where {
+    T,
+    F<:Union{
+        MOI.VariableIndex,
+        MOI.ScalarAffineFunction{T},
+        MOI.ScalarQuadraticFunction{T},
+        MOI.ScalarNonlinearFunction,
+    },
+}
+    return true
+end
+
+function MOI.set(
+    model::Optimizer{T},
+    ::MOI.ObjectiveFunction{F},
+    f::F,
+) where {
+    T,
+    F<:Union{
+        MOI.VariableIndex,
+        MOI.ScalarAffineFunction{T},
+        MOI.ScalarQuadraticFunction{T},
+        MOI.ScalarNonlinearFunction,
+    },
+}
+    empty!(model.objs)
+    update_bin!(model.objs, ObjectiveBin(), f)
+    return
+end
+
+# MOI.add_variable
+
+function MOI.add_variable(model::Optimizer{T}) where {T}
+    push!(model.lvar, typemin(T))
+    push!(model.uvar, typemax(T))
+    push!(model.startvar, zero(T))
+    return MOI.VariableIndex(length(model.lvar))
+end
+
+# MOI.add_constrained_variable
+
+function MOI.supports_add_constrained_variable(
+    ::Optimizer{T},
+    ::Type{MOI.Parameter{T}},
+) where {T}
+    return true
+end
+
+function MOI.add_constrained_variable(
+    model::Optimizer{T},
+    set::MOI.Parameter{T},
+) where {T}
+    push!(model.pstart, set.value)
+    index = PARAMETER_INDEX_THRESHOLD + length(model.pstart)
+    ci = MOI.ConstraintIndex{MOI.VariableIndex,typeof(set)}(index)
+    return MOI.VariableIndex(index), ci
+end
+
+# VariableIndex-in-Set constraints
+
+function MOI.supports_constraint(
+    ::Optimizer{T},
+    ::Type{MOI.VariableIndex},
+    ::Type{S},
+) where {
+    T,
+    S<:Union{
+        MOI.GreaterThan{T},
+        MOI.LessThan{T},
+        MOI.EqualTo{T},
+        MOI.Interval{T},
+    },
+}
+    return true
+end
+
+function _update_bound(model::Optimizer, col::Int, set::MOI.GreaterThan)
+    model.lvar[col] = set.lower
+    return
+end
+
+function _update_bound(model::Optimizer, col::Int, set::MOI.LessThan)
+    model.uvar[col] = set.upper
+    return
+end
+
+function _update_bound(model::Optimizer, col::Int, set::MOI.EqualTo)
+    model.lvar[col] = model.uvar[col] = set.value
+    return
+end
+
+function _update_bound(model::Optimizer, col::Int, set::MOI.Interval)
+    model.lvar[col], model.uvar[col] = set.lower, set.upper
+    return
+end
+
+function MOI.add_constraint(
+    model::Optimizer{T},
+    f::MOI.VariableIndex,
+    s::Union{
+        MOI.GreaterThan{T},
+        MOI.LessThan{T},
+        MOI.EqualTo{T},
+        MOI.Interval{T},
+    },
+) where {T}
+    @assert f.value < PARAMETER_INDEX_THRESHOLD
+    _update_bound(model, f.value, s)
+    return MOI.ConstraintIndex{typeof(f),typeof(s)}(f.value)
+end
+
+# MOI.VariablePrimalStart
+
+function MOI.supports(
+    ::Optimizer,
+    ::MOI.VariablePrimalStart,
+    ::Type{MOI.VariableIndex},
+)
+    return true
+end
+
+function MOI.set(
+    model::Optimizer{T},
+    ::MOI.VariablePrimalStart,
+    x::MOI.VariableIndex,
+    value::Union{Nothing,T},
+) where {T}
+    @assert x.value < PARAMETER_INDEX_THRESHOLD
+    model.startvar[x.value] = something(value, zero(T))
+    return
+end
+
+# Function-in-Set constraints
+
+function MOI.supports_constraint(
+    ::Optimizer{T},
+    ::Type{F},
+    ::Type{S},
+) where {
+    T,
+    F<:Union{
+        MOI.ScalarAffineFunction{T},
+        MOI.ScalarQuadraticFunction{T},
+        MOI.ScalarNonlinearFunction,
+    },
+    S<:Union{
+        MOI.GreaterThan{T},
+        MOI.LessThan{T},
+        MOI.EqualTo{T},
+        MOI.Interval{T},
+    },
+}
+    return true
+end
+
+_bounds(s::MOI.Interval) = (s.lower, s.upper)
+
+_bounds(s::MOI.EqualTo) = (s.value, s.value)
+
+_bounds(s::MOI.GreaterThan{T}) where {T} = (s.lower, typemax(T))
+
+_bounds(s::MOI.LessThan{T}) where {T} = (typemin(T), s.upper)
+
+function MOI.add_constraint(
+    model::Optimizer{T},
+    f::Union{
+        MOI.ScalarAffineFunction{T},
+        MOI.ScalarQuadraticFunction{T},
+        MOI.ScalarNonlinearFunction,
+    },
+    s::Union{
+        MOI.GreaterThan{T},
+        MOI.LessThan{T},
+        MOI.EqualTo{T},
+        MOI.Interval{T},
+    },
+) where {T}
+    row = length(model.lcon) + 1
+    update_bin!(model.cons, ConstraintBin(row), f)
+    l, u = _bounds(s)
+    push!(model.lcon, l)
+    push!(model.ucon, u)
+    return MOI.ConstraintIndex{typeof(f),typeof(s)}(row)
+end
+
+function to_exacore(model::Optimizer{T}, backend) where {T}
+    c = ExaModels.ExaCore(
+        T;
+        backend,
+        minimize = model.sense != MOI.MAX_SENSE,
+        concrete = Val(true),
+    )
+    if !isempty(model.pstart)
+        c, _ = ExaModels.add_par(c, model.pstart)
+    end
+    c, _ = ExaModels.add_var(
+        c,
+        length(model.lvar);
+        start = model.startvar,
+        lvar = model.lvar,
+        uvar = model.uvar,
+    )
+    if !isempty(model.cons)
+        c, cons = ExaModels.add_con(c, length(model.lcon); model.lcon, model.ucon)
+        for bin in model.cons
+            c, _ = ExaModels.add_con!(c, cons, (bin.head for _ in bin.data))
+        end
+    end
+    for bin in model.objs
+        c, _ = ExaModels.add_obj(c, bin.head, bin.data)
+    end
+    return c
+end
+
+# MOI.copy_to
+
+MOI.supports_incremental_interface(::Optimizer) = true
 
 function MOI.copy_to(dest::Optimizer, src::MOI.ModelLike)
-    core, maps = to_exacore(src; backend = dest.backend)
-    dest.model = ExaModels.ExaModel(core; prod = true)
-
-    return _make_index_map(src, maps)
+    return MOI.Utilities.default_copy_to(dest, src)
 end
 
-function MOI.optimize!(optimizer::Optimizer)
-    optimizer.solve_time = @elapsed begin
-        result = optimizer.solver(optimizer.model; optimizer.options...)
-        optimizer.result = (
-            objective = result.objective,
-            solution = Array(result.solution),
-            multipliers = Array(result.multipliers),
-            multipliers_L = Array(result.multipliers_L),
-            multipliers_U = Array(result.multipliers_U),
-            status = result.status,
-        )
-    end
+# MOI.optimize!
 
-    return optimizer
+function MOI.optimize!(model::Optimizer)
+    core = to_exacore(model, model.backend)
+    exa_model = ExaModels.ExaModel(core; prod = true)
+    start_time = time()
+    result = model.solver(exa_model; model.options...)
+    model.result = (
+        objective = result.objective,
+        solution = Array(result.solution),
+        multipliers = Array(result.multipliers),
+        multipliers_L = Array(result.multipliers_L),
+        multipliers_U = Array(result.multipliers_U),
+        status = result.status,
+    )
+    model.solve_time = time() - start_time
+    return
 end
+
+# MOI.TerminationStatus
 
 # SolverCore returns a `Symbol` in `result.status` for any solver implementing
 # the NLPModels callable interface (e.g. `madnlp(::AbstractNLPModel)`,
@@ -774,133 +722,141 @@ const _TERMINATION_STATUS_CODES = Dict{Symbol, MOI.TerminationStatusCode}(
     :first_order => MOI.LOCALLY_SOLVED,
     :acceptable => MOI.ALMOST_LOCALLY_SOLVED,
     :small_step => MOI.SLOW_PROGRESS,
-    :infeasible => MOI.INFEASIBLE_OR_UNBOUNDED,
+    :infeasible => MOI.INFEASIBLE,
     :max_iter => MOI.ITERATION_LIMIT,
     :max_time => MOI.TIME_LIMIT,
     :user => MOI.INTERRUPTED,
     :exception => MOI.OTHER_ERROR,
 )
+
+MOI.get(model::Optimizer, ::MOI.RawStatusString) = string(model.result.status)
+
+function MOI.get(model::Optimizer, ::MOI.TerminationStatus)
+    if model.result === nothing
+        return MOI.OPTIMIZE_NOT_CALLED
+    end
+    return get(_TERMINATION_STATUS_CODES, model.result.status, MOI.OTHER_ERROR)
+end
+
+# MOI.PrimalStatus, MOI.DualStatus
+
 const _RESULT_STATUS_CODES = Dict{Symbol, MOI.ResultStatusCode}(
     :first_order => MOI.FEASIBLE_POINT,
     :acceptable => MOI.NEARLY_FEASIBLE_POINT,
     :infeasible => MOI.INFEASIBLE_POINT,
 )
 
-MOI.get(optimizer::Optimizer, ::MOI.TerminationStatus) =
-    Base.get(_TERMINATION_STATUS_CODES, optimizer.result.status, MOI.OTHER_ERROR)
-MOI.get(model::Optimizer, attr::Union{MOI.PrimalStatus,MOI.DualStatus}) =
-    Base.get(_RESULT_STATUS_CODES, model.result.status, MOI.UNKNOWN_RESULT_STATUS)
+function MOI.get(model::Optimizer, attr::Union{MOI.PrimalStatus,MOI.DualStatus})
+    if model.result === nothing || attr.result_index != 1
+        return MOI.NO_SOLUTION
+    end
+    return get(
+        _RESULT_STATUS_CODES,
+        model.result.status,
+        MOI.UNKNOWN_RESULT_STATUS,
+    )
+end
 
-function MOI.get(model::Optimizer, attr::MOI.VariablePrimal, vi::MOI.VariableIndex)
+# MOI.VariablePrimal
+
+function MOI.get(
+    model::Optimizer,
+    attr::MOI.VariablePrimal,
+    vi::MOI.VariableIndex,
+)
     MOI.check_result_index_bounds(model, attr)
     if vi.value > PARAMETER_INDEX_THRESHOLD
-        return model.model.θ[vi.value-PARAMETER_INDEX_THRESHOLD]
-    else
-        return model.result.solution[vi.value]
+        return model.pstart[vi.value]
     end
+    return model.result.solution[vi.value]
+end
+
+# MOI.ConstraintDual
+
+function _scale(model::Optimizer{T}) where {T}
+    return model.sense == MOI.MAX_SENSE ? -one(T) : one(T)
 end
 
 function MOI.get(
     model::Optimizer,
     attr::MOI.ConstraintDual,
-    ci::MOI.ConstraintIndex{<:SUPPORTED_FUNC_TYPE,<:SUPPORTED_FUNC_SET_TYPE},
+    ci::MOI.ConstraintIndex,
 )
     MOI.check_result_index_bounds(model, attr)
-    # MOI.throw_if_not_valid(model, ci)
-    s = -1.0
-    return s * model.result.multipliers[ci.value]
+    return -_scale(model) * model.result.multipliers[ci.value]
+end
+
+function _reduced_cost(model, col)
+    return model.result.multipliers_L[col] - model.result.multipliers_U[col]
+end
+function MOI.get(
+    model::Optimizer{T},
+    attr::MOI.ConstraintDual,
+    ci::MOI.ConstraintIndex{MOI.VariableIndex,MOI.LessThan{T}},
+) where {T}
+    MOI.check_result_index_bounds(model, attr)
+    rc = _reduced_cost(model, ci.value)
+    return min(zero(rc), _scale(model) * rc)
 end
 
 function MOI.get(
     model::Optimizer,
     attr::MOI.ConstraintDual,
-    ci::MOI.ConstraintIndex{MOI.VariableIndex,MOI.LessThan{Float64}},
-)
+    ci::MOI.ConstraintIndex{MOI.VariableIndex,MOI.GreaterThan{T}},
+) where {T}
     MOI.check_result_index_bounds(model, attr)
-    # MOI.throw_if_not_valid(model, ci)
-    rc = model.result.multipliers_L[ci.value] - model.result.multipliers_U[ci.value]
-    return min(0.0, rc)
+    rc = _reduced_cost(model, ci.value)
+    return max(zero(rc), _scale(model) * rc)
 end
 
 function MOI.get(
-    model::Optimizer,
+    model::Optimizer{T},
     attr::MOI.ConstraintDual,
-    ci::MOI.ConstraintIndex{MOI.VariableIndex,MOI.GreaterThan{Float64}},
-)
+    ci::MOI.ConstraintIndex{MOI.VariableIndex,S},
+) where {T,S<:Union{MOI.Interval{T},MOI.EqualTo{T}}}
     MOI.check_result_index_bounds(model, attr)
-    # MOI.throw_if_not_valid(model, ci)
-    rc = model.result.multipliers_L[ci.value] - model.result.multipliers_U[ci.value]
-    return max(0.0, rc)
+    return _scale(model) * _reduced_cost(model, ci.value)
 end
 
-function MOI.get(
-    model::Optimizer,
-    attr::MOI.ConstraintDual,
-    ci::MOI.ConstraintIndex{MOI.VariableIndex,MOI.EqualTo{Float64}},
-)
-    MOI.check_result_index_bounds(model, attr)
-    # MOI.throw_if_not_valid(model, ci)
-    rc = model.result.multipliers_L[ci.value] - model.result.multipliers_U[ci.value]
-    return rc
-end
+# MOI.ResultCount
 
+MOI.get(model::Optimizer, ::MOI.ResultCount) = model.result !== nothing ? 1 : 0
 
-function MOI.get(model::Optimizer, ::MOI.ResultCount)
-    return (model.result !== nothing) ? 1 : 0
-end
+# MOI.ObjectiveValue
 
 function MOI.get(model::Optimizer, attr::MOI.ObjectiveValue)
     MOI.check_result_index_bounds(model, attr)
-    # scale = (model.sense == MOI.MAX_SENSE) ? -1 : 1
-    # return scale * model.result.objective
     return model.result.objective
 end
 
-MOI.get(model::Optimizer, ::MOI.SolveTimeSec) = model.solve_time
-MOI.get(
-    model::Optimizer,
-    ::MOI.SolverName,
-) = "$(string(model.solver)) running with ExaModels"
+# MOI.SolveTimeSec
 
-function MOI.set(model::Optimizer, p::MOI.RawOptimizerAttribute, value)
-    model.options[Symbol(p.name)] = value
+MOI.get(model::Optimizer, ::MOI.SolveTimeSec) = model.solve_time
+
+# MOI.SolverName
+
+function MOI.get(model::Optimizer, ::MOI.SolverName)
+    return "$(string(model.solver)) running with ExaModels"
+end
+
+# MOI.RawOptimizerAttribute
+
+function MOI.set(model::Optimizer, attr::MOI.RawOptimizerAttribute, value)
+    model.options[Symbol(attr.name)] = value
     # No need to reset model.solver because this gets handled in optimize!.
     return
 end
 
+# MOI.NLPBlock
 
-_make_index_map(model::MOI.ModelLike, maps) = _make_index_map(model, maps[1], maps[2])
-function _make_index_map(model::MOI.ModelLike, var_to_idx, con_to_idx)
-    variables = MOI.get(model, MOI.ListOfVariableIndices())
-    map = MOI.Utilities.IndexMap()
-    for x in variables
-        vartype, rawidx = var_to_idx[x]
-        if vartype === :variable
-            map[x] = typeof(x)(rawidx)
-        elseif vartype === :parameter
-            map[x] = typeof(x)(rawidx + PARAMETER_INDEX_THRESHOLD)
-        else
-            error("Unknown variable type $vartype")
-        end
-    end
-    for (F, S) in MOI.get(model, MOI.ListOfConstraintTypesPresent())
-        _make_constraints_map(model, map.con_map[F, S], con_to_idx)
-    end
-    return map
-end
-function _make_constraints_map(
-    model,
-    map::MOI.Utilities.DoubleDicts.IndexDoubleDictInner{F,S},
-    con_to_idx,
-) where {F,S}
-    for c in MOI.get(model, MOI.ListOfConstraintIndices{F,S}())
-        map[c] = typeof(c)(con_to_idx[c])
-    end
-    return
-end
+function MOI.set(::Optimizer, ::MOI.NLPBlock, ::MOI.NLPBlockData)
+    return error(
+        """
+        The legacy nonlinear model interface is not supported.
 
-function MOI.set(model::Optimizer, ::MOI.NLPBlock, nlp_data::MOI.NLPBlockData)
-    error("The legacy nonlinear model interface is not supported. Please use the new MOI-based interface.")
+        Please use the new MOI-based interface.
+        """,
+    )
 end
 
 end # module
