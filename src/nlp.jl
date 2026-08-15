@@ -58,7 +58,7 @@ end
 Base.show(io::IO, s::Expression) = _show_expression(io, s)
 function _show_expression(io::IO, s::Expression)
     expr = try
-        _expr_string(s.f(DataSource()))
+        _expr_string(s.f)
     catch
         "(?)"
     end
@@ -78,7 +78,7 @@ end
 
 A handle to a block of model parameters added to an [`ExaCore`](@ref) via
 [`add_par`](@ref) / [`@add_par`](@ref). Parameter values can be updated at any
-time with [`set_parameter!`](@ref) without rebuilding the model. Use indexing
+time with [`set_value!`](@ref) without rebuilding the model. Use indexing
 (e.g. `θ[i]`) to embed parameter values in expressions. An optional `tag` field
 carries user-defined metadata.
 """
@@ -579,7 +579,9 @@ is known statically and destructuring stays inferable.
 # rather than re-derived: it is the float type the core was created with, and
 # instantiating changes sizes, never the element type.
 
-function instantiate(c::ExaCore{T}, a...) where {T}
+# `Vararg{Any,N}`: see the note on the `Tuple` method in argument.jl — forces
+# specialization so the field-by-field mapping stays static under `--trim`.
+function instantiate(c::ExaCore{T}, a::Vararg{Any,N}) where {T, N}
     return ExaCore{T}(
         c.name,
         c.backend,
@@ -613,24 +615,24 @@ function instantiate(c::ExaCore{T}, a...) where {T}
     )
 end
 
-instantiate(v::Variable, a...) =
+instantiate(v::Variable, a::Vararg{Any,N}) where {N} =
     Variable(instantiate(v.size, a...), instantiate(v.length, a...), instantiate(v.offset, a...),
              v.name, instantiate(v.tag, a...))
-instantiate(p::Parameter, a...) =
+instantiate(p::Parameter, a::Vararg{Any,N}) where {N} =
     Parameter(instantiate(p.size, a...), instantiate(p.length, a...), instantiate(p.offset, a...),
               instantiate(p.tag, a...))
-instantiate(e::Expression, a...) =
+instantiate(e::Expression, a::Vararg{Any,N}) where {N} =
     Expression(instantiate(e.size, a...), instantiate(e.length, a...), instantiate(e.f, a...),
                instantiate(e.iter, a...), instantiate(e.tag, a...))
-instantiate(o::Objective, a...) = Objective(instantiate(o.f, a...), instantiate(o.itr, a...))
-instantiate(c::Constraint, a...) =
+instantiate(o::Objective, a::Vararg{Any,N}) where {N} = Objective(instantiate(o.f, a...), instantiate(o.itr, a...))
+instantiate(c::Constraint, a::Vararg{Any,N}) where {N} =
     Constraint(instantiate(c.f, a...), instantiate(c.itr, a...), instantiate(c.offset, a...),
                instantiate(c.size, a...), instantiate(c.tag, a...))
-instantiate(c::ConstraintAugmentation, a...) =
+instantiate(c::ConstraintAugmentation, a::Vararg{Any,N}) where {N} =
     ConstraintAugmentation(instantiate(c.f, a...), instantiate(c.itr, a...),
                            instantiate(c.oa, a...), instantiate(c.dims, a...),
                            instantiate(c.tag, a...))
-instantiate(f::SIMDFunction, a...) =
+instantiate(f::SIMDFunction, a::Vararg{Any,N}) where {N} =
     SIMDFunction(instantiate(f.f, a...), f.comp1, f.comp2,
                  instantiate(f.o0, a...), instantiate(f.o1, a...), instantiate(f.o2, a...),
                  f.o1step, f.o2step)
@@ -769,7 +771,12 @@ function ExaModel(c::ExaCore{T, VT, B, S, V, P, O, C, R, Tuple{}, Tuple{}, Tuple
         c.par,
         c.obj,
         c.cons,
-        c.θ,
+        # A model owns its parameter storage: `instantiate` passes a container
+        # with no placeholder in it through by identity, so without this copy
+        # every model built from one core — including every instance of a
+        # compiled recipe — would share one θ, and setting a parameter on one
+        # would set it on all.
+        copy(c.θ),
         NLPModels.NLPModelMeta(
             c.nvar,
             ncon = c.ncon,
@@ -924,24 +931,24 @@ end
 @inline function Base.getindex(s::Expression, i::I) where {I <: Integer}
     _bound_check(s.size, i)
     idx = i - _start(s.size[1]) + 1
-    return s.f(s.iter[idx])
+    return _reindex(s.f, s.iter[idx])
 end
 @inline function Base.getindex(s::Expression, i)
     # Symbolic index case - the symbolic index IS the iterator element
     # No adjustment needed; the index is used directly in expression building
-    return s.f(i)
+    return _reindex(s.f, i)
 end
 @inline function Base.getindex(s::Expression, is::Vararg{I, N}) where {I <: Integer, N}
     @assert(length(is) == length(s.size), "Expression index dimension error")
     _bound_check(s.size, is)
     idx = idxx(is .- (_start.(s.size) .- 1), _length.(s.size))
-    return s.f(s.iter[idx])
+    return _reindex(s.f, s.iter[idx])
 end
 @inline function Base.getindex(s::Expression, is...)
     # Symbolic indices case - the symbolic indices ARE the iterator elements
     # No adjustment needed; the indices are used directly in expression building
     @assert(length(is) == length(s.size), "Expression index dimension error")
-    return s.f(is)
+    return _reindex(s.f, is)
 end
 
 @inline function Base.getindex(p::P, i) where {P<:Parameter}
@@ -1028,8 +1035,15 @@ end
 @inline total(ns) = _total(ns...)
 @inline _total() = 1
 @inline _total(n, ns...) = _length(n) * _total(ns...)
-@inline _length(n::Int) = n
-@inline _length(n::UnitRange) = length(n)
+@inline _length(n::Integer) = Int(n)
+# Every other axis is measured by its LENGTH, whatever iterates it: a range,
+# a collection of data points (`for (i, tau) in nodes` — catmix's collocation
+# table), a zipped pair (`for (i, v) in zip(2:4, angles)` — steering's
+# boundary conditions). A number is the count itself (above), and a symbolic
+# node defers (below); everything else answers `length`. Enumerating iterator
+# types here was the losing game: each new model brought the next one, each
+# time as a swallowed status 2 in a compiled library's layout query.
+@inline _length(n) = length(n)
 @inline size(ns) = _size(ns...)
 @inline _size() = ()
 @inline _size(n, ns...) = (_length(n), _size(ns...)...)
@@ -1048,11 +1062,11 @@ end
 
 # `start = (f(i) for i in 1:arg.N)` — the body is untouched (it runs per element
 # once the iterator is concrete); only what it iterates is deferred.
-@inline instantiate(g::Base.Generator, a...) = Base.Generator(g.f, instantiate(g.iter, a...))
+@inline instantiate(g::Base.Generator, a::Vararg{Any,N}) where {N} = Base.Generator(g.f, instantiate(g.iter, a...))
 
 # A product iterator is arg-dependent when any of the ranges it crosses is.
 @inline _anyarg(p::Base.Iterators.ProductIterator, xs...) = _anyarg(p.iterators..., xs...)
-@inline instantiate(p::Base.Iterators.ProductIterator, a...) =
+@inline instantiate(p::Base.Iterators.ProductIterator, a::Vararg{Any,N}) where {N} =
     Base.Iterators.product(instantiate(p.iterators, a...)...)
 
 # `append!` mutates its accumulator and returns it.  That is exactly right while
@@ -1182,9 +1196,12 @@ end
 end
 
 """
-    set_parameter!(core, param, values)
+    set_value!(core, param, values)
 
-Updates the values of parameters in the core.
+Updates the values of parameter block `param` in a core, the counterpart of the
+`ExaModel` method.  Parameters are model state, so
+this takes effect without rebuilding; the same spelling as the two-stage
+[`set_value!`](@ref), which takes an additional scenario index.
 
 ## Example
 ```jldoctest
@@ -1194,10 +1211,10 @@ julia> c = ExaCore();
 
 julia> c, p = add_par(c, ones(5));
 
-julia> set_parameter!(c, p, ones(5))
+julia> set_value!(c, p, ones(5))
 ```
 """
-function set_parameter!(c::ExaCore, param::Parameter, values::AbstractArray)
+function set_value!(c::ExaCore, param::Parameter, values::AbstractArray)
     if length(values) != param.length
         throw(
             DimensionMismatch(
@@ -1212,6 +1229,34 @@ function set_parameter!(c::ExaCore, param::Parameter, values::AbstractArray)
     copyto!(@view(c.θ[start_idx:end_idx]), values)
 
     return nothing
+end
+
+"""
+    get_value(core, param)
+
+Returns a view of the values of parameter block `param` in a core — the reader paired
+with [`set_value!`](@ref), and the single-stage form of the two-stage
+`get_value(model, param, scen)`.
+
+## Example
+```jldoctest
+julia> using ExaModels
+
+julia> c = ExaCore();
+
+julia> c, p = add_par(c, ones(5));
+
+julia> get_value(c, p)
+5-element view(::Vector{Float64}, 1:5) with eltype Float64:
+ 1.0
+ 1.0
+ 1.0
+ 1.0
+ 1.0
+```
+"""
+function get_value(c::ExaCore, param::Parameter)
+    return view(c.θ, (param.offset + 1):(param.offset + param.length))
 end
 
 """
@@ -1744,7 +1789,9 @@ c, s = add_expr(c, x[i, k]^2 for (i, k) in itr)
     gen = _adapt_gen(gen)
     n = length(gen.iter)
 
-    ex = Expression(ns, n, gen.f, collect(gen.iter), tag)
+    # Store the body as a node, built once against a `DataSource`, rather than
+    # as the generator's closure — see `_reindex` in graph.jl.
+    ex = Expression(ns, n, gen.f(DataSource()), collect(gen.iter), tag)
     return (ExaCore(c; refs = add_refs(c.refs, name, ex)), ex)
 end
 
@@ -2116,6 +2163,15 @@ function multipliers(result::SolverCore.AbstractExecutionStats, y::Constraint)
 end
 
 _adapt_gen(gen) = Base.Generator(gen.f, collect(gen.iter))
+# A placeholder iterable resolves at instantiation, so what to do with it can
+# only be decided then. The unconditional deferred `collect` was wrong on the
+# GPU: `collect(::CuArray)` is a host Vector, so a converted argument was
+# silently pulled back to the CPU and the kernel met a non-bitstype — invisible
+# on the CPU, where `collect` of a Vector is just a copy.
+_maybe_collect(x) = collect(x)
+_maybe_collect(x::Union{AbstractArray, AbstractRange}) = x
+@inline _adapt_gen(gen::Base.Generator{I}) where {I<:AbstractArgNode} =
+    Base.Generator(gen.f, ArgCall(_maybe_collect, (gen.iter,)))
 # `for i in 1:nh, j in 1:nc` over symbolic ranges: `collect` on the product
 # needs `axes`, and `axes` needs concrete lengths, so it cannot run yet.  Defer
 # the collect itself — it happens at instantiation, on real ranges.
@@ -2126,6 +2182,89 @@ _adapt_gen(gen) = Base.Generator(gen.f, collect(gen.iter))
 _adapt_gen(gen::Base.Generator{P}) where {P<:Union{AbstractArray,AbstractRange}} = gen
 _adapt_gen(gen::Tuple{E, I}) where {E<:AbstractNode, I} = (gen[1], collect(gen[2]))
 _adapt_gen(gen::Tuple{E, I}) where {E<:AbstractNode, I<:Union{AbstractArray,AbstractRange}} = gen
+
+"""
+    get_vars(core_or_model[, name])
+    get_cons(core_or_model[, name])
+    get_pars(core_or_model[, name])
+
+The model's **named** blocks of that kind, as a `NamedTuple`.
+
+Naming a block registers it (`@add_var(c, x, 10)` → `x`), and these are how you
+ask what a model has rather than what you remember writing — which is the only
+way to address a compiled model, whose Julia source the caller may never see.
+The blocks index the solution: pair them with [`solution`](@ref),
+[`multipliers`](@ref), [`multipliers_L`](@ref) / [`multipliers_U`](@ref), and
+[`get_value`](@ref) / [`set_value!`](@ref) for parameters.
+
+Note `m.vars` is a different thing — the positional storage of every block,
+named or not.
+
+## Example
+```jldoctest
+julia> using ExaModels
+
+julia> c = ExaCore();
+
+julia> c, x = add_var(c, 10; name = Val(:x));
+
+julia> m = ExaModel(c);
+
+julia> keys(get_vars(m))
+(:x,)
+
+julia> get_vars(m, :x) === get_vars(m).x
+true
+```
+"""
+get_vars(x::Union{ExaCore, ExaModel}) = _named_blocks(x, AbstractVariable)
+
+@doc (@doc get_vars)
+get_cons(x::Union{ExaCore, ExaModel}) = _named_blocks(x, AbstractConstraint)
+
+@doc (@doc get_vars)
+get_pars(x::Union{ExaCore, ExaModel}) = _named_blocks(x, AbstractParameter)
+
+# `getfield` rather than `x.refs`: `getproperty` on these types resolves a name
+# against `refs` itself, so going through it here would be circular for a model
+# that happens to name a block `refs`.
+get_vars(x::Union{ExaCore, ExaModel}, name::Symbol) =
+    _named_block(x, AbstractVariable, name, "variable", get_vars)
+
+@doc (@doc get_vars)
+get_cons(x::Union{ExaCore, ExaModel}, name::Symbol) =
+    _named_block(x, AbstractConstraint, name, "constraint", get_cons)
+
+@doc (@doc get_vars)
+get_pars(x::Union{ExaCore, ExaModel}, name::Symbol) =
+    _named_block(x, AbstractParameter, name, "parameter", get_pars)
+
+# One name, with an error that separates the two ways of being wrong: the
+# blocks share a flat namespace, so asking `get_vars` for something that is
+# really a parameter is at least as likely as a typo, and the two want
+# different fixes.
+function _named_block(x, ::Type{K}, name::Symbol, kind::String, f) where {K}
+    nt = _named_blocks(x, K)
+    haskey(nt, name) && return nt[name]
+    refs = getfield(x, :refs)
+    if hasfield(typeof(refs), name)
+        other = getfield(refs, name)
+        what = other isa AbstractVariable ? "a variable (get_vars)" :
+               other isa AbstractConstraint ? "a constraint (get_cons)" :
+               other isa AbstractParameter ? "a parameter (get_pars)" :
+               "a $(nameof(typeof(other)))"
+        throw(ArgumentError("`$name` is $what, not a $kind"))
+    end
+    throw(ArgumentError(
+        "this model has no named $kind `$name`; it has $(keys(nt))" *
+        (isempty(keys(nt)) ? " (none — was it added with a `name`?)" : "")))
+end
+
+@inline function _named_blocks(x::Union{ExaCore, ExaModel}, ::Type{K}) where {K}
+    refs = getfield(x, :refs)
+    ks = filter(k -> getfield(refs, k) isa K, keys(refs))
+    return NamedTuple{ks}(map(k -> getfield(refs, k), ks))
+end
 
 function Base.getproperty(core::E, name::Symbol) where {E <: Union{ExaCore, ExaModel}}
     if hasfield(E, name)

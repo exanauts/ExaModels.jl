@@ -18,7 +18,7 @@
 # placeholders *is* the separation that compilation requires: what stays in the
 # core becomes code, what goes into the arguments crosses the boundary as data.
 # A recipe that builds and instantiates is on the compilation pathway, and the
-# author never reasons about trimming.  `ExaModelsC` takes it from there —
+# author never reasons about trimming.  `ExaModelsCompiler` takes it from there —
 # shared library, C ABI, consumed by CNLPModels.jl or cnlpmodels.
 #
 # The same mechanism happens to make one core reusable at any size, which is
@@ -181,17 +181,17 @@ julia> ExaModels.instantiate(x, (nh = 2,)) === x     # identity, no arg dependen
 true
 ```
 """
-@inline instantiate(x, a...) = x
-@inline instantiate(::ArgSource{K}, a...) where {K} = a[K]
-@inline instantiate(n::ArgIndexed{I, J}, a...) where {I, J} =
+@inline instantiate(x, a::Vararg{Any,N}) where {N} = x
+@inline instantiate(::ArgSource{K}, a::Vararg{Any,N}) where {K, N} = a[K]
+@inline instantiate(n::ArgIndexed{I, J}, a::Vararg{Any,N}) where {I, J, N} =
     _arg_access(instantiate(getfield(n, :inner), a...), J)
-@inline instantiate(n::ArgNode1, a...) =
+@inline instantiate(n::ArgNode1, a::Vararg{Any,N}) where {N} =
     getfield(n, :f)(instantiate(getfield(n, :inner), a...))
-@inline instantiate(n::ArgNode2, a...) = getfield(n, :f)(
+@inline instantiate(n::ArgNode2, a::Vararg{Any,N}) where {N} = getfield(n, :f)(
     instantiate(getfield(n, :inner1), a...),
     instantiate(getfield(n, :inner2), a...),
 )
-@inline instantiate(n::ArgCall, a...) =
+@inline instantiate(n::ArgCall, a::Vararg{Any,N}) where {N} =
     getfield(n, :f)(map(x -> instantiate(x, a...), getfield(n, :args))...)
 
 @inline _arg_access(x, j::Symbol) = getproperty(x, j)
@@ -204,8 +204,34 @@ true
 # that looks fully instantiated and is not.  Mapping costs nothing observable:
 # an immutable tuple rebuilds `===` to itself, and each element is passed
 # through by identity when it has no dependency of its own.
-@inline instantiate(t::Tuple, a...) = map(x -> instantiate(x, a...), t)
-@inline instantiate(t::NamedTuple, a...) = map(x -> instantiate(x, a...), t)
+# `Vararg{Any,N}` forces specialization on the arguments' concrete types:
+# a vararg that is only splatted through is otherwise left unspecialized
+# (Julia's passthrough heuristic), and the `map` below then carries a dynamic
+# call that `juliac --trim=safe` cannot resolve. Harmless under the JIT,
+# load-bearing for AOT — same reason on the `ExaCore` method in nlp.jl.
+# Unrolled as well as specialized: `Vararg{Any,N}` is necessary — without it
+# the vararg is not specialized at all — but on a core the size of an AC
+# OPF's the `map` closure is still an unresolved call under `--trim=safe`.
+# The recursion gives each element a direct `instantiate` call.
+#
+# THE PARAMETER ROLES ARE LOAD-BEARING, both of them. The ELEMENTS stay
+# structural (`t::Tuple`, recursed via `first`/`Base.tail`): splatting them
+# into a bare vararg (`_f(a, x, xs...)`) puts the heterogeneous element
+# types into a pass-through-only vararg, which Julia leaves unspecialized —
+# the per-element types are lost, and a core whose objectives project
+# fields out of a deferred data call (gasoil's shape) widens at the
+# instantiate boundary: 6 verifier errors, reproduced and bisected to this
+# hunk alone (6 → 0 on the swap, real COPS gasoil as the instrument). The
+# ARGUMENTS ride the specialized `Vararg{Any,N}`. Inverting either role
+# reintroduces the widening; the ExaModelsCompiler suite's models are too small
+# and too homogeneous to see it — the COPS CI pin on this branch is the
+# regression gate for this class.
+@inline _instantiate_each(::Tuple{}, a::Vararg{Any,N}) where {N} = ()
+@inline _instantiate_each(t::Tuple, a::Vararg{Any,N}) where {N} =
+    (instantiate(first(t), a...), _instantiate_each(Base.tail(t), a...)...)
+@inline instantiate(t::Tuple, a::Vararg{Any,N}) where {N} = _instantiate_each(t, a...)
+@inline instantiate(t::NamedTuple{K}, a::Vararg{Any,N}) where {K, N} =
+    NamedTuple{K}(_instantiate_each(Tuple(t), a...))
 
 """
     _anyarg(xs...)

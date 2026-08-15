@@ -45,10 +45,19 @@ jobs:
             include("test/runtests.jl")'
       - uses: julia-actions/julia-processcoverage@v1
         if: matrix.julia-version == '1' && matrix.os == 'ubuntu-latest'
+        with:
+          directories: src,ext
       - uses: codecov/codecov-action@v5
         if: matrix.julia-version == '1' && matrix.os == 'ubuntu-latest'
         with:
           files: lcov.info
+          # Each job covers a different slice of src; flag the uploads so
+          # Codecov merges the partial reports for a commit instead of
+          # treating each as a replacement. Token, not OIDC: OIDC uploads
+          # broke on the org transfer ("Repository not found") while
+          # token-authenticated uploads kept working.
+          flags: github
+          token: ${{ secrets.CODECOV_TOKEN }}
 
   cpu:
     strategy:
@@ -56,7 +65,7 @@ jobs:
         julia-version: ['1', 'lts']
         julia-arch: [x64]
         os: [ubuntu-latest]
-    runs-on: ['self-hosted', 'examodels']
+    runs-on: ['self-hosted', 'shin-compute']
     steps:
     - name: Checkout code
       uses: actions/checkout@v2
@@ -77,12 +86,25 @@ jobs:
     - name: Run tests
       env:
         EXAMODELS_SKIP_AOT: "1"
+      # Coverage only on the julia-version 1 leg: the KernelAbstractions and
+      # OpenCL extension lines are exercised here and nowhere on the hosted
+      # runners, and one instrumented leg is enough for the report.
       run: |
-        julia --startup-file=no --color=yes --project=./test -e '
+        julia --startup-file=no --color=yes ${{ matrix.julia-version == '1' && '--code-coverage=user' || '' }} --project=./test -e '
           push!(ARGS, "EXAMODELS_NO_TEST_CPU")
           push!(ARGS, "EXAMODELS_TEST_KA")
           push!(ARGS, "EXAMODELS_TEST_POCL")
           include("test/runtests.jl")'
+    - uses: julia-actions/julia-processcoverage@v1
+      if: matrix.julia-version == '1'
+      with:
+        directories: src,ext
+    - uses: codecov/codecov-action@v5
+      if: matrix.julia-version == '1'
+      with:
+        files: lcov.info
+        flags: cpu
+        token: ${{ secrets.CODECOV_TOKEN }}
 
   gpu:
     strategy:
@@ -94,7 +116,7 @@ jobs:
         exclude:
           - julia-version: 'lts'
             backend: 'oneapi'
-    runs-on: ['self-hosted', 'gpu', '${{ matrix.backend }}', 'examodels']
+    runs-on: ['self-hosted', 'gpu', '${{ matrix.backend }}', 'shin-compute']
     continue-on-error: ${{ matrix.backend == 'oneapi' }}
     env:
       # oneAPI specific variables
@@ -131,11 +153,24 @@ jobs:
     - name: Run tests
       env:
         EXAMODELS_SKIP_AOT: "1"
+      # Coverage from the CUDA leg on julia-version 1 only: it exercises the
+      # device paths of the KernelAbstractions extension; the other backends
+      # walk the same extension lines and need no second instrumented run.
       run: |
-        julia --startup-file=no --color=yes --project=./test -e '
+        julia --startup-file=no --color=yes ${{ matrix.julia-version == '1' && matrix.backend == 'cuda' && '--code-coverage=user' || '' }} --project=./test -e '
           push!(ARGS, "EXAMODELS_NO_TEST_CPU")
           push!(ARGS, "EXAMODELS_TEST_" * uppercase("${{ matrix.backend }}"))
           include("test/runtests.jl")'
+    - uses: julia-actions/julia-processcoverage@v1
+      if: matrix.julia-version == '1' && matrix.backend == 'cuda'
+      with:
+        directories: src,ext
+    - uses: codecov/codecov-action@v5
+      if: matrix.julia-version == '1' && matrix.backend == 'cuda'
+      with:
+        files: lcov.info
+        flags: gpu-${{ matrix.backend }}
+        token: ${{ secrets.CODECOV_TOKEN }}
 
   metal:
     strategy:
@@ -144,7 +179,7 @@ jobs:
         julia-arch: [aarch64]
         os: [macos-latest]
         backend: ['metal']
-    runs-on: ['self-hosted', 'gpu', '${{ matrix.backend }}', 'examodels']
+    runs-on: ['self-hosted', 'gpu', '${{ matrix.backend }}']
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -177,7 +212,7 @@ jobs:
   bench-nothing:
     if: github.event_name == 'pull_request'
     needs: [github, cpu, gpu, metal]
-    runs-on: ['self-hosted', 'examodels']
+    runs-on: ['self-hosted', 'shin-compute']
     steps:
       - uses: actions/checkout@v4
       - uses: julia-actions/setup-julia@latest
@@ -202,7 +237,7 @@ jobs:
   bench-cuda:
     if: github.event_name == 'pull_request'
     needs: [github, cpu, gpu, metal]
-    runs-on: ['self-hosted', 'gpu', 'cuda', 'examodels']
+    runs-on: ['self-hosted', 'gpu', 'cuda', 'shin-compute']
     env:
       # opt out of MPS on the self-hosted runner
       CUDA_MPS_PIPE_DIRECTORY: /tmp/no-mps-${{ github.run_id }}
@@ -230,7 +265,7 @@ jobs:
   bench-amdgpu:
     if: github.event_name == 'pull_request'
     needs: [github, cpu, gpu, metal]
-    runs-on: ['self-hosted', 'gpu', 'amdgpu', 'examodels']
+    runs-on: ['self-hosted', 'gpu', 'amdgpu', 'shin-compute']
     steps:
       - uses: actions/checkout@v4
       - uses: julia-actions/setup-julia@latest
@@ -255,7 +290,7 @@ jobs:
   bench-oneapi:
     if: github.event_name == 'pull_request'
     needs: [github, cpu, gpu, metal]
-    runs-on: ['self-hosted', 'gpu', 'oneapi', 'examodels']
+    runs-on: ['self-hosted', 'gpu', 'oneapi', 'shin-compute']
     continue-on-error: true
     env:
       OverrideDefaultFP64Settings: '1'
@@ -312,21 +347,21 @@ jobs:
             benchmark/comparison.txt
             benchmark/pr_number.txt
 
-  # ExaModelsC compiles a model into a native shared library with juliac, so it
+  # ExaModelsCompiler compiles a model into a native shared library with juliac, so it
   # is platform-specific in a way the rest of the package is not. Not on GPU
   # runners, where it is not expected to work yet, and not on Windows: juliac
   # implements runtime privatization only for Linux and macOS, so a library
   # compiled there cannot be loaded back into Julia (see `compile_library`).
-  examodelsc:
+  examodelscompiler:
     strategy:
       fail-fast: false
       matrix:
         include:
-          - runner: '["self-hosted","Linux","examodels"]'
+          - runner: '["self-hosted","Linux","shin-compute"]'
             name: linux
-          - runner: '["self-hosted","macOS","examodels"]'
+          - runner: '["self-hosted","macOS"]'
             name: macos
-    name: examodelsc (${{ matrix.name }})
+    name: examodelscompiler (${{ matrix.name }})
     runs-on: ${{ fromJSON(matrix.runner) }}
     steps:
       - uses: actions/checkout@v4
@@ -334,23 +369,37 @@ jobs:
       # the test finds it through CNLPMODELS_PY and skips the leg if absent.
       - uses: actions/checkout@v4
         with:
-          repository: MadNLP/cnlpmodels-py
+          repository: madsuite-org/cnlpmodels-py
           ref: master
           path: cnlpmodels-py
       - uses: julia-actions/setup-julia@latest
         with:
           version: '1'
-      - uses: julia-actions/cache@v3
+      # No julia-actions/cache here: both legs are self-hosted with
+      # persistent per-runner depots, so a GitHub cache round-trip is pure
+      # overhead (and one gigabyte-scale save stalled the mac leg for 15 min).
       # No `setup-python` here: both legs are self-hosted, and that action
       # assumes the hosted layout — it tries to write to `/Users/runner`, which
       # on a self-hosted Mac does not exist (`mkdir: Permission denied`), and
       # takes the job with it. The runners have their own Python; the test
       # probes for one with numpy and skips that leg when it finds none.
-      - name: Run ExaModelsC tests
+      - name: Run ExaModelsCompiler tests
         env:
           CNLPMODELS_PY: ${{ github.workspace }}/cnlpmodels-py/src
+        # The linux leg is instrumented so ExaModelsCompiler/src reaches the coverage
+        # report; the mac leg runs the same tests uninstrumented.
         run: |
-          julia --startup-file=no --color=yes --project=ExaModelsC/test -e '
+          julia --startup-file=no --color=yes ${{ matrix.name == 'linux' && '--code-coverage=user' || '' }} --project=ExaModelsCompiler/test -e '
             using Pkg
             Pkg.instantiate()
-            include("ExaModelsC/test/runtests.jl")'
+            include("ExaModelsCompiler/test/runtests.jl")'
+      - uses: julia-actions/julia-processcoverage@v1
+        if: matrix.name == 'linux'
+        with:
+          directories: ExaModelsCompiler/src
+      - uses: codecov/codecov-action@v5
+        if: matrix.name == 'linux'
+        with:
+          files: lcov.info
+          flags: examodelscompiler
+          token: ${{ secrets.CODECOV_TOKEN }}

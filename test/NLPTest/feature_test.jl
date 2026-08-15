@@ -125,10 +125,40 @@ function test_add_par_dims(backend)
         @test g_vals ≈ [1.0, 5.0, 9.0]
     end
 
-    @testset "set_parameter! with range-sized parameter" begin
+    @testset "data-axis block sizes" begin
+        # A constraint may iterate a DATA collection (`for (i, tau) in nodes`),
+        # which then forms one axis of its block's size field. `size`/`total`
+        # must treat that axis like a range's — by its length — or every
+        # accessor downstream (multipliers, a compiled library's layout
+        # query) throws a MethodError. Six of COPS's seventeen models carry
+        # such an axis; catmix's collocation nodes found this.
+        c = ExaCore(; backend, concrete = Val(true))
+        c, x = add_var(c, 4; start = 1.0)
+        nodes = [(1, 0.5), (2, 1.5), (3, 2.5)]
+        c, s = add_con(c, x[t[1]] - t[2] for t in nodes, j in 1:2;
+                       lcon = -10.0, ucon = 10.0, name = Val(:dax))
+        m = ExaModel(c)
+        b = get_cons(m, :dax)
+        @test ExaModels.size(b.size) == (3, 2)
+        @test ExaModels.total(b.size) == 6
+        # A ZIP axis measures the same way — steering's boundary conditions,
+        # `for (i, v) in zip(2:4, angles)`, were the second iterator type to
+        # arrive as a swallowed status 2; the rule is now general (an axis is
+        # measured by its length) rather than per-type.
+        c2 = ExaCore(; backend, concrete = Val(true))
+        c2, y = add_var(c2, 6; start = 0.0)
+        c2, z = add_con(c2, y[i] - v for (i, v) in zip(2:4, [5.0, 45.0, 0.0]);
+                        lcon = 0.0, ucon = 0.0, name = Val(:zax))
+        m2 = ExaModel(c2)
+        b2 = get_cons(m2, :zax)
+        @test ExaModels.size(b2.size) == (3,)
+        @test ExaModels.total(b2.size) == 3
+    end
+
+    @testset "set_value! with range-sized parameter" begin
         c = ExaCore(; backend, concrete = Val(true))
         c, θ = add_par(c, 2:4; value = ones(3))
-        set_parameter!(c, θ, [5.0, 6.0, 7.0])
+        set_value!(c, θ, [5.0, 6.0, 7.0])
         c, x = add_var(c, 1)
         c, g = add_con(c, θ[j] * x[1] for j in 2:4; lcon = 0.0, ucon = 0.0)
         m = ExaModel(c)

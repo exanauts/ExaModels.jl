@@ -60,7 +60,7 @@ macro register_univariate(f, df, ddf)
                 @inline $f(n::N) where {N<:ExaModels.AbstractNode} = ExaModels.Node1($f, n)
             end
             # Constant folding: f(Constant{T}()) → Constant(f(T))
-            @inline $f(n::Constant{I}) where {I} = Constant($f(I))
+            @inline $f(n::ExaModels.Constant{I}) where {I} = ExaModels.Constant($f(I))
 
             @inline $f(d::D) where {D<:ExaModels.AbstractAdjointNode} =
                 ExaModels.AdjointNode1($f, $f(d.x), $df(d.x), d)
@@ -132,7 +132,7 @@ macro register_bivariate(f, df1, df2, ddf11, ddf12, ddf22)
                 end
             end
             # Constant folding: f(Constant{I1}(), Constant{I2}()) → Constant(f(I1,I2))
-            @inline $f(d1::Constant{I1}, d2::Constant{I2}) where {I1, I2} = Constant($f(I1, I2))
+            @inline $f(d1::ExaModels.Constant{I1}, d2::ExaModels.Constant{I2}) where {I1, I2} = ExaModels.Constant($f(I1, I2))
 
             if ExaModels._needs_overload($f, Tuple{ExaModels.AbstractNode,Real})
                 @inline function $f(
