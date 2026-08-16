@@ -40,8 +40,8 @@ Returns a `SIMDFunction` using the `gen`.
 # Arguments:
 - `gen`: an iterable function specified in `Base.Generator` format
 - `o0`: offset for the function evaluation
-- `o1`: offset for the derivative evalution
-- `o2`: offset for the second-order derivative evalution
+- `o1`: offset for the derivative evaluation
+- `o2`: offset for the second-order derivative evaluation
 """
 @inline function SIMDFunction(T, gen::Base.Generator, o0 = 0, o1 = 0, o2 = 0)
     _simdfunction(T, gen.f(DataSource()), o0, o1, o2)

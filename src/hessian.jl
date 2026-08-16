@@ -668,7 +668,7 @@ end
 """
     shessian!(y1, y2, f, x, adj1, adj2)
 
-Performs sparse jacobian evalution
+Performs sparse jacobian evaluation
 
 # Arguments:
 - `y1`: result vector #1

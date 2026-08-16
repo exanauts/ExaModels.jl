@@ -37,7 +37,7 @@ end
 """
     update_bin!(bin::Vector{Bin}, head, data)
 
-This function loops thorugh the list of `bin` looking for a matching `head`. If
+This function loops through the list of `bin` looking for a matching `head`. If
 found, it updates the bin in place. Othersise, it appends a new bin.
 """
 function update_bin!(

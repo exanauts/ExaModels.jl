@@ -100,7 +100,7 @@ end
 """
     sjacobian!(y1, y2, f, x, adj)
 
-Performs sparse jacobian evalution
+Performs sparse jacobian evaluation
 
 # Arguments:
 - `y1`: result vector #1
