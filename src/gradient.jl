@@ -28,7 +28,7 @@ end
 """
     gradient!(y, f, x, adj)
 
-Performs dense gradient evalution
+Performs dense gradient evaluation
 
 # Arguments:
 - `y`: result vector
@@ -159,7 +159,7 @@ end
 
 """ sgradient!(y, f, x, adj)
 
-Performs sparse gradient evalution
+Performs sparse gradient evaluation
 
 # Arguments:
 - `y`: result vector
