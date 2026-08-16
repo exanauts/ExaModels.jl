@@ -1,0 +1,48 @@
+# This CITATION.cff file was generated with cffinit.
+# Visit https://bit.ly/cffinit to generate yours today!
+
+authors:
+  - affiliation: >-
+      Department of Chemical Engineering, Massachusetts
+      Institute of Technology, Cambridge, MA, USA
+    family-names: Shin
+    given-names: Sungho
+    email: sushin@mit.edu
+cff-version: 1.2.0
+identifiers:
+  - description: arXiv preprint
+    type: other
+    value: 'arXiv:2307.16830'
+keywords:
+  - Nonlinear Optimization
+  - Julia
+  - Nonlinear Programming
+  - Automatic Differentiation
+  - GPU
+license: MIT
+message: >-
+  If you use this software, please cite it using the
+  metadata from this file.
+preferred-citation:
+  type: article
+  title: >-
+    Accelerating optimal power flow with GPUs: SIMD abstraction of
+    nonlinear programs and condensed-space interior-point methods
+  authors:
+    - family-names: Shin
+      given-names: Sungho
+    - family-names: Anitescu
+      given-names: Mihai
+    - family-names: Pacaud
+      given-names: François
+  journal: Electric Power Systems Research
+  volume: '236'
+  year: 2024
+  doi: 10.1016/j.epsr.2024.110651
+repository-code: 'https://github.com/madsuite-org/ExaModels.jl'
+title: >-
+  ExaModels.jl: An algebraic modeling and automatic differentiation
+  tool in Julia, specialized for SIMD abstraction of nonlinear programs
+type: software
+version: 0.12.0
+date-released: '2026-08-14'
