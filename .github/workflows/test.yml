@@ -58,6 +58,9 @@ jobs:
           # token-authenticated uploads kept working.
           flags: github
           token: ${{ secrets.CODECOV_TOKEN }}
+          # The org-wide token cannot imply a repository; the slug says
+          # which repo this upload is for.
+          slug: ${{ github.repository }}
 
   cpu:
     strategy:
@@ -105,6 +108,9 @@ jobs:
         files: lcov.info
         flags: cpu
         token: ${{ secrets.CODECOV_TOKEN }}
+        # The org-wide token cannot imply a repository; the slug says
+        # which repo this upload is for.
+        slug: ${{ github.repository }}
 
   gpu:
     strategy:
@@ -171,6 +177,9 @@ jobs:
         files: lcov.info
         flags: gpu-${{ matrix.backend }}
         token: ${{ secrets.CODECOV_TOKEN }}
+        # The org-wide token cannot imply a repository; the slug says
+        # which repo this upload is for.
+        slug: ${{ github.repository }}
 
   metal:
     strategy:
@@ -403,3 +412,6 @@ jobs:
           files: lcov.info
           flags: examodelscompiler
           token: ${{ secrets.CODECOV_TOKEN }}
+          # The org-wide token cannot imply a repository; the slug says
+          # which repo this upload is for.
+          slug: ${{ github.repository }}
