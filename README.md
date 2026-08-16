@@ -1,12 +1,13 @@
-![Logo](full-logo.svg)
+# ExaModels.jl
 
 *An [algebraic modeling](https://en.wikipedia.org/wiki/Algebraic_modeling_language) and [automatic differentiation](https://en.wikipedia.org/wiki/Automatic_differentiation) tool in [Julia Language](https://julialang.org/), specialized for [SIMD](https://en.wikipedia.org/wiki/Single_instruction,_multiple_data) abstraction of [nonlinear programs](https://en.wikipedia.org/wiki/Nonlinear_programming).*
 
----
-
-| **License** | **Documentation** | **Build Status** | **Coverage** | **Citation** |
-|:-----------------:|:----------------:|:----------------:|:----------------:|:----------------:|
-| [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/madsuite-org/ExaModels.jl/blob/main/LICENSE) | [![doc](https://img.shields.io/badge/docs-stable-blue.svg)](https://madsuite-org.github.io/ExaModels.jl/stable) [![doc](https://img.shields.io/badge/docs-dev-blue.svg)](https://madsuite-org.github.io/ExaModels.jl/dev)  | [![build](https://github.com/madsuite-org/ExaModels.jl/actions/workflows/test.yml/badge.svg)](https://github.com/madsuite-org/ExaModels.jl/actions/workflows/test.yml) | [![codecov](https://codecov.io/gh/madsuite-org/ExaModels.jl/branch/main/graph/badge.svg)](https://codecov.io/gh/madsuite-org/ExaModels.jl) | [![arXiv](https://img.shields.io/badge/arXiv-2307.16830-b31b1b.svg)](https://arxiv.org/abs/2307.16830) |
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/madsuite-org/ExaModels.jl/blob/main/LICENSE)
+[![docs](https://img.shields.io/badge/docs-stable-blue.svg)](https://madsuite-org.github.io/ExaModels.jl/stable)
+[![docs](https://img.shields.io/badge/docs-dev-blue.svg)](https://madsuite-org.github.io/ExaModels.jl/dev)
+[![build](https://github.com/madsuite-org/ExaModels.jl/actions/workflows/test.yml/badge.svg)](https://github.com/madsuite-org/ExaModels.jl/actions/workflows/test.yml)
+[![codecov](https://codecov.io/gh/madsuite-org/ExaModels.jl/branch/main/graph/badge.svg)](https://codecov.io/gh/madsuite-org/ExaModels.jl)
+[![release](https://img.shields.io/github/v/release/madsuite-org/ExaModels.jl)](https://github.com/madsuite-org/ExaModels.jl/releases)
 
 ## Overview
 
