@@ -12,7 +12,7 @@ cff-version: 1.2.0
 identifiers:
   - description: arXiv preprint
     type: other
-    value: 'arXiv:2307.16830'
+    value: 'arXiv:2608.16265'
 keywords:
   - Nonlinear Optimization
   - Julia
@@ -26,19 +26,22 @@ message: >-
 preferred-citation:
   type: article
   title: >-
-    Accelerating optimal power flow with GPUs: SIMD abstraction of
-    nonlinear programs and condensed-space interior-point methods
+    ExaModels.jl: An Algebraic Modeling System for Nonlinear
+    Programming on GPUs
   authors:
     - family-names: Shin
       given-names: Sungho
-    - family-names: Anitescu
-      given-names: Mihai
+    - family-names: Schanen
+      given-names: Michel
     - family-names: Pacaud
       given-names: François
-  journal: Electric Power Systems Research
-  volume: '236'
-  year: 2024
-  doi: 10.1016/j.epsr.2024.110651
+    - family-names: Montoison
+      given-names: Alexis
+    - family-names: Anitescu
+      given-names: Mihai
+  year: 2026
+  doi: 10.48550/arXiv.2608.16265
+  url: 'https://arxiv.org/abs/2608.16265'
 repository-code: 'https://github.com/madsuite-org/ExaModels.jl'
 title: >-
   ExaModels.jl: An algebraic modeling and automatic differentiation

@@ -8,6 +8,7 @@
 [![build](https://github.com/madsuite-org/ExaModels.jl/actions/workflows/test.yml/badge.svg)](https://github.com/madsuite-org/ExaModels.jl/actions/workflows/test.yml)
 [![codecov](https://codecov.io/gh/madsuite-org/ExaModels.jl/branch/main/graph/badge.svg)](https://codecov.io/gh/madsuite-org/ExaModels.jl)
 [![release](https://img.shields.io/github/v/release/madsuite-org/ExaModels.jl)](https://github.com/madsuite-org/ExaModels.jl/releases)
+[![arXiv](https://img.shields.io/badge/arXiv-2608.16265-b31b1b.svg)](https://arxiv.org/abs/2608.16265)
 
 ## Overview
 
@@ -58,14 +59,14 @@ reference implementation:
 If you use ExaModels.jl in your research, please cite:
 
 ```bibtex
-@article{shin2024accelerating,
-  title   = {Accelerating optimal power flow with {GPUs}: {SIMD} abstraction of nonlinear programs and condensed-space interior-point methods},
-  author  = {Shin, Sungho and Anitescu, Mihai and Pacaud, Fran\c{c}ois},
-  journal = {Electric Power Systems Research},
-  volume  = {236},
-  pages   = {110651},
-  year    = {2024},
-  doi     = {10.1016/j.epsr.2024.110651}
+@misc{shin2026examodels,
+  title   = {{ExaModels.jl}: An Algebraic Modeling System for Nonlinear Programming on {GPUs}},
+  author  = {Shin, Sungho and Schanen, Michel and Pacaud, Fran\c{c}ois and Montoison, Alexis and Anitescu, Mihai},
+  year    = {2026},
+  eprint  = {2608.16265},
+  archivePrefix = {arXiv},
+  primaryClass  = {math.OC},
+  doi     = {10.48550/arXiv.2608.16265}
 }
 ```
 
