@@ -56,7 +56,7 @@ reference implementation:
 
 ## Citation
 
-If you use ExaModels.jl in your research, please cite the ExaModels.jl paper:
+If you use ExaModels.jl in your research, please cite:
 
 ```bibtex
 @misc{shin2026examodels,
@@ -67,21 +67,6 @@ If you use ExaModels.jl in your research, please cite the ExaModels.jl paper:
   archivePrefix = {arXiv},
   primaryClass  = {math.OC},
   doi     = {10.48550/arXiv.2608.16265}
-}
-```
-
-The SIMD abstraction, and the condensed-space interior-point method it is paired with, are
-described in:
-
-```bibtex
-@article{shin2024accelerating,
-  title   = {Accelerating optimal power flow with {GPUs}: {SIMD} abstraction of nonlinear programs and condensed-space interior-point methods},
-  author  = {Shin, Sungho and Anitescu, Mihai and Pacaud, Fran\c{c}ois},
-  journal = {Electric Power Systems Research},
-  volume  = {236},
-  pages   = {110651},
-  year    = {2024},
-  doi     = {10.1016/j.epsr.2024.110651}
 }
 ```
 
